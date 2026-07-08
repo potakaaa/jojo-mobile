@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "turbo run dev",
+    "dev:tunnel": "turbo run dev:tunnel",
     "start": "turbo run start",
     "ios": "turbo run ios --filter=@jojopotato/mobile",
     "android": "turbo run android --filter=@jojopotato/mobile",
