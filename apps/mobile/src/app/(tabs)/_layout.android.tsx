@@ -1,22 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
-import AndroidTabBar from '@/components/android-tab-bar';
+import FloatingTabBar from '@/components/floating-tab-bar';
 
 /**
- * Android tab navigator using the stable `expo-router` `Tabs` with a fully
- * custom, brand-styled `tabBar` (the floating jyellow pill bar). Metro
- * auto-resolves this over the non-suffixed layout on Android builds (same
- * platform-extension convention as `_layout.ios.tsx` / `_layout.web.tsx`).
+ * Android tab navigator using the stable `expo-router` `Tabs` with the shared,
+ * brand-styled `tabBar` (the floating jyellow pill bar) — the same one iOS
+ * uses. Metro auto-resolves this over the non-suffixed layout on Android
+ * builds (same platform-extension convention as `_layout.ios.tsx` /
+ * `_layout.web.tsx`).
  *
  * `tabBarIcon` render props stay on each `Tabs.Screen` so
  * `descriptors[route.key].options` is a complete, self-describing source of
- * truth per screen, even though `AndroidTabBar` renders icons itself.
+ * truth per screen, even though `FloatingTabBar` renders icons itself.
  */
 export default function TabsAndroidLayout() {
   return (
     <Tabs
-      tabBar={(props) => <AndroidTabBar {...props} />}
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{ headerShown: false, animation: 'fade' }}
     >
       <Tabs.Screen

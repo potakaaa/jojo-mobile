@@ -1,7 +1,7 @@
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getAndroidTabBarClearance } from '@/components/android-tab-bar';
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -23,8 +23,8 @@ export function ComingSoon({ title }: ComingSoonProps) {
         <View
           style={[
             styles.content,
-            // Keep centered content clear of Android's floating tab bar.
-            Platform.OS === 'android' && { paddingBottom: getAndroidTabBarClearance(insets.bottom) },
+            // Keep centered content clear of the floating tab bar on iOS/Android.
+            Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
           ]}
         >
           <Text style={[styles.title, { color: theme.text }]}>{title}</Text>

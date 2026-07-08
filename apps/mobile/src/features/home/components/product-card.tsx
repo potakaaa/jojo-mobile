@@ -1,23 +1,27 @@
 import type { MenuItem } from '@jojopotato/types';
+import { formatCurrency } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { getProductImage } from '../product-images';
 
 export interface ProductCardProps {
   product: MenuItem;
 }
 
 /**
- * Single product card: image (or a placeholder block when `imageUrl` is
- * absent), name, description, and a category tag. Tapping toggles a local
- * pressed highlight — it does not navigate.
+ * Single product card: real brand photography keyed off the product's
+ * category (or a placeholder block when no matching image exists), name,
+ * description, price, and an "Add" affordance. Tapping toggles a local
+ * pressed highlight — it does not navigate or add to a cart yet.
  */
 export function ProductCard({ product }: ProductCardProps) {
   const theme = useTheme();
   const [pressed, setPressed] = useState(false);
+  const image = getProductImage(product.categoryId);
 
   return (
     <Pressable
@@ -31,16 +35,23 @@ export function ProductCard({ product }: ProductCardProps) {
         },
       ]}
     >
-      {product.imageUrl ? (
-        <Image
-          source={{ uri: product.imageUrl }}
-          style={styles.image}
-          contentFit="cover"
-          accessibilityLabel={product.name}
-        />
-      ) : (
-        <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
-      )}
+      <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
+        {image ? (
+          <Image
+            source={image}
+            style={styles.image}
+            contentFit="contain"
+            accessibilityLabel={product.name}
+          />
+        ) : (
+          <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
+        )}
+        {!product.isAvailable ? (
+          <View style={styles.soldOutBadge}>
+            <Text style={styles.soldOutLabel}>Sold out</Text>
+          </View>
+        ) : null}
+      </View>
       <View style={styles.body}>
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
           {product.name}
@@ -50,8 +61,15 @@ export function ProductCard({ product }: ProductCardProps) {
             {product.description}
           </Text>
         ) : null}
-        <View style={[styles.tag, { borderColor: theme.border }]}>
-          <Text style={[styles.tagLabel, { color: theme.textSecondary }]}>{product.categoryId}</Text>
+        <View style={styles.footer}>
+          <Text style={[styles.price, { color: theme.text }]}>
+            {formatCurrency(product.priceCents)}
+          </Text>
+          <View
+            style={[styles.addButton, { opacity: product.isAvailable ? 1 : 0.4 }, Shadows.offsetSm]}
+          >
+            <Text style={styles.addButtonLabel}>+</Text>
+          </View>
         </View>
       </View>
     </Pressable>
@@ -65,13 +83,33 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     overflow: 'hidden',
   },
-  image: {
+  imageWrap: {
     width: '100%',
     aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    width: '78%',
+    height: '78%',
   },
   imagePlaceholder: {
     width: '100%',
-    aspectRatio: 1,
+    height: '100%',
+  },
+  soldOutBadge: {
+    position: 'absolute',
+    top: Spacing.two,
+    left: Spacing.two,
+    paddingVertical: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    borderRadius: Radii.full,
+    backgroundColor: Palette.ink,
+  },
+  soldOutLabel: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.caption,
+    color: Palette.cream,
   },
   body: {
     gap: Spacing.half,
@@ -85,16 +123,30 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },
-  tag: {
-    alignSelf: 'flex-start',
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: Spacing.half,
-    paddingVertical: Spacing.half,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Radii.full,
-    borderWidth: 1,
   },
-  tagLabel: {
-    fontFamily: FontFamily.body.semibold,
-    fontSize: TypeScale.caption,
+  price: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.bodySmall,
+  },
+  addButton: {
+    width: 28,
+    height: 28,
+    borderRadius: Radii.full,
+    borderWidth: 2,
+    borderColor: Palette.ink,
+    backgroundColor: Palette.jyellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonLabel: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.body,
+    color: Palette.ink,
+    lineHeight: TypeScale.body,
   },
 });

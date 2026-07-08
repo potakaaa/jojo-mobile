@@ -40,21 +40,23 @@ interface BottomTabBarProps {
   };
   descriptors: Record<string, TabBarDescriptor>;
   navigation: {
-    emit: (event: {
-      type: 'tabPress';
-      target: string;
-      canPreventDefault: true;
-    }) => { defaultPrevented: boolean };
+    emit: (event: { type: 'tabPress'; target: string; canPreventDefault: true }) => {
+      defaultPrevented: boolean;
+    };
     navigate: (name: string) => void;
   };
 }
 
 /**
- * Custom floating pill tab bar for Android only. Consumed by
- * `_layout.android.tsx` via the stable `expo-router` `Tabs` `tabBar` render
- * prop (forwarded from `@react-navigation/bottom-tabs`). iOS uses native tabs
- * (`_layout.ios.tsx`) and web uses `_layout.web.tsx`; neither picks up this file
- * because of Metro's platform-extension resolution.
+ * Custom floating pill tab bar, shared by iOS and Android. Consumed by both
+ * `_layout.ios.tsx` and `_layout.android.tsx` via the stable `expo-router`
+ * `Tabs` `tabBar` render prop (forwarded from `@react-navigation/bottom-tabs`).
+ * Web keeps the platform-native `Tabs` bar via `_layout.web.tsx`, which does not
+ * pick up this file because of Metro's platform-extension resolution.
+ *
+ * iOS previously used `expo-router/unstable-native-tabs` (system Liquid Glass
+ * material on iOS 26+); that was replaced with this bar so iOS matches
+ * Android's brand-styled floating pill instead of the system tab-bar look.
  *
  * Lives in `src/components/` (outside `app/`) so Expo Router's file-based
  * router does not auto-discover it as a route — the same reason
@@ -75,7 +77,10 @@ interface BottomTabBarProps {
  */
 
 /** Ionicons filled/-outline name pairs, matching `_layout.web.tsx` exactly. */
-const ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
+const ICONS: Record<
+  string,
+  { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }
+> = {
   index: { active: 'home', inactive: 'home-outline' },
   order: { active: 'bag', inactive: 'bag-outline' },
   rewards: { active: 'star', inactive: 'star-outline' },
@@ -96,17 +101,17 @@ const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 const BAR_CONTENT_HEIGHT = 40 + Spacing.half + 15 + Spacing.two * 2;
 
 /**
- * Total bottom clearance (dp) an Android tab screen's scrollable content must
- * reserve so its last row clears this floating bar. The bar is absolutely
+ * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
+ * must reserve so its last row clears this floating bar. The bar is absolutely
  * positioned at `bottom: insets.bottom + Spacing.two`, so the footprint from the
  * screen's bottom edge is the bar content height PLUS that offset PLUS extra
  * breathing room (Spacing.four) so content isn't flush against the bar.
  *
  * `insets.bottom` is device-dependent, so this must be a function (it cannot be
  * baked into a static export). Screens pass `useSafeAreaInsets().bottom`.
- * Android-only: iOS/web tab bars reserve their own space natively.
+ * iOS/Android only: the web tab bar reserves its own space natively.
  */
-export const getAndroidTabBarClearance = (insetsBottom: number): number =>
+export const getFloatingTabBarClearance = (insetsBottom: number): number =>
   BAR_CONTENT_HEIGHT + insetsBottom + Spacing.two + Spacing.four;
 
 interface TabItemProps {
@@ -175,7 +180,12 @@ function TabItem({
       <View style={styles.iconChip}>
         <Animated.View style={[styles.chipBg, chipStyle]} />
         {iconName ? (
-          <AnimatedIonicons name={iconName} size={22} color={inactiveColor} style={iconColorStyle} />
+          <AnimatedIonicons
+            name={iconName}
+            size={22}
+            color={inactiveColor}
+            style={iconColorStyle}
+          />
         ) : null}
       </View>
       <Animated.Text style={[styles.label, labelColorStyle]} numberOfLines={1}>
@@ -185,7 +195,7 @@ function TabItem({
   );
 }
 
-export default function AndroidTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';

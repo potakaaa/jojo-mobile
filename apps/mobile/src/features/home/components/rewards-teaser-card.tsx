@@ -1,8 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { RewardsAccount } from '@jojopotato/types';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export interface RewardsTeaserCardProps {
@@ -39,13 +40,19 @@ export function RewardsTeaserCard({ rewards, onPress }: RewardsTeaserCardProps) 
         },
       ]}
     >
+      <View style={[styles.badge, { backgroundColor: Palette.jgold, borderColor: theme.border }]}>
+        <Ionicons name="star" size={18} color={Palette.ink} />
+      </View>
       <View style={styles.textColumn}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>
           {TIER_LABEL[rewards.tier]} member
         </Text>
         <Text style={[styles.points, { color: theme.text }]}>{rewards.points} points</Text>
       </View>
-      <Text style={[styles.cta, { color: theme.accent }]}>View rewards</Text>
+      <View style={styles.ctaRow}>
+        <Text style={[styles.cta, { color: theme.accent }]}>View rewards</Text>
+        <Ionicons name="chevron-forward" size={14} color={theme.accent} />
+      </View>
     </Pressable>
   );
 }
@@ -61,6 +68,14 @@ const styles = StyleSheet.create({
     borderRadius: Radii.md,
     borderWidth: 2,
   },
+  badge: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.full,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   textColumn: {
     flex: 1,
     gap: Spacing.half,
@@ -72,6 +87,11 @@ const styles = StyleSheet.create({
   points: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.half,
   },
   cta: {
     fontFamily: FontFamily.body.bold,

@@ -1,8 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { PickupBranch } from '@jojopotato/types';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export interface BranchSelectorProps {
@@ -35,15 +36,26 @@ export function BranchSelector({ branch, onPress }: BranchSelectorProps) {
         },
       ]}
     >
+      <View style={[styles.pin, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}>
+        <Ionicons name="location" size={18} color={Palette.ink} />
+      </View>
       <View style={styles.textColumn}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>Pickup from</Text>
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
           {branch.name}
         </Text>
       </View>
-      <Text style={[styles.status, { color: theme.accent }]}>
-        {branch.isOpen ? 'Open' : 'Closed'}
-      </Text>
+      <View style={[styles.statusPill, { borderColor: theme.accent }]}>
+        <View
+          style={[
+            styles.statusDot,
+            { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
+          ]}
+        />
+        <Text style={[styles.status, { color: theme.accent }]}>
+          {branch.isOpen ? 'Open' : 'Closed'}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -59,6 +71,14 @@ const styles = StyleSheet.create({
     borderRadius: Radii.md,
     borderWidth: 2,
   },
+  pin: {
+    width: 36,
+    height: 36,
+    borderRadius: Radii.full,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   textColumn: {
     flex: 1,
     gap: Spacing.half,
@@ -71,8 +91,22 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.body,
   },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.half,
+    paddingVertical: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    borderRadius: Radii.full,
+    borderWidth: 1.5,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radii.full,
+  },
   status: {
     fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.bodySmall,
+    fontSize: TypeScale.caption,
   },
 });

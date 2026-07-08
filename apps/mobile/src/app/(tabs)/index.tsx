@@ -1,15 +1,20 @@
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getAndroidTabBarClearance } from '@/components/android-tab-bar';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { BranchSelector } from '@/features/home/components/branch-selector';
 import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
 import { RewardsTeaserCard } from '@/features/home/components/rewards-teaser-card';
-import { MOCK_BRANCH, MOCK_CATEGORIES, MOCK_PRODUCTS, MOCK_REWARDS } from '@/features/home/mock-home';
+import {
+  MOCK_BRANCH,
+  MOCK_CATEGORIES,
+  MOCK_PRODUCTS,
+  MOCK_REWARDS,
+} from '@/features/home/mock-home';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -27,9 +32,12 @@ export default function HomeScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            // Android's floating pill tab bar reserves no space (custom tabBar),
-            // so add its clearance here. iOS/web tab bars reserve space natively.
-            Platform.OS === 'android' && { paddingBottom: getAndroidTabBarClearance(insets.bottom) },
+            // iOS/Android's floating pill tab bar reserves no space (custom
+            // tabBar), so add its clearance here. The web tab bar reserves
+            // space natively.
+            Platform.OS !== 'web' && {
+              paddingBottom: getFloatingTabBarClearance(insets.bottom),
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -38,6 +46,7 @@ export default function HomeScreen() {
           <PromoBanner />
           <RewardsTeaserCard rewards={MOCK_REWARDS} />
           <CategorySelector categories={MOCK_CATEGORIES} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
           <ProductGrid products={MOCK_PRODUCTS} />
         </ScrollView>
       </SafeAreaView>
@@ -62,5 +71,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
     gap: Spacing.three,
+  },
+  sectionTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+    marginTop: Spacing.half,
   },
 });
