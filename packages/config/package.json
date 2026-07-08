@@ -1,0 +1,33 @@
+{
+  "name": "@jojopotato/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "exports": {
+    "./eslint": "./eslint.js",
+    "./eslint-base": "./eslint-base.js",
+    "./prettier": "./prettier.js",
+    "./typescript/base": "./typescript/tsconfig.base.json",
+    "./typescript/expo": "./typescript/tsconfig.expo.json"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint-config-expo": "~57.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.63.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=9 <10",
+    "prettier": ">=3",
+    "typescript": ">=5.4"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "prettier": "^3.9.4",
+    "typescript": "~6.0.3"
+  }
+}

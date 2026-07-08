@@ -1,0 +1,28 @@
+{
+  "name": "jojo-potato",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "start": "turbo run start",
+    "ios": "turbo run ios --filter=@jojopotato/mobile",
+    "android": "turbo run android --filter=@jojopotato/mobile",
+    "web": "turbo run web --filter=@jojopotato/mobile",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@jojopotato/config": "workspace:*",
+    "prettier": "^3.9.4",
+    "turbo": "^2.10.4",
+    "typescript": "~6.0.3"
+  }
+}

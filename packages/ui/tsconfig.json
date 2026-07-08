@@ -1,0 +1,9 @@
+{
+  "extends": "@jojopotato/config/typescript/base",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

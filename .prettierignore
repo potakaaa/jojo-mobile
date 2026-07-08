@@ -1,0 +1,8 @@
+node_modules
+.turbo
+.expo
+dist
+pnpm-lock.yaml
+ios
+android
+.claude
