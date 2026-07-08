@@ -15,11 +15,14 @@
     "clean": "rm -rf .expo dist node_modules"
   },
   "dependencies": {
+    "@expo-google-fonts/fredoka": "^0.4.1",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@jojopotato/types": "workspace:*",
     "@jojopotato/ui": "workspace:*",
     "@jojopotato/utils": "workspace:*",
     "expo": "~57.0.4",
     "expo-constants": "~57.0.3",
+    "expo-font": "~57.0.0",
     "expo-image": "~57.0.0",
     "expo-linking": "~57.0.2",
     "expo-router": "~57.0.4",

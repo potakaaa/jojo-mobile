@@ -1,6 +1,6 @@
 import { StyleSheet, Text, type TextStyle } from 'react-native';
 
-import { Brand, Colors, type ThemeMode } from './theme';
+import { Brand, Colors, FontFamily, type ThemeMode } from './theme';
 
 export interface BrandWordmarkProps {
   mode?: ThemeMode;
@@ -18,6 +18,6 @@ export function BrandWordmark({ mode = 'light', size = 32, style }: BrandWordmar
 
 const styles = StyleSheet.create({
   text: {
-    fontWeight: '700',
+    fontFamily: FontFamily.display.bold,
   },
 });
