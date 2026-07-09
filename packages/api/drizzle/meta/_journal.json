@@ -8,6 +8,13 @@
       "when": 1783565007230,
       "tag": "0000_puzzling_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783570961087,
+      "tag": "0001_daily_carnage",
+      "breakpoints": true
     }
   ]
 }

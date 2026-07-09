@@ -24,6 +24,11 @@ export * from './rewards';
 // 7. Depends on branches
 export * from './users';
 
+// 7b. better-auth tables — depend on users
+export * from './session';
+export * from './account';
+export * from './verification';
+
 // 8. Depends on users / deals / rewards (lazy ref)
 export * from './coupons';
 
