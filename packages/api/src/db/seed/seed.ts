@@ -10,12 +10,7 @@ import {
   productOptions,
   products,
 } from '../schema/index';
-import {
-  seedBranches,
-  seedCategories,
-  seedDeals,
-  seedProducts,
-} from './data';
+import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
 
 async function seedBranchesTable(): Promise<Map<string, string>> {
   const idBySlug = new Map<string, string>();
@@ -78,7 +73,8 @@ async function seedProductsTable(
         set: { ...row, updated_at: new Date() },
       })
       .returning({ id: products.id, slug: products.slug });
-    if (!inserted) throw new Error(`Seed error: upsert of product "${product.slug}" returned no row`);
+    if (!inserted)
+      throw new Error(`Seed error: upsert of product "${product.slug}" returned no row`);
     idBySlug.set(inserted.slug, inserted.id);
   }
   return idBySlug;
@@ -89,19 +85,13 @@ async function seedProductsTable(
 // delete-then-insert per product gives the same idempotent end-state on every
 // run. Possible future follow-up: add UNIQUE(product_id, option_type, name) —
 // out of scope here.
-async function seedProductOptionsTable(
-  productIdBySlug: Map<string, string>,
-): Promise<void> {
+async function seedProductOptionsTable(productIdBySlug: Map<string, string>): Promise<void> {
   for (const product of seedProducts) {
     const productId = productIdBySlug.get(product.slug);
     if (!productId) {
-      throw new Error(
-        `Seed data error: options for unknown product "${product.slug}"`,
-      );
+      throw new Error(`Seed data error: options for unknown product "${product.slug}"`);
     }
-    await db
-      .delete(productOptions)
-      .where(eq(productOptions.product_id, productId));
+    await db.delete(productOptions).where(eq(productOptions.product_id, productId));
     if (product.options.length > 0) {
       await db.insert(productOptions).values(
         product.options.map((option) => ({
@@ -126,10 +116,7 @@ async function seedBranchProductAvailabilityTable(
         .insert(branchProductAvailability)
         .values({ branch_id: branchId, product_id: productId, is_available: true })
         .onConflictDoUpdate({
-          target: [
-            branchProductAvailability.branch_id,
-            branchProductAvailability.product_id,
-          ],
+          target: [branchProductAvailability.branch_id, branchProductAvailability.product_id],
           set: { is_available: true, updated_at: new Date() },
         });
     }
@@ -165,10 +152,7 @@ async function seedDealsTable(): Promise<Map<string, string>> {
           .set({ ...row, updated_at: new Date() })
           .where(eq(deals.id, existing.id))
           .returning({ id: deals.id, title: deals.title })
-      : await db
-          .insert(deals)
-          .values(row)
-          .returning({ id: deals.id, title: deals.title });
+      : await db.insert(deals).values(row).returning({ id: deals.id, title: deals.title });
 
     if (!dealRow) throw new Error(`Seed error: upsert of deal "${deal.title}" returned no row`);
     idByTitle.set(dealRow.title, dealRow.id);

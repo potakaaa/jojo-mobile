@@ -1,9 +1,4 @@
-import type {
-  CartItem as CartItemData,
-  Flavor,
-  MenuItem,
-  Size,
-} from '@jojopotato/types';
+import type { CartItem as CartItemData, Flavor, MenuItem, Size } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';

@@ -17,9 +17,21 @@ export default function AccountScreen() {
 
   return (
     <ComingSoon title="Account">
-      <AccountLink label="Notifications" onPress={() => router.push('/(tabs)/account/notifications')} color={theme.accent} />
-      <AccountLink label="Help" onPress={() => router.push('/(tabs)/account/help')} color={theme.accent} />
-      <AccountLink label="Order History" onPress={() => router.push('/(tabs)/order/history')} color={theme.accent} />
+      <AccountLink
+        label="Notifications"
+        onPress={() => router.push('/(tabs)/account/notifications')}
+        color={theme.accent}
+      />
+      <AccountLink
+        label="Help"
+        onPress={() => router.push('/(tabs)/account/help')}
+        color={theme.accent}
+      />
+      <AccountLink
+        label="Order History"
+        onPress={() => router.push('/(tabs)/order/history')}
+        color={theme.accent}
+      />
       <AccountLink label="Log out" onPress={signOut} color={theme.accent} />
       {__DEV__ ? (
         <AccountLink
@@ -32,7 +44,15 @@ export default function AccountScreen() {
   );
 }
 
-function AccountLink({ label, onPress, color }: { label: string; onPress: () => void; color: string }) {
+function AccountLink({
+  label,
+  onPress,
+  color,
+}: {
+  label: string;
+  onPress: () => void;
+  color: string;
+}) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress}>
       <Text style={[styles.link, { color }]}>{label}</Text>

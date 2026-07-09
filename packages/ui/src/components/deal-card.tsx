@@ -2,7 +2,16 @@ import type { Deal } from '@jojopotato/types';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  Palette,
+  Radii,
+  Shadows,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 
 export interface DealCardProps {
   deal: Deal;

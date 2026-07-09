@@ -22,6 +22,7 @@ docker compose up -d
 ```
 
 This starts a PostgreSQL 16 container on port **5432** with:
+
 - user: `jojo`
 - password: `jojo`
 - database: `jojopotato`
@@ -106,10 +107,10 @@ PORT=4000 pnpm --filter @jojopotato/api dev
 
 ## Database commands
 
-| Command | What it does |
-|---|---|
+| Command                                     | What it does                                                                 |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
 | `pnpm --filter @jojopotato/api db:generate` | Diff schema against last migration and generate a new SQL file in `drizzle/` |
-| `pnpm --filter @jojopotato/api db:migrate` | Apply pending migrations to the database |
+| `pnpm --filter @jojopotato/api db:migrate`  | Apply pending migrations to the database                                     |
 
 ### Making a schema change
 
@@ -123,24 +124,24 @@ PORT=4000 pnpm --filter @jojopotato/api dev
 
 16 tables across the full MVP data model (PRD §9):
 
-| Table | Purpose |
-|---|---|
-| `users` | Customer accounts (roles: customer / staff / admin / super_admin) |
-| `branches` | Store locations with geo coords and pickup settings |
-| `categories` | Menu categories |
-| `products` | Menu items with pricing and availability flags |
-| `product_options` | Size / flavor / add-on variants per product |
-| `branch_product_availability` | Per-branch product availability overrides |
-| `deals` | App-exclusive promotions (6 deal types) |
-| `deal_products` | Which products a deal applies to |
-| `deal_branches` | Which branches a deal is active at |
-| `coupons` | User-specific coupon codes (available / used / expired) |
-| `orders` | Pickup orders with full status lifecycle |
-| `order_items` | Line items inside each order (with option snapshot) |
-| `rewards` | Redeemable reward configurations |
-| `user_stars` | Per-user star balance and lifetime total |
-| `star_transactions` | Star earning / redemption history |
-| `notifications` | In-app notification records |
+| Table                         | Purpose                                                           |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `users`                       | Customer accounts (roles: customer / staff / admin / super_admin) |
+| `branches`                    | Store locations with geo coords and pickup settings               |
+| `categories`                  | Menu categories                                                   |
+| `products`                    | Menu items with pricing and availability flags                    |
+| `product_options`             | Size / flavor / add-on variants per product                       |
+| `branch_product_availability` | Per-branch product availability overrides                         |
+| `deals`                       | App-exclusive promotions (6 deal types)                           |
+| `deal_products`               | Which products a deal applies to                                  |
+| `deal_branches`               | Which branches a deal is active at                                |
+| `coupons`                     | User-specific coupon codes (available / used / expired)           |
+| `orders`                      | Pickup orders with full status lifecycle                          |
+| `order_items`                 | Line items inside each order (with option snapshot)               |
+| `rewards`                     | Redeemable reward configurations                                  |
+| `user_stars`                  | Per-user star balance and lifetime total                          |
+| `star_transactions`           | Star earning / redemption history                                 |
+| `notifications`               | In-app notification records                                       |
 
 Schema files live in `src/db/schema/`. Each table is its own file; `src/db/schema/index.ts` re-exports all in FK dependency order.
 

@@ -26,9 +26,7 @@ export function OrderStatusBadge({ status, mode = 'light', style }: OrderStatusB
   const meta = STATUS_META[status];
 
   return (
-    <View
-      style={[styles.badge, { backgroundColor: meta.color, borderColor: theme.border }, style]}
-    >
+    <View style={[styles.badge, { backgroundColor: meta.color, borderColor: theme.border }, style]}>
       <Text style={styles.label}>{meta.label}</Text>
     </View>
   );

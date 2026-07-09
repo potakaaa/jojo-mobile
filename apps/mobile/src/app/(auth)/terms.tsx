@@ -17,8 +17,8 @@ export default function TermsRoute() {
     >
       <Text style={[styles.heading, { color: theme.text }]}>Terms &amp; Conditions</Text>
       <Text style={[styles.body, { color: theme.textSecondary }]}>
-        Placeholder terms. Real legal copy will replace this once the product and
-        provider decisions are finalized.
+        Placeholder terms. Real legal copy will replace this once the product and provider decisions
+        are finalized.
       </Text>
     </ScrollView>
   );

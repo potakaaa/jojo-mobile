@@ -15,9 +15,26 @@ export default function OrderScreen() {
 
   return (
     <ComingSoon title="Order">
-      <DevLink label="Dev: View Product 123" onPress={() => router.push({ pathname: '/(tabs)/order/product/[productId]', params: { productId: '123' } })} color={theme.accent} />
-      <DevLink label="Dev: View Cart" onPress={() => router.push('/(tabs)/order/cart')} color={theme.accent} />
-      <DevLink label="Dev: Order History" onPress={() => router.push('/(tabs)/order/history')} color={theme.accent} />
+      <DevLink
+        label="Dev: View Product 123"
+        onPress={() =>
+          router.push({
+            pathname: '/(tabs)/order/product/[productId]',
+            params: { productId: '123' },
+          })
+        }
+        color={theme.accent}
+      />
+      <DevLink
+        label="Dev: View Cart"
+        onPress={() => router.push('/(tabs)/order/cart')}
+        color={theme.accent}
+      />
+      <DevLink
+        label="Dev: Order History"
+        onPress={() => router.push('/(tabs)/order/history')}
+        color={theme.accent}
+      />
     </ComingSoon>
   );
 }

@@ -21,13 +21,16 @@ export function StarProgressBar({ progress, mode = 'light', style }: StarProgres
   const fraction = total > 0 ? Math.min(1, Math.max(0, currentPoints / total)) : 1;
   const percentLabel = `${Math.round(fraction * 100)}%` as `${number}%`;
 
-  const caption = nextTier
-    ? `${pointsToNextTier} points to ${nextTier}`
-    : 'Top tier reached';
+  const caption = nextTier ? `${pointsToNextTier} points to ${nextTier}` : 'Top tier reached';
 
   return (
     <View style={[styles.wrap, style]}>
-      <View style={[styles.track, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+      <View
+        style={[
+          styles.track,
+          { backgroundColor: theme.backgroundSelected, borderColor: theme.border },
+        ]}
+      >
         <View style={[styles.fill, { width: percentLabel, backgroundColor: Palette.jgold }]} />
       </View>
       <Text style={[styles.caption, { color: theme.textSecondary }]}>{caption}</Text>
