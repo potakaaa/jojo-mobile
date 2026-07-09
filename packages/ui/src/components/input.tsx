@@ -1,4 +1,11 @@
-import { StyleSheet, Text, TextInput, View, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  type TextInputProps,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
 import { Colors, FontFamily, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
 
@@ -11,6 +18,12 @@ export interface InputProps {
   error?: string;
   mode?: ThemeMode;
   style?: ViewStyle;
+  /** Keyboard variant, e.g. `email-address`, `phone-pad`, `number-pad`. */
+  keyboardType?: TextInputProps['keyboardType'];
+  /** Mask input for passwords. */
+  secureTextEntry?: boolean;
+  /** Auto-capitalization behavior; default `sentences` (RN default). */
+  autoCapitalize?: TextInputProps['autoCapitalize'];
 }
 
 /**
@@ -26,6 +39,9 @@ export function Input({
   error,
   mode = 'light',
   style,
+  keyboardType,
+  secureTextEntry,
+  autoCapitalize,
 }: InputProps) {
   const theme = Colors[mode];
 
@@ -38,6 +54,9 @@ export function Input({
         placeholder={placeholder}
         placeholderTextColor={theme.textSecondary}
         editable={editable}
+        keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
         accessibilityLabel={label}
         style={[
           styles.input,
