@@ -1,42 +1,44 @@
 import { Pressable, type PressableProps, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import { FontFamily, Palette, Radii, Shadows, TypeScale } from './theme';
+import { Colors, FontFamily, Palette, Radii, Shadows, TypeScale, type ThemeMode } from '../theme';
 
-export type JojoButtonVariant = 'primary' | 'accent' | 'ink';
+export type ButtonVariant = 'primary' | 'accent' | 'ink' | 'outline';
 
-export interface JojoButtonProps {
+export interface ButtonProps {
   label: string;
   onPress: () => void;
-  variant?: JojoButtonVariant;
+  variant?: ButtonVariant;
   disabled?: boolean;
+  mode?: ThemeMode;
   style?: ViewStyle;
 }
 
-const VARIANT_BACKGROUND: Record<JojoButtonVariant, string> = {
+const VARIANT_BACKGROUND: Record<ButtonVariant, string> = {
   primary: Palette.jyellow,
   accent: Palette.jred,
   ink: Palette.ink,
-};
-
-const VARIANT_LABEL_COLOR: Record<JojoButtonVariant, string> = {
-  primary: Palette.ink,
-  accent: Palette.cream,
-  ink: Palette.cream,
+  outline: 'transparent',
 };
 
 /**
- * Reusable brand button primitive: full-pill shape, 2px ink outline, and the
- * signature flat "comic" offset shadow — proving the design tokens compose into
- * a real component.
+ * General-purpose button primitive: the canonical shared button for the app,
+ * with an `outline` variant and `mode`-aware label/border colors, keeping the
+ * flat "comic" offset-shadow brand style.
  */
-export function JojoButton({
+export function Button({
   label,
   onPress,
   variant = 'primary',
   disabled = false,
+  mode = 'light',
   style,
-}: JojoButtonProps) {
+}: ButtonProps) {
+  const theme = Colors[mode];
   const accessibilityState: PressableProps['accessibilityState'] = { disabled };
+
+  const labelColor =
+    variant === 'primary' ? Palette.ink : variant === 'outline' ? theme.text : Palette.cream;
+  const borderColor = variant === 'outline' ? theme.border : Palette.ink;
 
   return (
     <Pressable
@@ -46,13 +48,14 @@ export function JojoButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: VARIANT_BACKGROUND[variant] },
+        { backgroundColor: VARIANT_BACKGROUND[variant], borderColor },
+        variant !== 'outline' && Shadows.offsetSm,
         pressed && styles.pressed,
         disabled && styles.disabled,
         style,
       ]}
     >
-      <Text style={[styles.label, { color: VARIANT_LABEL_COLOR[variant] }]}>{label}</Text>
+      <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -65,11 +68,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: Radii.full,
     borderWidth: 2,
-    borderColor: Palette.ink,
-    ...Shadows.offsetMd,
   },
   pressed: {
-    // Nudge into the shadow to mimic the site's "press down" on the offset.
     transform: [{ translateX: 2 }, { translateY: 2 }],
   },
   disabled: {
