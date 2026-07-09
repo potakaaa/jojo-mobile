@@ -10,7 +10,10 @@
     "backgroundColor": "#FFF8EE",
     "ios": {
       "bundleIdentifier": "ph.jojopotato.mobile",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "ph.jojopotato.mobile",
@@ -40,6 +43,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a89a764c-ce21-4fa6-a6ab-071b87092350"
+      }
+    },
+    "owner": "potaka"
   }
 }

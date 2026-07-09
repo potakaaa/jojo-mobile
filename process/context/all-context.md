@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 This file is the root context entrypoint for the repo.
 
@@ -55,6 +55,37 @@ top of it later without re-plumbing the project.
 - Branding/theme in `packages/ui/src/theme.ts` and `apps/mobile/assets/images/` is placeholder —
   do not treat brand colors, icons, or the bundle identifier (`ph.jojopotato.mobile`) as final.
 - Deploy target: EAS Build/Submit is planned but not yet wired up (no `eas.json` in the repo yet).
+- PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
+  navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
+
+## Current Implementation State (as of 09-07-26)
+
+- **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
+  PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
+  nested `Stack` navigators so deep screens (Product Details, Cart, Checkout, Branch Details, etc.)
+  have somewhere to live with correct back-navigation. Root gating (`(tabs)` vs `(auth)`) uses
+  `Stack.Protected` in `apps/mobile/src/app/_layout.tsx`.
+- **Auth:** no real provider wired yet (still an open question — see §Open Questions). A
+  provider-agnostic in-memory mock auth-state seam exists at
+  `apps/mobile/src/features/auth/hooks/use-auth-session.ts` (`AuthSessionProvider` +
+  `useAuthSession()`) that every screen consumes; swapping in a real provider later should not
+  require touching consumer screens. No session persistence (AsyncStorage/SecureStore) yet — the
+  app always resets to unauthenticated on relaunch; this is intentional for the current scaffold
+  stage, flag as follow-up once a provider is chosen.
+- **Screens:** Home tab (`(tabs)/index.tsx`) is the only tab with real business UI. Every other
+  tab-root screen (`order/index.tsx`, `rewards/index.tsx`, `branches/index.tsx`,
+  `account/index.tsx`) and every nested/pushed screen under them (product details, cart, checkout,
+  branch details, notifications, etc.) is still a `<ComingSoon>` placeholder. Building out real
+  feature UI for these is future work — the navigation shell only proves the route
+  structure/typed-params/stack-nesting works end-to-end.
+- **Known tech debt:** the placeholder tab-root screens carry temporary "Dev: ..." nav links
+  (added to manually exercise nested stacks) that are **not** gated behind `__DEV__` — see
+  `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md`.
+- **Known gap:** no automated E2E/regression harness exists for any navigation flow (project-wide
+  test-runner gap, see `tests/all-tests.md`) — see
+  `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
+- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (archived
+  plan — read for full route tree, decisions, and validate-contract).
 
 ## Quick Start
 
@@ -171,10 +202,19 @@ jojo-mobile/                           (package.json name: jojo-potato)
   apps/
     mobile/                            -- @jojopotato/mobile, Expo Router app (iOS/Android/web)
       src/
-        app/                           -- Expo Router file-based routes (_layout.tsx, index.tsx)
+        app/                           -- Expo Router file-based routes
+          _layout.tsx                  -- wraps tree in AuthSessionProvider, RootNavigator gates (tabs) vs (auth) via Stack.Protected
+          (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, terms
+          (tabs)/                      -- authenticated 5-tab shell (Home/Order/Rewards/Branches/Account, PRD order)
+            _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
+            index.tsx                  -- Home tab root (only tab with real business UI)
+            order/, rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
+        features/
+          auth/hooks/use-auth-session.ts  -- AuthSessionProvider + useAuthSession(): in-memory, provider-agnostic auth-state seam
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
+        components/                    -- floating-tab-bar.tsx (ICONS map keyed by route name), coming-soon.tsx (isNestedScreen? prop)
       assets/                          -- icons, splash, favicon (placeholder branding)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
@@ -183,6 +223,8 @@ jojo-mobile/                           (package.json name: jojo-potato)
     types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards) -- currently placeholders, no implementation consumes them yet
     ui/                                -- @jojopotato/ui: shared UI (brand-wordmark.tsx, theme.ts) -- brand tokens are placeholder
     utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts)
+  docs/
+    jojo-potato-mobile-prd.md         -- product PRD (navigation §7, auth §6.1) — source of truth for scope
   process/
     context/                          -- this context system
     general-plans/                    -- plans, reports, references (task-folder convention)
@@ -229,6 +271,21 @@ Metro/Expo resolves them like any other dependency.
 **Platform-specific hooks:** `use-color-scheme.ts` has a `.web.ts` sibling variant (`apps/mobile/src/hooks/use-color-scheme.web.ts`) — this is the RN/Expo convention for platform-specific implementations picked up automatically by the bundler. Follow this `.web.ts` / default split for any new platform-diverging hook or util, per the "iOS-first, Android-ready" principle in `README.md`.
 
 **Naming:** kebab-case files (`use-color-scheme.ts`, `brand-wordmark.tsx`), camelCase functions/variables, PascalCase React components/exports.
+
+**Navigation shell pattern (Expo Router):** each tab under `(tabs)/` is a folder with its own
+`_layout.tsx` (a `Stack`) plus explicit sibling route files (not a catch-all `[screen]`), so Expo
+Router's typed-routes codegen (`experiments.typedRoutes: true` → `.expo/types/router.d.ts`) works
+per file. Tab-root screens (`index.tsx` in each tab folder) keep `headerShown:false` (framed by the
+tab bar); nested/pushed screens get `headerShown:true` with the default back button. After adding
+new dynamic route files (`[id].tsx`), run `expo start` (then stop it) once before `tsc --noEmit`
+resolves the new typed hrefs — the codegen doesn't run on typecheck alone. Auth gating between the
+public `(auth)` stack and authenticated `(tabs)` shell is driven by `Stack.Protected` guards in the
+root `_layout.tsx`, reading `useAuthSession().status`.
+
+**Auth-state seam:** `useAuthSession()` is the only way any screen should read/mutate auth state —
+never assume a specific backend. Current implementation is in-memory only (`useState`, no
+AsyncStorage/SecureStore) since no provider is chosen yet; swapping in a real provider should only
+require changing the internals of `use-auth-session.ts`, not any consumer.
 
 ## Environment and Configuration
 
