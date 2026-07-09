@@ -1,7 +1,7 @@
 import type { Config } from 'drizzle-kit';
 import * as dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: false }); // don't overwrite env vars already set in the shell
 
 export default {
   schema: './src/db/schema/index.ts',
