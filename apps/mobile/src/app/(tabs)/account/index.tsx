@@ -3,17 +3,17 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { ComingSoon } from '@/components/coming-soon';
 import { FontFamily, TypeScale } from '@/constants/theme';
-import { useAuthSession } from '@/features/auth/hooks/use-auth-session';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * Account tab root. Links into the nested Notifications / Help screens, the
  * cross-tab Order History screen (which lives under the Order tab), and Log out.
- * Logging out clears the mocked session; the root gate returns to Login.
+ * Logging out clears the better-auth session; the root gate returns to Login.
  */
 export default function AccountScreen() {
   const theme = useTheme();
-  const { signOut } = useAuthSession();
+  const { signOut } = useAuth();
 
   return (
     <ComingSoon title="Account">

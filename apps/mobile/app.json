@@ -39,7 +39,9 @@
           "imageWidth": 160
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
@@ -50,6 +52,6 @@
         "projectId": "a89a764c-ce21-4fa6-a6ab-071b87092350"
       }
     },
-    "owner": "potaka"
+    "owner": "jojo-potato"
   }
 }
