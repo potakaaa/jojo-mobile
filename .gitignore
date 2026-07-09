@@ -48,6 +48,13 @@ pnpm-debug.log*
 .idea/
 .claude/settings.local.json
 .vibecode-backup*/
+design-system/
 
 # claude hooks
 .claude/hooks/.logs/
+
+# AI generated files
+PRODUCT.md
+DESIGN.md
+.impeccable/
+/graphify-out
