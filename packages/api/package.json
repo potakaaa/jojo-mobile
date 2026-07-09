@@ -1,0 +1,31 @@
+{
+  "name": "@jojopotato/api",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.6",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@jojopotato/config": "workspace:*",
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.15.6",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.6",
+    "eslint": "^9.39.4",
+    "tsx": "^4.20.6",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
+  }
+}
