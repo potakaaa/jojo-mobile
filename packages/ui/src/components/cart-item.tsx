@@ -81,8 +81,10 @@ export function CartItem({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Decrease quantity"
+          accessibilityState={{ disabled: !onDecrement }}
+          disabled={!onDecrement}
           onPress={onDecrement}
-          style={[styles.stepButton, { borderColor: theme.border }]}
+          style={[styles.stepButton, { borderColor: theme.border, opacity: onDecrement ? 1 : 0.4 }]}
         >
           <Text style={[styles.stepLabel, { color: theme.text }]}>−</Text>
         </Pressable>
@@ -90,8 +92,10 @@ export function CartItem({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Increase quantity"
+          accessibilityState={{ disabled: !onIncrement }}
+          disabled={!onIncrement}
           onPress={onIncrement}
-          style={[styles.stepButton, { borderColor: theme.border }]}
+          style={[styles.stepButton, { borderColor: theme.border, opacity: onIncrement ? 1 : 0.4 }]}
         >
           <Text style={[styles.stepLabel, { color: theme.text }]}>+</Text>
         </Pressable>

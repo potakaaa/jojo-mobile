@@ -38,6 +38,7 @@ export function Input({
         placeholder={placeholder}
         placeholderTextColor={theme.textSecondary}
         editable={editable}
+        accessibilityLabel={label}
         style={[
           styles.input,
           {

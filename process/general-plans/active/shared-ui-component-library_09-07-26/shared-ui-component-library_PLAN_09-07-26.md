@@ -26,11 +26,9 @@ app-local Home-screen components into the package (deleting the originals), add 
 `packages/types` placeholder types + 1 rewards addition, and install the repo's first test runner
 (`jest-expo`) with one smoke-render test per component.
 
-Note: `Button` here is a distinct, more general primitive than the existing `JojoButton` — `JojoButton`
-stays as-is (not renamed, not replaced) per the SPEC's "no re-litigating tokens/JojoButton" framing.
-`Button` is added as a new, separate general-purpose primitive per the SPEC's component list. (If in
-practice `Button` and `JojoButton` end up functionally redundant, that consolidation is explicitly
-OUT OF SCOPE here — flag it as a Test Infra / follow-up note, do not merge them in this plan.)
+Note: `Button` is the single canonical button primitive for `packages/ui`. `JojoButton` (the earlier
+proof-of-concept primitive from `jojopotato-design-system_08-07-26`) has since been removed in favor
+of `Button` — there is no separate primitive to preserve or reconcile.
 
 ## Goals
 

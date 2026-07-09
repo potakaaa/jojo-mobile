@@ -9,6 +9,7 @@ import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale, type T
 export interface ProductCardProps {
   product: MenuItem;
   imageSource?: ImageSourcePropType;
+  onPress?: () => void;
   mode?: ThemeMode;
 }
 
@@ -18,19 +19,24 @@ export interface ProductCardProps {
  * description, price, and an "Add" affordance. Tapping toggles a local
  * pressed highlight — it does not navigate or add to a cart yet.
  */
-export function ProductCard({ product, imageSource, mode = 'light' }: ProductCardProps) {
+export function ProductCard({ product, imageSource, onPress, mode = 'light' }: ProductCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
 
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => setPressed((p) => !p)}
+      disabled={!product.isAvailable}
+      onPress={() => {
+        setPressed((p) => !p);
+        onPress?.();
+      }}
       style={[
         styles.container,
         {
           backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
           borderColor: theme.border,
+          opacity: product.isAvailable ? 1 : 0.7,
         },
       ]}
     >
