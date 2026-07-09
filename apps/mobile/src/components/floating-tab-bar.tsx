@@ -84,21 +84,25 @@ const ICONS: Record<
   index: { active: 'home', inactive: 'home-outline' },
   order: { active: 'bag', inactive: 'bag-outline' },
   rewards: { active: 'star', inactive: 'star-outline' },
+  branches: { active: 'location', inactive: 'location-outline' },
   account: { active: 'person', inactive: 'person-outline' },
 };
 
 /** Ionicons wrapped for animated (interpolated) `color` via Reanimated style. */
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
+/** Diameter (dp) of the circular icon chip — shared by `BAR_CONTENT_HEIGHT` and `styles.iconChip`. */
+const ICON_CHIP_SIZE = 36;
+
 /**
  * On-screen vertical content height of the floating bar (dp), computed from the
  * real styles below so screens never guess a magic number:
- *   iconChip height (40) + tab gap (Spacing.half) + one caption text line
- *   (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
- *   (Spacing.two × 2).
- * Currently 40 + 2 + 15 + 16 = 73.
+ *   iconChip height (ICON_CHIP_SIZE) + tab gap (Spacing.half) + one caption text
+ *   line (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
+ *   (Spacing.one × 2).
+ * Currently 36 + 2 + 15 + 8 = 61.
  */
-const BAR_CONTENT_HEIGHT = 40 + Spacing.half + 15 + Spacing.two * 2;
+const BAR_CONTENT_HEIGHT = ICON_CHIP_SIZE + Spacing.half + 15 + Spacing.one * 2;
 
 /**
  * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
@@ -182,7 +186,7 @@ function TabItem({
         {iconName ? (
           <AnimatedIonicons
             name={iconName}
-            size={22}
+            size={20}
             color={inactiveColor}
             style={iconColorStyle}
           />
@@ -257,7 +261,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.two,
     borderRadius: Radii.full,
     borderWidth: 2,
@@ -268,8 +272,8 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
   },
   iconChip: {
-    width: 40,
-    height: 40,
+    width: ICON_CHIP_SIZE,
+    height: ICON_CHIP_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radii.full,
