@@ -1,10 +1,4 @@
-import {
-  boolean,
-  pgTable,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { boolean, pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { branches } from './branches';
 import { products } from './products';
 
@@ -21,7 +15,5 @@ export const branchProductAvailability = pgTable(
     is_available: boolean('is_available').default(true).notNull(),
     updated_at: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [
-    uniqueIndex('bpa_branch_product_idx').on(t.branch_id, t.product_id),
-  ],
+  (t) => [uniqueIndex('bpa_branch_product_idx').on(t.branch_id, t.product_id)],
 );

@@ -4,7 +4,16 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  Palette,
+  Radii,
+  Shadows,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 
 export interface ProductCardProps {
   product: MenuItem;
