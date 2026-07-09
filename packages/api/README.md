@@ -32,7 +32,9 @@ This starts a PostgreSQL 16 container on port **5432** with:
 cp packages/api/.env.example packages/api/.env
 ```
 
-The defaults in `.env.example` match the Docker container — no changes needed for local dev.
+The defaults match the Docker container — no changes needed for local dev. `.env` is gitignored and never committed; `.env.example` is the committed template.
+
+`DATABASE_URL` format: `postgres://<user>:<password>@<host>:<port>/<database>`
 
 ### 3. Install dependencies
 
@@ -48,6 +50,36 @@ pnpm --filter @jojopotato/api db:migrate
 ```
 
 This applies all SQL migrations in `packages/api/drizzle/` to the database. Safe to re-run — only unapplied migrations are executed.
+
+---
+
+## Inspecting the database
+
+### psql (terminal)
+
+```bash
+docker exec -it jojo-mobile-jojopotato-db-1 psql -U jojo -d jojopotato
+```
+
+Useful commands inside psql:
+
+```
+\dt              list all tables
+\d users         describe a table (columns, types, constraints)
+\d+ orders       describe with indexes included
+\dT+             list all enum types and their values
+\q               quit
+```
+
+### GUI client (TablePlus, DBeaver, pgAdmin, etc.)
+
+```
+host:     localhost
+port:     5432
+user:     jojo
+password: jojo
+database: jojopotato
+```
 
 ---
 
