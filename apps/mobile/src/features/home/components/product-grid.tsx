@@ -1,8 +1,9 @@
 import type { MenuItem } from '@jojopotato/types';
+import { ProductCard } from '@jojopotato/ui';
 import { FlatList, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
-import { ProductCard } from './product-card';
+import { getProductImage } from '../product-images';
 
 export interface ProductGridProps {
   products: MenuItem[];
@@ -20,7 +21,9 @@ export function ProductGrid({ products }: ProductGridProps) {
       keyExtractor={(item) => item.id}
       numColumns={2}
       scrollEnabled={false}
-      renderItem={({ item }) => <ProductCard product={item} />}
+      renderItem={({ item }) => (
+        <ProductCard product={item} imageSource={getProductImage(item.categoryId)} />
+      )}
       columnWrapperStyle={styles.row}
       contentContainerStyle={styles.content}
     />

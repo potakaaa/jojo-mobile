@@ -48,3 +48,6 @@ pnpm-debug.log*
 .idea/
 .claude/settings.local.json
 .vibecode-backup*/
+
+# claude hooks
+.claude/hooks/.logs/

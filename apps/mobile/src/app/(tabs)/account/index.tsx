@@ -21,6 +21,13 @@ export default function AccountScreen() {
       <AccountLink label="Help" onPress={() => router.push('/(tabs)/account/help')} color={theme.accent} />
       <AccountLink label="Order History" onPress={() => router.push('/(tabs)/order/history')} color={theme.accent} />
       <AccountLink label="Log out" onPress={signOut} color={theme.accent} />
+      {__DEV__ ? (
+        <AccountLink
+          label="Component Showcase (dev)"
+          onPress={() => router.push('/component-showcase')}
+          color={theme.accent}
+        />
+      ) : null}
     </ComingSoon>
   );
 }
