@@ -36,6 +36,10 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "test": {
+      "cache": false,
+      "dependsOn": ["^build"]
+    },
     "clean": {
       "cache": false
     }

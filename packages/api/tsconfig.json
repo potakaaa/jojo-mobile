@@ -1,0 +1,12 @@
+{
+  "extends": "@jojopotato/config/typescript/base",
+  "compilerOptions": {
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "ES2022",
+    "noEmit": true,
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src", "drizzle.config.ts", "vitest.config.ts"]
+}
