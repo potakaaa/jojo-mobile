@@ -84,6 +84,7 @@ const ICONS: Record<
   index: { active: 'home', inactive: 'home-outline' },
   order: { active: 'bag', inactive: 'bag-outline' },
   rewards: { active: 'star', inactive: 'star-outline' },
+  branches: { active: 'location', inactive: 'location-outline' },
   account: { active: 'person', inactive: 'person-outline' },
 };
 
@@ -93,12 +94,12 @@ const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 /**
  * On-screen vertical content height of the floating bar (dp), computed from the
  * real styles below so screens never guess a magic number:
- *   iconChip height (40) + tab gap (Spacing.half) + one caption text line
+ *   iconChip height (36) + tab gap (Spacing.half) + one caption text line
  *   (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
- *   (Spacing.two × 2).
- * Currently 40 + 2 + 15 + 16 = 73.
+ *   (Spacing.one × 2).
+ * Currently 36 + 2 + 15 + 8 = 61.
  */
-const BAR_CONTENT_HEIGHT = 40 + Spacing.half + 15 + Spacing.two * 2;
+const BAR_CONTENT_HEIGHT = 36 + Spacing.half + 15 + Spacing.one * 2;
 
 /**
  * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
@@ -182,7 +183,7 @@ function TabItem({
         {iconName ? (
           <AnimatedIonicons
             name={iconName}
-            size={22}
+            size={20}
             color={inactiveColor}
             style={iconColorStyle}
           />
@@ -257,7 +258,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.two,
     borderRadius: Radii.full,
     borderWidth: 2,
@@ -268,8 +269,8 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
   },
   iconChip: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radii.full,

@@ -48,6 +48,15 @@ export default function TabsAndroidLayout() {
         }}
       />
       <Tabs.Screen
+        name="branches"
+        options={{
+          title: 'Branches',
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={focused ? 'location' : 'location-outline'} color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="account"
         options={{
           title: 'Account',
