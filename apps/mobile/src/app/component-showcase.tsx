@@ -32,10 +32,9 @@ import {
 } from '@jojopotato/ui';
 import { Stack } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -179,7 +178,6 @@ function Section({ title, children }: SectionProps) {
 
 export default function ComponentShowcaseScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
 
   // Local state so the interactive selectors and inputs actually respond.
   const [inputValue, setInputValue] = useState('Juan Dela Cruz');
@@ -195,12 +193,7 @@ export default function ComponentShowcaseScreen() {
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[
-            styles.content,
-            Platform.OS !== 'web' && {
-              paddingBottom: getFloatingTabBarClearance(insets.bottom),
-            },
-          ]}
+          contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
           <Text style={[styles.note, { color: theme.textSecondary }]}>
