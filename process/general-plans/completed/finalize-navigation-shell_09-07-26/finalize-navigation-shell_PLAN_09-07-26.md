@@ -276,7 +276,11 @@ Gate: CONDITIONAL (concerns noted, resolved via plan updates/execute-agent instr
 
 ## Execution Summary (added at UPDATE PROCESS — 09-07-26)
 
-EXECUTE + EVL complete. All checklist items and acceptance criteria met.
+EXECUTE + EVL complete for the automated gates (typecheck, lint, structural file-tree checks — see
+EVL confirmation below). All checklist items and acceptance criteria are implemented, but the 6
+manual navigation flows are **unverified at runtime** — they were confirmed only by static
+code-trace, not by an actual simulator/browser run (see "Manual flows 1–6 verification method"
+below for the method and the pre-existing project-wide reason no runtime run was performed).
 
 **Plan-vs-implementation deviations (both within documented blast radius — not scope creep):**
 
@@ -305,10 +309,14 @@ fallback was needed.
 Structural check confirmed old flat files gone, new folder files present.
 
 **Manual flows 1–6 verification method:** static code-trace only (route/gate/handler logic read and
-reasoned through), NOT a running simulator/browser — this sandboxed environment cannot drive one. This
-is a pre-existing, project-wide gap (no test runner/E2E harness configured anywhere in this repo — see
-`process/context/tests/all-tests.md` §Known Gaps), not something this plan introduces. Tracked as a
-backlog follow-up: `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
+reasoned through), NOT a running simulator/browser — this sandboxed environment cannot drive one.
+**These flows remain unverified at runtime** — the code-trace gives confidence the logic is
+consistent, but it is not a substitute for actually exercising the flows, and a runtime-only defect
+(e.g. a timing issue, a missed re-render, a platform-specific gesture/animation glitch) would not be
+caught by this method. This is a pre-existing, project-wide gap (no test runner/E2E harness
+configured anywhere in this repo — see `process/context/tests/all-tests.md` §Known Gaps), not
+something this plan introduces. Tracked as a backlog follow-up:
+`process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
 All 6 flows trace correctly through the code as written (splash → onboarding/login branch confirmed
 post-fix; nested per-tab stacks preserve state via Expo Router's default stack-per-group behavior;
 back-nav returns to tab root via native stack back button; Branches tab added 4th with location icon

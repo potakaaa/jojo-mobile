@@ -35,7 +35,10 @@ real feature UI.
 
 ## Status
 
-Open — not yet fixed. Low priority since it's currently only reachable in dev/preview builds, but
-should not be silently dropped. Revisit before any of `order/`, `rewards/`, `branches/`, or
-`account/` first ships a production build, or when replacing any of these 4 placeholder screens with
-real feature UI (whichever comes first).
+Open — not yet fixed. This is a production-leak risk, not a dev/preview-only cleanup item: the
+placeholder tab-root screens (`order/`, `rewards/`, `branches/`, `account/`) live in the shipped
+navigation shell, so their unconditional "Dev: ..." links ship to real users the moment any of
+those screens reaches a production build without first being gated or replaced. Must be revisited
+before any of `order/`, `rewards/`, `branches/`, or `account/` first ships real production UI —
+whichever screen gets replaced first, or before a production build that still contains the
+placeholder, whichever comes first. Do not silently drop.

@@ -91,15 +91,18 @@ const ICONS: Record<
 /** Ionicons wrapped for animated (interpolated) `color` via Reanimated style. */
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
+/** Diameter (dp) of the circular icon chip — shared by `BAR_CONTENT_HEIGHT` and `styles.iconChip`. */
+const ICON_CHIP_SIZE = 36;
+
 /**
  * On-screen vertical content height of the floating bar (dp), computed from the
  * real styles below so screens never guess a magic number:
- *   iconChip height (36) + tab gap (Spacing.half) + one caption text line
- *   (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
+ *   iconChip height (ICON_CHIP_SIZE) + tab gap (Spacing.half) + one caption text
+ *   line (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
  *   (Spacing.one × 2).
  * Currently 36 + 2 + 15 + 8 = 61.
  */
-const BAR_CONTENT_HEIGHT = 36 + Spacing.half + 15 + Spacing.one * 2;
+const BAR_CONTENT_HEIGHT = ICON_CHIP_SIZE + Spacing.half + 15 + Spacing.one * 2;
 
 /**
  * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
@@ -269,8 +272,8 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
   },
   iconChip: {
-    width: 36,
-    height: 36,
+    width: ICON_CHIP_SIZE,
+    height: ICON_CHIP_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radii.full,
