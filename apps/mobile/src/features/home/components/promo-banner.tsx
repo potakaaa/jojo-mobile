@@ -1,4 +1,4 @@
-import { JojoButton } from '@jojopotato/ui';
+import { Button } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -21,7 +21,7 @@ export function PromoBanner({ onPress }: PromoBannerProps) {
         <Text style={styles.eyebrow}>Limited time</Text>
         <Text style={styles.headline}>Buy one,{'\n'}get fries free</Text>
         <Text style={styles.body}>Order ahead and skip the line at your favorite branch.</Text>
-        <JojoButton
+        <Button
           label="Order now"
           onPress={onPress ?? (() => {})}
           variant="accent"

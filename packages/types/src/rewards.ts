@@ -5,3 +5,9 @@ export interface RewardsAccount {
   points: number;
   tier: RewardsTier;
 }
+
+export interface RewardsTierProgress {
+  currentPoints: number;
+  pointsToNextTier: number;
+  nextTier: RewardsTier | null;
+}

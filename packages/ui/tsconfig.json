@@ -3,7 +3,8 @@
   "compilerOptions": {
     "jsx": "react-native",
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["jest", "react"]
   },
   "include": ["src"]
 }

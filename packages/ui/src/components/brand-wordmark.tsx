@@ -1,6 +1,6 @@
 import { StyleSheet, Text, type TextStyle } from 'react-native';
 
-import { Brand, Colors, FontFamily, type ThemeMode } from './theme';
+import { Brand, Colors, FontFamily, type ThemeMode } from '../theme';
 
 export interface BrandWordmarkProps {
   mode?: ThemeMode;
