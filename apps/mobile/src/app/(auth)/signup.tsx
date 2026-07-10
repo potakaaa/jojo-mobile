@@ -1,4 +1,4 @@
-import { Button, Card, Input } from '@jojopotato/ui';
+import { Button, Card, GoogleButton, Input } from '@jojopotato/ui';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,10 +11,17 @@ import { useTheme } from '@/hooks/use-theme';
 
 /**
  * Real signup screen backed by better-auth: email + password account creation,
- * plus "Continue with Google". Phone OTP signup lives on its own screen. On
+ * plus "Continue with Google". Phone OTP signup lives on its own screen. Client-side
+ * validation (name/email/password/confirm-password) runs before hitting the server. On
  * success the better-auth session flips the root gate into the `(tabs)` shell.
  * All form controls come from the shared `@jojopotato/ui` kit.
  */
+interface FieldErrors {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+}
 export default function SignupRoute() {
   const theme = useTheme();
   const scheme = useColorScheme();
@@ -24,8 +31,10 @@ export default function SignupRoute() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const run = async (input: Parameters<typeof signIn>[0]) => {
     setBusy(true);
@@ -37,7 +46,32 @@ export default function SignupRoute() {
     }
   };
 
-  const onCreateAccount = () => run({ method: 'email-signup', email, password, name });
+  const onCreateAccount = () => {
+    setFieldErrors({});
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+
+    const errors: FieldErrors = {};
+    if (!trimmedName) {
+      errors.name = 'Enter your name';
+    }
+    if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+      errors.email = 'Enter a valid email address';
+    }
+    if (password.length < 8) {
+      errors.password = 'Password must be at least 8 characters';
+    }
+    if (confirmPassword !== password) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    run({ method: 'email-signup', email: trimmedEmail, password, name: trimmedName });
+  };
   const onGoogle = () => run({ method: 'google' });
 
   return (
@@ -61,6 +95,7 @@ export default function SignupRoute() {
                 onChangeText={setName}
                 autoCapitalize="words"
                 editable={!busy}
+                error={fieldErrors.name}
               />
               <Input
                 mode={mode}
@@ -71,6 +106,7 @@ export default function SignupRoute() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 editable={!busy}
+                error={fieldErrors.email}
               />
               <Input
                 mode={mode}
@@ -81,20 +117,25 @@ export default function SignupRoute() {
                 secureTextEntry
                 autoCapitalize="none"
                 editable={!busy}
-                error={error}
+                error={fieldErrors.password ?? error}
+              />
+              <Input
+                mode={mode}
+                label="Confirm password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                editable={!busy}
+                error={fieldErrors.confirmPassword}
               />
               <Button mode={mode} label="Sign up" onPress={onCreateAccount} disabled={busy} />
             </View>
           </Card>
 
           <View style={styles.alt}>
-            <Button
-              mode={mode}
-              variant="outline"
-              label="Continue with Google"
-              onPress={onGoogle}
-              disabled={busy}
-            />
+            <GoogleButton mode={mode} onPress={onGoogle} disabled={busy} />
             <Button
               mode={mode}
               variant="outline"

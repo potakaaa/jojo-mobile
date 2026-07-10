@@ -1,4 +1,4 @@
-import { Button, Card, Input } from '@jojopotato/ui';
+import { Button, Card, GoogleButton, Input } from '@jojopotato/ui';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -92,13 +92,7 @@ export default function LoginRoute() {
           ) : null}
 
           <View style={styles.alt}>
-            <Button
-              mode={mode}
-              variant="outline"
-              label="Continue with Google"
-              onPress={onGoogle}
-              disabled={busy}
-            />
+            <GoogleButton mode={mode} onPress={onGoogle} disabled={busy} />
             <Button
               mode={mode}
               variant="outline"
