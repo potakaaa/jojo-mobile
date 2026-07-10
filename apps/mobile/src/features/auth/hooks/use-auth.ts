@@ -17,12 +17,11 @@ const APP_CALLBACK_URL = Linking.createURL('/');
 
 /**
  * How a caller asks `signIn` to authenticate. One dispatcher covers every
- * method the login/signup screens need — email/password (+ signup), Google
- * OAuth, magic link, and the two-step phone OTP flow.
+ * method the login screen needs — Google OAuth, magic link, and the two-step
+ * phone OTP flow. Email/password remains enabled server-side (better-auth) but
+ * has no client entry point today, so it is not part of this union.
  */
 export type SignInInput =
-  | { method: 'email'; email: string; password: string }
-  | { method: 'email-signup'; email: string; password: string; name: string }
   | { method: 'google' }
   | { method: 'magic-link'; email: string }
   | { method: 'phone-send'; phoneNumber: string }
@@ -60,21 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (input: SignInInput): Promise<SignInResult> => {
     switch (input.method) {
-      case 'email': {
-        const { error } = await authClient.signIn.email({
-          email: input.email,
-          password: input.password,
-        });
-        return toResult(error);
-      }
-      case 'email-signup': {
-        const { error } = await authClient.signUp.email({
-          email: input.email,
-          password: input.password,
-          name: input.name,
-        });
-        return toResult(error);
-      }
       case 'google': {
         const { error } = await authClient.signIn.social({
           provider: 'google',

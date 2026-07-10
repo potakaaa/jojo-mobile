@@ -7,6 +7,8 @@ export interface GoogleButtonProps {
   mode?: ThemeMode;
   /** Override the label, e.g. "Sign up with Google". Defaults to "Continue with Google". */
   label?: string;
+  /** Show a spinner in place of the icon and disable interaction. */
+  loading?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export function GoogleButton({
   disabled = false,
   mode = 'light',
   label = 'Continue with Google',
+  loading = false,
 }: GoogleButtonProps) {
   return (
     <Button
@@ -29,6 +32,7 @@ export function GoogleButton({
       label={label}
       onPress={onPress}
       disabled={disabled}
+      loading={loading}
     />
   );
 }

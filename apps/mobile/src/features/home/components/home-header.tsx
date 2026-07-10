@@ -2,10 +2,10 @@ import { BrandWordmark } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { MASCOT_IMAGE } from '@/constants/images';
 import { Brand, FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
-import { MASCOT_IMAGE } from '../product-images';
 
 /**
  * Home greeting header: brand wordmark + short greeting line, with the Jojo
