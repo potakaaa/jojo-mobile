@@ -4,11 +4,11 @@
 import 'dotenv/config';
 
 import { toNodeHandler } from 'better-auth/node';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
 import express from 'express';
 
 import { db } from './db/client';
-import { branches } from './db/schema/index';
+import { branches, dealBranches, deals } from './db/schema/index';
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 
@@ -43,6 +43,101 @@ app.get('/api/branches', async (_req, res) => {
     res.json({ branches: rows });
   } catch {
     res.status(500).json({ error: 'Failed to fetch branches' });
+  }
+});
+
+// Server-computed human-readable discount label from a deal's type + value.
+// `discountValue` is a pg numeric string (or null). Percentage/fixed deals fall
+// back to "Deal" when the value is null or "0"; trailing ".00" is stripped.
+function computeDiscountLabel(dealType: string, discountValue: string | null): string {
+  const parsed = discountValue !== null ? Number.parseFloat(discountValue) : NaN;
+  const hasValue = Number.isFinite(parsed) && parsed !== 0;
+  // Strip trailing .00 → integer string when whole, else keep the decimal.
+  const num = hasValue ? Number(parsed).toString() : '';
+
+  switch (dealType) {
+    case 'percentage_discount':
+      return hasValue ? `${num}% off` : 'Deal';
+    case 'fixed_discount':
+      return hasValue ? `₱${num} off` : 'Deal';
+    case 'buy_one_take_one':
+      return 'Buy 1 Get 1';
+    case 'free_item':
+      return 'Free Item';
+    case 'free_upgrade':
+      return 'Free Upgrade';
+    case 'bundle':
+      return hasValue ? `Bundle ₱${num}` : 'Bundle';
+    default:
+      return 'Deal';
+  }
+}
+
+// Branch detail endpoint. Returns the single active branch plus the deals that
+// apply to it: deals explicitly mapped to this branch (Query A) UNION deals with
+// no `deal_branches` rows at all — i.e. global deals (Query B). Both filtered to
+// active + within the [start_at, end_at] window. Results are merged and
+// deduplicated by id, then each gets a server-computed `discountLabel`. Public,
+// same security posture as GET /api/branches.
+app.get('/api/branches/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const branchRows = await db.select().from(branches).where(eq(branches.id, id));
+    const branchRow = branchRows[0];
+    if (!branchRow) {
+      res.status(404).json({ error: 'Branch not found' });
+      return;
+    }
+
+    const now = new Date();
+
+    // Query A — deals explicitly mapped to this branch.
+    const explicitPromise = db
+      .select({ deal: deals })
+      .from(deals)
+      .innerJoin(dealBranches, eq(dealBranches.deal_id, deals.id))
+      .where(
+        and(
+          eq(dealBranches.branch_id, id),
+          eq(deals.is_active, true),
+          lte(deals.start_at, now),
+          gte(deals.end_at, now),
+        ),
+      );
+
+    // Query B — global deals: no deal_branches rows exist for this deal at all.
+    const globalPromise = db
+      .select()
+      .from(deals)
+      .where(
+        and(
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(dealBranches)
+              .where(eq(dealBranches.deal_id, deals.id)),
+          ),
+          eq(deals.is_active, true),
+          lte(deals.start_at, now),
+          gte(deals.end_at, now),
+        ),
+      );
+
+    const [explicitRows, globalRows] = await Promise.all([explicitPromise, globalPromise]);
+
+    // Merge (explicit rows are wrapped under `deal`) + dedupe by id.
+    const byId = new Map<string, typeof globalRows[number]>();
+    for (const r of explicitRows) byId.set(r.deal.id, r.deal);
+    for (const r of globalRows) byId.set(r.id, r);
+
+    const mappedDeals = [...byId.values()].map((d) => ({
+      ...d,
+      discountLabel: computeDiscountLabel(d.deal_type, d.discount_value),
+    }));
+
+    res.json({ branch: branchRow, deals: mappedDeals });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch branch' });
   }
 });
 

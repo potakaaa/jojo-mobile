@@ -16,44 +16,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { ApiBranch, mapApiBranch } from '@/features/branches/api';
 import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
 import { apiFetch } from '@/lib/api-fetch';
-
-/** Raw API branch shape — snake_case, lat/lng as numeric strings. */
-interface ApiBranch {
-  id: string;
-  name: string;
-  slug: string;
-  address: string;
-  latitude: string;
-  longitude: string;
-  phone: string;
-  opening_hours: string;
-  is_active: boolean;
-  is_accepting_pickup: boolean;
-  estimated_prep_minutes: number;
-  priority: number;
-}
-
-function mapApiBranch(row: ApiBranch): PickupBranch {
-  return {
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    address: row.address,
-    latitude: parseFloat(row.latitude),
-    longitude: parseFloat(row.longitude),
-    phone: row.phone,
-    openingHours: row.opening_hours,
-    isActive: row.is_active,
-    isAcceptingPickup: row.is_accepting_pickup,
-    estimatedPrepMinutes: row.estimated_prep_minutes,
-    priority: row.priority,
-  };
-}
 
 /**
  * Branch Locator (Branches tab root). Fetches active branches, shows open/closed

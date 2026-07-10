@@ -55,3 +55,81 @@ export function getIsOpenNow(
 
   return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
 }
+
+// Display order (Mon-first), independent of getIsOpenNow's Sun-first getUTCDay()
+// index ordering above.
+const DISPLAY_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const DAY_LABELS: Record<(typeof DISPLAY_DAYS)[number], string> = {
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+  sun: 'Sun',
+};
+
+/** '09:00' → '9:00 AM', '21:00' → '9:00 PM', '00:00' → '12:00 AM'. */
+function to12Hour(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number.parseInt(hStr ?? '0', 10);
+  const m = Number.parseInt(mStr ?? '0', 10);
+  const period = h < 12 ? 'AM' : 'PM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(m).padStart(2, '0');
+  return `${hour12}:${mm} ${period}`;
+}
+
+/**
+ * Human-readable opening-hours lines from the per-day JSON string, grouping
+ * consecutive days that share the same open/close (or are both Closed).
+ *
+ * @param openingHoursJson Same JSON shape `getIsOpenNow` consumes, e.g.
+ *   `{ mon: { open: '09:00', close: '21:00' }, ... }`.
+ * @returns One display string per run of consecutive identical days, e.g.
+ *   `['Mon–Thu: 9:00 AM – 9:00 PM', 'Fri–Sat: 9:00 AM – 10:00 PM', 'Sun: 10:00 AM – 8:00 PM']`.
+ *   Invalid JSON → `['Hours unavailable']`.
+ */
+export function formatOpeningHours(openingHoursJson: string): string[] {
+  let parsed: Record<string, DayHours | undefined>;
+  try {
+    parsed = JSON.parse(openingHoursJson) as Record<string, DayHours | undefined>;
+  } catch {
+    return ['Hours unavailable'];
+  }
+
+  // Normalize each display day to a comparable hours string, or 'Closed'.
+  const dayHoursStr = DISPLAY_DAYS.map((day) => {
+    const entry = parsed[day];
+    if (!entry || typeof entry.open !== 'string' || typeof entry.close !== 'string') {
+      return 'Closed';
+    }
+    return `${to12Hour(entry.open)} – ${to12Hour(entry.close)}`;
+  });
+
+  // Group consecutive days sharing the same hours string.
+  const lines: string[] = [];
+  let runStart = 0;
+  for (let i = 1; i <= DISPLAY_DAYS.length; i++) {
+    if (i < DISPLAY_DAYS.length && dayHoursStr[i] === dayHoursStr[runStart]) {
+      continue;
+    }
+    const startDay = DISPLAY_DAYS[runStart] ?? 'mon';
+    const endDay = DISPLAY_DAYS[i - 1] ?? 'sun';
+    const startLabel = DAY_LABELS[startDay];
+    const endLabel = DAY_LABELS[endDay];
+    const isSingle = runStart === i - 1;
+    const dayRange = isSingle ? startLabel : `${startLabel}–${endLabel}`;
+    const hours = dayHoursStr[runStart] ?? 'Closed';
+    // A single closed day renders as bare 'Closed' (no day prefix); a run of
+    // closed days keeps the range prefix, e.g. 'Mon–Fri: Closed'.
+    if (hours === 'Closed' && isSingle) {
+      lines.push('Closed');
+    } else {
+      lines.push(`${dayRange}: ${hours}`);
+    }
+    runStart = i;
+  }
+
+  return lines;
+}
