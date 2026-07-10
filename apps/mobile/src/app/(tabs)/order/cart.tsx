@@ -10,9 +10,10 @@ import {
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import {
   MOCK_BRANCH_PREP_MINUTES,
@@ -66,6 +67,7 @@ export default function CartScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
 
   const {
     cart,
@@ -128,9 +130,35 @@ export default function CartScreen() {
     );
   };
 
+  // Switch pickup to the other mock branch. If the cart has items, switching
+  // clears it first (branches can't be mixed — same D4 rule as above).
+  const handleChangeBranch = () => {
+    const nextBranch =
+      cart.pickupBranchId === MOCK_CART_BRANCH.id ? MOCK_OTHER_BRANCH : MOCK_CART_BRANCH;
+    if (cart.items.length === 0) {
+      setBranch(nextBranch.id);
+      return;
+    }
+    Alert.alert(
+      'Change branch?',
+      `Switching to ${nextBranch.name} will clear your current cart from ${branch.name}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change & clear',
+          style: 'destructive',
+          onPress: () => {
+            clearCart();
+            setBranch(nextBranch.id);
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={[]}>
         {isEmpty ? (
           <EmptyState
             iconName="cart-outline"
@@ -150,6 +178,7 @@ export default function CartScreen() {
               <BranchCard
                 branch={branch}
                 mode={mode}
+                onChange={handleChangeBranch}
                 footer={
                   <View style={styles.pickupRow}>
                     <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
@@ -242,7 +271,14 @@ export default function CartScreen() {
               ) : null}
             </ScrollView>
 
-            <View style={styles.footer}>
+            <View
+              style={[
+                styles.footer,
+                Platform.OS !== 'web' && {
+                  paddingBottom: getFloatingTabBarClearance(insets.bottom),
+                },
+              ]}
+            >
               <Button
                 label={`Checkout • ${itemCount} item${itemCount === 1 ? '' : 's'}`}
                 onPress={() => router.push('/(tabs)/order/checkout')}

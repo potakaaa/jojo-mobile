@@ -4,12 +4,14 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
+import { Button } from './button';
 
 export interface BranchCardProps {
   branch: PickupBranch;
   onPress?: () => void;
   mode?: ThemeMode;
   footer?: ReactNode;
+  onChange?: () => void;
 }
 
 /**
@@ -18,25 +20,13 @@ export interface BranchCardProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchCard({ branch, onPress, mode = 'light', footer }: BranchCardProps) {
+export function BranchCard({ branch, onPress, mode = 'light', footer, onChange }: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
+  const interactive = onChange === undefined;
 
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => {
-        setSelected((s) => !s);
-        onPress?.();
-      }}
-      style={[
-        styles.container,
-        {
-          backgroundColor: selected ? theme.backgroundSelected : theme.backgroundElement,
-          borderColor: theme.border,
-        },
-      ]}
-    >
+  const content = (
+    <>
       <View style={styles.headerRow}>
         <View style={[styles.pin, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}>
           <Ionicons name="location" size={18} color={Palette.ink} />
@@ -47,17 +37,28 @@ export function BranchCard({ branch, onPress, mode = 'light', footer }: BranchCa
             {branch.name}
           </Text>
         </View>
-        <View style={[styles.statusPill, { borderColor: theme.accent }]}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
-            ]}
+        {onChange ? (
+          <Button
+            label="Change"
+            size="sm"
+            variant="primary"
+            onPress={onChange}
+            mode={mode}
+            style={styles.changeButton}
           />
-          <Text style={[styles.status, { color: theme.accent }]}>
-            {branch.isOpen ? 'Open' : 'Closed'}
-          </Text>
-        </View>
+        ) : (
+          <View style={[styles.statusPill, { borderColor: theme.accent }]}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
+              ]}
+            />
+            <Text style={[styles.status, { color: theme.accent }]}>
+              {branch.isOpen ? 'Open' : 'Closed'}
+            </Text>
+          </View>
+        )}
       </View>
       {footer ? (
         <>
@@ -65,7 +66,36 @@ export function BranchCard({ branch, onPress, mode = 'light', footer }: BranchCa
           {footer}
         </>
       ) : null}
-    </Pressable>
+    </>
+  );
+
+  if (interactive) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => {
+          setSelected((s) => !s);
+          onPress?.();
+        }}
+        style={[
+          styles.container,
+          {
+            backgroundColor: selected ? theme.backgroundSelected : theme.backgroundElement,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      style={[styles.container, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}
+    >
+      {content}
+    </View>
   );
 }
 
@@ -130,5 +160,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     includeFontPadding: false,
     textAlignVertical: 'center',
+  },
+  changeButton: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
   },
 });
