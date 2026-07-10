@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
-import { useAuthSession } from '@/features/auth/hooks/use-auth-session';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -12,7 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export default function OnboardingRoute() {
   const theme = useTheme();
-  const { completeOnboarding } = useAuthSession();
+  const { completeOnboarding } = useAuth();
 
   const onGetStarted = () => {
     completeOnboarding();

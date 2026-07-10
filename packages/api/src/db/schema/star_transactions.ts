@@ -1,21 +1,8 @@
-import {
-  index,
-  integer,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { orders } from './orders';
 import { users } from './users';
 
-export const starTxTypeEnum = pgEnum('star_tx_type', [
-  'earned',
-  'redeemed',
-  'adjusted',
-  'expired',
-]);
+export const starTxTypeEnum = pgEnum('star_tx_type', ['earned', 'redeemed', 'adjusted', 'expired']);
 
 export const starTransactions = pgTable(
   'star_transactions',

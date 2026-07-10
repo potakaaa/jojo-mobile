@@ -31,14 +31,20 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
  * including the current status are marked active; `cancelled` is rendered as a
  * distinct terminal alternate state rather than a point on the normal path.
  */
-export function OrderStatusTimeline({ currentStatus, mode = 'light', style }: OrderStatusTimelineProps) {
+export function OrderStatusTimeline({
+  currentStatus,
+  mode = 'light',
+  style,
+}: OrderStatusTimelineProps) {
   const theme = Colors[mode];
 
   if (currentStatus === 'cancelled') {
     return (
       <View style={[styles.wrap, style]}>
         <View style={styles.step}>
-          <View style={[styles.dot, { backgroundColor: Palette.jred, borderColor: theme.border }]} />
+          <View
+            style={[styles.dot, { backgroundColor: Palette.jred, borderColor: theme.border }]}
+          />
           <Text style={[styles.label, { color: theme.text }]}>Cancelled</Text>
         </View>
       </View>
@@ -62,12 +68,7 @@ export function OrderStatusTimeline({ currentStatus, mode = 'light', style }: Or
                 },
               ]}
             />
-            <Text
-              style={[
-                styles.label,
-                { color: isActive ? theme.text : theme.textSecondary },
-              ]}
-            >
+            <Text style={[styles.label, { color: isActive ? theme.text : theme.textSecondary }]}>
               {STATUS_LABEL[status]}
             </Text>
           </View>

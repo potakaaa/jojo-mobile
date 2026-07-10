@@ -1,12 +1,4 @@
-import {
-  index,
-  numeric,
-  pgEnum,
-  pgTable,
-  timestamp,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { branches } from './branches';
 import { users } from './users';
 
@@ -20,17 +12,9 @@ export const orderStatusEnum = pgEnum('order_status', [
   'cancelled',
 ]);
 
-export const paymentMethodEnum = pgEnum('payment_method', [
-  'pay_at_branch',
-  'online_payment',
-]);
+export const paymentMethodEnum = pgEnum('payment_method', ['pay_at_branch', 'online_payment']);
 
-export const paymentStatusEnum = pgEnum('payment_status', [
-  'unpaid',
-  'paid',
-  'failed',
-  'refunded',
-]);
+export const paymentStatusEnum = pgEnum('payment_status', ['unpaid', 'paid', 'failed', 'refunded']);
 
 export const orders = pgTable(
   'orders',
@@ -45,14 +29,10 @@ export const orders = pgTable(
     order_number: varchar('order_number').unique().notNull(),
     status: orderStatusEnum('status').default('pending').notNull(),
     subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
-    discount_total: numeric('discount_total', { precision: 10, scale: 2 })
-      .default('0')
-      .notNull(),
+    discount_total: numeric('discount_total', { precision: 10, scale: 2 }).default('0').notNull(),
     total: numeric('total', { precision: 10, scale: 2 }).notNull(),
     payment_method: paymentMethodEnum('payment_method').notNull(),
-    payment_status: paymentStatusEnum('payment_status')
-      .default('unpaid')
-      .notNull(),
+    payment_status: paymentStatusEnum('payment_status').default('unpaid').notNull(),
     estimated_ready_at: timestamp('estimated_ready_at'),
     placed_at: timestamp('placed_at').notNull(),
     accepted_at: timestamp('accepted_at'),

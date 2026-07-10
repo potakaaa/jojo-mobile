@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, type PressableProps, StyleSheet, Text, type ViewStyle } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Shadows, TypeScale, type ThemeMode } from '../theme';
@@ -11,6 +12,8 @@ export interface ButtonProps {
   disabled?: boolean;
   mode?: ThemeMode;
   style?: ViewStyle;
+  /** Optional Ionicons glyph rendered before the label. */
+  iconName?: keyof typeof Ionicons.glyphMap;
 }
 
 const VARIANT_BACKGROUND: Record<ButtonVariant, string> = {
@@ -32,6 +35,7 @@ export function Button({
   disabled = false,
   mode = 'light',
   style,
+  iconName,
 }: ButtonProps) {
   const theme = Colors[mode];
   const accessibilityState: PressableProps['accessibilityState'] = { disabled };
@@ -55,6 +59,7 @@ export function Button({
         style,
       ]}
     >
+      {iconName ? <Ionicons name={iconName} size={20} color={labelColor} /> : null}
       <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
     </Pressable>
   );
@@ -62,8 +67,10 @@ export function Button({
 
 const styles = StyleSheet.create({
   button: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: Radii.full,

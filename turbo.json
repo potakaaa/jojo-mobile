@@ -10,6 +10,10 @@
       "cache": false,
       "persistent": true
     },
+    "dev:ngrok": {
+      "cache": false,
+      "persistent": true
+    },
     "start": {
       "cache": false,
       "persistent": true
@@ -39,6 +43,15 @@
     "test": {
       "cache": false,
       "dependsOn": ["^build"]
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
     },
     "clean": {
       "cache": false

@@ -1,21 +1,10 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import {
-  index,
-  pgEnum,
-  pgTable,
-  timestamp,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { index, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { deals } from './deals';
 import { rewards } from './rewards';
 import { users } from './users';
 
-export const couponStatusEnum = pgEnum('coupon_status', [
-  'available',
-  'used',
-  'expired',
-]);
+export const couponStatusEnum = pgEnum('coupon_status', ['available', 'used', 'expired']);
 
 export const coupons = pgTable(
   'coupons',

@@ -1,7 +1,16 @@
 import type { Coupon } from '@jojopotato/types';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  Palette,
+  Radii,
+  Shadows,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 
 export interface CouponCardProps {
   coupon: Coupon;
@@ -29,7 +38,9 @@ export function CouponCard({ coupon, onPress, mode = 'light', style }: CouponCar
         style,
       ]}
     >
-      <View style={[styles.codeChip, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}>
+      <View
+        style={[styles.codeChip, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}
+      >
         <Text style={styles.code}>{coupon.code}</Text>
       </View>
       <View style={styles.body}>

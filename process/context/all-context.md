@@ -50,8 +50,9 @@ ordering, cart, checkout, pickup branches, rewards, menu, auth, and notification
 top of it later without re-plumbing the project.
 
 - Small team (2-5 contributors).
-- No backend/external services decided yet (auth provider, database, payments, notifications are
-  all open decisions — see §Open Questions).
+- Backend: `packages/api` (Express + Drizzle + PostgreSQL) exists and now hosts a real auth
+  provider (better-auth — see §Current Implementation State and §Open Questions). Database,
+  payments, and notifications providers remain open decisions.
 - Branding/theme in `packages/ui/src/theme.ts` and `apps/mobile/assets/images/` is placeholder —
   do not treat brand colors, icons, or the bundle identifier (`ph.jojopotato.mobile`) as final.
 - Deploy target: EAS Build/Submit is planned but not yet wired up (no `eas.json` in the repo yet).
@@ -65,13 +66,17 @@ top of it later without re-plumbing the project.
   nested `Stack` navigators so deep screens (Product Details, Cart, Checkout, Branch Details, etc.)
   have somewhere to live with correct back-navigation. Root gating (`(tabs)` vs `(auth)`) uses
   `Stack.Protected` in `apps/mobile/src/app/_layout.tsx`.
-- **Auth:** no real provider wired yet (still an open question — see §Open Questions). A
-  provider-agnostic in-memory mock auth-state seam exists at
-  `apps/mobile/src/features/auth/hooks/use-auth-session.ts` (`AuthSessionProvider` +
-  `useAuthSession()`) that every screen consumes; swapping in a real provider later should not
-  require touching consumer screens. No session persistence (AsyncStorage/SecureStore) yet — the
-  app always resets to unauthenticated on relaunch; this is intentional for the current scaffold
-  stage, flag as follow-up once a provider is chosen.
+- **Auth:** real provider decided and wired — **better-auth**, hosted in `packages/api` (Express +
+  Drizzle + Postgres). Server config lives in `packages/api/src/lib/auth.ts` (email/password, phone
+  OTP, Google OAuth, magic link), mounted at `/api/auth/*` in `src/index.ts`; the existing `users`
+  table IS better-auth's user model (plus new `session`/`account`/`verification` tables, migration
+  `0001_daily_carnage.sql`). The mobile app consumes it through a real
+  `AuthProvider`/`useAuth()` seam at `apps/mobile/src/features/auth/hooks/use-auth.ts` (backed by
+  `authClient.useSession()` in `.../lib/auth-client.ts`), which replaced the old in-memory mock
+  (`use-auth-session.ts`, deleted). Sessions now persist across restarts via `expo-secure-store`
+  and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
+  is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
+  both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
 - **Screens:** Home tab (`(tabs)/index.tsx`) is the only tab with real business UI. Every other
   tab-root screen (`order/index.tsx`, `rewards/index.tsx`, `branches/index.tsx`,
   `account/index.tsx`) and every nested/pushed screen under them (product details, cart, checkout,
@@ -110,14 +115,14 @@ For most substantial tasks:
 |---|---|
 | `process/context/all-context.md` | any substantial planning, research, review, or implementation task |
 | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — no runner configured yet |
+| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
 
 ## Current Context Groups
 
 | Group | Entry point | Scope |
 |---|---|---|
 | `planning/` | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — no runner configured yet |
+| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
 <!-- /GENERATED:routing -->
 
 No other context groups exist beyond the baseline `tests`/`planning` groups every repo gets
@@ -126,20 +131,26 @@ No other context groups exist beyond the baseline `tests`/`planning` groups ever
 ## Context Group Detection Result
 
 Scanned against the canonical Context Group Detection Table
-(`.claude/skills/vc-generate-context/references/generate-context.md`). None of the project-signal
-groups are present yet:
+(`.claude/skills/vc-generate-context/references/generate-context.md`):
 
-- No Prisma/Drizzle/TypeORM/Sequelize or DB config → no `database/` group
+- Drizzle ORM + PostgreSQL now present (`packages/api` — schema, migrations, `db:generate`/
+  `db:migrate` scripts) → `database/` group threshold is likely now met; not yet created — this
+  landed via the `db-schema` plan (still active, not yet closed via UPDATE PROCESS as of
+  09-07-26). Revisit group creation when that plan is reconciled.
+- Auth dependency now present — **better-auth**, wired into `packages/api` (`src/lib/auth.ts`)
+  and consumed by `apps/mobile` (`src/features/auth/`). Evaluated against the `auth/` group
+  threshold at the 09-07-26 UPDATE PROCESS pass (wire-better-auth): **not yet warranted** — only
+  1 durable narrative (the §Current Implementation State auth paragraph), no file over ~800
+  lines, and no repeated multi-agent slicing need yet. Re-evaluate once a second durable auth doc
+  exists (e.g. a role/permissions design doc, or a live-provider integration writeup).
 - No Dockerfile/docker-compose → no `container/` group
-- No auth dependency (Clerk/NextAuth/Passport/Lucia/etc.) → no `auth/` group
 - No CI/CD config (`.github/workflows`, `.circleci`, `.gitlab-ci`) → no `cicd/` group
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
 - Only 1 UI package (`packages/ui`) with 3 source files → below the 3+ dedicated dirs threshold for `uxui/`
 - No workflow/queue system → no `workflows/` group
 
-Re-run `vc-generate-context` (delta mode) once any of these domains gain real content (e.g. an
-auth provider is chosen and wired up, or EAS/CI config lands) — it will create the matching group
-automatically.
+Re-run `vc-generate-context` (delta mode) once the `database/` or `auth/` thresholds are formally
+crossed — it will create the matching group automatically.
 
 ## Task Routing Table
 
@@ -203,14 +214,15 @@ jojo-mobile/                           (package.json name: jojo-potato)
     mobile/                            -- @jojopotato/mobile, Expo Router app (iOS/Android/web)
       src/
         app/                           -- Expo Router file-based routes
-          _layout.tsx                  -- wraps tree in AuthSessionProvider, RootNavigator gates (tabs) vs (auth) via Stack.Protected
-          (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, terms
+          _layout.tsx                  -- wraps tree in AuthProvider, RootNavigator gates (tabs) vs (auth) via Stack.Protected
+          (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, phone-otp, terms
           (tabs)/                      -- authenticated 5-tab shell (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root (only tab with real business UI)
             order/, rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
         features/
-          auth/hooks/use-auth-session.ts  -- AuthSessionProvider + useAuthSession(): in-memory, provider-agnostic auth-state seam
+          auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam (backed by lib/auth-client.ts)
+          auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
@@ -280,12 +292,21 @@ tab bar); nested/pushed screens get `headerShown:true` with the default back but
 new dynamic route files (`[id].tsx`), run `expo start` (then stop it) once before `tsc --noEmit`
 resolves the new typed hrefs — the codegen doesn't run on typecheck alone. Auth gating between the
 public `(auth)` stack and authenticated `(tabs)` shell is driven by `Stack.Protected` guards in the
-root `_layout.tsx`, reading `useAuthSession().status`.
+root `_layout.tsx`, reading `useAuth()` (`user`/`isLoading`).
 
-**Auth-state seam:** `useAuthSession()` is the only way any screen should read/mutate auth state —
-never assume a specific backend. Current implementation is in-memory only (`useState`, no
-AsyncStorage/SecureStore) since no provider is chosen yet; swapping in a real provider should only
-require changing the internals of `use-auth-session.ts`, not any consumer.
+**Auth-state seam:** `useAuth()` (from `apps/mobile/src/features/auth/hooks/use-auth.ts`) is the
+only way any screen should read/mutate auth state. It exposes `{ user, role, isLoading, signIn,
+signOut, hasOnboarded, completeOnboarding }`, derives the session from better-auth's
+`authClient.useSession()`, and persists it via `expo-secure-store` (survives restarts). `signIn`
+is a dispatcher over the supported methods (email/password + signup, Google OAuth, magic link, and
+the two-step phone OTP flow). The better-auth client itself lives in
+`apps/mobile/src/features/auth/lib/auth-client.ts` and talks to `{EXPO_PUBLIC_API_URL}/api/auth/*`;
+consumers never import it directly. `hasOnboarded`/`completeOnboarding` remain local, non-auth
+state (onboarding-seen flag), independent of the better-auth session. **Magic link is not a plain
+`authClient.magicLink` round trip** — better-auth's default flow doesn't log the user in on Expo
+(session lands in an external browser, not the app), so this repo relays the token through a
+custom `/magic-link/native` redirect + an app-side `(auth)/magic-link.tsx` verify step; see
+`process/features/auth-accounts/backlog/wire-better-auth-magic-link-expo-caveat_NOTE_09-07-26.md`.
 
 **Always use the shared `@jojopotato/ui` component library — never one-off screen UI.** `packages/ui/src/components/` is the canonical, theme-token-driven component set (`Button`, `Card`, `Badge`, `Input`, `ProductCard`, `DealCard`, `BranchCard`, `RewardProgressCard`, `StarProgressBar`, `OrderStatusBadge`, `OrderStatusTimeline`, `CouponCard`, `CartItem`, `FlavorSelector`, `SizeSelector`, `PickupTimeBadge`, plus `BrandWordmark`). Before writing new inline markup in any `apps/mobile` screen, check `packages/ui/src/index.ts` for an existing export first. If a needed component doesn't exist yet, prefer adding it to `packages/ui` over a local one-off, unless it's truly screen-specific and not reusable elsewhere. Never hardcode colors/spacing that duplicate `theme.ts` tokens — components take a `mode: ThemeMode = 'light'` prop (see `BrandWordmark`/`Button`) rather than depending on an app-level theme hook, since the package has no such dependency. `Button` is the single canonical button — `JojoButton` (an earlier proof-of-concept primitive) was removed on 2026-07-09 in favor of it; do not reintroduce a parallel button primitive.
 
@@ -305,7 +326,11 @@ an open question, see below.
 
 Tracked here so future planning knows these are unresolved, not accidentally decided.
 
-- **Auth provider:** not decided (Supabase and Firebase were discussed as candidates, nothing committed).
+- **Auth provider:** decided — **better-auth**, wired into `packages/api` (Express + Drizzle +
+  Postgres) and consumed by `apps/mobile` via `useAuth()`. (Supabase/Firebase were earlier
+  candidates; better-auth was chosen instead.) Remaining sub-decisions: a real SMS vendor for phone
+  OTP (currently a server-side stub that logs the code) and provisioning live Google OAuth
+  credentials + a Resend account are manual follow-ups, not code gaps.
 - **Database:** not decided.
 - **Payments processor:** not decided.
 - **Notifications provider:** not decided.

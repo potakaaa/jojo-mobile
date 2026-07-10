@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev dev:ngrok",
     "dev:tunnel": "turbo run dev:tunnel",
     "start": "turbo run start",
     "ios": "turbo run ios --filter=@jojopotato/mobile",
@@ -16,6 +16,11 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "api": "turbo run dev --filter=@jojopotato/api",
+    "db:generate": "turbo run db:generate --filter=@jojopotato/api",
+    "db:migrate": "turbo run db:migrate --filter=@jojopotato/api",
+    "db:seed": "turbo run db:seed --filter=@jojopotato/api",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "clean": "turbo run clean && rm -rf node_modules"

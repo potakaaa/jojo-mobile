@@ -1,12 +1,4 @@
-import {
-  integer,
-  jsonb,
-  numeric,
-  pgTable,
-  timestamp,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { integer, jsonb, numeric, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { orders } from './orders';
 import { products } from './products';
 

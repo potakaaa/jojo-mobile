@@ -6,3 +6,9 @@ pnpm-lock.yaml
 ios
 android
 .claude
+.codex
+process
+docs
+AGENTS.md
+CLAUDE.md
+GEMINI.md
