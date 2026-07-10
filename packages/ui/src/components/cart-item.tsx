@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { CartItem as CartItemData, Flavor, MenuItem, Size } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { Image } from 'expo-image';
@@ -12,6 +13,8 @@ export interface CartItemProps {
   size?: Size | string;
   onIncrement?: () => void;
   onDecrement?: () => void;
+  /** When supplied, renders a trash affordance that removes the whole line. */
+  onRemove?: () => void;
   mode?: ThemeMode;
   style?: ViewStyle;
 }
@@ -39,6 +42,7 @@ export function CartItem({
   size,
   onIncrement,
   onDecrement,
+  onRemove,
   mode = 'light',
   style,
 }: CartItemProps) {
@@ -94,6 +98,16 @@ export function CartItem({
         >
           <Text style={[styles.stepLabel, { color: theme.text }]}>+</Text>
         </Pressable>
+        {onRemove ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Remove item"
+            onPress={onRemove}
+            style={[styles.removeButton, { borderColor: theme.border }]}
+          >
+            <Ionicons name="trash-outline" size={16} color={theme.accent} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -151,6 +165,15 @@ const styles = StyleSheet.create({
   stepLabel: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.body,
+  },
+  removeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: Radii.full,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.one,
   },
   quantity: {
     fontFamily: FontFamily.body.bold,
