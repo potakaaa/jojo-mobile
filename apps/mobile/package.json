@@ -6,7 +6,7 @@
   "scripts": {
     "start": "expo start",
     "dev": "node scripts/dev-with-tunnel.mjs",
-    "dev:bypass": "expo start",
+    "dev:bypass": "node scripts/dev-bypass.mjs",
     "dev:tunnel": "expo start --tunnel",
     "android": "expo start --android",
     "ios": "expo start --ios",

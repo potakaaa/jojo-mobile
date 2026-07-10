@@ -36,6 +36,12 @@ Just run:
 pnpm dev:bypass
 ```
 
+`pnpm dev:bypass` auto-detects your machine's LAN IP and injects it as `EXPO_PUBLIC_API_URL`, so a
+physical device can reach the API without editing `.env`. This is necessary because `localhost` on the
+phone resolves to the phone itself, not your dev machine. If `EXPO_PUBLIC_API_URL` is already exported
+it is used verbatim (detection is skipped), and `API_PORT` (default `3000`) sets the port in the
+detected URL.
+
 No `.env` edit is needed — the setting lives in the process, passed by the script. Optionally set a
 different account in `packages/api/.env`:
 
