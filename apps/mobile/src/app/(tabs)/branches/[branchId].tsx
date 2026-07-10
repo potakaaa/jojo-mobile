@@ -1,4 +1,4 @@
-import { Button, DealCard } from '@jojopotato/ui';
+import { Badge, Button, Card, DealCard } from '@jojopotato/ui';
 import { buildDirectionsUrl, distanceKm, formatOpeningHours, getIsOpenNow } from '@jojopotato/utils';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Linking,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import {
   BranchDetailResponse,
   mapApiBranch,
@@ -76,9 +75,7 @@ export default function BranchDetailsScreen() {
         <Text style={[styles.message, { color: theme.textSecondary }]}>
           {error ?? 'Branch not found'}
         </Text>
-        <Pressable onPress={() => router.back()} accessibilityRole="button">
-          <Text style={[styles.link, { color: theme.accent }]}>Go back</Text>
-        </Pressable>
+        <Button label="Go back" variant="outline" mode={mode} onPress={() => router.back()} />
       </View>
     );
   }
@@ -103,44 +100,48 @@ export default function BranchDetailsScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={[styles.name, { color: theme.text }]}>{branch.name}</Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>{branch.address}</Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>{branch.phone}</Text>
 
-          {distance !== null ? (
-            <Text style={[styles.body, { color: theme.textSecondary }]}>
-              {distance.toFixed(1)} km away
-            </Text>
-          ) : null}
+          <Card mode={mode} style={styles.infoCard}>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>{branch.address}</Text>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>{branch.phone}</Text>
 
-          <View style={styles.statusRow}>
-            <Text style={[styles.statusBadge, { color: isOpen ? theme.accent : theme.textSecondary }]}>
-              {isOpen ? 'Open' : 'Closed'}
-            </Text>
-            <Text style={[styles.body, { color: theme.textSecondary }]}>
-              ~{branch.estimatedPrepMinutes} min
-            </Text>
-          </View>
+            {distance !== null ? (
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                {distance.toFixed(1)} km away
+              </Text>
+            ) : null}
 
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            {branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
-          </Text>
+            <View style={styles.statusRow}>
+              <Badge label={isOpen ? 'Open' : 'Closed'} variant={isOpen ? 'success' : 'default'} mode={mode} />
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                ~{branch.estimatedPrepMinutes} min
+              </Text>
+            </View>
 
-          <View style={styles.section}>
+            <Badge
+              label={branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
+              variant={branch.isAcceptingPickup ? 'success' : 'danger'}
+              mode={mode}
+            />
+          </Card>
+
+          <Card mode={mode} style={styles.section}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Opening Hours</Text>
             {hoursLines.map((line, i) => (
               <Text key={i} style={[styles.body, { color: theme.textSecondary }]}>
                 {line}
               </Text>
             ))}
-          </View>
+          </Card>
 
-          <Pressable
+          <Button
+            label="Get Directions"
+            variant="outline"
+            mode={mode}
+            iconName="navigate"
             onPress={onGetDirections}
-            accessibilityRole="button"
-            style={[styles.directions, { borderColor: theme.border }]}
-          >
-            <Text style={[styles.link, { color: theme.accent }]}>Get Directions</Text>
-          </Pressable>
+            style={styles.directions}
+          />
 
           {deals.length > 0 ? (
             <View style={styles.section}>
@@ -196,14 +197,13 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.body,
   },
+  infoCard: {
+    gap: Spacing.two,
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-  },
-  statusBadge: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
   },
   section: {
     gap: Spacing.one,
@@ -216,17 +216,9 @@ const styles = StyleSheet.create({
   directions: {
     alignSelf: 'flex-start',
     marginTop: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radii.md,
-    borderWidth: 2,
   },
   dealsList: {
     gap: Spacing.three,
-  },
-  link: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
   },
   message: {
     fontFamily: FontFamily.body.medium,

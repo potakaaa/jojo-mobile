@@ -1,21 +1,13 @@
 import type { PickupBranch } from '@jojopotato/types';
-import { BranchListItem } from '@jojopotato/ui';
+import { BranchListItem, Input } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { ApiBranch, mapApiBranch } from '@/features/branches/api';
 import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -92,17 +84,13 @@ export default function BranchLocatorScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <TextInput
-          style={[
-            styles.search,
-            { backgroundColor: theme.backgroundElement, borderColor: theme.border, color: theme.text },
-          ]}
+        <Input
+          style={styles.search}
           placeholder="Search branches..."
-          placeholderTextColor={theme.textSecondary}
           value={query}
           onChangeText={setQuery}
-          autoCorrect={false}
           autoCapitalize="none"
+          mode={mode}
         />
 
         {isLoading ? (
@@ -173,12 +161,6 @@ const styles = StyleSheet.create({
   search: {
     marginTop: Spacing.three,
     marginBottom: Spacing.three,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radii.md,
-    borderWidth: 2,
-    fontFamily: FontFamily.body.regular,
-    fontSize: TypeScale.body,
   },
   list: {
     gap: Spacing.three,

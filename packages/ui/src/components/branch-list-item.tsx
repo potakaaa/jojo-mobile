@@ -1,8 +1,10 @@
 import type { PickupBranch } from '@jojopotato/types';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
+import { FontFamily, Spacing, TypeScale, Colors, type ThemeMode } from '../theme';
+import { Badge } from './badge';
 import { Button } from './button';
+import { Card } from './card';
 
 export interface BranchListItemProps {
   branch: PickupBranch;
@@ -17,8 +19,11 @@ export interface BranchListItemProps {
  * Full-width branch row for the branch locator list. Purely presentational —
  * the caller pre-computes `isOpen`, `showDistance`, and `isEnabled` (this
  * component does NOT import getIsOpenNow or distanceKm). Renders name, address,
- * optional distance, open/closed badge, pickup-availability text, prep time,
+ * optional distance, open/closed badge, pickup-availability badge, prep time,
  * and an "Order from this branch" CTA that is disabled when `!isEnabled`.
+ *
+ * Composed from the shared primitives: `Card` (row surface), `Badge`
+ * (open/closed + pickup-availability status), `Button` (order CTA).
  */
 export function BranchListItem({
   branch,
@@ -31,17 +36,12 @@ export function BranchListItem({
   const theme = Colors[mode];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+    <Card mode={mode} style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
           {branch.name}
         </Text>
-        <View style={[styles.statusPill, { borderColor: theme.accent }]}>
-          <View
-            style={[styles.statusDot, { backgroundColor: isOpen ? Palette.green : theme.accent }]}
-          />
-          <Text style={[styles.status, { color: theme.accent }]}>{isOpen ? 'Open' : 'Closed'}</Text>
-        </View>
+        <Badge label={isOpen ? 'Open' : 'Closed'} variant={isOpen ? 'success' : 'default'} mode={mode} />
       </View>
 
       <Text style={[styles.address, { color: theme.textSecondary }]} numberOfLines={2}>
@@ -54,9 +54,11 @@ export function BranchListItem({
             {branch.distanceKm.toFixed(1)} km
           </Text>
         ) : null}
-        <Text style={[styles.meta, { color: theme.textSecondary }]}>
-          {branch.isAcceptingPickup ? 'Pickup available' : 'Pickup unavailable'}
-        </Text>
+        <Badge
+          label={branch.isAcceptingPickup ? 'Pickup available' : 'Pickup unavailable'}
+          variant={branch.isAcceptingPickup ? 'success' : 'danger'}
+          mode={mode}
+        />
         <Text style={[styles.meta, { color: theme.textSecondary }]}>
           ~{branch.estimatedPrepMinutes} min
         </Text>
@@ -71,16 +73,13 @@ export function BranchListItem({
           if (isEnabled) onOrderPress?.();
         }}
       />
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Radii.md,
-    borderWidth: 2,
   },
   headerRow: {
     flexDirection: 'row',
@@ -105,24 +104,6 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.caption,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.half,
-    paddingVertical: Spacing.half,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Radii.full,
-    borderWidth: 1.5,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: Radii.full,
-  },
-  status: {
-    fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.caption,
   },
 });
