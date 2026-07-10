@@ -16,20 +16,26 @@ export function useUserLocation(): UserLocation {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (!mounted) return;
-      if (status !== 'granted') {
-        setState({ coords: null, status: 'denied' });
-        return;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (!mounted) return;
+        if (status !== 'granted') {
+          setState({ coords: null, status: 'denied' });
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!mounted) return;
+        setState({
+          coords: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+          status: 'granted',
+        });
+      } catch {
+        // Location services off, no GPS fix, or a permission race — degrade to
+        // the priority-sort path rather than crashing on an uncaught rejection.
+        if (mounted) setState({ coords: null, status: 'denied' });
       }
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (!mounted) return;
-      setState({
-        coords: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-        status: 'granted',
-      });
     })();
     return () => {
       mounted = false;
