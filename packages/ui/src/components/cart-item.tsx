@@ -165,6 +165,10 @@ const styles = StyleSheet.create({
   stepLabel: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.body,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    lineHeight: TypeScale.body,
   },
   removeButton: {
     width: 28,
@@ -180,5 +184,7 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.body,
     minWidth: 20,
     textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 });

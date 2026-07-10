@@ -121,6 +121,9 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   labelSm: {
     fontSize: TypeScale.body,

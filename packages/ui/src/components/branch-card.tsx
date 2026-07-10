@@ -101,10 +101,14 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.caption,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   name: {
     fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.body,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   statusPill: {
     flexDirection: 'row',
@@ -123,5 +127,8 @@ const styles = StyleSheet.create({
   status: {
     fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.caption,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 });
