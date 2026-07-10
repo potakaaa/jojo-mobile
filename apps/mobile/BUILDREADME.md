@@ -69,9 +69,9 @@ Cloud builds run on Expo's servers and return a download link / QR code instead 
 
 ## Where things are defined
 
-| What | Where |
-| --- | --- |
-| Build profiles (`development`/`preview`/`production`) | `apps/mobile/eas.json` |
-| `:local` script implementations | `apps/mobile/package.json` |
-| Root-level passthrough scripts (`mobile:ios:build:...`) | root `package.json` |
-| Output directory gitignore | `apps/mobile/.gitignore` (`builds/`) |
+| What                                                    | Where                                |
+| ------------------------------------------------------- | ------------------------------------ |
+| Build profiles (`development`/`preview`/`production`)   | `apps/mobile/eas.json`               |
+| `:local` script implementations                         | `apps/mobile/package.json`           |
+| Root-level passthrough scripts (`mobile:ios:build:...`) | root `package.json`                  |
+| Output directory gitignore                              | `apps/mobile/.gitignore` (`builds/`) |
