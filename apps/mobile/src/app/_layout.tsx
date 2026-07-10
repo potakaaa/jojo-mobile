@@ -10,10 +10,14 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
+import { BranchProvider } from '@/features/branch/hooks/use-branch';
+import { CartProvider } from '@/features/cart/hooks/use-cart';
+import { queryClient } from '@/lib/query-client';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
 // never flashes system fonts before Fredoka / Plus Jakarta Sans load.
@@ -69,9 +73,15 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BranchProvider>
+            <CartProvider>
+              <RootNavigator />
+            </CartProvider>
+          </BranchProvider>
+        </AuthProvider>
+      </QueryClientProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
   );

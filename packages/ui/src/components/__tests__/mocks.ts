@@ -3,21 +3,24 @@ import type {
   Coupon,
   Deal,
   Flavor,
-  MenuItem,
   PickupBranch,
   PickupTime,
+  Product,
   RewardsAccount,
   RewardsTierProgress,
   Size,
 } from '@jojopotato/types';
 
-export const MOCK_PRODUCT: MenuItem = {
+export const MOCK_PRODUCT: Product = {
   id: 'p1',
-  name: 'Classic Fries',
-  description: 'Crispy golden fries',
-  priceCents: 12000,
   categoryId: 'classic',
-  isAvailable: true,
+  name: 'Classic Fries',
+  slug: 'classic-fries',
+  description: 'Crispy golden fries',
+  imageUrl: null,
+  basePrice: 120,
+  isActive: true,
+  isRewardEligible: false,
 };
 
 export const MOCK_DEAL: Deal = {
@@ -57,8 +60,14 @@ export const MOCK_COUPON: Coupon = {
 };
 
 export const MOCK_CART_ITEM: CartItem = {
-  menuItemId: 'p1',
+  id: 'line-1',
+  productId: 'p1',
+  name: 'Classic Fries',
+  imageUrl: null,
+  basePrice: 120,
+  unitPrice: 140,
   quantity: 2,
+  selectedOptions: [{ optionId: 's1', optionType: 'size', name: 'Large', priceDelta: 20 }],
 };
 
 export const MOCK_FLAVOR: Flavor = { id: 'f1', name: 'Cheese' };

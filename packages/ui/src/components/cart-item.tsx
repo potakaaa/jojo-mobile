@@ -1,52 +1,29 @@
-import type { CartItem as CartItemData, Flavor, MenuItem, Size } from '@jojopotato/types';
-import { formatCurrency } from '@jojopotato/utils';
+import type { CartItem as CartItemData } from '@jojopotato/types';
+import { formatPricePHP } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
 
 export interface CartItemProps {
+  /** A cart-line snapshot (self-contained: name, image, unit price, options, quantity). */
   item: CartItemData;
-  product: MenuItem;
-  flavor?: Flavor | string;
-  size?: Size | string;
   onIncrement?: () => void;
   onDecrement?: () => void;
   mode?: ThemeMode;
   style?: ViewStyle;
 }
 
-function labelOf(value: Flavor | Size | string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === 'string') return value;
-  return 'name' in value ? value.name : value.label;
-}
-
-function sizeModifierCents(size: Size | string | undefined): number {
-  if (size === undefined || typeof size === 'string') return 0;
-  return size.priceModifierCents ?? 0;
-}
-
 /**
- * Denormalized cart-line row. Computes the line total from the product unit
- * price, quantity, and any size price modifier, and renders quantity stepper
- * affordances (visual-only unless `onIncrement`/`onDecrement` are supplied).
+ * Cart-line row. Renders purely from the add-time `CartItem` snapshot — product
+ * name, image, selected-option summary, and line total (unit price x quantity) —
+ * plus quantity stepper affordances (visual-only unless `onIncrement`/
+ * `onDecrement` are supplied).
  */
-export function CartItem({
-  item,
-  product,
-  flavor,
-  size,
-  onIncrement,
-  onDecrement,
-  mode = 'light',
-  style,
-}: CartItemProps) {
+export function CartItem({ item, onIncrement, onDecrement, mode = 'light', style }: CartItemProps) {
   const theme = Colors[mode];
-  const lineTotalCents = (product.priceCents + sizeModifierCents(size)) * item.quantity;
-  const flavorLabel = labelOf(flavor);
-  const sizeLabel = labelOf(size);
-  const variantParts = [flavorLabel, sizeLabel].filter(Boolean).join(' • ');
+  const lineTotal = item.unitPrice * item.quantity;
+  const variantParts = item.selectedOptions.map((option) => option.name).join(' • ');
 
   return (
     <View
@@ -56,21 +33,21 @@ export function CartItem({
         style,
       ]}
     >
-      {product.imageUrl ? (
-        <Image source={{ uri: product.imageUrl }} style={styles.image} contentFit="cover" />
+      {item.imageUrl ? (
+        <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
       ) : (
         <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
       )}
       <View style={styles.body}>
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
-          {product.name}
+          {item.name}
         </Text>
         {variantParts ? (
           <Text style={[styles.variant, { color: theme.textSecondary }]} numberOfLines={1}>
             {variantParts}
           </Text>
         ) : null}
-        <Text style={[styles.total, { color: theme.text }]}>{formatCurrency(lineTotalCents)}</Text>
+        <Text style={[styles.total, { color: theme.text }]}>{formatPricePHP(lineTotal)}</Text>
       </View>
       <View style={styles.stepper}>
         <Pressable

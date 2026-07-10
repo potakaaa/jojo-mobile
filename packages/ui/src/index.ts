@@ -16,4 +16,5 @@ export * from './components/coupon-card';
 export * from './components/cart-item';
 export * from './components/flavor-selector';
 export * from './components/size-selector';
+export * from './components/addon-selector';
 export * from './components/pickup-time-badge';

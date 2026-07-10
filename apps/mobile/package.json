@@ -23,6 +23,7 @@
     "@jojopotato/types": "workspace:*",
     "@jojopotato/ui": "workspace:*",
     "@jojopotato/utils": "workspace:*",
+    "@tanstack/react-query": "^5.62.0",
     "better-auth": "^1.6.23",
     "expo": "~57.0.4",
     "expo-constants": "~57.0.3",
