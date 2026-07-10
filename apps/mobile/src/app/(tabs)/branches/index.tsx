@@ -1,5 +1,5 @@
 import type { PickupBranch } from '@jojopotato/types';
-import { BranchListItem, Input } from '@jojopotato/ui';
+import { BranchListItem, Button, Input } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -9,6 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { ApiBranch, mapApiBranch } from '@/features/branches/api';
+import { BranchMap } from '@/features/branches/components/branch-map';
 import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -33,6 +34,7 @@ export default function BranchLocatorScreen() {
   const [query, setQuery] = useState('');
   const [isFetching, setIsFetching] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   useEffect(() => {
     let mounted = true;
@@ -93,6 +95,25 @@ export default function BranchLocatorScreen() {
           mode={mode}
         />
 
+        {Platform.OS !== 'web' && (
+          <View style={styles.toggleRow}>
+            <Button
+              label="List"
+              variant={viewMode === 'list' ? 'primary' : 'outline'}
+              iconName="list-outline"
+              onPress={() => setViewMode('list')}
+              mode={mode}
+            />
+            <Button
+              label="Map"
+              variant={viewMode === 'map' ? 'primary' : 'outline'}
+              iconName="map-outline"
+              onPress={() => setViewMode('map')}
+              mode={mode}
+            />
+          </View>
+        )}
+
         {isLoading ? (
           <View style={styles.centered}>
             <ActivityIndicator color={theme.accent} />
@@ -109,6 +130,19 @@ export default function BranchLocatorScreen() {
               No branches match your search
             </Text>
           </View>
+        ) : viewMode === 'map' && Platform.OS !== 'web' ? (
+          <BranchMap
+            branches={filteredBranches}
+            coords={coords}
+            onBranchPress={(id) => {
+              setSelectedBranch(id);
+              router.push({
+                pathname: '/(tabs)/branches/[branchId]',
+                params: { branchId: id },
+              });
+            }}
+            mode={mode}
+          />
         ) : (
           <FlatList
             data={filteredBranches}
@@ -161,6 +195,12 @@ const styles = StyleSheet.create({
   search: {
     marginTop: Spacing.three,
     marginBottom: Spacing.three,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginBottom: Spacing.three,
+    justifyContent: 'flex-end',
   },
   list: {
     gap: Spacing.three,
