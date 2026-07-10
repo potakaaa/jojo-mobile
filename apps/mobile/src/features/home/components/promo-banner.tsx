@@ -2,8 +2,8 @@ import { Button } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { PRODUCT_TRIO_IMAGE } from '@/constants/images';
 import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
-import { PRODUCT_TRIO_IMAGE } from '../product-images';
 
 export interface PromoBannerProps {
   onPress?: () => void;

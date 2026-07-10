@@ -7,6 +7,7 @@ import { toNodeHandler } from 'better-auth/node';
 import express from 'express';
 
 import { auth } from './lib/auth';
+import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { branchesRouter } from './routes/branches';
 import { menuRouter } from './routes/menu';
 
@@ -43,6 +44,45 @@ app.get('/magic-link/native', (req, res) => {
   res.redirect(`${scheme}:///magic-link?token=${encodeURIComponent(token)}`);
 });
 
+// DEV-ONLY auto-login. Registered ONLY when auto-login is enabled, so the route
+// is absent (404 by non-existence) otherwise — the app then falls through to the
+// normal login screen. It takes NO parameters: it mints a real magic-link token
+// for the single server-configured `DEV_LOGIN_EMAIL` and returns it, so a caller
+// can never point it at another account. The token is verified by the app
+// THROUGH authClient (a plain fetch can't establish the session), which is why
+// we return a token rather than a Set-Cookie.
+if (DEV_AUTO_LOGIN_ENABLED) {
+  app.post('/dev/session', async (_req, res) => {
+    try {
+      // Ask better-auth to issue a magic link for the fixed dev account. This
+      // triggers sendMagicLink, which stores the token in the dev token map.
+      await auth.api.signInMagicLink({
+        body: { email: DEV_LOGIN_EMAIL, callbackURL: 'jojopotato://' },
+        // signInMagicLink is declared `requireHeaders: true`; the token is
+        // captured via the sendMagicLink side-effect, so an empty header set is
+        // all this server-to-server call needs.
+        headers: {},
+      });
+
+      const token = takeDevLoginToken(DEV_LOGIN_EMAIL);
+      if (!token) {
+        res.status(500).json({ error: 'dev auto-login failed to mint a token' });
+        return;
+      }
+
+      res.status(200).json({ token });
+    } catch {
+      // Never leak a stack trace in the response body.
+      res.status(500).json({ error: 'dev auto-login failed to mint a token' });
+    }
+  });
+}
+
 app.listen(port, () => {
   console.log(`jojopotato-api listening on port ${port}`);
+  if (DEV_AUTO_LOGIN_ENABLED) {
+    console.warn(
+      `⚠  DEV AUTO-LOGIN ENABLED — POST /dev/session signs in ${DEV_LOGIN_EMAIL}. Never expose this server publicly.`,
+    );
+  }
 });
