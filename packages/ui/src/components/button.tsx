@@ -8,7 +8,16 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Shadows, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  Palette,
+  Radii,
+  Shadows,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 
 export type ButtonVariant = 'primary' | 'accent' | 'ink' | 'outline';
 
@@ -16,6 +25,7 @@ export interface ButtonProps {
   label: string;
   onPress: () => void;
   variant?: ButtonVariant;
+  size?: 'md' | 'sm';
   disabled?: boolean;
   mode?: ThemeMode;
   style?: ViewStyle;
@@ -41,6 +51,7 @@ export function Button({
   label,
   onPress,
   variant = 'primary',
+  size = 'md',
   disabled = false,
   mode = 'light',
   style,
@@ -66,6 +77,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        size === 'sm' && styles.buttonSm,
         { backgroundColor: VARIANT_BACKGROUND[variant], borderColor },
         variant !== 'outline' && Shadows.offsetSm,
         pressed && styles.pressed,
@@ -78,7 +90,9 @@ export function Button({
       ) : iconName ? (
         <Ionicons name={iconName} size={20} color={labelColor} />
       ) : null}
-      <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
+      <Text style={[styles.label, size === 'sm' && styles.labelSm, { color: labelColor }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -94,6 +108,10 @@ const styles = StyleSheet.create({
     borderRadius: Radii.full,
     borderWidth: 2,
   },
+  buttonSm: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
   pressed: {
     transform: [{ translateX: 2 }, { translateY: 2 }],
   },
@@ -103,5 +121,8 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+  },
+  labelSm: {
+    fontSize: TypeScale.body,
   },
 });

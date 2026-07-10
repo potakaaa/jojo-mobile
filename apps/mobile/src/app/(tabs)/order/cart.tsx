@@ -7,7 +7,6 @@ import {
   CouponCard,
   EmptyState,
   Input,
-  PickupTimeBadge,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -21,7 +20,7 @@ import {
   MOCK_OTHER_BRANCH,
 } from '@/features/cart/mock-cart';
 import { MOCK_PRODUCTS } from '@/features/home/mock-home';
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -154,10 +153,16 @@ export default function CartScreen() {
                 <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
                   Estimated pickup
                 </Text>
-                <PickupTimeBadge pickupTime={pickupTime} mode={mode} />
+                <Text style={[styles.pickupValue, { color: theme.text }]}>{pickupTime.label}</Text>
               </View>
 
-              <View style={styles.items}>
+              <View
+                style={[
+                  styles.itemsCard,
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>Items</Text>
                 {cart.items.map((line) => (
                   <CartItem
                     key={line.lineId}
@@ -171,6 +176,7 @@ export default function CartScreen() {
                     onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
                     onRemove={() => removeItem(line.lineId)}
                     mode={mode}
+                    style={styles.cartItemFlat}
                   />
                 ))}
               </View>
@@ -207,7 +213,7 @@ export default function CartScreen() {
                         mode={mode}
                       />
                     </View>
-                    <Button label="Apply" onPress={handleApplyCoupon} mode={mode} />
+                    <Button label="Apply" size="sm" onPress={handleApplyCoupon} mode={mode} />
                   </View>
                 )}
               </View>
@@ -274,8 +280,21 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
   },
-  items: {
+  pickupValue: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+  },
+  itemsCard: {
     gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 2,
+    borderRadius: Radii.md,
+  },
+  cartItemFlat: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
   },
   couponSlot: {
     gap: Spacing.two,
@@ -286,7 +305,7 @@ const styles = StyleSheet.create({
   },
   couponEntry: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   couponInput: {
