@@ -41,7 +41,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <HomeHeader />
-          <BranchCard branch={MOCK_BRANCH} />
+          <BranchCard branch={MOCK_BRANCH} isOpen={false} />
           <PromoBanner />
           <RewardProgressCard rewards={MOCK_REWARDS} />
           <CategorySelector categories={MOCK_CATEGORIES} />

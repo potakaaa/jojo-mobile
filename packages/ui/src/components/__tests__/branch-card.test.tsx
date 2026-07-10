@@ -4,5 +4,5 @@ import { BranchCard } from '../branch-card';
 import { MOCK_BRANCH } from './mocks';
 
 test('renders BranchCard without throwing', () => {
-  render(<BranchCard branch={MOCK_BRANCH} />);
+  render(<BranchCard branch={MOCK_BRANCH} isOpen />);
 });

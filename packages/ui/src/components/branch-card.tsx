@@ -7,6 +7,7 @@ import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode 
 
 export interface BranchCardProps {
   branch: PickupBranch;
+  isOpen: boolean; // was derived from branch.isOpen, now passed explicitly
   onPress?: () => void;
   mode?: ThemeMode;
 }
@@ -17,7 +18,7 @@ export interface BranchCardProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchCard({ branch, onPress, mode = 'light' }: BranchCardProps) {
+export function BranchCard({ branch, isOpen, onPress, mode = 'light' }: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
 
@@ -49,11 +50,11 @@ export function BranchCard({ branch, onPress, mode = 'light' }: BranchCardProps)
         <View
           style={[
             styles.statusDot,
-            { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
+            { backgroundColor: isOpen ? Palette.green : theme.accent },
           ]}
         />
         <Text style={[styles.status, { color: theme.accent }]}>
-          {branch.isOpen ? 'Open' : 'Closed'}
+          {isOpen ? 'Open' : 'Closed'}
         </Text>
       </View>
     </Pressable>

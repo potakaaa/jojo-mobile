@@ -8,6 +8,7 @@ export * from './components/input';
 export * from './components/product-card';
 export * from './components/deal-card';
 export * from './components/branch-card';
+export * from './components/branch-list-item';
 export * from './components/reward-progress-card';
 export * from './components/star-progress-bar';
 export * from './components/order-status-badge';

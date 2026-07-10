@@ -17,6 +17,7 @@ export type SeedBranch = {
   is_active: boolean;
   is_accepting_pickup: boolean;
   estimated_prep_minutes: number;
+  priority: number;
 };
 
 export const seedBranches: SeedBranch[] = [
@@ -39,6 +40,7 @@ export const seedBranches: SeedBranch[] = [
     is_active: true,
     is_accepting_pickup: true,
     estimated_prep_minutes: 15,
+    priority: 1,
   },
   {
     // Closed branch — whole branch offline.
@@ -60,6 +62,7 @@ export const seedBranches: SeedBranch[] = [
     is_active: false,
     is_accepting_pickup: true,
     estimated_prep_minutes: 15,
+    priority: 3,
   },
   {
     // Open branch, but pickup paused (e.g. kitchen backlog) — orthogonal to is_active.
@@ -81,6 +84,7 @@ export const seedBranches: SeedBranch[] = [
     is_active: true,
     is_accepting_pickup: false,
     estimated_prep_minutes: 20,
+    priority: 2,
   },
 ];
 

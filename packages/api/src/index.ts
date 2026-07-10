@@ -4,8 +4,11 @@
 import 'dotenv/config';
 
 import { toNodeHandler } from 'better-auth/node';
+import { asc, eq } from 'drizzle-orm';
 import express from 'express';
 
+import { db } from './db/client';
+import { branches } from './db/schema/index';
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 
@@ -23,6 +26,24 @@ app.use(express.json());
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
+});
+
+// Public branch locator endpoint. Returns only active branches, ordered by
+// priority ascending (server-side fallback ordering; the mobile client re-sorts
+// by distance when location is granted). No auth required — same style as `GET /`.
+// `latitude`/`longitude` come back as strings (pg numeric); the mobile mapping
+// layer converts them to numbers.
+app.get('/api/branches', async (_req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.is_active, true))
+      .orderBy(asc(branches.priority));
+    res.json({ branches: rows });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch branches' });
+  }
 });
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not

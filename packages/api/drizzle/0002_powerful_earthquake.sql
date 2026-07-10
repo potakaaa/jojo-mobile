@@ -1,0 +1,1 @@
+ALTER TABLE "branches" ADD COLUMN "priority" integer DEFAULT 0 NOT NULL;

@@ -77,19 +77,31 @@ const SAMPLE_DEAL: Deal = {
 const SAMPLE_BRANCH: PickupBranch = {
   id: 'branch-sm-north',
   name: 'SM North EDSA',
+  slug: 'sm-north-edsa',
   address: 'North Ave cor. EDSA, Quezon City',
   latitude: 14.6564,
   longitude: 121.03,
-  isOpen: true,
+  phone: '+63 2 8888 0002',
+  openingHours: JSON.stringify({ mon: { open: '10:00', close: '22:00' } }),
+  isActive: true,
+  isAcceptingPickup: true,
+  estimatedPrepMinutes: 15,
+  priority: 1,
 };
 
 const SAMPLE_BRANCH_CLOSED: PickupBranch = {
   id: 'branch-moa',
   name: 'SM Mall of Asia',
+  slug: 'sm-mall-of-asia',
   address: 'Seaside Blvd, Pasay City',
   latitude: 14.535,
   longitude: 120.982,
-  isOpen: false,
+  phone: '+63 2 8888 0003',
+  openingHours: JSON.stringify({ mon: { open: '10:00', close: '22:00' } }),
+  isActive: true,
+  isAcceptingPickup: false,
+  estimatedPrepMinutes: 20,
+  priority: 2,
 };
 
 const SAMPLE_REWARDS: RewardsAccount = {
@@ -254,8 +266,12 @@ export default function ComponentShowcaseScreen() {
           </Section>
 
           <Section title="BranchCard">
-            <BranchCard branch={SAMPLE_BRANCH} onPress={log('BranchCard open')} />
-            <BranchCard branch={SAMPLE_BRANCH_CLOSED} onPress={log('BranchCard closed')} />
+            <BranchCard branch={SAMPLE_BRANCH} isOpen onPress={log('BranchCard open')} />
+            <BranchCard
+              branch={SAMPLE_BRANCH_CLOSED}
+              isOpen={false}
+              onPress={log('BranchCard closed')}
+            />
           </Section>
 
           <Section title="RewardProgressCard">

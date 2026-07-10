@@ -12,7 +12,8 @@
       "bundleIdentifier": "ph.jojopotato.mobile",
       "supportsTablet": false,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Jojo Potato uses your location to show you the nearest branches."
       }
     },
     "android": {
@@ -41,7 +42,13 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Jojo Potato uses your location to show you the nearest branches."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

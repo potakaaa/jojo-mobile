@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
+import { SelectedBranchProvider } from '@/features/branches/hooks/use-selected-branch';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
 // never flashes system fonts before Fredoka / Plus Jakarta Sans load.
@@ -70,7 +71,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <RootNavigator />
+        <SelectedBranchProvider>
+          <RootNavigator />
+        </SelectedBranchProvider>
       </AuthProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
