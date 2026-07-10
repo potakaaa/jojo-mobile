@@ -1,4 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import {
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -44,29 +47,48 @@ export function Input({
   autoCapitalize,
 }: InputProps) {
   const theme = Colors[mode];
+  const [hidden, setHidden] = useState(true);
 
   return (
     <View style={[styles.wrap, style]}>
       {label ? <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text> : null}
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
-        editable={editable}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        autoCapitalize={autoCapitalize}
-        accessibilityLabel={label}
-        style={[
-          styles.input,
-          {
-            backgroundColor: theme.backgroundElement,
-            borderColor: error ? theme.accent : theme.border,
-            color: theme.text,
-          },
-        ]}
-      />
+      <View style={styles.field}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textSecondary}
+          editable={editable}
+          keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry && hidden}
+          autoCapitalize={autoCapitalize}
+          accessibilityLabel={label}
+          style={[
+            styles.input,
+            secureTextEntry ? styles.inputWithToggle : null,
+            {
+              backgroundColor: theme.backgroundElement,
+              borderColor: error ? theme.accent : theme.border,
+              color: theme.text,
+            },
+          ]}
+        />
+        {secureTextEntry ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
+            hitSlop={Spacing.two}
+            onPress={() => setHidden((h) => !h)}
+            style={styles.toggle}
+          >
+            <Ionicons
+              name={hidden ? 'eye' : 'eye-off'}
+              size={20}
+              color={theme.textSecondary}
+            />
+          </Pressable>
+        ) : null}
+      </View>
       {error ? <Text style={[styles.error, { color: theme.accent }]}>{error}</Text> : null}
     </View>
   );
@@ -80,6 +102,10 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.caption,
   },
+  field: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
   input: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
@@ -87,6 +113,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.body,
+  },
+  inputWithToggle: {
+    paddingRight: Spacing.six,
+  },
+  toggle: {
+    position: 'absolute',
+    right: Spacing.three,
   },
   error: {
     fontFamily: FontFamily.body.medium,
