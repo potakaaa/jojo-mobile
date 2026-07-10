@@ -4,12 +4,15 @@ import {
   createElement,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
 import { authClient } from '@/features/auth/lib/auth-client';
+import { tryDevAutoLogin } from '@/features/auth/lib/dev-auto-login';
 import * as Linking from 'expo-linking';
 
 /** Deep-link the magic-link / OAuth flow redirects back into. */
@@ -56,6 +59,17 @@ function toResult(error: { message?: string } | null | undefined): SignInResult 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data, isPending } = authClient.useSession();
   const [hasOnboarded, setHasOnboarded] = useState(false);
+
+  // DEV-ONLY boot attempt: no-ops in production and when `/dev/session` is not
+  // registered (plain `pnpm dev` → 404). The `useRef` latch guarantees at most
+  // one attempt, so a failure can never loop. On success the session flips and
+  // `Stack.Protected` swaps to `(tabs)`, so the login screen is skipped.
+  const autoLoginAttempted = useRef(false);
+  useEffect(() => {
+    if (!__DEV__ || isPending || data || autoLoginAttempted.current) return;
+    autoLoginAttempted.current = true;
+    void tryDevAutoLogin();
+  }, [isPending, data]);
 
   const signIn = useCallback(async (input: SignInInput): Promise<SignInResult> => {
     switch (input.method) {
