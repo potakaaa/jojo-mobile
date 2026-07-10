@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
-import { useAuthSession } from '@/features/auth/hooks/use-auth-session';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -15,7 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export default function SplashRoute() {
   const theme = useTheme();
-  const { hasOnboarded } = useAuthSession();
+  const { hasOnboarded } = useAuth();
 
   useEffect(() => {
     const timer = setTimeout(() => {

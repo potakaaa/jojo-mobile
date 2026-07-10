@@ -13,21 +13,24 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { AuthSessionProvider, useAuthSession } from '@/features/auth/hooks/use-auth-session';
+import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
 // never flashes system fonts before Fredoka / Plus Jakarta Sans load.
 SplashScreen.preventAutoHideAsync();
 
 /**
- * Reads the mocked auth-state seam and gates the authenticated `(tabs)` shell
- * against the public `(auth)` stack. Uses `Stack.Protected` guards (stable in
- * the installed `expo-router` version) so only the matching group is mounted;
- * navigation between groups is driven purely by the auth `status` flipping.
+ * Reads the real better-auth session seam and gates the authenticated `(tabs)`
+ * shell against the public `(auth)` stack. Uses `Stack.Protected` guards
+ * (stable in the installed `expo-router` version) so only the matching group is
+ * mounted; navigation between groups is driven purely by the session becoming
+ * (un)authenticated. While the persisted session is still being restored
+ * (`isLoading`), keep the user in the public stack — the in-stack Splash screen
+ * covers the brief cold-start beat.
  */
 function RootNavigator() {
-  const { status } = useAuthSession();
-  const isAuthenticated = status === 'authenticated';
+  const { user, isLoading } = useAuth();
+  const isAuthenticated = !isLoading && user !== null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -66,9 +69,9 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AuthSessionProvider>
+      <AuthProvider>
         <RootNavigator />
-      </AuthSessionProvider>
+      </AuthProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
   );

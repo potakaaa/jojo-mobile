@@ -1,4 +1,12 @@
-import { Pressable, type PressableProps, StyleSheet, Text, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  ActivityIndicator,
+  Pressable,
+  type PressableProps,
+  StyleSheet,
+  Text,
+  type ViewStyle,
+} from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Shadows, TypeScale, type ThemeMode } from '../theme';
 
@@ -11,6 +19,10 @@ export interface ButtonProps {
   disabled?: boolean;
   mode?: ThemeMode;
   style?: ViewStyle;
+  /** Optional Ionicons glyph rendered before the label. */
+  iconName?: keyof typeof Ionicons.glyphMap;
+  /** Show a spinner in place of the icon and disable interaction. */
+  loading?: boolean;
 }
 
 const VARIANT_BACKGROUND: Record<ButtonVariant, string> = {
@@ -32,9 +44,15 @@ export function Button({
   disabled = false,
   mode = 'light',
   style,
+  iconName,
+  loading = false,
 }: ButtonProps) {
   const theme = Colors[mode];
-  const accessibilityState: PressableProps['accessibilityState'] = { disabled };
+  const isDisabled = disabled || loading;
+  const accessibilityState: PressableProps['accessibilityState'] = {
+    disabled: isDisabled,
+    busy: loading,
+  };
 
   const labelColor =
     variant === 'primary' ? Palette.ink : variant === 'outline' ? theme.text : Palette.cream;
@@ -44,17 +62,22 @@ export function Button({
     <Pressable
       accessibilityRole="button"
       accessibilityState={accessibilityState}
-      disabled={disabled}
+      disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: VARIANT_BACKGROUND[variant], borderColor },
         variant !== 'outline' && Shadows.offsetSm,
         pressed && styles.pressed,
-        disabled && styles.disabled,
+        isDisabled && styles.disabled,
         style,
       ]}
     >
+      {loading ? (
+        <ActivityIndicator size="small" color={labelColor} />
+      ) : iconName ? (
+        <Ionicons name={iconName} size={20} color={labelColor} />
+      ) : null}
       <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
     </Pressable>
   );
@@ -62,8 +85,10 @@ export function Button({
 
 const styles = StyleSheet.create({
   button: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: Radii.full,

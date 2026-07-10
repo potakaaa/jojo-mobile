@@ -6,7 +6,15 @@
       "cache": false,
       "persistent": true
     },
+    "dev:bypass": {
+      "cache": false,
+      "persistent": true
+    },
     "dev:tunnel": {
+      "cache": false,
+      "persistent": true
+    },
+    "dev:ngrok": {
       "cache": false,
       "persistent": true
     },
@@ -39,6 +47,15 @@
     "test": {
       "cache": false,
       "dependsOn": ["^build"]
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
     },
     "clean": {
       "cache": false

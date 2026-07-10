@@ -1,14 +1,14 @@
 ---
 name: context:all-tests
-description: "Test runner selection, commands, and verification order — no runner configured yet"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright
+description: "Test runner selection, commands, and verification order — vitest now live in packages/api"
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth
 related: []
-date: 08-07-26
+date: 09-07-26
 ---
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -57,22 +57,29 @@ Use this file when you need to:
 
 ## Quick Decision Guide
 
-### There is no test runner configured yet
+### `packages/api` now has Vitest — `apps/mobile` and the other packages still do not
 
-No `package.json` in this repo (root, `apps/mobile`, or any `packages/*`) declares Jest, Vitest,
-Detox, Playwright, or any other test runner. `grep -r "jest\|vitest" **/package.json` returns
-nothing outside `node_modules`.
+`packages/api` declares `vitest` (`"test": "vitest run"`) and has real coverage:
+`src/db/schema/__tests__/smoke.test.ts` plus `src/lib/__tests__/auth.integration.test.ts` (5
+integration tests covering better-auth's email/password, phone-OTP-stub, magic-link, Google-OAuth
+config, and the `role` `input:false` guard — run against a real local Postgres via
+`docker compose up -d` + `db:migrate`, same DB the app itself uses). No other `package.json`
+(root, `apps/mobile`, `packages/{types,ui,utils}`) declares Jest, Vitest, Detox, Playwright, or any
+other runner yet.
 
-Until a runner is chosen, "verification" for this repo means:
+Until a mobile-side (RN) runner is chosen, "verification" for `apps/mobile` and the other packages
+means:
 
 1. `pnpm typecheck` (tsc --noEmit per package, via turbo)
 2. `pnpm lint` (ESLint flat config per package, via turbo)
 3. manual verification in the Expo app (`pnpm ios` / `pnpm android` / `pnpm web`)
 
-When a plan introduces real logic worth unit-testing (e.g. cart price calculation, currency
-formatting in `packages/utils`), the plan should explicitly propose adding a test runner
-(Vitest is the natural fit for the TS-only packages; Jest via `jest-expo` or Detox/Maestro for
-RN component or e2e coverage) rather than assuming one already exists.
+For `packages/api`, add `pnpm --filter @jojopotato/api test` (vitest) to the above. When a plan
+introduces real logic worth unit-testing elsewhere (e.g. cart price calculation, currency
+formatting in `packages/utils`, or a mobile-side `useAuth()` hook), the plan should explicitly
+propose adding a runner for that surface (Vitest for TS-only packages — already proven in
+`packages/api`; Jest via `jest-expo` or Detox/Maestro for RN component or e2e coverage) rather than
+assuming one already exists.
 
 ## Default Verification Order
 
@@ -93,7 +100,8 @@ Unless the task clearly needs a different path:
 | `apps/mobile` | tsc | `pnpm --filter @jojopotato/mobile typecheck` | single-package typecheck |
 | `apps/mobile` | eslint | `pnpm --filter @jojopotato/mobile lint` | single-package lint |
 | `packages/{types,ui,utils}` | tsc | `pnpm --filter @jojopotato/{types,ui,utils} typecheck` | single-package typecheck |
-| (none) | (no test runner configured) | -- | see Known Gaps |
+| `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
+| `apps/mobile` (unit/component) | (no test runner configured) | -- | see Known Gaps |
 
 ## Debugging Quick Reference
 
@@ -103,6 +111,7 @@ Unless the task clearly needs a different path:
 
 ## Known Gaps
 
-- **No test runner configured at all** — no Jest/Vitest/Detox/Playwright in any `package.json`. This is expected for a fresh skeleton repo but should be flagged in any plan that adds real business logic (cart math, pricing, auth flows) without also proposing a test runner.
-- **No CI pipeline** — no `.github/workflows/`, so `typecheck`/`lint` are not automatically enforced on PRs yet.
-- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app.
+- **No mobile-side (RN) test runner** — `apps/mobile` and `packages/{types,ui,utils}` still have no Jest/Vitest/Detox/Playwright. `packages/api` is the one exception (Vitest, since the `db-schema` plan; extended with auth integration tests by `wire-better-auth`). Flag in any plan that adds real business logic to the mobile app or shared packages (cart math, pricing, a `useAuth()` hook) without also proposing a runner for that surface.
+- **No automated coverage for `apps/mobile`'s `useAuth()` hook** — the better-auth server integration is tested (5 vitest cases in `packages/api`), but the mobile consumption side (`src/features/auth/hooks/use-auth.ts`, `src/features/auth/lib/auth-client.ts`) has no automated test, consistent with the mobile-side runner gap above. Manual/simulator verification (sign-up/login, phone OTP, Google button, magic-link deep link, session persistence across restart, logout) is still required — see backlog note `process/features/auth-accounts/backlog/wire-better-auth-hook-test-coverage_NOTE_09-07-26.md`.
+- **No CI pipeline** — no `.github/workflows/`, so `typecheck`/`lint`/`packages/api`'s vitest suite are not automatically enforced on PRs yet.
+- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app; see `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md` (navigation-focused, pre-dates auth; auth flows would be additional scenarios for the same future harness).

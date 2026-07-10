@@ -1,6 +1,7 @@
 export * from './theme';
 export * from './components/brand-wordmark';
 export * from './components/button';
+export * from './components/google-button';
 export * from './components/card';
 export * from './components/badge';
 export * from './components/input';
