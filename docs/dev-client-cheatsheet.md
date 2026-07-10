@@ -114,6 +114,8 @@ so the *client* stores the session cookie. See
 `process/features/auth-accounts/backlog/wire-better-auth-magic-link-expo-caveat_NOTE_09-07-26.md`
 for why the default better-auth flow doesn't work on Expo.
 
+> **Tip:** to skip the login screen entirely in development, see [Dev Auto-Login](./dev-auto-login.md).
+
 ## Verification commands
 
 ```bash
