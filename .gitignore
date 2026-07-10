@@ -36,9 +36,12 @@ yarn-error.*
 pnpm-debug.log*
 
 # env
+# ignore every .env variant (.env, .env.local, .env.development, .env.production, .env.*.local, ...)
+# but keep the tracked .env.example templates. The negation MUST come after .env.* or the
+# templates would be ignored.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # editors / OS
 .DS_Store
