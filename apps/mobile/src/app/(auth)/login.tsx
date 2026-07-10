@@ -167,7 +167,11 @@ export default function LoginRoute() {
               Phone OTP is implemented (`(auth)/phone-otp.tsx`) and still routed, but is
               intentionally not linked here: SMS delivery is a server-side stub that logs
               the code instead of texting it. Restore this button once an SMS vendor is
-              wired up.
+              wired up. Restoring it also needs the imperative `router`: this file currently
+              imports only `Link` from expo-router, so add `router` to that import
+              (`import { Link, router } from 'expo-router';` — the repo's convention, per
+              onboarding.tsx; `useRouter()` is an alternative) or the `router.push` call below
+              throws `ReferenceError: router is not defined`.
 
               <Button
                 mode={mode}
