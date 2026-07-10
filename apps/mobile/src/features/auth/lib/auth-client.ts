@@ -20,6 +20,12 @@ import { env } from '@/config/env';
  */
 export const authClient = createAuthClient({
   baseURL: env.apiUrl,
+  // Skip free-tier ngrok's HTML browser-warning interstitial so API responses stay JSON.
+  fetchOptions: {
+    headers: {
+      'ngrok-skip-browser-warning': 'true',
+    },
+  },
   plugins: [
     expoClient({
       scheme: 'jojopotato',
