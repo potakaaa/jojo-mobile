@@ -6,6 +6,7 @@ import { Resend } from 'resend';
 
 import { db } from '../db/client';
 import * as schema from '../db/schema/index';
+import { storeDevLoginToken } from './dev-auto-login';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -95,6 +96,11 @@ export const auth = betterAuth({
       // verification through its own authClient, so the expo client stores the
       // session cookie in SecureStore itself.
       sendMagicLink: async ({ email, token }) => {
+        // Remember the token for the dev auto-login endpoint. No-op unless
+        // auto-login is enabled, so the normal delivery path below is never
+        // suppressed.
+        storeDevLoginToken(email, token);
+
         const appUrl = `${process.env.BETTER_AUTH_URL}/magic-link/native?token=${encodeURIComponent(token)}`;
         if (!resend) {
           console.log(`[auth] magic link for ${email} (RESEND_API_KEY unset): ${appUrl}`);
