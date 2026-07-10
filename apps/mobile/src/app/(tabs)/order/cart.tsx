@@ -147,14 +147,20 @@ export default function CartScreen() {
               contentContainerStyle={styles.content}
               showsVerticalScrollIndicator={false}
             >
-              <BranchCard branch={branch} mode={mode} />
-
-              <View style={styles.pickupRow}>
-                <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
-                  Estimated pickup
-                </Text>
-                <Text style={[styles.pickupValue, { color: theme.text }]}>{pickupTime.label}</Text>
-              </View>
+              <BranchCard
+                branch={branch}
+                mode={mode}
+                footer={
+                  <View style={styles.pickupRow}>
+                    <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
+                      Estimated pickup
+                    </Text>
+                    <Text style={[styles.pickupValue, { color: theme.text }]}>
+                      {pickupTime.label}
+                    </Text>
+                  </View>
+                }
+              />
 
               <View
                 style={[

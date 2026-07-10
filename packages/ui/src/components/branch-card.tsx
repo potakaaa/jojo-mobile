@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { PickupBranch } from '@jojopotato/types';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
@@ -9,6 +9,7 @@ export interface BranchCardProps {
   branch: PickupBranch;
   onPress?: () => void;
   mode?: ThemeMode;
+  footer?: ReactNode;
 }
 
 /**
@@ -17,7 +18,7 @@ export interface BranchCardProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchCard({ branch, onPress, mode = 'light' }: BranchCardProps) {
+export function BranchCard({ branch, onPress, mode = 'light', footer }: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
 
@@ -36,40 +37,54 @@ export function BranchCard({ branch, onPress, mode = 'light' }: BranchCardProps)
         },
       ]}
     >
-      <View style={[styles.pin, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}>
-        <Ionicons name="location" size={18} color={Palette.ink} />
+      <View style={styles.headerRow}>
+        <View style={[styles.pin, { backgroundColor: Palette.jyellow, borderColor: theme.border }]}>
+          <Ionicons name="location" size={18} color={Palette.ink} />
+        </View>
+        <View style={styles.textColumn}>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Pickup from</Text>
+          <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+            {branch.name}
+          </Text>
+        </View>
+        <View style={[styles.statusPill, { borderColor: theme.accent }]}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
+            ]}
+          />
+          <Text style={[styles.status, { color: theme.accent }]}>
+            {branch.isOpen ? 'Open' : 'Closed'}
+          </Text>
+        </View>
       </View>
-      <View style={styles.textColumn}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Pickup from</Text>
-        <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
-          {branch.name}
-        </Text>
-      </View>
-      <View style={[styles.statusPill, { borderColor: theme.accent }]}>
-        <View
-          style={[
-            styles.statusDot,
-            { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
-          ]}
-        />
-        <Text style={[styles.status, { color: theme.accent }]}>
-          {branch.isOpen ? 'Open' : 'Closed'}
-        </Text>
-      </View>
+      {footer ? (
+        <>
+          <View style={[styles.divider, { borderColor: theme.border }]} />
+          {footer}
+        </>
+      ) : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     gap: Spacing.two,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Radii.md,
     borderWidth: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  divider: {
+    borderTopWidth: 2,
   },
   pin: {
     width: 36,
