@@ -128,6 +128,7 @@ const freePort = await findFreePort();
 // so injecting EXPO_PUBLIC_API_URL here wins over the value in .env.
 const child = spawn('expo', ['start', '--port', String(freePort)], {
   stdio: 'inherit',
+  shell: true,
   env: apiUrl ? { ...process.env, EXPO_PUBLIC_API_URL: apiUrl } : process.env,
 });
 
