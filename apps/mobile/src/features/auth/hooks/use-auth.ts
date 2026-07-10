@@ -113,7 +113,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const sessionUser = data?.user as
-      | { id: string; name: string; email: string; phoneNumber?: string | null; role?: string | null }
+      | {
+          id: string;
+          name: string;
+          email: string;
+          phoneNumber?: string | null;
+          role?: string | null;
+        }
       | undefined;
     const user: AuthUser | null = sessionUser
       ? {

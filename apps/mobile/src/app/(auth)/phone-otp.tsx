@@ -59,9 +59,7 @@ export default function PhoneOtpRoute() {
               {codeSent ? 'Enter your code' : 'Sign in with phone'}
             </Text>
             <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-              {codeSent
-                ? `We sent a code to ${phoneNumber}.`
-                : 'We’ll text you a one-time code.'}
+              {codeSent ? `We sent a code to ${phoneNumber}.` : 'We’ll text you a one-time code.'}
             </Text>
           </View>
 
@@ -137,5 +135,9 @@ const styles = StyleSheet.create({
   title: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h1, textAlign: 'center' },
   subtitle: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body, textAlign: 'center' },
   form: { gap: Spacing.three },
-  link: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall, textAlign: 'center' },
+  link: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+    textAlign: 'center',
+  },
 });

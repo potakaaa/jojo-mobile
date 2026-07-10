@@ -136,7 +136,11 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body, textAlign: 'center' },
   form: { gap: Spacing.three },
   alt: { gap: Spacing.two },
-  notice: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall, textAlign: 'center' },
+  notice: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+    textAlign: 'center',
+  },
   footer: { gap: Spacing.two, alignItems: 'center' },
   link: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall },
 });

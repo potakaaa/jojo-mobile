@@ -81,11 +81,7 @@ export function Input({
             onPress={() => setHidden((h) => !h)}
             style={styles.toggle}
           >
-            <Ionicons
-              name={hidden ? 'eye' : 'eye-off'}
-              size={20}
-              color={theme.textSecondary}
-            />
+            <Ionicons name={hidden ? 'eye' : 'eye-off'} size={20} color={theme.textSecondary} />
           </Pressable>
         ) : null}
       </View>

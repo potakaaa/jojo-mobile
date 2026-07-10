@@ -103,5 +103,9 @@ const styles = StyleSheet.create({
   card: { alignItems: 'center', gap: Spacing.two },
   title: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2, textAlign: 'center' },
   subtitle: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body, textAlign: 'center' },
-  link: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall, textAlign: 'center' },
+  link: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+    textAlign: 'center',
+  },
 });
