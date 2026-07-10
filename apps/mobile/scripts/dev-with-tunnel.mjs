@@ -87,6 +87,7 @@ if (tunnelUrl) {
 // so injecting EXPO_PUBLIC_API_URL here wins over the value in .env.
 const child = spawn('expo', ['start', '--port', String(freePort)], {
   stdio: 'inherit',
+  shell: true,
   env: tunnelUrl ? { ...process.env, EXPO_PUBLIC_API_URL: tunnelUrl } : process.env,
 });
 
