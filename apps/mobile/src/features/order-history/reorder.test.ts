@@ -1,6 +1,7 @@
 import type { MenuItem } from '@jojopotato/types';
 import { describe, expect, it, vi } from 'vitest';
 
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { MOCK_PRODUCTS } from '@/features/home/mock-home';
 import { MOCK_ORDER_HISTORY } from '@/features/order-history/mock-order-history';
 import { applyReorderPlan, buildReorderPlan } from '@/features/order-history/reorder';
@@ -14,7 +15,7 @@ function orderById(id: string) {
 function currentPrice(menuItemId: string): number {
   const p = MOCK_PRODUCTS.find((m) => m.id === menuItemId);
   if (!p) throw new Error(`fixture missing product ${menuItemId}`);
-  return p.priceCents;
+  return productToMenuItem(p).priceCents;
 }
 
 describe('buildReorderPlan', () => {

@@ -15,6 +15,7 @@
  */
 import type { CartItem, MenuItem, Order } from '@jojopotato/types';
 
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import type { CartSessionState } from '@/features/cart/hooks/use-cart';
 import { MOCK_PRODUCTS } from '@/features/home/mock-home';
 
@@ -43,7 +44,9 @@ export function buildReorderPlan(order: Order): ReorderResult {
   const unavailable: ReorderLine[] = [];
 
   for (const originalItem of order.cart.items) {
-    const currentMenuItem = MOCK_PRODUCTS.find((p) => p.id === originalItem.menuItemId);
+    const currentProduct = MOCK_PRODUCTS.find((p) => p.id === originalItem.menuItemId);
+    const currentMenuItem =
+      currentProduct !== undefined ? productToMenuItem(currentProduct) : undefined;
     const isAvailable = currentMenuItem !== undefined && currentMenuItem.isAvailable;
 
     if (isAvailable) {

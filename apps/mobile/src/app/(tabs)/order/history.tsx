@@ -2,9 +2,10 @@ import type { Order, PickupBranch } from '@jojopotato/types';
 import { EmptyState, OrderHistoryCard } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { MOCK_CART_BRANCH, MOCK_OTHER_BRANCH } from '@/features/cart/mock-cart';
 import { MOCK_CURRENT_USER_ID, MOCK_ORDER_HISTORY } from '@/features/order-history/mock-order-history';
@@ -30,6 +31,7 @@ export default function OrderHistoryScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
   const { addItem, setBranch } = useCart();
 
   const orders = useMemo(
@@ -69,7 +71,12 @@ export default function OrderHistoryScreen() {
         ) : (
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[
+              styles.content,
+              Platform.OS !== 'web' && {
+                paddingBottom: getFloatingTabBarClearance(insets.bottom),
+              },
+            ]}
             showsVerticalScrollIndicator={false}
           >
             {orders.map((order) => (
