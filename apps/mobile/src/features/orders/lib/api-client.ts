@@ -14,16 +14,24 @@ export interface CreateOrderInput {
 }
 
 /** `POST /orders` — create an order (session required). Returns the full order. */
-export function createOrder(input: CreateOrderInput): Promise<Order> {
-  return apiRequest<Order>('/orders', { method: 'POST', body: input });
+export async function createOrder(input: CreateOrderInput): Promise<Order> {
+  const { order } = await apiRequest<{ order: Order }>('/orders', {
+    method: 'POST',
+    body: input,
+  });
+  return order;
 }
 
 /** `GET /orders/:orderId` — full order + items (session required). */
-export function fetchOrder(orderId: string): Promise<Order> {
-  return apiRequest<Order>(`/orders/${encodeURIComponent(orderId)}`);
+export async function fetchOrder(orderId: string): Promise<Order> {
+  const { order } = await apiRequest<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}`,
+  );
+  return order;
 }
 
 /** `GET /orders` — the caller's order history, newest first. */
-export function fetchOrderHistory(): Promise<Order[]> {
-  return apiRequest<Order[]>('/orders');
+export async function fetchOrderHistory(): Promise<Order[]> {
+  const { orders } = await apiRequest<{ orders: Order[]; nextCursor: string | null }>('/orders');
+  return orders;
 }
