@@ -29,12 +29,17 @@ SplashScreen.preventAutoHideAsync();
  * covers the brief cold-start beat.
  */
 function RootNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isStaff } = useAuth();
   const isAuthenticated = !isLoading && user !== null;
+  const isStaffUser = isAuthenticated && isStaff;
+  const isCustomer = isAuthenticated && !isStaff;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isStaffUser}>
+        <Stack.Screen name="(staff)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isCustomer}>
         <Stack.Screen name="(tabs)" />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>
