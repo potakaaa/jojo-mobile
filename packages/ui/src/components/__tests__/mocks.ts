@@ -29,6 +29,14 @@ export const MOCK_DEAL: Deal = {
   title: 'Combo Deal',
   description: 'Fries + drink',
   discountLabel: '-20%',
+  dealType: 'percentage_discount',
+  discountValue: 20,
+  minimumOrderAmount: 0,
+  startAt: '2026-01-01T00:00:00Z',
+  endAt: '2027-01-01T00:00:00Z',
+  isActive: true,
+  eligibleProductIds: [],
+  eligibleBranchIds: [],
 };
 
 export const MOCK_BRANCH: PickupBranch = {
