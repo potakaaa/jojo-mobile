@@ -152,13 +152,22 @@ describe('GET /api/staff/me', () => {
     const email = `staff2-${unique()}@example.com`;
     const cookies = await signUpAndGetCookie(email, 'sup3r-secret-pw');
 
-    // Ensure at least one branch exists; use the first available branch.
+    // Insert a dedicated branch fixture so the test is hermetic — it must NOT
+    // depend on db:seed having run (CI applies migrations only, never seeds).
     const [branch] = await db
-      .select({ id: branches.id, name: branches.name, slug: branches.slug })
-      .from(branches)
-      .limit(1);
+      .insert(branches)
+      .values({
+        name: 'Test Branch',
+        slug: `test-branch-${unique()}`,
+        address: '123 Test St',
+        latitude: '10.300000',
+        longitude: '123.900000',
+        phone: '+639000000000',
+        opening_hours: '9am-9pm',
+      })
+      .returning({ id: branches.id, name: branches.name, slug: branches.slug });
     if (!branch) {
-      throw new Error('Test setup: no branch rows — run db:seed first');
+      throw new Error('Test setup: failed to insert branch fixture');
     }
 
     await db
