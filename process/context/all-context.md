@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26)
+## Current Implementation State (as of 13-07-26, incl. merge-menu-api-reconciliation)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -85,7 +85,8 @@ top of it later without re-plumbing the project.
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
-  `apps/mobile/src/features/{cart,branches,menu,orders,shared}/`. `orders.order_number` is
+  `apps/mobile/src/{lib,features/{cart,branch,menu,orders,shared}}/` (see "Menu/branch data layer
+  superseded" bullet below — `features/branches/` no longer exists). `orders.order_number` is
   DB-unique/human-readable (`JP-YYMMDD-XXXX`), `estimated_ready_at` is derived from the branch's
   `estimated_prep_minutes` at placement time, each `POST /orders` is a fully independent
   transaction. `packages/types`'s `OrderStatus` enum was rewritten from a 6-value placeholder to
@@ -115,6 +116,44 @@ top of it later without re-plumbing the project.
   cart screen but is disabled/hidden (no backend coupon support yet, same `discount_total` stance
   as before). The merge is EVL-verified but was staged, not yet committed, as of this pass — check
   `git log`/`git status` before assuming it landed.
+- **Menu/branch data layer superseded (13-07-26):** while this branch built its own plain
+  `useEffect`/`useState` menu/branch hooks (`features/branches/hooks/use-branches.ts`,
+  `features/menu/{hooks/use-branch-menu.ts,lib/api-client.ts,lib/api-client.contract.ts}`),
+  `development` independently shipped a parallel menu/branch feature (its own SPEC/plan —
+  `process/features/ordering-cart/completed/menu-product-browsing_10-07-26/`, now archived as
+  superseded) built on **react-query** (`@tanstack/react-query`) and a **decimal-peso** backend
+  API (`packages/api/src/routes/menu.ts`, discarded/never mounted). When the branches merged, the
+  user chose: (1) keep this branch's cents backend + real order-placement as canonical, discard
+  development's decimal-peso parallel API; (2) **adopt react-query**, retargeted onto this
+  branch's real cents-native `/branches`/`/branches/:id/menu` endpoints; (3) adopt development's
+  new menu UI components. See
+  `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` for the full
+  merge-resolution plan (7 real conflicts + 4 silent-auto-merge fixes + 3 more found during
+  EXECUTE) and closeout report.
+  - **Current, real data layer:** `apps/mobile/src/lib/{api-client,query-client}.ts` (global
+    react-query client + `getBranches()`/`getMenu()`, unwrapping this backend's 3 distinct response
+    envelope shapes), `apps/mobile/src/features/branch/hooks/use-branch.ts` (`BranchProvider`/
+    `useBranch()` — replaces the deleted `features/branches/` folder entirely),
+    `apps/mobile/src/features/menu/hooks/{use-menu,use-product-details}.ts` (replaces the deleted
+    `features/menu/lib/api-client.ts` + `use-branch-menu.ts`), plus new UI components
+    `apps/mobile/src/features/menu/components/{add-to-cart-bar,branch-switcher,category-section,
+    option-group-selector}.tsx` and `packages/ui`'s `AddOnSelector`.
+  - **`packages/types/src/menu.ts` is no longer a placeholder** — it now carries real cents-native
+    catalog types (`Product`, `ProductOption`, `Category`, `ProductDetail`, `MenuResponse`,
+    `optionId`/`basePriceCents`/`priceDeltaCents` field names) promoted from this branch's own
+    local types, superset-merged over development's auto-merged (and discarded) decimal versions.
+    The pre-existing cart-internal `MenuItem`/`MenuCategory` types are unchanged.
+  - **Money convention remains cents everywhere** — development's decimal-peso convention
+    (`Product.basePrice` as whole PHP, `formatPricePHP`) was explicitly rejected during this
+    reconciliation; `packages/utils/src/pricing.ts` (decimal-based) was deleted.
+  - **New shared util:** `packages/utils/src/product-options.ts` (`getRequiredOptionTypes`,
+    `isRequiredSelectionComplete`) adopted from development, unit-agnostic.
+  - **`features/shared/{use-async-data.ts,lib/api-request.ts}` are explicitly carved out and kept**
+    (not deleted) — the out-of-scope `features/orders/*` hooks still depend on them; only the
+    menu/branch-specific old hooks were deleted.
+  - The order-placement backend (`packages/api/src/routes/orders.ts`, 47 tests) is **unchanged**
+    and remains canonical. The merge is EVL-verified but was staged, not yet committed, as of this
+    pass — check `git log`/`git status` before assuming it landed.
 - **Known tech debt:** un-gated "Dev: ..." nav links (added to manually exercise nested stacks
   before real UI existed) are resolved for `order/`, `branches/`, and
   `order/confirmation/[orderId].tsx` — the `pickup-order-flow` plan removed them once real
@@ -127,10 +166,13 @@ top of it later without re-plumbing the project.
   `pickup-order-flow` plan's happy-path coverage relied on an Agent-Probe manual QA script for this
   reason, not an automated E2E gate.
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
-  shell — archived plan, full route tree/decisions/validate-contract) and
+  shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
   plan, API design, validate journey incl. the CONDITIONAL→PASS PVL cycle and the EVL cross-phase
-  bug catch-and-fix, closeout report).
+  bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
+  (cart architecture reconciliation), and
+  `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
+  + react-query reconciliation).
 
 ## Quick Start
 
@@ -267,8 +309,12 @@ jojo-mobile/                           (package.json name: jojo-potato)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
           cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
           cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
-          branches/, menu/, orders/    -- api-client + hooks per domain (branches list/detail, branch menu, order create/get/history)
-          shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE)
+          branch/hooks/use-branch.ts   -- BranchProvider + useBranch(): react-query-backed branch list/selection (replaces deleted features/branches/, see all-context.md "Menu/branch data layer superseded")
+          menu/hooks/{use-menu,use-product-details}.ts  -- react-query-backed branch menu + client-derived product detail
+          menu/components/             -- add-to-cart-bar, branch-switcher, category-section, option-group-selector (adopted from development)
+          orders/                      -- api-client + hooks, unchanged/out-of-scope for the react-query migration (order create/get/history)
+          shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE; both api-request.ts/use-async-data.ts explicitly carved out of the menu/branch data-layer merge since orders/ still depends on them)
+        lib/{api-client,query-client}.ts  -- global react-query client + getBranches()/getMenu() (menu/branch data layer, added by merge-menu-api-reconciliation)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
@@ -282,9 +328,9 @@ jojo-mobile/                           (package.json name: jojo-potato)
       src/middleware/require-session.ts -- better-auth session-check Express middleware
       src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option) -- order/cart/pickup now reconciled to the real ordering-flow API contract; menu/notifications/rewards still placeholders
-    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum) -- brand tokens are placeholder
-    utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts)
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); notifications/rewards still placeholders
+    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26) -- brand tokens are placeholder
+    utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts, product-options.ts -- adopted 13-07-26, unit-agnostic option-selection helpers)
   docs/
     jojo-potato-mobile-prd.md         -- product PRD (navigation §7, auth §6.1) — source of truth for scope
   process/
@@ -310,6 +356,7 @@ Metro/Expo resolves them like any other dependency.
 - **Package manager:** pnpm 10.33.0 (`packageManager` field pinned in root `package.json`)
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
+- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
 - **Testing:** none configured yet — no Jest/Vitest/Detox in any `package.json`. Do not assume a test runner exists; propose one when a feature plan needs test coverage.
 - **Deploy:** EAS Build/Submit planned (per user, 2026-07-08) but not yet wired — no `eas.json`, no `.github/workflows/` in the repo.
@@ -328,7 +375,7 @@ Metro/Expo resolves them like any other dependency.
 
 **Env var access pattern:** client-bundle config is read through a typed wrapper, not `process.env` directly inline — see `apps/mobile/src/config/env.ts` (`env.appEnv`, `env.apiUrl`), which falls back to sane defaults if the `EXPO_PUBLIC_*` var is unset.
 
-**Types-first placeholders:** `packages/types/src/{auth,cart,menu,notifications,order,pickup,rewards}.ts` already stub out the shared domain types for the four planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet. Check these files before defining new domain types for a feature.
+**Types-first placeholders:** `packages/types/src/{auth,notifications,rewards}.ts` still stub out the shared domain types for their planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, and `menu` are no longer placeholders — all four are real, cents-native types reconciled to the actual ordering-flow API contract (`menu.ts` was promoted from placeholder to real content by `merge-menu-api-reconciliation`, 13-07-26).
 
 **Platform-specific hooks:** `use-color-scheme.ts` has a `.web.ts` sibling variant (`apps/mobile/src/hooks/use-color-scheme.web.ts`) — this is the RN/Expo convention for platform-specific implementations picked up automatically by the bundler. Follow this `.web.ts` / default split for any new platform-diverging hook or util, per the "iOS-first, Android-ready" principle in `README.md`.
 

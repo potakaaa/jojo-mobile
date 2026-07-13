@@ -27,6 +27,19 @@ plan, the branch-switch regression it caught and fixed (Findings F1/F5), and its
 The order-placement backend (API routes, `order_number`, pricing, transactions) described below is
 **unchanged** — only the cart's own type/state seam changed shape.
 
+**Menu/branch data layer superseded (13-07-26):** while this branch built its own plain
+`useEffect`/`useState` menu/branch hooks, `development` independently shipped a parallel menu
+feature (its own SPEC/plan — `process/features/ordering-cart/completed/menu-product-browsing_10-07-26/`,
+now archived as superseded) built on **react-query** and a **decimal-peso** backend
+(`packages/api/src/routes/menu.ts`, discarded/never mounted). The user chose to keep this branch's
+cents backend + real order-placement as canonical, adopt react-query retargeted onto the cents
+backend, and adopt development's menu UI components — see
+`process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` for the full
+merge-resolution plan and closeout report. `packages/types/src/menu.ts` is no longer a
+placeholder — it now has real cents-native catalog types (`Product`, `ProductOption`, `Category`,
+`ProductDetail`, `MenuResponse`). `features/branches/` no longer exists (replaced by
+`features/branch/hooks/use-branch.ts`'s `BranchProvider`).
+
 **Done:** menu browsing (`GET /branches/:branchId/menu`), product size/flavor customization,
 cart state (`CartSessionProvider`/`useCart()`, `Cart`/`CartItem`-shaped — see superseded note
 above), price calculation (server-recomputed cents, never trusts client prices; cart-side totals
@@ -47,10 +60,12 @@ confirmation/tracking/history screens.
 ## Key Source Files
 
 - `apps/mobile/src/app/(tabs)/order/` -- product detail, cart, checkout, confirmation, tracking, history screens
-- `apps/mobile/src/features/{cart,menu,orders,shared}/` -- cart state, menu/order api-clients + hooks, shared fetch plumbing
+- `apps/mobile/src/lib/{api-client,query-client}.ts` -- global react-query client + branch/menu fetchers
+- `apps/mobile/src/features/{cart,menu,orders,shared}/` -- cart state, menu hooks/components (react-query-backed), order api-client + hooks, shared fetch plumbing (`api-request.ts`/`use-async-data.ts` carved out for `orders/`, not deleted)
 - `packages/api/src/routes/orders.ts` + `routes/lib/{order-number,serializers}.ts` -- order placement/read API
-- `packages/types/src/{order,cart,product-option}.ts` -- reconciled shared types (real 7-value `OrderStatus`, `SelectedOption`)
-- `packages/ui/src/components/{order-status-badge,order-status-timeline,cart-item,flavor-selector,size-selector}.tsx` -- shared UI
+- `packages/types/src/{order,cart,menu,product-option}.ts` -- reconciled shared types (real 7-value `OrderStatus`, `SelectedOption`, cents-native menu catalog types)
+- `packages/ui/src/components/{order-status-badge,order-status-timeline,cart-item,flavor-selector,size-selector,addon-selector}.tsx` -- shared UI
+- `packages/utils/src/product-options.ts` -- unit-agnostic required-option-selection helpers
 
 ## Related Context
 
@@ -58,6 +73,8 @@ confirmation/tracking/history screens.
 - `process/general-plans/completed/pickup-order-flow_10-07-26/` -- the plan, validate journey, and closeout report that delivered the backend-wired ordering flow
 - `process/general-plans/completed/merge-cart-reconciliation_13-07-26/` -- the plan that reconciled development's independently-shipped cart (PR #62) with this flow's real backend wiring; current canonical cart architecture
 - `process/features/ordering-cart/completed/cart-screen_09-07-26/` -- this feature's own CART-001 plan, archived as superseded (its requirements were fulfilled by development's PR #62 + the merge reconciliation, not by executing this plan itself)
+- `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` -- the plan that reconciled development's independently-shipped menu/branch feature (react-query, decimal-peso API) with this flow's real cents backend; current canonical menu/branch data layer
+- `process/features/ordering-cart/completed/menu-product-browsing_10-07-26/` -- this feature's own MENU-001/MENU-002 plan, archived as superseded (its react-query/UI intent was fulfilled by adopting it onto the real backend via the merge reconciliation, not by executing this plan itself)
 
 ## Current Status
 
