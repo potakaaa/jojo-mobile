@@ -167,6 +167,8 @@ export default function CartScreen() {
                       line.productNameSnapshot,
                       line.unitPriceCents,
                     )}
+                    flavor={line.selectedOptions.find((o) => o.optionType === 'flavor')?.name}
+                    size={line.selectedOptions.find((o) => o.optionType === 'size')?.name}
                     onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
                     onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
                     onRemove={() => removeItem(line.lineId)}

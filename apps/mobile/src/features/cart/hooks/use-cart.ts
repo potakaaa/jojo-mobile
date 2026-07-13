@@ -17,8 +17,8 @@ import {
  * AsyncStorage). This is the only cart state seam; swapping to a real cart
  * backend (CART-002) changes only this file's internals, not its consumers.
  *
- * The initial state is seeded from `MOCK_CART` because no cart backend exists
- * yet; that default becomes an empty/fetched cart once the backend lands.
+ * The initial state defaults to `EMPTY_CART` (no items, no branch); callers may
+ * override it via the provider's `initialCart` prop.
  */
 export interface CartSessionState {
   cart: Cart;
