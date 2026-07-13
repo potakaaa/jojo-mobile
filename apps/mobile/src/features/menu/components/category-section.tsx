@@ -3,6 +3,7 @@ import { ProductCard } from '@jojopotato/ui';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { useTheme } from '@/hooks/use-theme';
 
 export interface CategorySectionProps {
@@ -44,7 +45,12 @@ export function CategorySection({ category, onProductPress }: CategorySectionPro
             <View key={rowIndex} style={styles.row}>
               {row.map((product: Product) => (
                 <View key={product.id} style={styles.cell}>
-                  <ProductCard product={product} onPress={() => onProductPress(product.id)} />
+                  {/* ProductCard renders the cents `MenuItem` shape; menu-tree
+                      products are all branch-available, so isAvailable = true. */}
+                  <ProductCard
+                    product={productToMenuItem(product, true)}
+                    onPress={() => onProductPress(product.id)}
+                  />
                 </View>
               ))}
               {row.length < 2 ? <View style={styles.cell} /> : null}

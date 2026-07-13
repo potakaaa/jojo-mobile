@@ -1,0 +1,3 @@
+cycle	date	gate	gaps_open	notes
+0	13-07-26	CONDITIONAL	3	baseline V1-V7 run; 1 fixable concern (seedTestUser not exported, blocks isolated test import) + 2 accepted known-gaps (no-RN-runner mobile UI coverage, NODE_ENV-only credential gate per locked SPEC)
+1	13-07-26	CONDITIONAL	2	SUPPLEMENT_APPLIED: checklist item 3 now requires export async function seedTestUser(); re-validated from V1, 0 new gaps, Layer 2 section CONCERN->PASS; remaining 2 known-gaps explicitly accepted; terminal CONDITIONAL, HALTED_SUCCESS

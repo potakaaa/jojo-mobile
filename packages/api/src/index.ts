@@ -9,10 +9,21 @@ import express from 'express';
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { branchesRouter } from './routes/branches';
-import { menuRouter } from './routes/menu';
+import { ordersRouter } from './routes/orders';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
+
+// Request logger — runs for EVERY request (incl. /api/auth/*). Does NOT parse or
+// consume the body, so it's safe to register before the better-auth mount which
+// needs the raw body. Logs method, path, status, and timing on response finish.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
 
 // Mount the better-auth handler BEFORE any body-parsing middleware — better-auth
 // reads the raw request body itself, so `express.json()` must not consume it
@@ -23,14 +34,14 @@ app.all('/api/auth/*splat', toNodeHandler(auth));
 // JSON body parsing for the app's own (non-auth) routes, mounted after auth.
 app.use(express.json());
 
-// App data routes — mounted strictly AFTER express.json() and after the
-// better-auth handler above; the auth mount order must not change.
-app.use('/api/branches', branchesRouter);
-app.use('/api/menu', menuRouter);
-
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
 });
+
+// App order-flow routes (public branch reads + session-gated orders), mounted
+// after express.json() so they get parsed JSON bodies.
+app.use('/branches', branchesRouter);
+app.use('/orders', ordersRouter);
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An

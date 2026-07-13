@@ -11,7 +11,6 @@ export * from './components/branch-card';
 export * from './components/reward-progress-card';
 export * from './components/star-progress-bar';
 export * from './components/order-status-badge';
-export * from './components/order-history-card';
 export * from './components/order-status-timeline';
 export * from './components/coupon-card';
 export * from './components/cart-item';
