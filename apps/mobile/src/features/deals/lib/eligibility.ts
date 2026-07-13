@@ -65,11 +65,19 @@ export function checkDealEligibility(
   cart: Cart,
   pickupBranchId: string,
   usage: DealUsageRecord[],
+  userId?: string,
 ): EligibilityResult {
   const now = Date.now();
 
-  // 1. Active + within window.
-  if (!deal.isActive || !isInWindow(deal, now)) {
+  // 1. Active + within window (distinct reason codes).
+  if (!deal.isActive) {
+    return {
+      eligible: false,
+      reason: 'inactive',
+      message: 'This deal is not currently available.',
+    };
+  }
+  if (!isInWindow(deal, now)) {
     return {
       eligible: false,
       reason: 'not_in_window',
@@ -108,9 +116,13 @@ export function checkDealEligibility(
     };
   }
 
-  // 5. Per-user usage limit.
+  // 5. Per-user usage limit. Filters by `userId` when provided; mock callers omit
+  // it (single-user history), so it counts all records until multi-user usage is
+  // wired — see Known Gaps.
   if (deal.usageLimitPerUser !== undefined) {
-    const used = usage.filter((u) => u.dealId === deal.id).length;
+    const used = userId
+      ? usage.filter((u) => u.dealId === deal.id && u.userId === userId).length
+      : usage.filter((u) => u.dealId === deal.id).length;
     if (used >= deal.usageLimitPerUser) {
       return {
         eligible: false,
@@ -157,7 +169,7 @@ export function computeDealDiscountCents(deal: Deal, cart: Cart): number {
   const subtotal = subtotalCents(cart);
   switch (deal.dealType) {
     case 'percentage_discount':
-      return Math.round((subtotal * deal.discountValue) / 100);
+      return Math.min(Math.round((subtotal * deal.discountValue) / 100), subtotal);
     case 'fixed_discount':
       // discountValue is already cents; never discount more than the subtotal.
       return Math.min(deal.discountValue, subtotal);

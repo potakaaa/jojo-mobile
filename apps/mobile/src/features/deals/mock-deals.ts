@@ -4,9 +4,10 @@
  * There is no deals backend wired into `apps/mobile` yet (see
  * process/context/all-context.md Open Questions; server `deals` tables exist per
  * the db-schema plan but are not consumed here). Every value is typed against
- * the real `@jojopotato/types` `Deal` contract. `discountValue` /
- * `minimumOrderAmount` are CENTS (client convention — see the VALUE-UNIT NOTE on
- * `Deal`). `discountLabel` is derived via `deriveDiscountLabel` so it stays
+ * the real `@jojopotato/types` `Deal` contract. `minimumOrderAmount` is CENTS,
+ * and `discountValue` is polymorphic (percentage for `percentage_discount`, cents
+ * for `fixed_discount`, unused otherwise) — see the VALUE-UNIT NOTE on `Deal`.
+ * `discountLabel` is derived via `deriveDiscountLabel` so it stays
  * consistent with `dealType`/`discountValue` instead of being hand-typed.
  * Replace with backend-backed data later.
  */

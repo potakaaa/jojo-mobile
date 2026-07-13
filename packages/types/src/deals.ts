@@ -14,11 +14,15 @@ export type DealType =
  * `deal_products`/`deal_branches` join tables flattened to id arrays for the
  * mock/client layer.
  *
- * VALUE-UNIT NOTE: `discountValue` and `minimumOrderAmount` are CENTS here, for
- * internal consistency with the cents-based cart contract (`unitPriceCents`,
- * `amountCents`). The server columns `discount_value` / `minimum_order_amount`
- * are `numeric(10,2)` decimal PHP major units — a future API-wiring plan must
- * convert (×100) when populating this client shape.
+ * VALUE-UNIT NOTE: `minimumOrderAmount` is CENTS here, for internal consistency
+ * with the cents-based cart contract (`unitPriceCents`, `amountCents`).
+ * `discountValue` is polymorphic: a percentage (0–100) for `percentage_discount`,
+ * cents for `fixed_discount`, and unused (0) for other deal types. The server
+ * columns `discount_value` / `minimum_order_amount` are `numeric(10,2)` decimal
+ * PHP major units — a future API-wiring plan must convert `minimumOrderAmount`
+ * (×100) and `discountValue` (×100, only when `dealType === 'fixed_discount'`)
+ * when populating this client shape. Do NOT convert `discountValue` for
+ * `percentage_discount` — it is already a percentage on both sides.
  */
 export interface Deal {
   id: string;
@@ -28,7 +32,7 @@ export interface Deal {
   imageUrl?: string;
   validUntil?: string;
   dealType: DealType;
-  discountValue: number; // cents (see VALUE-UNIT NOTE)
+  discountValue: number; // polymorphic — see VALUE-UNIT NOTE
   minimumOrderAmount: number; // cents; 0 = no minimum
   startAt: string; // ISO
   endAt: string; // ISO

@@ -2,7 +2,7 @@ import { Button, EmptyState } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
@@ -80,7 +80,9 @@ export default function DealDetailsScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+          Platform.OS !== 'web' && {
+            paddingBottom: getFloatingTabBarClearance(insets.bottom),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
