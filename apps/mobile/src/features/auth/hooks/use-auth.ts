@@ -22,14 +22,16 @@ const APP_CALLBACK_URL = Linking.createURL('/');
 /**
  * How a caller asks `signIn` to authenticate. One dispatcher covers every
  * method the login screen needs — Google OAuth, magic link, and the two-step
- * phone OTP flow. Email/password remains enabled server-side (better-auth) but
- * has no client entry point today, so it is not part of this union.
+ * phone OTP flow. Email/password is enabled server-side (better-auth); its only
+ * client entry point is the dev-only `[DEV] Temp Login` button, which is behind
+ * a `__DEV__` guard on the login screen (not a production sign-in path).
  */
 export type SignInInput =
   | { method: 'google' }
   | { method: 'magic-link'; email: string }
   | { method: 'phone-send'; phoneNumber: string }
-  | { method: 'phone-verify'; phoneNumber: string; code: string };
+  | { method: 'phone-verify'; phoneNumber: string; code: string }
+  | { method: 'email-password'; email: string; password: string };
 
 /** Result-object return so screens can surface errors without try/catch. */
 export interface SignInResult {
@@ -100,6 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await authClient.phoneNumber.verify({
           phoneNumber: input.phoneNumber,
           code: input.code,
+        });
+        return toResult(error);
+      }
+      case 'email-password': {
+        const { error } = await authClient.signIn.email({
+          email: input.email,
+          password: input.password,
         });
         return toResult(error);
       }

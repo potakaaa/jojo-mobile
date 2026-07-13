@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26)
+## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -73,56 +73,137 @@ top of it later without re-plumbing the project.
   table IS better-auth's user model (plus new `session`/`account`/`verification` tables, migration
   `0001_daily_carnage.sql`). The mobile app consumes it through a real
   `AuthProvider`/`useAuth()` seam at `apps/mobile/src/features/auth/hooks/use-auth.ts` (backed by
-  `authClient.useSession()` in `.../lib/auth-client.ts`). Sessions persist across restarts via
-  `expo-secure-store` and slide (30-day expiry, 1-day refresh). `role` is server-owned (`input:
-  false`), defaulting to `customer`. `useAuth()` now also exposes `isStaff: boolean` (role ∈
-  {staff, admin, super_admin}). Phone-OTP SMS delivery is a server-side STUB; Google OAuth needs
-  live credentials — both flagged as follow-ups.
-- **API schema and seed (as of 13-07-26):** `packages/api/src/db/schema/` contains a full Drizzle
-  schema: `branches`, `products`, `categories`, `orders`, `order_items`, `rewards`, `coupons`,
-  `deals`, `notifications`, `star_transactions`, `user_stars`, `branch_product_availability`, plus
-  the better-auth tables (`users`, `session`, `account`, `verification`). Two migrations applied:
-  `0001_daily_carnage.sql` (auth tables) and `0002_elite_bishop.sql` (adds nullable
-  `assigned_branch_id uuid references branches(id)` to `users` — STAFF-001). The seed
-  (`packages/api/src/db/seed/seed.ts`) creates branch rows, a staff test user
-  (`staff-branch1@jojopotato.local`, role=staff, assigned to branch 1), and any other fixture data.
-  Run `pnpm --filter @jojopotato/api db:migrate` before running tests.
-- **Staff authz layer (STAFF-001, delivered 13-07-26):** first protected app API surface.
-  `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
+  `authClient.useSession()` in `.../lib/auth-client.ts`), which replaced the old in-memory mock
+  (`use-auth-session.ts`, deleted). Sessions now persist across restarts via `expo-secure-store`
+  and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
+  is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
+  both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
+  `useAuth()` also exposes `isStaff: boolean` (role ∈ {staff, admin, super_admin}) — STAFF-001.
+- **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
+  full customer pickup-order journey (branch select → menu → product customize → cart → checkout
+  → confirmation → tracking → order history) is implemented and working, not just placeholder.
+  Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
+  them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
+  (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
+- **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
+  surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
   `assigned_branch_id`), and `assertBranchScope(assignedBranchId, requestedBranchId)` pure guard.
   Applied at router level: `app.use('/api/staff', requireStaff(auth), staffRouter)` — all future
   `/api/staff/*` routes automatically inherit the guard without re-applying it. `GET /api/staff/me`
-  canary returns `{ role, assignedBranch: { id, name, slug } | null }`. `StaffMe` and `StaffRole`
-  types live in `packages/types/src/staff.ts`. A `TODO(STAFF-ADM)` seam in `assertBranchScope`
-  marks where admin bypass logic goes (currently not implemented — post-STAFF-001).
+  canary returns `{ role, assignedBranch: { id, name, slug } | null }`. `StaffMe`, `StaffRole`, and
+  the shared `STAFF_ROLES` runtime constant live in `packages/types/src/staff.ts`. A
+  `TODO(STAFF-ADM)` seam in `assertBranchScope` marks where admin bypass logic goes (not yet
+  implemented). Migration `0002_elite_bishop.sql` added nullable `users.assigned_branch_id`; the
+  seed creates a staff test user (`staff-branch1@jojopotato.local`, role=staff, assigned to branch
+  1) alongside dev's customer test user (`jojo@test.com`).
 - **Staff dashboard shell (STAFF-001):** `apps/mobile/src/app/(staff)/` is a role-gated Expo
   Router group. `(staff)/index.tsx` shows: BrandWordmark + "Staff" Badge header; assigned-branch
   name fetched from `GET /api/staff/me` via `useStaffMe()` hook
   (`features/staff/hooks/use-staff-me.ts` → `features/staff/lib/staff-api.ts` using
-  `authClient.$fetch`); four inert PRD §6.13 nav cards (Active Orders / Completed Orders /
-  Product Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx`
-  is a **hardcoded mock preview scaffold** added at user request — NOT a real data screen; STAFF-002
-  will replace it. Full plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
-- **API testing:** `packages/api` now has vitest + supertest. Run `pnpm --filter @jojopotato/api
-  test` (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first).
-  34 tests covering auth and staff authz. `app` is exported from `packages/api/src/index.ts` (port
-  binding guarded behind `NODE_ENV !== 'test'`).
-- **Screens:** Home tab (`(tabs)/index.tsx`) is the only customer tab with real business UI. Every
-  other tab-root screen and nested/pushed screen is still a `<ComingSoon>` placeholder. The
-  `(staff)` shell exists but its data screens (STAFF-002/003/004) are not yet built.
-- **Known tech debt:** placeholder tab-root screens carry "Dev: ..." nav links not gated behind
-  `__DEV__` — see `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md`.
-- **Known gap:** no automated E2E/regression harness for navigation flows (project-wide
+  `authClient.$fetch`); four PRD §6.13 nav cards (Active Orders / Completed Orders / Product
+  Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx` is a
+  **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
+  plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
+- **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
+  surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
+  `middleware/require-session.ts`; new mobile state/data layer in
+  `apps/mobile/src/{lib,features/{cart,branch,menu,orders,shared}}/` (see "Menu/branch data layer
+  superseded" bullet below — `features/branches/` no longer exists). `orders.order_number` is
+  DB-unique/human-readable (`JP-YYMMDD-XXXX`), `estimated_ready_at` is derived from the branch's
+  `estimated_prep_minutes` at placement time, each `POST /orders` is a fully independent
+  transaction. `packages/types`'s `OrderStatus` enum was rewritten from a 6-value placeholder to
+  the real 7-value DB enum (breaking rename, all consumers reconciled). Deferred/out of scope this
+  pass: staff-side order-status transitions, star-earning/rewards accrual, coupon redemption
+  (`discount_total` stays `0`), live `online_payment` processing (visibly disabled, no processor
+  chosen — see §Open Questions), polling/websocket live status updates (fetch-on-focus only). See
+  `process/features/ordering-cart/_GUIDE.md` and `process/features/pickup-branches/_GUIDE.md` for
+  the per-feature breakdown, and
+  `process/general-plans/completed/pickup-order-flow_10-07-26/` for the full plan, validate
+  journey, and closeout report.
+- **Cart architecture (superseded 13-07-26):** `pickup-order-flow`'s original `CartProvider`/
+  `useCart()` (`CartLine`-shaped, backed by `apps/mobile/src/features/cart/lib/cart-totals.ts`) is
+  **no longer in the codebase.** `development` independently shipped its own mock-only cart screen
+  (PR #62, CART-001 — see `process/features/ordering-cart/completed/cart-screen_09-07-26/`, now
+  archived as superseded) with a different, richer type/state model. When the two branches merged,
+  the user chose development's model as canonical and this branch's real backend wiring
+  (branches/menu/orders API calls) was ported onto it — see
+  `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`. The **current, real** cart
+  seam is `CartSessionProvider`/`useCart()` in `apps/mobile/src/features/cart/hooks/use-cart.ts`
+  (mounted in `_layout.tsx`, no `CartProvider` name remains), backed by `packages/types/src/cart.ts`'s
+  `Cart`/`CartItem`/`CartItemOption`/`AppliedDiscount` (not `CartLine`). `cart-totals.ts` is
+  deleted — totals (`subtotalCents`/`discountTotalCents`/`totalCents`) are now derived inside the
+  hook itself. The order-placement backend wiring (API routes, `order_number`, `estimated_ready_at`,
+  transaction independence, the `OrderStatus` rewrite described above) is **unchanged and still
+  real** — only the cart's own type/state layer changed. A coupon-apply UI exists in the merged
+  cart screen but is disabled/hidden (no backend coupon support yet, same `discount_total` stance
+  as before). The merge is EVL-verified but was staged, not yet committed, as of this pass — check
+  `git log`/`git status` before assuming it landed.
+- **Menu/branch data layer superseded (13-07-26):** while this branch built its own plain
+  `useEffect`/`useState` menu/branch hooks (`features/branches/hooks/use-branches.ts`,
+  `features/menu/{hooks/use-branch-menu.ts,lib/api-client.ts,lib/api-client.contract.ts}`),
+  `development` independently shipped a parallel menu/branch feature (its own SPEC/plan —
+  `process/features/ordering-cart/completed/menu-product-browsing_10-07-26/`, now archived as
+  superseded) built on **react-query** (`@tanstack/react-query`) and a **decimal-peso** backend
+  API (`packages/api/src/routes/menu.ts`, discarded/never mounted). When the branches merged, the
+  user chose: (1) keep this branch's cents backend + real order-placement as canonical, discard
+  development's decimal-peso parallel API; (2) **adopt react-query**, retargeted onto this
+  branch's real cents-native `/branches`/`/branches/:id/menu` endpoints; (3) adopt development's
+  new menu UI components. See
+  `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` for the full
+  merge-resolution plan (7 real conflicts + 4 silent-auto-merge fixes + 3 more found during
+  EXECUTE) and closeout report.
+  - **Current, real data layer:** `apps/mobile/src/lib/{api-client,query-client}.ts` (global
+    react-query client + `getBranches()`/`getMenu()`, unwrapping this backend's 3 distinct response
+    envelope shapes), `apps/mobile/src/features/branch/hooks/use-branch.ts` (`BranchProvider`/
+    `useBranch()` — replaces the deleted `features/branches/` folder entirely),
+    `apps/mobile/src/features/menu/hooks/{use-menu,use-product-details}.ts` (replaces the deleted
+    `features/menu/lib/api-client.ts` + `use-branch-menu.ts`), plus new UI components
+    `apps/mobile/src/features/menu/components/{add-to-cart-bar,branch-switcher,category-section,
+    option-group-selector}.tsx` and `packages/ui`'s `AddOnSelector`.
+  - **`packages/types/src/menu.ts` is no longer a placeholder** — it now carries real cents-native
+    catalog types (`Product`, `ProductOption`, `Category`, `ProductDetail`, `MenuResponse`,
+    `optionId`/`basePriceCents`/`priceDeltaCents` field names) promoted from this branch's own
+    local types, superset-merged over development's auto-merged (and discarded) decimal versions.
+    The pre-existing cart-internal `MenuItem`/`MenuCategory` types are unchanged.
+  - **Money convention remains cents everywhere** — development's decimal-peso convention
+    (`Product.basePrice` as whole PHP, `formatPricePHP`) was explicitly rejected during this
+    reconciliation; `packages/utils/src/pricing.ts` (decimal-based) was deleted.
+  - **New shared util:** `packages/utils/src/product-options.ts` (`getRequiredOptionTypes`,
+    `isRequiredSelectionComplete`) adopted from development, unit-agnostic.
+  - **`features/shared/{use-async-data.ts,lib/api-request.ts}` are explicitly carved out and kept**
+    (not deleted) — the out-of-scope `features/orders/*` hooks still depend on them; only the
+    menu/branch-specific old hooks were deleted.
+  - The order-placement backend (`packages/api/src/routes/orders.ts`, 47 tests) is **unchanged**
+    and remains canonical. The merge is EVL-verified but was staged, not yet committed, as of this
+    pass — check `git log`/`git status` before assuming it landed.
+- **Known tech debt:** un-gated "Dev: ..." nav links (added to manually exercise nested stacks
+  before real UI existed) are resolved for `order/`, `branches/`, and
+  `order/confirmation/[orderId].tsx` — the `pickup-order-flow` plan removed them once real
+  navigation entry points superseded them. One instance remains: `rewards/index.tsx`'s
+  `Dev: View Coupons` link, since the Rewards tab is still a placeholder — see
+  `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md` (narrowed scope).
+- **Known gap:** no automated E2E/regression harness exists for any navigation flow (project-wide
   test-runner gap, see `tests/all-tests.md`) — see
-  `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`. Mobile staff
-  shell and role-gate are Agent-Probe only for the same reason.
-- **OrderStatus type gap:** `packages/types/src/order.ts` `OrderStatus` enum is out of sync with
-  the DB `orders` enum. The shared `OrderStatusBadge` component is unusable for real staff order
-  data until reconciled — see
-  `process/features/staff-dashboard/backlog/staff-002-order-status-type-reconciliation_NOTE_13-07-26.md`.
-- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (nav shell);
-  `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz + shell).
+  `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`. The
+  `pickup-order-flow` plan's happy-path coverage relied on an Agent-Probe manual QA script for this
+  reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
+  the same reason.
+- **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
+  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
+  cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
+  branches, and customer order placement. `app` is exported from `packages/api/src/index.ts` (port
+  binding guarded so tests never bind a port).
+- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
+  shell — archived plan, full route tree/decisions/validate-contract),
+  `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
+  plan, API design, validate journey incl. the CONDITIONAL→PASS PVL cycle and the EVL cross-phase
+  bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
+  (cart architecture reconciliation),
+  `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
+  + react-query reconciliation), and
+  `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
+  layer + role-gated staff shell — STAFF-001).
 
 ## Quick Start
 
@@ -252,8 +333,10 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, phone-otp, terms
           (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
-            index.tsx                  -- Home tab root (only tab with real business UI)
-            order/, rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
+            index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
+            order/                      -- real: index, product/[productId], cart, checkout, confirmation/[orderId], tracking/[orderId], history
+            branches/                   -- real: index (list), [branchId] (detail + menu)
+            rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
             _layout.tsx                -- Stack navigator (headerShown:false for root; STAFF-002+ screens add their own headers)
             index.tsx                  -- staff dashboard shell: BrandWordmark+Staff badge, branch name from /api/staff/me, 4 inert nav cards, sign-out
@@ -261,8 +344,16 @@ jojo-mobile/                           (package.json name: jojo-potato)
         features/
           auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam; exposes isStaff boolean (role ∈ {staff,admin,super_admin})
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
+          cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
+          cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
+          branch/hooks/use-branch.ts   -- BranchProvider + useBranch(): react-query-backed branch list/selection (replaces deleted features/branches/, see all-context.md "Menu/branch data layer superseded")
+          menu/hooks/{use-menu,use-product-details}.ts  -- react-query-backed branch menu + client-derived product detail
+          menu/components/             -- add-to-cart-bar, branch-switcher, category-section, option-group-selector (adopted from development)
+          orders/                      -- api-client + hooks, unchanged/out-of-scope for the react-query migration (order create/get/history)
+          shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE; both api-request.ts/use-async-data.ts explicitly carved out of the menu/branch data-layer merge since orders/ still depends on them)
           staff/lib/staff-api.ts       -- fetchStaffMe(): authClient.$fetch wrapper for GET /api/staff/me → StaffMe | null
           staff/hooks/use-staff-me.ts  -- useStaffMe(): useState/useEffect hook returning { data, isLoading, error }
+        lib/{api-client,query-client}.ts  -- global react-query client + getBranches()/getMenu() (menu/branch data layer, added by merge-menu-api-reconciliation)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
@@ -271,10 +362,14 @@ jojo-mobile/                           (package.json name: jojo-potato)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
   packages/
+    api/
+      src/routes/                      -- branches.ts, orders.ts (session-gated), routes/lib/{order-number,serializers}.ts, __tests__/
+      src/middleware/require-session.ts -- better-auth session-check Express middleware
+      src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, staff) -- most are placeholders; staff.ts (StaffMe, StaffRole, StaffBranch) is live
-    ui/                                -- @jojopotato/ui: shared UI (brand-wordmark.tsx, theme.ts) -- brand tokens are placeholder
-    utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts)
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); staff.ts (StaffMe, StaffRole, STAFF_ROLES, StaffBranch) is live; notifications/rewards still placeholders
+    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26) -- brand tokens are placeholder
+    utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts, product-options.ts -- adopted 13-07-26, unit-agnostic option-selection helpers)
   docs/
     jojo-potato-mobile-prd.md         -- product PRD (navigation §7, auth §6.1) — source of truth for scope
   process/
@@ -300,6 +395,7 @@ Metro/Expo resolves them like any other dependency.
 - **Package manager:** pnpm 10.33.0 (`packageManager` field pinned in root `package.json`)
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
+- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
 - **Testing:** `packages/api` uses **vitest** + **supertest** (added STAFF-001). Run `pnpm --filter @jojopotato/api test` (requires `docker compose up -d` + `db:migrate` first). 34 tests covering auth and staff authz. No test runner exists for `apps/mobile` (no Jest/Vitest/Detox) — mobile verification is typecheck + lint + Agent-Probe only. See `process/context/tests/all-tests.md`.
 - **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
@@ -318,7 +414,7 @@ Metro/Expo resolves them like any other dependency.
 
 **Env var access pattern:** client-bundle config is read through a typed wrapper, not `process.env` directly inline — see `apps/mobile/src/config/env.ts` (`env.appEnv`, `env.apiUrl`), which falls back to sane defaults if the `EXPO_PUBLIC_*` var is unset.
 
-**Types-first placeholders:** `packages/types/src/{auth,cart,menu,notifications,order,pickup,rewards}.ts` already stub out the shared domain types for the four planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet. Check these files before defining new domain types for a feature.
+**Types-first placeholders:** `packages/types/src/{auth,notifications,rewards}.ts` still stub out the shared domain types for their planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, and `menu` are no longer placeholders — all four are real, cents-native types reconciled to the actual ordering-flow API contract (`menu.ts` was promoted from placeholder to real content by `merge-menu-api-reconciliation`, 13-07-26).
 
 **Platform-specific hooks:** `use-color-scheme.ts` has a `.web.ts` sibling variant (`apps/mobile/src/hooks/use-color-scheme.web.ts`) — this is the RN/Expo convention for platform-specific implementations picked up automatically by the bundler. Follow this `.web.ts` / default split for any new platform-diverging hook or util, per the "iOS-first, Android-ready" principle in `README.md`.
 

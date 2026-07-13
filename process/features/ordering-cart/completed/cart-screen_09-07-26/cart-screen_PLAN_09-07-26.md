@@ -1,10 +1,33 @@
 # Cart Screen (CART-001) — Implementation Plan
 
+## SUPERSEDED (13-07-26) — archived without ever being executed on this branch
+
+**This plan was never executed.** While it sat VALIDATED/EXECUTE-ready on this branch, teammate
+`development` independently built and shipped its own CART-001 cart screen (PR #62) with a
+different, richer `Cart`/`CartItem`/`CartItemOption`/`AppliedDiscount`/`CartSessionProvider` type
+and state model — not the `CartItem`/`Cart` shape this plan designed below. When `development` was
+merged into this branch, the user chose development's model as canonical (see
+`process/general-plans/completed/merge-cart-reconciliation_13-07-26/`), and this branch's real
+backend wiring was ported onto it instead of onto this plan's design.
+
+**Net effect:** CART-001's product requirement (a working cart screen with items, quantities,
+totals, coupon slot) IS satisfied in the codebase today — just via a different implementation path
+(development's screen + this branch's backend, reconciled by the merge) than the one this plan
+specifies. This plan's own Architecture Decisions (A1-A7), Public Contracts, and Implementation
+Checklist below describe a design that was **never built** — do not use this file as a description
+of the current cart architecture. See `process/features/ordering-cart/_GUIDE.md` and
+`process/context/all-context.md` §"Cart architecture (superseded)" for what actually shipped.
+
+Archived as **Obsolete** (superseded by independent work + a subsequent merge reconciliation), not
+Completed — no code in this plan's Implementation Checklist was ever written on this branch.
+
+---
+
 **Feature:** ordering-cart
 **Issue:** [CART-001] [P0] Cart screen with items, quantities, totals, and coupon slot (#17)
 **Milestone:** Phase 1: Customer App Core
 **Date**: 2026-07-09
-**Status**: Planning complete — VALIDATED (10-07-26, Gate: PASS). HOLD CLEARED (auth merged, `85ee923`) — EXECUTE-ready pending explicit "ENTER EXECUTE MODE". See §Dependencies & Hold and §Validate Contract.
+**Status**: SUPERSEDED (13-07-26) — see note above. Was: Planning complete — VALIDATED (10-07-26, Gate: PASS). HOLD CLEARED (auth merged, `85ee923`) — EXECUTE-ready pending explicit "ENTER EXECUTE MODE". See §Dependencies & Hold and §Validate Contract.
 **Complexity**: COMPLEX (new state seam + 3 new shared components + domain-type extensions + data-model decisions with backend-alignment implications)
 **Context**: see `process/context/all-context.md` (repo router)
 **Author:** orchestrator (synthesized from 6 parallel research agents, 2026-07-09); validated by vc-validate-agent (10-07-26)

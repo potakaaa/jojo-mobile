@@ -1,23 +1,32 @@
 import type { ProductDetail } from '@jojopotato/types';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
-import { useBranch } from '@/features/branch/hooks/use-branch';
-import { getProductDetails } from '@/lib/api-client';
+import { useMenu } from '@/features/menu/hooks/use-menu';
+
+export interface ProductDetailsResult {
+  data: ProductDetail | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}
 
 /**
- * Single-product details query, keyed on product + selected branch. Polls every
- * 20s while mounted and refetches on window focus so a mid-session availability
- * flip is reflected without a restart (AC11).
+ * Single-product details — a PURE DERIVATION over `useMenu()`'s cached branch
+ * tree, not a network query (this branch's backend has no per-product endpoint —
+ * see plan Gap B). The whole-menu query already polls every 20s and refetches on
+ * focus, so a mid-session availability flip is reflected here too: when a product
+ * becomes unavailable the backend drops it from the tree, so `find` returns
+ * `undefined` (data absent = unavailable). A product present in the tree is
+ * available (`isAvailable: true`).
  */
-export function useProductDetails(productId: string): UseQueryResult<ProductDetail> {
-  const { selectedBranch } = useBranch();
-  const branchId = selectedBranch?.id;
+export function useProductDetails(productId: string): ProductDetailsResult {
+  const menu = useMenu();
 
-  return useQuery({
-    queryKey: ['product', productId, branchId],
-    queryFn: () => getProductDetails(productId, branchId as string),
-    enabled: Boolean(productId && branchId),
-    refetchOnWindowFocus: true,
-    refetchInterval: 20_000,
-  });
+  const data = useMemo<ProductDetail | undefined>(() => {
+    const found = menu.data?.categories
+      .flatMap((category) => category.products)
+      .find((product) => product.id === productId);
+    return found ? { ...found, isAvailable: true } : undefined;
+  }, [menu.data, productId]);
+
+  return { data, isLoading: menu.isLoading, isError: menu.isError };
 }

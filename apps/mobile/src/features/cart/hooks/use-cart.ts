@@ -9,8 +9,6 @@ import {
   type ReactNode,
 } from 'react';
 
-import { MOCK_CART } from '@/features/cart/mock-cart';
-
 /**
  * In-memory cart state seam, mirroring the auth Context pattern in
  * `features/auth/hooks/use-auth.ts`. There is NO persistence yet: state lives in
@@ -19,8 +17,8 @@ import { MOCK_CART } from '@/features/cart/mock-cart';
  * AsyncStorage). This is the only cart state seam; swapping to a real cart
  * backend (CART-002) changes only this file's internals, not its consumers.
  *
- * The initial state is seeded from `MOCK_CART` because no cart backend exists
- * yet; that default becomes an empty/fetched cart once the backend lands.
+ * The initial state defaults to `EMPTY_CART` (no items, no branch); callers may
+ * override it via the provider's `initialCart` prop.
  */
 export interface CartSessionState {
   cart: Cart;
@@ -29,7 +27,7 @@ export interface CartSessionState {
   totalCents: number;
   itemCount: number;
   /** Adds a line for the current branch; merges into an existing matching line. */
-  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number) => void;
+  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number, notes?: string) => void;
   /** Sets a line's quantity; `qty <= 0` removes the line (D-note). */
   updateQuantity: (lineId: string, qty: number) => void;
   removeItem: (lineId: string) => void;
@@ -54,38 +52,44 @@ function unitPriceFor(menuItem: MenuItem, opts: CartItemOption[]): number {
   return opts.reduce((sum, o) => sum + o.priceDeltaCents, menuItem.priceCents);
 }
 
+const EMPTY_CART: Cart = { id: 'cart-local', items: [], pickupBranchId: '' };
+
 export function CartSessionProvider({
   children,
-  initialCart = MOCK_CART,
+  initialCart = EMPTY_CART,
 }: {
   children: ReactNode;
   initialCart?: Cart;
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
 
-  const addItem = useCallback((menuItem: MenuItem, opts: CartItemOption[], qty = 1) => {
-    if (qty <= 0) return;
-    setCart((prev) => {
-      const lineId = lineIdFor(menuItem.id, opts);
-      const existing = prev.items.find((it) => it.lineId === lineId);
-      const items = existing
-        ? prev.items.map((it) =>
-            it.lineId === lineId ? { ...it, quantity: it.quantity + qty } : it,
-          )
-        : [
-            ...prev.items,
-            {
-              lineId,
-              menuItemId: menuItem.id,
-              quantity: qty,
-              productNameSnapshot: menuItem.name,
-              unitPriceCents: unitPriceFor(menuItem, opts),
-              selectedOptions: opts,
-            } satisfies CartItem,
-          ];
-      return { ...prev, items };
-    });
-  }, []);
+  const addItem = useCallback(
+    (menuItem: MenuItem, opts: CartItemOption[], qty = 1, notes?: string) => {
+      if (qty <= 0) return;
+      setCart((prev) => {
+        const lineId = lineIdFor(menuItem.id, opts);
+        const existing = prev.items.find((it) => it.lineId === lineId);
+        const items = existing
+          ? prev.items.map((it) =>
+              it.lineId === lineId ? { ...it, quantity: it.quantity + qty } : it,
+            )
+          : [
+              ...prev.items,
+              {
+                lineId,
+                menuItemId: menuItem.id,
+                quantity: qty,
+                productNameSnapshot: menuItem.name,
+                unitPriceCents: unitPriceFor(menuItem, opts),
+                selectedOptions: opts,
+                notes,
+              } satisfies CartItem,
+            ];
+        return { ...prev, items };
+      });
+    },
+    [],
+  );
 
   const removeItem = useCallback((lineId: string) => {
     setCart((prev) => ({ ...prev, items: prev.items.filter((it) => it.lineId !== lineId) }));
@@ -118,7 +122,11 @@ export function CartSessionProvider({
   }, []);
 
   const setBranch = useCallback((branchId: string) => {
-    setCart((prev) => ({ ...prev, pickupBranchId: branchId }));
+    setCart((prev) =>
+      prev.pickupBranchId === branchId
+        ? prev
+        : { ...prev, pickupBranchId: branchId, items: [], appliedDiscount: undefined },
+    );
   }, []);
 
   const value = useMemo<CartSessionState>(() => {

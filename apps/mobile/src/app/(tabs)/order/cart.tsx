@@ -1,36 +1,17 @@
-import type { CartItemOption, MenuItem, PickupBranch, PickupTime } from '@jojopotato/types';
-import {
-  BranchCard,
-  Button,
-  CartItem,
-  CartSummary,
-  CouponCard,
-  EmptyState,
-  Input,
-} from '@jojopotato/ui';
+import type { MenuItem, PickupTime } from '@jojopotato/types';
+import { BranchCard, Button, CartItem, CartSummary, EmptyState } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
-import {
-  MOCK_BRANCH_PREP_MINUTES,
-  MOCK_CART_BRANCH,
-  MOCK_OTHER_BRANCH,
-} from '@/features/cart/mock-cart';
-import { MOCK_PRODUCTS } from '@/features/home/mock-home';
+import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
-
-/** Known branches, keyed by id, for resolving `cart.pickupBranchId` to a card. */
-const BRANCHES: Record<string, PickupBranch> = {
-  [MOCK_CART_BRANCH.id]: MOCK_CART_BRANCH,
-  [MOCK_OTHER_BRANCH.id]: MOCK_OTHER_BRANCH,
-};
 
 /** Build the display-only estimated pickup time (D5): now + branch prep minutes. */
 function estimatedPickup(prepMinutes: number): PickupTime {
@@ -50,23 +31,24 @@ function productForLine(
   nameSnapshot: string,
   unitPriceCents: number,
 ): MenuItem {
-  const catalog = MOCK_PRODUCTS.find((p) => p.id === menuItemId);
   return {
     id: menuItemId,
     name: nameSnapshot,
     // Use the snapshot unit price so the row total matches the cart math exactly.
     priceCents: unitPriceCents,
-    categoryId: catalog?.categoryId ?? '',
-    imageUrl: catalog?.imageUrl ?? undefined,
+    categoryId: '',
+    // No per-line image snapshot on the canonical Cart shape — CartItem renders a
+    // placeholder for a falsy imageUrl (accepted cosmetic gap, see plan Step 5.5).
+    imageUrl: undefined,
     isAvailable: true,
   };
 }
 
 /**
- * Cart screen (CART-001). Renders the selected branch, line items with quantity
- * steppers + remove, an estimated pickup time, a coupon/reward slot, and the
- * subtotal/discount/total summary — all driven by the in-memory `useCart()`
- * seam. Backend, checkout, and real pricing are out of scope (CART-002).
+ * Cart screen. Renders the selected branch (real branch data), line items with
+ * quantity steppers + remove, an estimated pickup time, and the subtotal/total
+ * summary — all driven by the in-memory `useCart()` seam wired to the real
+ * branch/menu/order backend. Coupons are deferred (no backend support yet).
  */
 export default function CartScreen() {
   const theme = useTheme();
@@ -82,73 +64,33 @@ export default function CartScreen() {
     itemCount,
     updateQuantity,
     removeItem,
-    applyDiscount,
-    clearDiscount,
     clearCart,
     setBranch,
-    addItem,
   } = useCart();
 
-  const [couponCode, setCouponCode] = useState('');
+  const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
+  const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
 
-  const branch = BRANCHES[cart.pickupBranchId] ?? MOCK_CART_BRANCH;
-  const pickupTime = useMemo(() => estimatedPickup(MOCK_BRANCH_PREP_MINUTES), []);
   const isEmpty = cart.items.length === 0;
+  const pickupTime = useMemo(
+    () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
+    [branch?.estimatedPrepMinutes],
+  );
 
-  const handleApplyCoupon = () => {
-    const code = couponCode.trim();
-    if (!code) return;
-    // Real coupon pricing is stubbed (CART-002). Model a light client-side 10%
-    // discount so the total recalculation is demonstrable (D2/D9).
-    const amountCents = Math.round(subtotalCents * 0.1);
-    applyDiscount({ source: 'coupon', refId: code, label: code.toUpperCase(), amountCents });
-    setCouponCode('');
-  };
-
-  // AC6 (D4): adding a product from a different branch must prompt to clear and
-  // switch, never silently mix branches. Dev-only affordance to exercise it.
-  const handleAddFromOtherBranch = () => {
-    const other = MOCK_OTHER_BRANCH;
-    const sampleProduct =
-      MOCK_PRODUCTS.find((p) => p.id === 'corndog-mozzarella') ?? MOCK_PRODUCTS[0];
-    if (!sampleProduct) return;
-    const sample = productToMenuItem(sampleProduct);
-    const opts: CartItemOption[] = [];
-    if (cart.pickupBranchId === other.id || cart.items.length === 0) {
-      setBranch(other.id);
-      addItem(sample, opts);
-      return;
-    }
-    Alert.alert(
-      'Switch branch?',
-      `Your cart has items from ${branch.name}. Clear it and start a new order at ${other.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear and switch',
-          style: 'destructive',
-          onPress: () => {
-            clearCart();
-            setBranch(other.id);
-            addItem(sample, opts);
-          },
-        },
-      ],
-    );
-  };
-
-  // Switch pickup to the other mock branch. If the cart has items, switching
-  // clears it first (branches can't be mixed — same D4 rule as above).
+  // Switch pickup to the next real branch (cyclic). If the cart has items,
+  // switching clears it first (branches can't be mixed — single-branch per order).
   const handleChangeBranch = () => {
-    const nextBranch =
-      cart.pickupBranchId === MOCK_CART_BRANCH.id ? MOCK_OTHER_BRANCH : MOCK_CART_BRANCH;
+    if (branches.length <= 1) return;
+    const currentIndex = branches.findIndex((b) => b.id === cart.pickupBranchId);
+    const nextBranch = branches[(currentIndex + 1) % branches.length];
+    if (!nextBranch || nextBranch.id === cart.pickupBranchId) return;
     if (cart.items.length === 0) {
       setBranch(nextBranch.id);
       return;
     }
     Alert.alert(
       'Change branch?',
-      `Switching to ${nextBranch.name} will clear your current cart from ${branch.name}.`,
+      `Switching to ${nextBranch.name} will clear your current cart from ${branch?.name ?? 'this branch'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -163,6 +105,8 @@ export default function CartScreen() {
     );
   };
 
+  const canChangeBranch = branches.length > 1;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
@@ -175,6 +119,15 @@ export default function CartScreen() {
             onAction={() => router.push('/(tabs)/order')}
             mode={mode}
           />
+        ) : branchesLoading ? (
+          <ScreenLoader />
+        ) : branchesError || !branch ? (
+          <ScreenMessage
+            title="Couldn't load your pickup branch"
+            subtitle="Please try again."
+            actionLabel="Retry"
+            onAction={refetch}
+          />
         ) : (
           <>
             <ScrollView
@@ -185,7 +138,7 @@ export default function CartScreen() {
               <BranchCard
                 branch={branch}
                 mode={mode}
-                onChange={handleChangeBranch}
+                onChange={canChangeBranch ? handleChangeBranch : undefined}
                 footer={
                   <View style={styles.pickupRow}>
                     <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
@@ -214,6 +167,8 @@ export default function CartScreen() {
                       line.productNameSnapshot,
                       line.unitPriceCents,
                     )}
+                    flavor={line.selectedOptions.find((o) => o.optionType === 'flavor')?.name}
+                    size={line.selectedOptions.find((o) => o.optionType === 'size')?.name}
                     onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
                     onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
                     onRemove={() => removeItem(line.lineId)}
@@ -225,39 +180,9 @@ export default function CartScreen() {
 
               <View style={styles.couponSlot}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Coupon / reward</Text>
-                {cart.appliedDiscount ? (
-                  <>
-                    <CouponCard
-                      coupon={{
-                        id: cart.appliedDiscount.refId,
-                        code: cart.appliedDiscount.label,
-                        title: 'Applied discount',
-                        discountLabel: `-${(discountTotalCents / 100).toFixed(2)}`,
-                        isRedeemed: false,
-                      }}
-                      mode={mode}
-                    />
-                    <Button
-                      label="Remove discount"
-                      variant="outline"
-                      onPress={clearDiscount}
-                      mode={mode}
-                    />
-                  </>
-                ) : (
-                  <View style={styles.couponEntry}>
-                    <View style={styles.couponInput}>
-                      <Input
-                        value={couponCode}
-                        onChangeText={setCouponCode}
-                        placeholder="Enter coupon code"
-                        autoCapitalize="characters"
-                        mode={mode}
-                      />
-                    </View>
-                    <Button label="Apply" size="sm" onPress={handleApplyCoupon} mode={mode} />
-                  </View>
-                )}
+                <Text style={[styles.couponNote, { color: theme.textSecondary }]}>
+                  Coupons coming soon
+                </Text>
               </View>
 
               <CartSummary
@@ -267,15 +192,6 @@ export default function CartScreen() {
                 totalCents={totalCents}
                 mode={mode}
               />
-
-              {__DEV__ ? (
-                <Button
-                  label="Dev: add item from another branch"
-                  variant="outline"
-                  onPress={handleAddFromOtherBranch}
-                  mode={mode}
-                />
-              ) : null}
             </ScrollView>
 
             <View
@@ -352,13 +268,9 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
-  couponEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  couponInput: {
-    flex: 1,
+  couponNote: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
   },
   footer: {
     paddingHorizontal: Spacing.four,

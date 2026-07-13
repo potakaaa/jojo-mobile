@@ -7,6 +7,35 @@ feature: ordering-cart
 
 # PLAN — Menu Browsing & Product Details (MENU-001 + MENU-002)
 
+## SUPERSEDED (13-07-26) — fulfilled via merge reconciliation, not by executing this plan
+
+**This plan's own execution was itself the "development" side of a later merge conflict, not
+directly adopted as-is.** This plan (and its EXECUTE) predates the branch-merge described in
+`process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/`: this was
+`development`'s independently-built menu/branch feature (TanStack Query + a **decimal-peso**
+backend API, `packages/api/src/routes/menu.ts`), built in parallel with this branch's own
+cents-native `/branches`/`/branches/:id/menu` backend and its own simpler `useEffect`/`useState`
+menu/branch hooks.
+
+When the branches merged, the user chose: (1) keep this branch's cents backend + real
+order-placement as canonical, discard this plan's decimal-peso backend API entirely; (2) **adopt
+react-query** (this plan's core architectural contribution), retargeted onto the cents backend
+instead of the decimal one; (3) adopt this plan's menu UI components as polish.
+
+**Net effect:** MENU-001/MENU-002's product requirement (branch-scoped category menu + product
+detail with required-option selection and live pricing) IS satisfied in the codebase today — via
+the react-query data layer and UI components this plan built, retargeted onto the *other* branch's
+real backend by the merge reconciliation — not by this plan's own backend (`routes/menu.ts`,
+discarded) or its own local types (`features/menu/lib/api-client.ts`'s decimal shapes, promoted to
+cents-native and moved into `packages/types/src/menu.ts` instead). See
+`process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` for the full
+merge-resolution plan, gap analysis (Gaps A-G), and closeout report.
+
+Archived here without further action — its own Implementation Checklist below is historical record
+of what this plan intended to build on its own backend, not a live checklist.
+
+---
+
 TL;DR: Build the first real Order-tab experience — branch-scoped category menu (MENU-001) plus a
 product details screen with required-option selection and live pricing (MENU-002) — on top of
 three new pieces of shared plumbing (selected-branch context, in-memory cart, and the app's first

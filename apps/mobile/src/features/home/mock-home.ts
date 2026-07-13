@@ -10,116 +10,79 @@
  * Typed against the real shared domain shapes in `@jojopotato/types` so the
  * Home screen renders against the same contracts the eventual API will satisfy.
  */
-import type { Category, PickupBranch, Product, RewardsAccount } from '@jojopotato/types';
+import type { MenuCategory, MenuItem, PickupBranch, RewardsAccount } from '@jojopotato/types';
 
-/**
- * Mock categories. `products` is intentionally empty — the Home grid renders
- * from `MOCK_PRODUCTS` below; these only feed the category chip row.
- */
-export const MOCK_CATEGORIES: Category[] = [
-  { id: 'classic', name: 'Classic', slug: 'classic', sortOrder: 1, isActive: true, products: [] },
-  { id: 'cheesy', name: 'Cheesy', slug: 'cheesy', sortOrder: 2, isActive: true, products: [] },
-  { id: 'spicy', name: 'Spicy', slug: 'spicy', sortOrder: 3, isActive: true, products: [] },
-  {
-    id: 'sweet-savory',
-    name: 'Sweet & Savory',
-    slug: 'sweet-savory',
-    sortOrder: 4,
-    isActive: true,
-    products: [],
-  },
+export const MOCK_CATEGORIES: MenuCategory[] = [
+  { id: 'classic', name: 'Classic', sortOrder: 1 },
+  { id: 'cheesy', name: 'Cheesy', sortOrder: 2 },
+  { id: 'spicy', name: 'Spicy', sortOrder: 3 },
+  { id: 'sweet-savory', name: 'Sweet & Savory', sortOrder: 4 },
 ];
 
-// `basePrice` is in whole PHP units (was `priceCents`/100). The sold-out mock
-// product carries `isActive: false`, which the grid maps to `isAvailable`.
-export const MOCK_PRODUCTS: Product[] = [
+export const MOCK_PRODUCTS: MenuItem[] = [
   {
     id: 'fries-classic',
-    categoryId: 'classic',
     name: 'Classic Fries',
-    slug: 'classic-fries',
     description: 'Golden hand-cut fries with a light dusting of sea salt.',
-    imageUrl: null,
-    basePrice: 99,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 9900,
+    categoryId: 'classic',
+    isAvailable: true,
   },
   {
     id: 'fries-cheddar',
-    categoryId: 'cheesy',
     name: 'Cheddar Loaded Fries',
-    slug: 'cheddar-loaded-fries',
     description: 'Fries smothered in melty cheddar sauce and crispy bits.',
-    imageUrl: null,
-    basePrice: 149,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 14900,
+    categoryId: 'cheesy',
+    isAvailable: true,
   },
   {
     id: 'corndog-mozzarella',
-    categoryId: 'cheesy',
     name: 'Mozzarella Corndog',
-    slug: 'mozzarella-corndog',
     description: 'Stretchy mozzarella corndog rolled in a crunchy coat.',
-    imageUrl: null,
-    basePrice: 129,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 12900,
+    categoryId: 'cheesy',
+    isAvailable: true,
   },
   {
     id: 'fries-fire',
-    categoryId: 'spicy',
     name: 'Fire Spice Fries',
-    slug: 'fire-spice-fries',
     description: 'Fries tossed in a smoky chili-garlic seasoning.',
-    imageUrl: null,
-    basePrice: 139,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 13900,
+    categoryId: 'spicy',
+    isAvailable: true,
   },
   {
     id: 'nuggets-spicy',
-    categoryId: 'spicy',
     name: 'Spicy Chicken Nuggets',
-    slug: 'spicy-chicken-nuggets',
     description: 'Six crispy nuggets with a kick of cayenne heat.',
-    imageUrl: null,
-    basePrice: 159,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 15900,
+    categoryId: 'spicy',
+    isAvailable: true,
   },
   {
     id: 'corndog-honey',
-    categoryId: 'sweet-savory',
     name: 'Honey Butter Corndog',
-    slug: 'honey-butter-corndog',
     description: 'Sweet-and-salty honey butter glaze over a classic corndog.',
-    imageUrl: null,
-    basePrice: 129,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 12900,
+    categoryId: 'sweet-savory',
+    isAvailable: true,
   },
   {
     id: 'lemonade-yuzu',
-    categoryId: 'sweet-savory',
     name: 'Yuzu Lemonade',
-    slug: 'yuzu-lemonade',
     description: 'Bright citrus lemonade with a splash of yuzu.',
-    imageUrl: null,
-    basePrice: 89,
-    isActive: true,
-    isRewardEligible: false,
+    priceCents: 8900,
+    categoryId: 'sweet-savory',
+    isAvailable: true,
   },
   {
     id: 'nuggets-classic',
-    categoryId: 'classic',
     name: 'Classic Chicken Nuggets',
-    slug: 'classic-chicken-nuggets',
     description: 'Six golden nuggets with your choice of dip.',
-    imageUrl: null,
-    basePrice: 149,
-    isActive: false,
-    isRewardEligible: false,
+    priceCents: 14900,
+    categoryId: 'classic',
+    isAvailable: false,
   },
 ];
 
@@ -129,6 +92,8 @@ export const MOCK_BRANCH: PickupBranch = {
   address: '7th Ave cor 30th St, Bonifacio Global City, Taguig',
   latitude: 14.5509,
   longitude: 121.0512,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 
