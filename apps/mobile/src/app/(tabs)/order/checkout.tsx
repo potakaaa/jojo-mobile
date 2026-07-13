@@ -139,7 +139,12 @@ export default function CheckoutScreen() {
       <SafeAreaView style={styles.safeArea} edges={[]}>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            Platform.OS !== 'web' && {
+              paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.six + Spacing.two,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <BranchCard
@@ -358,6 +363,11 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.bodySmall,
   },
   footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
