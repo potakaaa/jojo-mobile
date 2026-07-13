@@ -149,6 +149,8 @@ plus `process/development-protocols/all-development-protocols.md`.
 
 **Context routing discipline:** `all-*.md` entrypoints are routers, not the full knowledge. Agents MUST follow the routing tables in `all-*.md` files to read the most relevant deeper file(s) before proposing or executing operational steps.
 
+**Graphify Context Discovery:** If the repository has a Graphify knowledge graph initialized (check for `graphify-out/`), use the `graphify query` command (or the `graphify` skill) to gain deep architectural context, discover latent relationships, and answer complex codebase questions. Treat it as a primary source for structural and semantic exploration.
+
 ---
 
 ### Core Protocol

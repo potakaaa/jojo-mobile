@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": ["APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"],
   "tasks": {
     "dev": {
       "cache": false,
