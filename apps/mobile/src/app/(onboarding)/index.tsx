@@ -104,8 +104,14 @@ export default function OnboardingRoute() {
 
   const previewCopy =
     step === 0
-      ? { title: 'Order ahead, skip the line', subtitle: 'Browse the menu and order for pickup in a few taps.' }
-      : { title: 'Deals & rewards', subtitle: 'Unlock promos and earn stars every time you order.' };
+      ? {
+          title: 'Order ahead, skip the line',
+          subtitle: 'Browse the menu and order for pickup in a few taps.',
+        }
+      : {
+          title: 'Deals & rewards',
+          subtitle: 'Unlock promos and earn stars every time you order.',
+        };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -115,7 +121,10 @@ export default function OnboardingRoute() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
-            contentContainerStyle={[styles.scroll, { paddingTop: compact ? Spacing.four : Spacing.five }]}
+            contentContainerStyle={[
+              styles.scroll,
+              { paddingTop: compact ? Spacing.four : Spacing.five },
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
@@ -178,7 +187,9 @@ export default function OnboardingRoute() {
                       editable={!pending}
                     />
                     <View style={styles.dateField}>
-                      <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Birthday</Text>
+                      <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>
+                        Birthday
+                      </Text>
                       <View style={styles.dateRow}>
                         <Input
                           ref={monthRef}
@@ -209,7 +220,8 @@ export default function OnboardingRoute() {
                             if (digits.length === 2) yearRef.current?.focus();
                           }}
                           onKeyPress={(e) => {
-                            if (e.nativeEvent.key === 'Backspace' && bDay === '') monthRef.current?.focus();
+                            if (e.nativeEvent.key === 'Backspace' && bDay === '')
+                              monthRef.current?.focus();
                           }}
                           keyboardType="number-pad"
                           textAlign="center"
@@ -227,7 +239,8 @@ export default function OnboardingRoute() {
                             setError(undefined);
                           }}
                           onKeyPress={(e) => {
-                            if (e.nativeEvent.key === 'Backspace' && bYear === '') dayRef.current?.focus();
+                            if (e.nativeEvent.key === 'Backspace' && bYear === '')
+                              dayRef.current?.focus();
                           }}
                           keyboardType="number-pad"
                           textAlign="center"

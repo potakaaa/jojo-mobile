@@ -125,11 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeOnboarding = useCallback(() => setHasOnboarded(true), []);
 
   const completeProfile = useCallback(
-    async (info: {
-      name: string;
-      birthday: string;
-      address: string;
-    }): Promise<SignInResult> => {
+    async (info: { name: string; birthday: string; address: string }): Promise<SignInResult> => {
       const { error } = await authClient.updateUser({
         name: info.name,
         birthday: info.birthday,
