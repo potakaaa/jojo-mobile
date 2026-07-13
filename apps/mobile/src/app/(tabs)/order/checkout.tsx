@@ -17,7 +17,7 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  SlideInUp,
+  SlideInDown,
   SlideOutDown,
   cancelAnimation,
   useAnimatedStyle,
@@ -272,25 +272,29 @@ export default function CheckoutScreen() {
           {__DEV__ ? <DevEdgeCaseControls mode={mode} /> : null}
         </ScrollView>
 
-        <View
-          style={[
-            styles.footer,
-            Platform.OS !== 'web' && {
-              paddingBottom: getFloatingTabBarClearance(insets.bottom),
-            },
-          ]}
-        >
-          <Button
-            label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
-              style: 'currency',
-              currency: 'PHP',
-            })}`}
-            onPress={openConfirm}
-            loading={isPlacingOrder}
-            disabled={isEmpty}
-            mode={mode}
-          />
-        </View>
+        {countdown === null ? (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+            style={[
+              styles.footer,
+              Platform.OS !== 'web' && {
+                paddingBottom: getFloatingTabBarClearance(insets.bottom),
+              },
+            ]}
+          >
+            <Button
+              label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
+                style: 'currency',
+                currency: 'PHP',
+              })}`}
+              onPress={openConfirm}
+              loading={isPlacingOrder}
+              disabled={isEmpty}
+              mode={mode}
+            />
+          </Animated.View>
+        ) : null}
       </SafeAreaView>
 
       {countdown !== null ? (
@@ -301,7 +305,7 @@ export default function CheckoutScreen() {
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={dismissConfirm} />
           <Animated.View
-            entering={SlideInUp.duration(300)}
+            entering={SlideInDown.duration(300)}
             exiting={SlideOutDown.duration(200)}
             style={[
               styles.sheet,

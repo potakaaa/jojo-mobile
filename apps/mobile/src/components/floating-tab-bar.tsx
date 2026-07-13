@@ -7,6 +7,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -234,12 +235,17 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const colors = Colors[mode];
   const hidden = useSyncExternalStore(subscribeTabBar, getTabBarHidden);
 
-  if (hidden) {
-    return null;
-  }
+  // Fade the bar out/in when a full-screen overlay (e.g. the checkout confirm
+  // drawer) toggles it, instead of popping. pointerEvents blocks taps while hidden.
+  const barOpacity = useSharedValue(1);
+  useEffect(() => {
+    barOpacity.value = withTiming(hidden ? 0 : 1, { duration: 200 });
+  }, [hidden, barOpacity]);
+  const barFadeStyle = useAnimatedStyle(() => ({ opacity: barOpacity.value }));
 
   return (
-    <View
+    <Animated.View
+      pointerEvents={hidden ? 'none' : 'auto'}
       style={[
         styles.bar,
         {
@@ -248,6 +254,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
           borderColor: colors.border,
         },
         Shadows.offsetMd,
+        barFadeStyle,
       ]}
     >
       {state.routes.map((route, i) => {
@@ -282,7 +289,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
           />
         );
       })}
-    </View>
+    </Animated.View>
   );
 }
 
