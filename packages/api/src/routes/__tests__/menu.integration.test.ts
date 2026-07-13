@@ -70,7 +70,10 @@ beforeAll(async () => {
     const [row] = await db
       .insert(categories)
       .values({ name: `Test ${slug}`, slug, sort_order: sortOrder, is_active: isActive })
-      .onConflictDoUpdate({ target: categories.slug, set: { sort_order: sortOrder, is_active: isActive } })
+      .onConflictDoUpdate({
+        target: categories.slug,
+        set: { sort_order: sortOrder, is_active: isActive },
+      })
       .returning({ id: categories.id });
     return row!.id;
   };
@@ -91,7 +94,10 @@ beforeAll(async () => {
         base_price: basePrice,
         is_active: isActive,
       })
-      .onConflictDoUpdate({ target: products.slug, set: { is_active: isActive, category_id: categoryId } })
+      .onConflictDoUpdate({
+        target: products.slug,
+        set: { is_active: isActive, category_id: categoryId },
+      })
       .returning({ id: products.id });
     return row!.id;
   };
@@ -131,9 +137,28 @@ beforeAll(async () => {
 
   // Options on prodWithFlavor: a flavor group (out-of-order sort + one inactive).
   await db.insert(productOptions).values([
-    { product_id: ids.prodWithFlavor, option_type: 'flavor', name: 'Cheese-filled', price_delta: '15.00', sort_order: 1 },
-    { product_id: ids.prodWithFlavor, option_type: 'flavor', name: 'Classic', price_delta: '0', sort_order: 0 },
-    { product_id: ids.prodWithFlavor, option_type: 'add_on', name: 'Gone', price_delta: '5.00', sort_order: 2, is_active: false },
+    {
+      product_id: ids.prodWithFlavor,
+      option_type: 'flavor',
+      name: 'Cheese-filled',
+      price_delta: '15.00',
+      sort_order: 1,
+    },
+    {
+      product_id: ids.prodWithFlavor,
+      option_type: 'flavor',
+      name: 'Classic',
+      price_delta: '0',
+      sort_order: 0,
+    },
+    {
+      product_id: ids.prodWithFlavor,
+      option_type: 'add_on',
+      name: 'Gone',
+      price_delta: '5.00',
+      sort_order: 2,
+      is_active: false,
+    },
   ]);
 
   const app = express();

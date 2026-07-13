@@ -26,7 +26,11 @@ export function BranchSwitcher() {
   return (
     <View style={styles.wrap}>
       <Text style={[styles.label, { color: theme.textSecondary }]}>Pickup from</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+      >
         {branches.map((branch) => {
           const isSelected = branch.id === selectedBranch?.id;
           return (

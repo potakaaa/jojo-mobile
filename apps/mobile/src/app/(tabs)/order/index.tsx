@@ -1,5 +1,13 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
@@ -58,11 +66,7 @@ export default function OrderScreen() {
             </View>
           ) : data && data.categories.length > 0 ? (
             data.categories.map((category) => (
-              <CategorySection
-                key={category.id}
-                category={category}
-                onProductPress={openProduct}
-              />
+              <CategorySection key={category.id} category={category} onProductPress={openProduct} />
             ))
           ) : (
             <View style={styles.stateBox}>

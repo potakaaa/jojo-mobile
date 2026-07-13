@@ -37,7 +37,12 @@ export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCar
   };
 
   return (
-    <View style={[styles.bar, { backgroundColor: theme.backgroundElement, borderTopColor: theme.border }]}>
+    <View
+      style={[
+        styles.bar,
+        { backgroundColor: theme.backgroundElement, borderTopColor: theme.border },
+      ]}
+    >
       {showHint && !canAdd ? (
         <Text style={[styles.hint, { color: Palette.jred }]}>
           Please choose the required options first.
@@ -55,7 +60,13 @@ export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCar
             style={StyleSheet.flatten([styles.addButton, !canAdd && styles.addButtonDim])}
           />
         ) : (
-          <Button label="Unavailable" onPress={() => {}} variant="outline" disabled style={styles.addButton} />
+          <Button
+            label="Unavailable"
+            onPress={() => {}}
+            variant="outline"
+            disabled
+            style={styles.addButton}
+          />
         )}
       </View>
     </View>
