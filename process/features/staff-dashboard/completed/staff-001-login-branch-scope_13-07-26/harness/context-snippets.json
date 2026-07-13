@@ -1,0 +1,41 @@
+{
+  "task": "STAFF-001 — Staff login and branch-scoped access",
+  "snippets": [
+    {
+      "file": "packages/api/src/lib/require-staff.ts",
+      "lines": "56-84",
+      "description": "requireStaff middleware — reuses better-auth auth.api.getSession (no forked auth), rejects non-staff roles with 403 { error: 'Forbidden' }, attaches req.staffSession. Catch-all also returns 403, never 500 (no internals leaked).",
+      "content": "export function requireStaff(auth: Auth): RequestHandler { return async (req, res, next) => { try { const session = await auth.api.getSession({ headers: toHeaders(req.headers) }); const role = (session?.user as { role?: string | null } | undefined)?.role; if (!session || !isStaffRole(role)) { res.status(403).json({ error: 'Forbidden' }); return; } req.staffSession = { userId: session.user.id, role, assignedBranchId: ... ?? null }; next(); } catch { res.status(403).json({ error: 'Forbidden' }); } }; }"
+    },
+    {
+      "file": "packages/api/src/lib/require-staff.ts",
+      "lines": "100-114",
+      "description": "assertBranchScope pure guard — unassigned staff (null) => false; no requested branch => true (own data); otherwise exact match required. TODO(STAFF-ADM) seam only; no admin bypass implemented.",
+      "content": "export function assertBranchScope(assignedBranchId, requestedBranchId) { if (assignedBranchId === null) return false; if (requestedBranchId === null) return true; return assignedBranchId === requestedBranchId; }"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "22-38",
+      "description": "GET /api/staff/me canary — read-only; accepts NO branch id from the client, resolves the caller's OWN branch via resolveBranchScope, so cross-branch reads are structurally impossible on this endpoint.",
+      "content": "staffRouter.get('/me', async (req, res) => { const session = req.staffSession!; const assignedBranchId = await resolveBranchScope(db, session.userId); ... res.json({ role: session.role, assignedBranch }); });"
+    },
+    {
+      "file": "packages/api/src/index.ts",
+      "lines": "31-33",
+      "description": "Guard mounted ONCE at router level: app.use('/api/staff', requireStaff(auth), staffRouter). Every current and future staff route inherits the guard; better-auth handler stays mounted before express.json().",
+      "content": "app.use('/api/staff', requireStaff(auth), staffRouter);"
+    },
+    {
+      "file": "apps/mobile/src/app/_layout.tsx",
+      "lines": "31-49",
+      "description": "Role-aware root gate. isStaffUser/isCustomer both require !isLoading && user!==null, so the loading race routes to neither protected stack; unauthenticated falls to (auth). Staff role => (staff), customer => (tabs).",
+      "content": "const isAuthenticated = !isLoading && user !== null; const isStaffUser = isAuthenticated && isStaff; const isCustomer = isAuthenticated && !isStaff; <Stack.Protected guard={isStaffUser}><Stack.Screen name=\"(staff)\" /></Stack.Protected> ..."
+    },
+    {
+      "file": "packages/api/src/db/schema/users.ts",
+      "lines": "27-31",
+      "description": "Additive nullable FK assigned_branch_id uuid references branches(id). Separate from favoriteBranchId (customer preference). Migration 0002_elite_bishop.sql — ADD COLUMN + ADD CONSTRAINT only, no data loss.",
+      "content": "assignedBranchId: uuid('assigned_branch_id').references(() => branches.id),"
+    }
+  ]
+}

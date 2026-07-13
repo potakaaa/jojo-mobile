@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { auth } from '../../lib/auth';
 import { db } from '../client';
 import {
   branchProductAvailability,
@@ -11,8 +12,55 @@ import {
   products,
   users,
 } from '../schema/index';
-import { auth } from '../../lib/auth';
 import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
+
+const STAFF_EMAIL = 'staff-branch1@jojopotato.local';
+
+/**
+ * Seed one `staff` user scoped to the first seeded branch (STAFF-001 testability).
+ *
+ * Uses `auth.api.signUpEmail` so better-auth creates BOTH the `users` row AND
+ * the `account` credential entry — a bare `db.insert(users)` would create an
+ * orphan row that cannot authenticate. `role`/`assignedBranchId` are then set
+ * directly (both are server-owned; `role` is `input:false` in better-auth).
+ * Idempotent: a duplicate email hits the unique constraint and is skipped.
+ */
+async function seedStaffUser(branchIdBySlug: Map<string, string>): Promise<void> {
+  const [firstBranchId] = branchIdBySlug.values();
+  if (!firstBranchId) {
+    throw new Error('Seed error: cannot seed staff user — no branches were seeded');
+  }
+
+  // Never seed a reusable dev credential into a production database.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Seed error: refusing to seed the staff test user while NODE_ENV=production');
+  }
+  // Prefer an env-provided password so the fallback dev credential is never the only option.
+  const staffPassword = process.env.STAFF_SEED_PASSWORD ?? 'staff-dev-password';
+
+  try {
+    await auth.api.signUpEmail({
+      body: { email: STAFF_EMAIL, password: staffPassword, name: 'Branch 1 Staff' },
+    });
+  } catch {
+    // User already exists (email unique constraint) — fall through to the update
+    // so re-seeding still guarantees the correct role/branch assignment.
+  }
+
+  // Verify the update actually hit a row: if signUpEmail failed for a NON-duplicate
+  // reason (e.g. password policy, transient auth error), no user exists and the
+  // update silently affects 0 rows — surface that instead of reporting success.
+  const [updated] = await db
+    .update(users)
+    .set({ role: 'staff', assignedBranchId: firstBranchId })
+    .where(eq(users.email, STAFF_EMAIL))
+    .returning({ id: users.id });
+  if (!updated) {
+    throw new Error(
+      'Seed error: staff user was not created — signUpEmail failed for a non-duplicate reason',
+    );
+  }
+}
 
 // Hardcoded dev-only test credential (per locked SPEC decision — intentionally
 // NOT env-driven). Only ever seeded outside production; see seedTestUser()'s
@@ -243,6 +291,7 @@ export async function seedTestUser(): Promise<void> {
 
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
+  await seedStaffUser(branchIdBySlug);
   const categoryIdBySlug = await seedCategoriesTable();
   const productIdBySlug = await seedProductsTable(categoryIdBySlug);
   await seedProductOptionsTable(productIdBySlug);
@@ -253,6 +302,7 @@ export async function runSeed(): Promise<void> {
 
   console.log('Seed complete:');
   console.log(`  branches: ${branchIdBySlug.size}`);
+  console.log(`  staff users: 1 (${STAFF_EMAIL})`);
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);

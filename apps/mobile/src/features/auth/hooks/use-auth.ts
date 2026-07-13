@@ -1,4 +1,5 @@
-import type { AuthUser, UserRole } from '@jojopotato/types';
+import { STAFF_ROLES } from '@jojopotato/types';
+import type { AuthUser, StaffRole, UserRole } from '@jojopotato/types';
 import {
   createContext,
   createElement,
@@ -43,6 +44,8 @@ export interface AuthContextValue {
   user: AuthUser | null;
   /** Convenience accessor for `user.role`, or `null` when unauthenticated. */
   role: UserRole | null;
+  /** True when the signed-in user's role is a staff role (staff/admin/super_admin). */
+  isStaff: boolean;
   /** True while the persisted session is still being restored on cold start. */
   isLoading: boolean;
   /** Whether onboarding has been seen this session (local, non-auth state). */
@@ -182,9 +185,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             : null,
         }
       : null;
+    const role = user?.role ?? null;
+    const isStaff = role !== null && STAFF_ROLES.includes(role as StaffRole);
     return {
       user,
-      role: user?.role ?? null,
+      role,
+      isStaff,
       isLoading: isPending,
       hasOnboarded,
       hasCompletedProfile: user?.onboardedAt != null,
