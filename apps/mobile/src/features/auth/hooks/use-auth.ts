@@ -1,4 +1,5 @@
-import type { AuthUser, UserRole } from '@jojopotato/types';
+import { STAFF_ROLES } from '@jojopotato/types';
+import type { AuthUser, StaffRole, UserRole } from '@jojopotato/types';
 import {
   createContext,
   createElement,
@@ -21,14 +22,16 @@ const APP_CALLBACK_URL = Linking.createURL('/');
 /**
  * How a caller asks `signIn` to authenticate. One dispatcher covers every
  * method the login screen needs — Google OAuth, magic link, and the two-step
- * phone OTP flow. Email/password remains enabled server-side (better-auth) but
- * has no client entry point today, so it is not part of this union.
+ * phone OTP flow. Email/password is enabled server-side (better-auth); its only
+ * client entry point is the dev-only `[DEV] Temp Login` button, which is behind
+ * a `__DEV__` guard on the login screen (not a production sign-in path).
  */
 export type SignInInput =
   | { method: 'google' }
   | { method: 'magic-link'; email: string }
   | { method: 'phone-send'; phoneNumber: string }
-  | { method: 'phone-verify'; phoneNumber: string; code: string };
+  | { method: 'phone-verify'; phoneNumber: string; code: string }
+  | { method: 'email-password'; email: string; password: string };
 
 /** Result-object return so screens can surface errors without try/catch. */
 export interface SignInResult {
@@ -41,13 +44,30 @@ export interface AuthContextValue {
   user: AuthUser | null;
   /** Convenience accessor for `user.role`, or `null` when unauthenticated. */
   role: UserRole | null;
+  /** True when the signed-in user's role is a staff role (staff/admin/super_admin). */
+  isStaff: boolean;
   /** True while the persisted session is still being restored on cold start. */
   isLoading: boolean;
   /** Whether onboarding has been seen this session (local, non-auth state). */
   hasOnboarded: boolean;
+  /**
+   * Whether the signed-in user has completed post-auth account onboarding
+   * (per-account, server-owned — derived from `user.onboardedAt`).
+   */
+  hasCompletedProfile: boolean;
   signIn: (input: SignInInput) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   completeOnboarding: () => void;
+  /**
+   * Save the required profile fields and stamp `onboardedAt`, completing
+   * post-auth account onboarding. Refreshes the session so the nav gate flips
+   * to `(tabs)` without an app restart.
+   */
+  completeProfile: (info: {
+    name: string;
+    birthday: string;
+    address: string;
+  }) => Promise<SignInResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,7 +77,7 @@ function toResult(error: { message?: string } | null | undefined): SignInResult 
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data, isPending } = authClient.useSession();
+  const { data, isPending, refetch } = authClient.useSession();
   const [hasOnboarded, setHasOnboarded] = useState(false);
 
   // DEV-ONLY boot attempt: no-ops in production and when `/dev/session` is not
@@ -100,6 +120,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return toResult(error);
       }
+      case 'email-password': {
+        const { error } = await authClient.signIn.email({
+          email: input.email,
+          password: input.password,
+        });
+        return toResult(error);
+      }
     }
   }, []);
 
@@ -109,6 +136,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeOnboarding = useCallback(() => setHasOnboarded(true), []);
 
+  const completeProfile = useCallback(
+    async (info: { name: string; birthday: string; address: string }): Promise<SignInResult> => {
+      const { error } = await authClient.updateUser({
+        name: info.name,
+        birthday: info.birthday,
+        address: info.address,
+        onboardedAt: new Date(),
+      });
+      if (error) {
+        return toResult(error);
+      }
+      // Force a server round-trip so the freshly-stamped `onboardedAt`
+      // propagates and the nav gate flips to `(tabs)` without an app restart,
+      // regardless of whether `useSession()` auto-refreshes.
+      await refetch();
+      return toResult(null);
+    },
+    [refetch],
+  );
+
   const value = useMemo<AuthContextValue>(() => {
     const sessionUser = data?.user as
       | {
@@ -117,6 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: string;
           phoneNumber?: string | null;
           role?: string | null;
+          birthday?: string | null;
+          address?: string | null;
+          onboardedAt?: string | Date | null;
         }
       | undefined;
     const user: AuthUser | null = sessionUser
@@ -126,18 +176,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: sessionUser.email,
           phoneNumber: sessionUser.phoneNumber ?? undefined,
           role: (sessionUser.role as UserRole) ?? 'customer',
+          birthday: sessionUser.birthday ?? null,
+          address: sessionUser.address ?? null,
+          // `onboardedAt` rides the session as a Date (additionalField type:'date')
+          // or an ISO string — normalize to `string | null` for the AuthUser contract.
+          onboardedAt: sessionUser.onboardedAt
+            ? new Date(sessionUser.onboardedAt).toISOString()
+            : null,
         }
       : null;
+    const role = user?.role ?? null;
+    const isStaff = role !== null && STAFF_ROLES.includes(role as StaffRole);
     return {
       user,
-      role: user?.role ?? null,
+      role,
+      isStaff,
       isLoading: isPending,
       hasOnboarded,
+      hasCompletedProfile: user?.onboardedAt != null,
       signIn,
       signOut,
       completeOnboarding,
+      completeProfile,
     };
-  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding]);
+  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding, completeProfile]);
 
   return createElement(AuthContext.Provider, { value }, children);
 }

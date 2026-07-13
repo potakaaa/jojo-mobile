@@ -4,13 +4,29 @@
 import 'dotenv/config';
 
 import { toNodeHandler } from 'better-auth/node';
-import express from 'express';
+import express, { type Express } from 'express';
 
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { requireStaff } from './lib/require-staff';
+import { branchesRouter } from './routes/branches';
+import { ordersRouter } from './routes/orders';
+import staffRouter from './routes/staff';
 
-const app = express();
+// Exported so supertest can attach to the Express app without binding a port.
+export const app: Express = express();
 const port = Number(process.env.PORT ?? 3000);
+
+// Request logger — runs for EVERY request (incl. /api/auth/*). Does NOT parse or
+// consume the body, so it's safe to register before the better-auth mount which
+// needs the raw body. Logs method, path, status, and timing on response finish.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
 
 // Mount the better-auth handler BEFORE any body-parsing middleware — better-auth
 // reads the raw request body itself, so `express.json()` must not consume it
@@ -24,6 +40,15 @@ app.use(express.json());
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
 });
+
+// App order-flow routes (public branch reads + session-gated orders), mounted
+// after express.json() so they get parsed JSON bodies.
+app.use('/branches', branchesRouter);
+app.use('/orders', ordersRouter);
+
+// Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
+// routes only add handlers to staffRouter and inherit the guard.
+app.use('/api/staff', requireStaff(auth), staffRouter);
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An
@@ -71,11 +96,16 @@ if (DEV_AUTO_LOGIN_ENABLED) {
   });
 }
 
-app.listen(port, () => {
-  console.log(`jojopotato-api listening on port ${port}`);
-  if (DEV_AUTO_LOGIN_ENABLED) {
-    console.warn(
-      `⚠  DEV AUTO-LOGIN ENABLED — POST /dev/session signs in ${DEV_LOGIN_EMAIL}. Never expose this server publicly.`,
-    );
-  }
-});
+// Do NOT bind a port under test — supertest attaches to `app` directly and the
+// `role`-guard tests import this module for its exported `app`. Binding here
+// would occupy port 3000 and keep the vitest process alive.
+if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
+  app.listen(port, () => {
+    console.log(`jojopotato-api listening on port ${port}`);
+    if (DEV_AUTO_LOGIN_ENABLED) {
+      console.warn(
+        `⚠  DEV AUTO-LOGIN ENABLED — POST /dev/session signs in ${DEV_LOGIN_EMAIL}. Never expose this server publicly.`,
+      );
+    }
+  });
+}

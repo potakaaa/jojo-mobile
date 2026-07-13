@@ -24,7 +24,13 @@ export const users = pgTable('users', {
   phoneNumberVerified: boolean('phone_number_verified').default(false).notNull(),
   image: varchar('image'),
   birthday: date('birthday'),
+  address: varchar('address'),
+  onboardedAt: timestamp('onboarded_at'),
   favoriteBranchId: uuid('favorite_branch_id').references(() => branches.id),
+  // Staff-only: the single branch a staff member is scoped to (STAFF-001). Nullable
+  // — customers and unassigned staff have no branch. Separate from
+  // `favoriteBranchId` (customer preference) to keep the semantics clean.
+  assignedBranchId: uuid('assigned_branch_id').references(() => branches.id),
   role: userRoleEnum('role').default('customer').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

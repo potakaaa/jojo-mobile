@@ -19,12 +19,12 @@ const STATUS_SEQUENCE: OrderStatus[] = [
 ];
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: 'Pending',
-  accepted: 'Accepted',
-  preparing: 'Preparing',
-  flavoring: 'Flavoring',
-  ready: 'Ready',
-  completed: 'Completed',
+  pending: 'Order received',
+  accepted: 'Confirmed by branch',
+  preparing: 'Frying now',
+  flavoring: 'Shaking the flavor',
+  ready: 'Ready for pickup',
+  completed: 'Picked up',
   cancelled: 'Cancelled',
 };
 

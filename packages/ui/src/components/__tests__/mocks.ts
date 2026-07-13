@@ -11,6 +11,7 @@ import type {
   Size,
 } from '@jojopotato/types';
 
+/** `MenuItem`-shaped product mock (`ProductCard` renders the cents `MenuItem` shape). */
 export const MOCK_PRODUCT: MenuItem = {
   id: 'p1',
   name: 'Classic Fries',
@@ -20,11 +21,22 @@ export const MOCK_PRODUCT: MenuItem = {
   isAvailable: true,
 };
 
+/** Alias kept for the merged `CartItem` test, which imports `MOCK_MENU_ITEM`. */
+export const MOCK_MENU_ITEM: MenuItem = MOCK_PRODUCT;
+
 export const MOCK_DEAL: Deal = {
   id: 'd1',
   title: 'Combo Deal',
   description: 'Fries + drink',
   discountLabel: '-20%',
+  dealType: 'percentage_discount',
+  discountValue: 20,
+  minimumOrderAmount: 0,
+  startAt: '2026-01-01T00:00:00Z',
+  endAt: '2027-01-01T00:00:00Z',
+  isActive: true,
+  eligibleProductIds: [],
+  eligibleBranchIds: [],
 };
 
 export const MOCK_BRANCH: PickupBranch = {
@@ -33,6 +45,8 @@ export const MOCK_BRANCH: PickupBranch = {
   address: '123 Main St',
   latitude: 0,
   longitude: 0,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 

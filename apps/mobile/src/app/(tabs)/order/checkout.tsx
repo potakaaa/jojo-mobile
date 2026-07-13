@@ -319,7 +319,9 @@ export default function CheckoutScreen() {
               <Text style={[styles.sheetValue, { color: theme.text }]}>{branch.name}</Text>
             </View>
             <View style={styles.sheetRow}>
-              <Text style={[styles.sheetLabel, { color: theme.textSecondary }]}>Estimated ready</Text>
+              <Text style={[styles.sheetLabel, { color: theme.textSecondary }]}>
+                Estimated ready
+              </Text>
               <Text style={[styles.sheetValue, { color: theme.text }]}>{pickupLabel}</Text>
             </View>
 

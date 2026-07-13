@@ -1,0 +1,40 @@
+{
+  "task": "STAFF-001 — Staff login and branch-scoped access",
+  "scenarios": [
+    {
+      "scenario": "Customer-role account calls a staff endpoint hoping client-side nav hiding is the only gate (privilege escalation).",
+      "ruled_out": true,
+      "rationale": "requireStaff runs server-side on every /api/staff/* request and returns 403 for any role not in STAFF_ROLES. Proven by tests E2 (middleware) and E6 (route via supertest). Client-side (staff) route hiding is defense-in-depth, NOT the trust boundary."
+    },
+    {
+      "scenario": "Staff A (Branch 1) passes a Branch 2 id to read another branch's data (cross-branch data exfiltration).",
+      "ruled_out": true,
+      "rationale": "The STAFF-001 canary GET /api/staff/me accepts NO branch id from the client — it resolves the caller's own branch via resolveBranchScope(db, userId). assertBranchScope (tested E4/E5) enforces exact-match for future STAFF-002+ routes that do accept a branch id. Branch scope is server-derived from the DB, never client-supplied."
+    },
+    {
+      "scenario": "Client attempts to self-assign role=admin or role=staff at signup to gain staff access (role tampering).",
+      "ruled_out": true,
+      "rationale": "better-auth `role` field is input:false (server-owned); any attempt to set it is rejected ('role is not allowed to be set') — proven by the existing auth.integration.test.ts regression which still passes. assigned_branch_id is likewise only set server-side (seed/admin), never via a client-writable path in this ticket."
+    },
+    {
+      "scenario": "Unauthenticated request (no session) reaches a staff route (auth bypass).",
+      "ruled_out": true,
+      "rationale": "getSession returns null without a valid session; requireStaff denies with 403. The catch branch also returns 403 (never 500), so malformed/expired session tokens cannot leak a stack trace or fall through to the handler."
+    },
+    {
+      "scenario": "Unassigned staff (assignedBranchId null) tries to access branch-scoped data.",
+      "ruled_out": true,
+      "rationale": "assertBranchScope returns false when assignedBranchId is null (tested), so unassigned staff can access nothing on future scoped routes. On the canary, assignedBranch simply returns null — no data leak."
+    },
+    {
+      "scenario": "Loading-race: a staff user is briefly shown the customer (tabs) stack or vice-versa during session restore.",
+      "ruled_out": true,
+      "rationale": "isStaffUser and isCustomer both require !isLoading && user!==null; while isLoading is true, neither protected stack mounts and the unauthenticated (auth) guard covers the cold-start beat. No flash of the wrong shell."
+    },
+    {
+      "scenario": "Mobile shell fetch fails and silently displays a stale/incorrect branch name.",
+      "ruled_out": true,
+      "rationale": "fetchStaffMe returns null on any error (never throws); useStaffMe surfaces a non-null error and the shell renders 'Branch unavailable'. No silent wrong-branch display. Read-only call on the existing auth session; no new trust boundary introduced."
+    }
+  ]
+}

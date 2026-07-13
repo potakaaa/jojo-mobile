@@ -1,0 +1,82 @@
+{
+  "task": "onboarding-screens (post-auth 3-step account onboarding)",
+  "result": "PASS",
+  "commands": [
+    {
+      "command": "pnpm --filter @jojopotato/api db:generate",
+      "result": "PASS",
+      "notes": "'No schema changes, nothing to migrate' — existing 0002 migration in sync; adds ONLY address + onboarded_at (both nullable). Hard constraint satisfied."
+    },
+    {
+      "command": "pnpm --filter @jojopotato/api db:migrate",
+      "result": "PASS",
+      "notes": "migrations applied successfully"
+    },
+    {
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "27/27 tests pass incl. B0 'profile fields (updateUser self-write)': write+read-back birthday/address/onboardedAt, role write ignored (stays customer), read-back shape asserted."
+    },
+    {
+      "command": "pnpm typecheck",
+      "result": "PASS",
+      "notes": "5/5 packages; run after Expo typed-route codegen for the new (onboarding) group."
+    },
+    {
+      "command": "pnpm lint",
+      "result": "PASS",
+      "notes": "6/6 packages, 0 errors (3 pre-existing unrelated warnings in scripts/dev-with-tunnel.mjs)."
+    },
+    {
+      "command": "grep -nE '#[0-9a-fA-F]{3,6}' 'apps/mobile/src/app/(onboarding)/index.tsx'",
+      "result": "PASS",
+      "notes": "No hex literals; @jojopotato/ui imported (Button, Card, Input)."
+    },
+    {
+      "command": "git diff --stat -- 'apps/mobile/src/app/(auth)'",
+      "result": "PASS",
+      "notes": "Empty — zero pre-auth (auth)/ changes (AC1)."
+    }
+  ],
+  "manualChecks": [
+    {
+      "check": "AC2/AC5 route flip: fresh onboarded_at=NULL user -> previews -> form -> submit -> Home without app restart",
+      "result": "PENDING",
+      "notes": "Agent-Probe (no RN test runner). Requires simulator run + user confirmation."
+    },
+    {
+      "check": "AC3: Skip on step 0/1 jumps to info form (not Home)",
+      "result": "PENDING",
+      "notes": "Agent-Probe."
+    },
+    {
+      "check": "AC4: submit blocked until name + birthday(YYYY-MM-DD) + address all valid",
+      "result": "PENDING",
+      "notes": "Agent-Probe. Logic implemented via canSubmit gate + isValidBirthday."
+    },
+    {
+      "check": "AC6: relaunch / sign-out-in lands on Home, onboarding not re-shown",
+      "result": "PENDING",
+      "notes": "Agent-Probe. Server-persisted onboardedAt implies cross-device per-account."
+    },
+    {
+      "check": "AC1: pre-auth welcome (Splash -> welcome -> Login) unchanged",
+      "result": "PASS",
+      "notes": "git diff proves zero (auth)/ changes; manual walkthrough still recommended for full VERIFIED."
+    }
+  ],
+  "evlConfirmation": {
+    "runBy": "vc-tester (EVL confirmation run)",
+    "date": "2026-07-13",
+    "verdict": "ALL-GREEN",
+    "note": "Independent re-run of the exact validate-contract gate commands (prior execute evidence treated as unconfirmed). All 6 EVL gates re-confirmed green. Mobile runtime behavior (nav-gate flip, form/skip/validation) remains an accepted named Known-Gap (no RN test runner) — Agent-Probe, NOT an EVL failure.",
+    "gates": [
+      { "gate": "pnpm --filter @jojopotato/api test", "result": "PASS", "detail": "27/27 (auth.integration 6, smoke 16, dev-auto-login 5); B0 updateUser self-write + role-rejection + read-back-shape present and passing." },
+      { "gate": "pnpm typecheck", "result": "PASS", "detail": "5/5 packages (FULL TURBO cache)." },
+      { "gate": "pnpm lint", "result": "PASS", "detail": "6/6, 0 errors; 3 pre-existing unrelated warnings in scripts/dev-with-tunnel.mjs (outside blast radius)." },
+      { "gate": "pnpm --filter @jojopotato/api db:generate (in-sync)", "result": "PASS", "detail": "'No schema changes, nothing to migrate' — no new migration emitted; 0002 adds only address + onboarded_at (both nullable)." },
+      { "gate": "git diff --stat -- 'apps/mobile/src/app/(auth)'", "result": "PASS", "detail": "Empty — pre-auth welcome untouched (AC1 constraint held)." },
+      { "gate": "git diff --check", "result": "PASS", "detail": "No merge-conflict markers." }
+    ]
+  }
+}
