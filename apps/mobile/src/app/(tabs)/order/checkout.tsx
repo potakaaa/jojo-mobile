@@ -1,18 +1,18 @@
-import type { MenuItem, PaymentMethod, PickupBranch, PlaceOrderResult } from '@jojopotato/types';
+import type { MenuItem, PickupBranch, PlaceOrderResult } from '@jojopotato/types';
 import {
   BranchCard,
   Button,
+  Card,
   CartItem,
   CartSummary,
   EmptyState,
-  PaymentMethodSelector,
+  PAYMENT_METHOD_LABELS,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { env } from '@/config/env';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import {
   MOCK_BRANCH_PREP_MINUTES,
@@ -22,7 +22,7 @@ import {
 import { MOCK_PRODUCTS } from '@/features/home/mock-home';
 import { orderDevControls, useOrder } from '@/features/order/hooks/use-order';
 import { devFlags } from '@/features/order/mock-order';
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -70,9 +70,7 @@ export default function CheckoutScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
 
   const { cart, subtotalCents, discountTotalCents, totalCents } = useCart();
-  const { placeOrder, isPlacingOrder } = useOrder();
-
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay_at_branch');
+  const { placeOrder, isPlacingOrder, paymentMethod } = useOrder();
 
   const branch = BRANCHES[cart.pickupBranchId] ?? MOCK_CART_BRANCH;
   const pickupLabel = useMemo(() => estimatedPickupLabel(MOCK_BRANCH_PREP_MINUTES), []);
@@ -153,7 +151,12 @@ export default function CheckoutScreen() {
             }
           />
 
-          <View style={styles.section}>
+          <View
+            style={[
+              styles.itemsCard,
+              { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+            ]}
+          >
             <Text style={[styles.sectionLabel, { color: theme.text }]}>Items</Text>
             {cart.items.map((line) => (
               <CartItem
@@ -165,18 +168,32 @@ export default function CheckoutScreen() {
                   line.unitPriceCents,
                 )}
                 mode={mode}
+                style={styles.cartItemFlat}
               />
             ))}
           </View>
 
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.text }]}>Payment</Text>
-            <PaymentMethodSelector
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              onlinePaymentEnabled={env.onlinePaymentEnabled}
-              mode={mode}
-            />
+            <Card mode={mode}>
+              <View style={styles.paymentRow}>
+                <View style={styles.paymentText}>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
+                    Payment method
+                  </Text>
+                  <Text style={[styles.paymentValue, { color: theme.text }]}>
+                    {PAYMENT_METHOD_LABELS[paymentMethod]}
+                  </Text>
+                </View>
+                <Button
+                  label="Change"
+                  variant="outline"
+                  size="sm"
+                  mode={mode}
+                  onPress={() => router.push('/(tabs)/order/payment-method')}
+                />
+              </View>
+            </Card>
           </View>
 
           <CartSummary
@@ -282,6 +299,18 @@ const styles = StyleSheet.create({
   section: {
     gap: Spacing.two,
   },
+  itemsCard: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 2,
+    borderRadius: Radii.md,
+  },
+  cartItemFlat: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+  },
   sectionLabel: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
@@ -291,6 +320,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  paymentText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  paymentValue: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.body,
   },
   metaLabel: {
     fontFamily: FontFamily.body.medium,

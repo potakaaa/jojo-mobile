@@ -1,6 +1,5 @@
-import type { PaymentMethod } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
-import { Button, CartSummary, EmptyState } from '@jojopotato/ui';
+import { Button, CartSummary, EmptyState, PAYMENT_METHOD_LABELS } from '@jojopotato/ui';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,11 +13,6 @@ import { useTheme } from '@/hooks/use-theme';
 const BRANCH_NAMES: Record<string, string> = {
   [MOCK_CART_BRANCH.id]: MOCK_CART_BRANCH.name,
   [MOCK_OTHER_BRANCH.id]: MOCK_OTHER_BRANCH.name,
-};
-
-const PAYMENT_LABEL: Record<PaymentMethod, string> = {
-  pay_at_branch: 'Pay at pickup',
-  online_payment: 'Online payment',
 };
 
 function pickupLabel(iso: string): string {
@@ -89,7 +83,7 @@ export default function OrderConfirmationScreen() {
               value={pickupLabel(order.estimatedReadyAt)}
               theme={theme}
             />
-            <Row label="Payment" value={PAYMENT_LABEL[order.paymentMethod]} theme={theme} />
+            <Row label="Payment" value={PAYMENT_METHOD_LABELS[order.paymentMethod]} theme={theme} />
           </View>
 
           <View style={styles.section}>

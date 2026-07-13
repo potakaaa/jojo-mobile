@@ -1,6 +1,6 @@
 export type OrderStatus =
   'pending' | 'accepted' | 'preparing' | 'flavoring' | 'ready' | 'completed' | 'cancelled';
-export type PaymentMethod = 'pay_at_branch' | 'online_payment';
+export type PaymentMethod = 'pay_at_branch' | 'app_wallet' | 'gcash' | 'maya' | 'card';
 export type PaymentStatus = 'unpaid' | 'paid' | 'failed' | 'refunded';
 
 export interface OrderItemOption {

@@ -119,4 +119,12 @@ describe('buildOrderFromRequest', () => {
     const order = buildOrderFromRequest(req, 'JP-ABC123', '2026-07-13T10:30:00.000Z');
     expect(order.totalCents).toBe(0);
   });
+
+  it('round-trips a concrete non-pay_at_branch PaymentMethod (gcash) unchanged (P4)', () => {
+    const req = makeRequest({ paymentMethod: 'gcash' });
+    const order = buildOrderFromRequest(req, 'JP-GCASH1', '2026-07-13T10:30:00.000Z');
+    expect(order.paymentMethod).toBe('gcash');
+    // payment_status stays unpaid for every method — nothing is charged.
+    expect(order.paymentStatus).toBe('unpaid');
+  });
 });

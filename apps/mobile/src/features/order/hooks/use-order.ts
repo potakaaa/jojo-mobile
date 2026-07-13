@@ -31,6 +31,9 @@ export interface OrderSessionState {
   placeOrder: (paymentMethod: PaymentMethod) => Promise<PlaceOrderResult>;
   isPlacingOrder: boolean;
   lastOrder: Order | null;
+  /** Currently selected payment method (defaults to `pay_at_branch`). */
+  paymentMethod: PaymentMethod;
+  setPaymentMethod: (method: PaymentMethod) => void;
 }
 
 /**
@@ -51,6 +54,7 @@ export function OrderSessionProvider({ children }: { children: ReactNode }) {
   const { cart, discountTotalCents, clearCart } = useCart();
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay_at_branch');
 
   const placeOrder = useCallback(
     async (paymentMethod: PaymentMethod): Promise<PlaceOrderResult> => {
@@ -95,8 +99,11 @@ export function OrderSessionProvider({ children }: { children: ReactNode }) {
         }
 
         const order = buildOrderFromRequest(request, generateOrderNumber(), estimatedReadyAt);
+        // Snapshot the placed order BEFORE resetting the selection so the
+        // confirmation screen reads this order's method, not the reset default.
         setLastOrder(order);
         clearCart();
+        setPaymentMethod('pay_at_branch');
         return { ok: true, order };
       } finally {
         setIsPlacingOrder(false);
@@ -106,8 +113,8 @@ export function OrderSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<OrderSessionState>(
-    () => ({ placeOrder, isPlacingOrder, lastOrder }),
-    [placeOrder, isPlacingOrder, lastOrder],
+    () => ({ placeOrder, isPlacingOrder, lastOrder, paymentMethod, setPaymentMethod }),
+    [placeOrder, isPlacingOrder, lastOrder, paymentMethod],
   );
 
   return createElement(OrderContext.Provider, { value }, children);

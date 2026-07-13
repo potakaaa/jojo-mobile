@@ -7,7 +7,7 @@ import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode 
 export interface PaymentMethodSelectorProps {
   value: PaymentMethod;
   onChange: (v: PaymentMethod) => void;
-  /** When false, the "Online payment" option renders disabled (not selectable). */
+  /** When false, the GCash/Maya/card options render disabled (not selectable). */
   onlinePaymentEnabled: boolean;
   mode?: ThemeMode;
   style?: ViewStyle;
@@ -28,17 +28,60 @@ const OPTIONS: OptionSpec[] = [
     icon: 'storefront-outline',
   },
   {
-    method: 'online_payment',
-    label: 'Online payment',
-    caption: 'Coming soon — pay in advance from the app.',
+    method: 'app_wallet',
+    label: 'App wallet',
+    caption: 'Coming soon',
+    icon: 'wallet-outline',
+  },
+  {
+    method: 'gcash',
+    label: 'GCash',
+    caption: 'Pay via GCash',
+    icon: 'phone-portrait-outline',
+  },
+  {
+    method: 'maya',
+    label: 'Maya',
+    caption: 'Pay via Maya',
+    icon: 'card-outline',
+  },
+  {
+    method: 'card',
+    label: 'Credit/debit card',
+    caption: 'Pay by card',
     icon: 'card-outline',
   },
 ];
 
 /**
- * Radio-style payment-method picker. "Pay at pickup" is always available; the
- * "Online payment" row renders disabled until the online-payment feature flag is
- * enabled, so users can see the option exists without being able to select it.
+ * Shared source of truth for payment-method display labels, reused by the
+ * Checkout "Change" row and the Order Confirmation summary so the label list
+ * lives in exactly one place.
+ */
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  pay_at_branch: 'Pay at pickup',
+  app_wallet: 'App wallet',
+  gcash: 'GCash',
+  maya: 'Maya',
+  card: 'Credit/debit card',
+};
+
+/**
+ * Per-method availability (D2): `pay_at_branch` is always selectable;
+ * `app_wallet` is always disabled (no wallet backing yet); `gcash`/`maya`/`card`
+ * are selectable only when the online-payment feature flag is enabled. Disabled
+ * rows stay visible so users can see the option exists without selecting it.
+ */
+function isMethodDisabled(method: PaymentMethod, onlinePaymentEnabled: boolean): boolean {
+  if (method === 'pay_at_branch') return false;
+  if (method === 'app_wallet') return true;
+  return !onlinePaymentEnabled;
+}
+
+/**
+ * Radio-style payment-method picker. Availability follows D2 (see
+ * `isMethodDisabled`): "Pay at pickup" is always available, "App wallet" is
+ * always disabled, and GCash/Maya/card are gated behind the online-payment flag.
  */
 export function PaymentMethodSelector({
   value,
@@ -52,7 +95,7 @@ export function PaymentMethodSelector({
   return (
     <View style={[styles.group, style]}>
       {OPTIONS.map((option) => {
-        const isDisabled = option.method === 'online_payment' && !onlinePaymentEnabled;
+        const isDisabled = isMethodDisabled(option.method, onlinePaymentEnabled);
         const isSelected = value === option.method && !isDisabled;
 
         return (

@@ -23,7 +23,7 @@ export interface BranchCardProps {
 export function BranchCard({ branch, onPress, mode = 'light', footer, onChange }: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
-  const interactive = onChange === undefined;
+  const interactive = onPress !== undefined;
 
   const content = (
     <>
