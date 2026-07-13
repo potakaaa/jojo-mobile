@@ -582,6 +582,8 @@ Two within-blast-radius deviations (documented, no scope/contract impact — bot
 
 Both are within-blast-radius (no auth/API-contract/schema surface change). No hard-stop class deviations occurred.
 
+3. **Sample orders re-pointed off `jojo@test.com` to a dedicated demo customer (EVL supplement, 13-07-26)** — After merging `origin/development`, dev's new `seed-test-user.test.ts` deletes `jojo@test.com` in teardown, which collided with deviation #2 above: `seedSampleOrders` owned its 5 orders via `TEST_USER`'s id, so the delete hit `orders_user_id_users_id_fk` and failed the whole api suite. Dev's test legitimately owns the `jojo@test.com` lifecycle. Fix (in `seed.ts` only): added a `DEMO_CUSTOMER` constant + `seedDemoCustomer(): Promise<string>` (same better-auth signUpEmail + NODE_ENV prod-guard + idempotent pattern as `seedTestUser`/`seedStaffUser`), returning the owning id; `runSeed()` now feeds that id into `seedSampleOrders`. `seedTestUser()` is unchanged (dev's surface). The sample-orders upsert changed from `onConflictDoNothing` to `onConflictDoUpdate` with `SET user_id = demoUserId`, so a single `db:seed` run migrates existing local DBs (re-points the 5 orders off jojo@test.com) without a wipe — verified: seed runs twice green, full suite 62/62 green, and the 5 sample orders resolve to `orders-demo@jojopotato.local`. Within-blast-radius (seed data only; no auth/API-contract/schema surface change).
+
 ## Validate Contract
 
 Status: PASS

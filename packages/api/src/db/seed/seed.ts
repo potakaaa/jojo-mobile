@@ -75,6 +75,18 @@ async function seedStaffUser(branchIdBySlug: Map<string, string>): Promise<void>
 // for all real users and is out of scope.
 const TEST_USER = { email: 'jojo@test.com', password: 'jojo1234', name: 'Jojo Test' } as const;
 
+// Dev-only customer that OWNS the STAFF-002 sample orders. Deliberately separate
+// from TEST_USER (jojo@test.com): the `seed-test-user.test.ts` unit test deletes
+// jojo@test.com in its teardown, and an FK from sample orders to that row would
+// break the delete (orders_user_id_users_id_fk). Sample orders reference this
+// dedicated account instead, so the test owns jojo@test.com's lifecycle cleanly.
+// Password is 8+ chars (better-auth minimum). Never seeded in production.
+const DEMO_CUSTOMER = {
+  email: 'orders-demo@jojopotato.local',
+  password: 'orders-demo-pass1',
+  name: 'Orders Demo Customer',
+} as const;
+
 async function seedBranchesTable(): Promise<Map<string, string>> {
   const idBySlug = new Map<string, string>();
   for (const branch of seedBranches) {
@@ -291,6 +303,39 @@ export async function seedTestUser(): Promise<void> {
   });
 }
 
+// Seeds the dev-only demo customer that owns the STAFF-002 sample orders, via
+// better-auth's sign-up API (so better-auth owns the scrypt hash — never a raw
+// insert). Fail-closed under NODE_ENV=production. Idempotent: skip create when the
+// row already exists. Returns the resolved user id for the orders FK.
+async function seedDemoCustomer(): Promise<string> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed the demo customer credential under NODE_ENV=production.');
+  }
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, DEMO_CUSTOMER.email));
+  if (existing) return existing.id;
+
+  await auth.api.signUpEmail({
+    body: {
+      email: DEMO_CUSTOMER.email,
+      password: DEMO_CUSTOMER.password,
+      name: DEMO_CUSTOMER.name,
+    },
+  });
+
+  const [created] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, DEMO_CUSTOMER.email));
+  if (!created) {
+    throw new Error('Seed error: demo customer not found after signUpEmail');
+  }
+  return created.id;
+}
+
 // Synthetic sample orders for STAFF-002 QA (dev only). Fixed order_numbers give
 // idempotency: orders upsert via ON CONFLICT (order_number) DO NOTHING, and each
 // order's items are delete-then-reinserted so re-seeding converges to the same
@@ -306,14 +351,16 @@ const SAMPLE_ORDERS = [
 
 /**
  * Seed ~5 varied-status active orders for the first seeded branch (STAFF-002 QA).
- * Idempotent via fixed order_numbers + ON CONFLICT DO NOTHING; items are
- * delete-then-reinserted. Requires a real product UUID for the order_items FK
- * (NOT NULL) — derived from `productIdBySlug`, never hardcoded.
+ * Idempotent via fixed order_numbers + ON CONFLICT (order_number) DO UPDATE; items
+ * are delete-then-reinserted. Requires a real product UUID for the order_items FK
+ * (NOT NULL) — derived from `productIdBySlug`, never hardcoded. The conflict SET
+ * re-points `user_id` to the demo customer so a single re-seed migrates any
+ * existing local DB whose sample orders were previously owned by jojo@test.com.
  */
 async function seedSampleOrders(
   branchIdBySlug: Map<string, string>,
   productIdBySlug: Map<string, string>,
-  testUserId: string,
+  demoUserId: string,
 ): Promise<void> {
   const [firstBranchId] = branchIdBySlug.values();
   if (!firstBranchId) {
@@ -331,7 +378,7 @@ async function seedSampleOrders(
     await db
       .insert(orders)
       .values({
-        user_id: testUserId,
+        user_id: demoUserId,
         branch_id: firstBranchId,
         order_number: sample.number,
         status: sample.status,
@@ -341,7 +388,18 @@ async function seedSampleOrders(
         payment_method: 'pay_at_branch',
         placed_at: placedAt,
       })
-      .onConflictDoNothing({ target: orders.order_number });
+      .onConflictDoUpdate({
+        target: orders.order_number,
+        // Re-point ownership (and refresh mutable fields) so a re-seed migrates
+        // pre-existing sample orders off jojo@test.com onto the demo customer.
+        set: {
+          user_id: demoUserId,
+          branch_id: firstBranchId,
+          status: sample.status,
+          placed_at: placedAt,
+          updated_at: new Date(),
+        },
+      });
 
     const [orderRow] = await db
       .select({ id: orders.id })
@@ -380,15 +438,11 @@ export async function runSeed(): Promise<void> {
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
   await seedTestUser();
 
-  // Resolve the test user's id (owner of the sample orders — orders.user_id FK).
-  const [testUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, TEST_USER.email));
-  if (!testUser) {
-    throw new Error('Seed error: test user not found after seedTestUser()');
-  }
-  await seedSampleOrders(branchIdBySlug, productIdBySlug, testUser.id);
+  // Sample orders are owned by a dedicated demo customer (NOT jojo@test.com), so
+  // the seed-test-user unit test can delete jojo@test.com without hitting the
+  // orders.user_id FK. seedDemoCustomer() returns the owning id directly.
+  const demoUserId = await seedDemoCustomer();
+  await seedSampleOrders(branchIdBySlug, productIdBySlug, demoUserId);
 
   console.log('Seed complete:');
   console.log(`  branches: ${branchIdBySlug.size}`);
@@ -397,5 +451,6 @@ export async function runSeed(): Promise<void> {
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
   console.log(`  test user: ${TEST_USER.email}`);
+  console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);
 }
