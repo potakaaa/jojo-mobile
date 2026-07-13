@@ -1,3 +1,4 @@
+import type { StaffOrderDetail, StaffOrderSummary } from '@jojopotato/types';
 import type { InferSelectModel } from 'drizzle-orm';
 
 import type {
@@ -196,6 +197,61 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     paymentStatus: order.payment_status,
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     placedAt: order.placed_at.toISOString(),
+    items: items.map(serializeOrderItem),
+  };
+}
+
+// ─── Staff order serializers (STAFF-002) ────────────────────────────────────
+
+/**
+ * Server-computed item summary for the staff list row (OC-3). Format:
+ * `"2× Loaded Fries, 1× Classic Soda"` — joined by `, `, capped at 3 items,
+ * then `+ N more`. Keeps the list response lean (no full item arrays).
+ */
+export function buildItemSummary(items: OrderItemRow[]): string {
+  const parts = items.map((item) => `${item.quantity}× ${item.product_name_snapshot}`);
+  if (parts.length <= 3) {
+    return parts.join(', ');
+  }
+  const shown = parts.slice(0, 3).join(', ');
+  return `${shown} + ${parts.length - 3} more`;
+}
+
+/**
+ * Serialize an order + its items into the lean `StaffOrderSummary` list row
+ * (STAFF-002). Full item array is intentionally NOT included — only the
+ * server-computed `itemSummary` string (OC-2/OC-3).
+ */
+export function serializeStaffOrderSummary(
+  order: OrderRow,
+  items: OrderItemRow[],
+): StaffOrderSummary {
+  return {
+    id: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    placedAt: order.placed_at.toISOString(),
+    totalCents: numericToCents(order.total),
+    itemSummary: buildItemSummary(items),
+  };
+}
+
+/**
+ * Serialize an order + its items into the full `StaffOrderDetail` shape
+ * (STAFF-002 detail screen). Reuses `serializeOrderItem` for the item array so
+ * the `selectedOptions` shape matches the customer order serializer exactly.
+ */
+export function serializeStaffOrderDetail(
+  order: OrderRow,
+  items: OrderItemRow[],
+): StaffOrderDetail {
+  return {
+    id: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    placedAt: order.placed_at.toISOString(),
+    estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
+    totalCents: numericToCents(order.total),
     items: items.map(serializeOrderItem),
   };
 }

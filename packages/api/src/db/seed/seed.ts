@@ -8,6 +8,8 @@ import {
   dealBranches,
   dealProducts,
   deals,
+  orderItems,
+  orders,
   productOptions,
   products,
   users,
@@ -289,6 +291,84 @@ export async function seedTestUser(): Promise<void> {
   });
 }
 
+// Synthetic sample orders for STAFF-002 QA (dev only). Fixed order_numbers give
+// idempotency: orders upsert via ON CONFLICT (order_number) DO NOTHING, and each
+// order's items are delete-then-reinserted so re-seeding converges to the same
+// end-state. Statuses span the 5 non-terminal states so the staff dashboard shows
+// varied pills; placed_at is spaced so newest-first sort is visible.
+const SAMPLE_ORDERS = [
+  { number: 'JP-260713-S001', status: 'pending' as const, minutesAgo: 1 },
+  { number: 'JP-260713-S002', status: 'accepted' as const, minutesAgo: 4 },
+  { number: 'JP-260713-S003', status: 'preparing' as const, minutesAgo: 8 },
+  { number: 'JP-260713-S004', status: 'flavoring' as const, minutesAgo: 13 },
+  { number: 'JP-260713-S005', status: 'ready' as const, minutesAgo: 19 },
+];
+
+/**
+ * Seed ~5 varied-status active orders for the first seeded branch (STAFF-002 QA).
+ * Idempotent via fixed order_numbers + ON CONFLICT DO NOTHING; items are
+ * delete-then-reinserted. Requires a real product UUID for the order_items FK
+ * (NOT NULL) — derived from `productIdBySlug`, never hardcoded.
+ */
+async function seedSampleOrders(
+  branchIdBySlug: Map<string, string>,
+  productIdBySlug: Map<string, string>,
+  testUserId: string,
+): Promise<void> {
+  const [firstBranchId] = branchIdBySlug.values();
+  if (!firstBranchId) {
+    throw new Error('Seed error: cannot seed sample orders — no branches were seeded');
+  }
+  const [firstProductId] = productIdBySlug.values();
+  if (!firstProductId) {
+    throw new Error('Seed error: cannot seed sample orders — no products were seeded');
+  }
+
+  const now = Date.now();
+  for (const sample of SAMPLE_ORDERS) {
+    const placedAt = new Date(now - sample.minutesAgo * 60_000);
+
+    await db
+      .insert(orders)
+      .values({
+        user_id: testUserId,
+        branch_id: firstBranchId,
+        order_number: sample.number,
+        status: sample.status,
+        subtotal: '10.00',
+        discount_total: '0',
+        total: '10.00',
+        payment_method: 'pay_at_branch',
+        placed_at: placedAt,
+      })
+      .onConflictDoNothing({ target: orders.order_number });
+
+    const [orderRow] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.order_number, sample.number));
+    if (!orderRow) {
+      throw new Error(`Seed error: sample order "${sample.number}" not found after upsert`);
+    }
+
+    // Delete-then-reinsert items so re-seeding converges to a fixed set.
+    await db.delete(orderItems).where(eq(orderItems.order_id, orderRow.id));
+    await db.insert(orderItems).values([
+      {
+        order_id: orderRow.id,
+        product_id: firstProductId,
+        product_name_snapshot: 'Loaded Fries',
+        quantity: 2,
+        unit_price: '5.00',
+        total_price: '10.00',
+        selected_options: [
+          { optionId: 'opt-flavor-1', optionType: 'flavor', name: 'BBQ Ranch', priceDeltaCents: 0 },
+        ],
+      },
+    ]);
+  }
+}
+
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
   await seedStaffUser(branchIdBySlug);
@@ -300,6 +380,16 @@ export async function runSeed(): Promise<void> {
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
   await seedTestUser();
 
+  // Resolve the test user's id (owner of the sample orders — orders.user_id FK).
+  const [testUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, TEST_USER.email));
+  if (!testUser) {
+    throw new Error('Seed error: test user not found after seedTestUser()');
+  }
+  await seedSampleOrders(branchIdBySlug, productIdBySlug, testUser.id);
+
   console.log('Seed complete:');
   console.log(`  branches: ${branchIdBySlug.size}`);
   console.log(`  staff users: 1 (${STAFF_EMAIL})`);
@@ -307,4 +397,5 @@ export async function runSeed(): Promise<void> {
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
   console.log(`  test user: ${TEST_USER.email}`);
+  console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);
 }
