@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
+import { OrderSessionProvider } from '@/features/order/hooks/use-order';
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
@@ -72,7 +73,9 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
         <CartSessionProvider>
-          <RootNavigator />
+          <OrderSessionProvider>
+            <RootNavigator />
+          </OrderSessionProvider>
         </CartSessionProvider>
       </AuthProvider>
       <StatusBar style="auto" />

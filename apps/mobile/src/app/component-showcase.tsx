@@ -158,9 +158,10 @@ const SAMPLE_PICKUP_TIME_FULL: PickupTime = {
 
 const ORDER_STATUSES: OrderStatus[] = [
   'pending',
-  'confirmed',
+  'accepted',
   'preparing',
-  'ready_for_pickup',
+  'flavoring',
+  'ready',
   'completed',
   'cancelled',
 ];

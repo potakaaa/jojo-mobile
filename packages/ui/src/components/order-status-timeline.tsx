@@ -11,17 +11,19 @@ export interface OrderStatusTimelineProps {
 
 const STATUS_SEQUENCE: OrderStatus[] = [
   'pending',
-  'confirmed',
+  'accepted',
   'preparing',
-  'ready_for_pickup',
+  'flavoring',
+  'ready',
   'completed',
 ];
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   pending: 'Pending',
-  confirmed: 'Confirmed',
+  accepted: 'Accepted',
   preparing: 'Preparing',
-  ready_for_pickup: 'Ready',
+  flavoring: 'Flavoring',
+  ready: 'Ready',
   completed: 'Completed',
   cancelled: 'Cancelled',
 };

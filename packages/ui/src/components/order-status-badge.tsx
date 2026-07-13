@@ -11,9 +11,10 @@ export interface OrderStatusBadgeProps {
 
 const STATUS_META: Record<OrderStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: Palette.neutral500 },
-  confirmed: { label: 'Confirmed', color: Palette.jgold },
+  accepted: { label: 'Accepted', color: Palette.jgold },
   preparing: { label: 'Preparing', color: Palette.jorange },
-  ready_for_pickup: { label: 'Ready for pickup', color: Palette.green },
+  flavoring: { label: 'Flavoring', color: Palette.jbrown },
+  ready: { label: 'Ready for pickup', color: Palette.green },
   completed: { label: 'Completed', color: Palette.greenDark },
   cancelled: { label: 'Cancelled', color: Palette.jred },
 };
