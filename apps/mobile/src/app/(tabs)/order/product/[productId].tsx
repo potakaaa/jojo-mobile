@@ -72,7 +72,11 @@ export default function ProductDetailsScreen() {
   };
 
   const handleAdd = () => {
-    if (!product || !selectedBranch) return;
+    if (!product) return;
+    if (!selectedBranch) {
+      Alert.alert('No branch selected', 'Please select a pickup branch before adding items.');
+      return;
+    }
 
     const opts: CartItemOption[] = selectedOptions.map((option) => ({
       id: option.id,

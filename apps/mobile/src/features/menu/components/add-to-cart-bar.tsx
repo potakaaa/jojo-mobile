@@ -1,8 +1,10 @@
 import { Button } from '@jojopotato/ui';
 import { formatPricePHP } from '@jojopotato/utils';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -23,6 +25,7 @@ export interface AddToCartBarProps {
  */
 export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCartBarProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [showHint, setShowHint] = useState(false);
 
   // The hint only renders while required options are still missing
@@ -41,6 +44,7 @@ export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCar
       style={[
         styles.bar,
         { backgroundColor: theme.backgroundElement, borderTopColor: theme.border },
+        Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
       ]}
     >
       {showHint && !canAdd ? (

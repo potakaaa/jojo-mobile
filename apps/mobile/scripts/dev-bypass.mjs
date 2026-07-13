@@ -77,6 +77,20 @@ function isCgnat(ip) {
   return second >= 64 && second <= 127;
 }
 
+// Well-known virtualization/connection-sharing subnets. A phone on the real
+// Wi-Fi/LAN can never reach these even though they pass the RFC1918 check —
+// e.g. Windows often labels a VirtualBox Host-Only adapter generically (just
+// "Ethernet"), so interface-name exclusion alone can't catch it.
+const KNOWN_VIRTUAL_SUBNET_PREFIXES = [
+  '192.168.56.', // VirtualBox Host-Only Network default
+  '192.168.99.', // Docker Toolbox / docker-machine default
+  '192.168.137.', // Windows Mobile Hotspot / Internet Connection Sharing default
+];
+
+function isKnownVirtualSubnet(ip) {
+  return KNOWN_VIRTUAL_SUBNET_PREFIXES.some((prefix) => ip.startsWith(prefix));
+}
+
 // Prefer 192.168.* (typical home Wi-Fi), then 10.*, then 172.16–31.* — lower rank wins.
 function rankIp(ip) {
   if (ip.startsWith('192.168.')) return 0;
@@ -94,6 +108,7 @@ function detectLanIp() {
       const isIPv4 = addr.family === 'IPv4' || addr.family === 4;
       if (!isIPv4 || addr.internal) continue;
       if (isCgnat(addr.address)) continue;
+      if (isKnownVirtualSubnet(addr.address)) continue;
       if (!isRfc1918(addr.address)) continue;
       candidates.push(addr.address);
     }
