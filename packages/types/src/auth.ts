@@ -13,6 +13,11 @@ export interface AuthUser {
   email: string;
   phoneNumber?: string;
   role: UserRole;
+  /** Self-owned profile fields (post-auth onboarding); null until provided. */
+  birthday?: string | null;
+  address?: string | null;
+  /** Set when the user completes post-auth account onboarding. */
+  onboardedAt?: string | null;
 }
 
 /** Mirrors better-auth's session model (opaque token + expiry + owning user). */

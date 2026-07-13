@@ -15,6 +15,13 @@
       "when": 1783570961087,
       "tag": "0001_daily_carnage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783908920079,
+      "tag": "0002_bored_captain_flint",
+      "breakpoints": true
     }
   ]
 }

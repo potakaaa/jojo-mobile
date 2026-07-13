@@ -45,9 +45,24 @@ export interface AuthContextValue {
   isLoading: boolean;
   /** Whether onboarding has been seen this session (local, non-auth state). */
   hasOnboarded: boolean;
+  /**
+   * Whether the signed-in user has completed post-auth account onboarding
+   * (per-account, server-owned — derived from `user.onboardedAt`).
+   */
+  hasCompletedProfile: boolean;
   signIn: (input: SignInInput) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   completeOnboarding: () => void;
+  /**
+   * Save the required profile fields and stamp `onboardedAt`, completing
+   * post-auth account onboarding. Refreshes the session so the nav gate flips
+   * to `(tabs)` without an app restart.
+   */
+  completeProfile: (info: {
+    name: string;
+    birthday: string;
+    address: string;
+  }) => Promise<SignInResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,7 +72,7 @@ function toResult(error: { message?: string } | null | undefined): SignInResult 
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data, isPending } = authClient.useSession();
+  const { data, isPending, refetch } = authClient.useSession();
   const [hasOnboarded, setHasOnboarded] = useState(false);
 
   // DEV-ONLY boot attempt: no-ops in production and when `/dev/session` is not
@@ -109,6 +124,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeOnboarding = useCallback(() => setHasOnboarded(true), []);
 
+  const completeProfile = useCallback(
+    async (info: {
+      name: string;
+      birthday: string;
+      address: string;
+    }): Promise<SignInResult> => {
+      const { error } = await authClient.updateUser({
+        name: info.name,
+        birthday: info.birthday,
+        address: info.address,
+        onboardedAt: new Date(),
+      });
+      if (error) {
+        return toResult(error);
+      }
+      // Force a server round-trip so the freshly-stamped `onboardedAt`
+      // propagates and the nav gate flips to `(tabs)` without an app restart,
+      // regardless of whether `useSession()` auto-refreshes.
+      await refetch();
+      return toResult(null);
+    },
+    [refetch],
+  );
+
   const value = useMemo<AuthContextValue>(() => {
     const sessionUser = data?.user as
       | {
@@ -117,6 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: string;
           phoneNumber?: string | null;
           role?: string | null;
+          birthday?: string | null;
+          address?: string | null;
+          onboardedAt?: string | Date | null;
         }
       | undefined;
     const user: AuthUser | null = sessionUser
@@ -126,6 +168,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: sessionUser.email,
           phoneNumber: sessionUser.phoneNumber ?? undefined,
           role: (sessionUser.role as UserRole) ?? 'customer',
+          birthday: sessionUser.birthday ?? null,
+          address: sessionUser.address ?? null,
+          // `onboardedAt` rides the session as a Date (additionalField type:'date')
+          // or an ISO string — normalize to `string | null` for the AuthUser contract.
+          onboardedAt: sessionUser.onboardedAt
+            ? new Date(sessionUser.onboardedAt).toISOString()
+            : null,
         }
       : null;
     return {
@@ -133,11 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: user?.role ?? null,
       isLoading: isPending,
       hasOnboarded,
+      hasCompletedProfile: user?.onboardedAt != null,
       signIn,
       signOut,
       completeOnboarding,
+      completeProfile,
     };
-  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding]);
+  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding, completeProfile]);
 
   return createElement(AuthContext.Provider, { value }, children);
 }
