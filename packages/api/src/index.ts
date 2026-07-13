@@ -8,6 +8,8 @@ import express from 'express';
 
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { branchesRouter } from './routes/branches';
+import { menuRouter } from './routes/menu';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -20,6 +22,11 @@ app.all('/api/auth/*splat', toNodeHandler(auth));
 
 // JSON body parsing for the app's own (non-auth) routes, mounted after auth.
 app.use(express.json());
+
+// App data routes — mounted strictly AFTER express.json() and after the
+// better-auth handler above; the auth mount order must not change.
+app.use('/api/branches', branchesRouter);
+app.use('/api/menu', menuRouter);
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });

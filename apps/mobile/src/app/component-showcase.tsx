@@ -7,6 +7,7 @@ import type {
   OrderStatus,
   PickupBranch,
   PickupTime,
+  Product,
   RewardsAccount,
   RewardsTierProgress,
   Size,
@@ -49,22 +50,28 @@ const log = (label: string) => () => console.log(`[showcase] ${label}`);
 
 // --- Sample data (invented, but shaped to each real type) ---
 
-const SAMPLE_PRODUCT: MenuItem = {
+const SAMPLE_PRODUCT: Product = {
   id: 'prod-fries-classic',
-  name: 'Classic Fries',
-  description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
-  priceCents: 12000,
   categoryId: 'cat-fries',
-  isAvailable: true,
+  name: 'Classic Fries',
+  slug: 'classic-fries',
+  description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
+  imageUrl: null,
+  basePrice: 120,
+  isActive: true,
+  isRewardEligible: false,
 };
 
-const SAMPLE_PRODUCT_SOLD_OUT: MenuItem = {
+const SAMPLE_PRODUCT_SOLD_OUT: Product = {
   id: 'prod-loaded-fries',
-  name: 'Loaded Cheese Fries',
-  description: 'Melted cheese, bacon bits, spring onions.',
-  priceCents: 18500,
   categoryId: 'cat-fries',
-  isAvailable: false,
+  name: 'Loaded Cheese Fries',
+  slug: 'loaded-cheese-fries',
+  description: 'Melted cheese, bacon bits, spring onions.',
+  imageUrl: null,
+  basePrice: 185,
+  isActive: false,
+  isRewardEligible: false,
 };
 
 const SAMPLE_DEAL: Deal = {
@@ -127,6 +134,17 @@ const SAMPLE_CART_ITEM: CartItemData = {
   productNameSnapshot: 'Classic Fries',
   unitPriceCents: 12000,
   selectedOptions: [],
+};
+
+/** `MenuItem`-shaped counterpart of `SAMPLE_CART_ITEM`, for `<CartItem product={...}>`. */
+const SAMPLE_MENU_ITEM: MenuItem = {
+  id: 'prod-fries-classic',
+  name: 'Classic Fries',
+  description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
+  priceCents: 12000,
+  imageUrl: undefined,
+  categoryId: 'cat-fries',
+  isAvailable: true,
 };
 
 const SAMPLE_FLAVORS: Flavor[] = [
@@ -250,7 +268,7 @@ export default function ComponentShowcaseScreen() {
 
           <Section title="ProductCard">
             <ProductCard product={SAMPLE_PRODUCT} />
-            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} />
+            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} isAvailable={false} />
           </Section>
 
           <Section title="DealCard">
@@ -291,11 +309,12 @@ export default function ComponentShowcaseScreen() {
           <Section title="CartItem">
             <CartItem
               item={{ ...SAMPLE_CART_ITEM, quantity }}
-              product={SAMPLE_PRODUCT}
-              flavor={SAMPLE_FLAVORS.find((f) => f.id === selectedFlavorId)}
-              size={SAMPLE_SIZES.find((s) => s.id === selectedSizeId)}
+              product={SAMPLE_MENU_ITEM}
+              flavor="Cheese"
+              size="Large"
               onIncrement={() => setQuantity((q) => q + 1)}
               onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
+              onRemove={log('CartItem remove')}
             />
           </Section>
 
