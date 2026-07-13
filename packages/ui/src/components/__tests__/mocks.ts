@@ -11,6 +11,7 @@ import type {
   Size,
 } from '@jojopotato/types';
 
+/** `MenuItem`-shaped product mock (`ProductCard` renders the cents `MenuItem` shape). */
 export const MOCK_PRODUCT: MenuItem = {
   id: 'p1',
   name: 'Classic Fries',
@@ -19,6 +20,9 @@ export const MOCK_PRODUCT: MenuItem = {
   categoryId: 'classic',
   isAvailable: true,
 };
+
+/** Alias kept for the merged `CartItem` test, which imports `MOCK_MENU_ITEM`. */
+export const MOCK_MENU_ITEM: MenuItem = MOCK_PRODUCT;
 
 export const MOCK_DEAL: Deal = {
   id: 'd1',

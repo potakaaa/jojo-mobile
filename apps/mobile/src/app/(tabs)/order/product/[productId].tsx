@@ -1,121 +1,176 @@
-import type { CartItemOption, MenuItem } from '@jojopotato/types';
-import { Button, Card, FlavorSelector, SizeSelector } from '@jojopotato/ui';
-import { formatCurrency } from '@jojopotato/utils';
-import { router, useLocalSearchParams } from 'expo-router';
+import type { CartItemOption, ProductOption, ProductOptionType } from '@jojopotato/types';
+import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
+import { Image } from 'expo-image';
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { useBranchMenu } from '@/features/menu/hooks/use-branch-menu';
-import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
+import { AddToCartBar } from '@/features/menu/components/add-to-cart-bar';
+import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
+import { useProductDetails } from '@/features/menu/hooks/use-product-details';
 import { useTheme } from '@/hooks/use-theme';
 
-/**
- * Product Details: size + flavor selection, a quantity stepper, and Add to
- * cart. The line's unit price folds in the selected options' price deltas.
- */
+type SelectionState = Partial<Record<ProductOptionType, string[]>>;
+
+/** Fixed display order for option groups (matches the former `groupOptions` order). */
+const GROUP_ORDER: ProductOptionType[] = ['size', 'flavor', 'add_on'];
+
 export default function ProductDetailsScreen() {
   const theme = useTheme();
-  const { productId, branchId } = useLocalSearchParams<{ productId: string; branchId?: string }>();
-  const { setBranch, addItem } = useCart();
-  const menu = useBranchMenu(branchId ?? '');
+  const { productId } = useLocalSearchParams<{ productId: string }>();
+  const { data: product, isLoading, isError } = useProductDetails(productId);
+  const { cart, addItem, setBranch, clearCart } = useCart();
+  const { selectedBranch } = useBranch();
 
-  const [sizeId, setSizeId] = useState<string>();
-  const [flavorId, setFlavorId] = useState<string>();
-  const [quantity, setQuantity] = useState(1);
+  const [selection, setSelection] = useState<SelectionState>({});
+  const [addedNotice, setAddedNotice] = useState(false);
 
-  const product = useMemo(
-    () => menu.data?.categories.flatMap((c) => c.products).find((p) => p.id === productId),
-    [menu.data, productId],
+  // The backend already returns options grouped by type (a `Record`), so build
+  // the display groups inline in fixed order — no client-side `groupOptions()`
+  // (plan Gap E). Server pre-sorts options within each group by `sort_order`.
+  const groups = useMemo(
+    () =>
+      product
+        ? GROUP_ORDER.filter((type) => (product.options[type]?.length ?? 0) > 0).map((type) => ({
+            type,
+            options: product.options[type],
+          }))
+        : [],
+    [product],
   );
 
-  const category = useMemo(
-    () => menu.data?.categories.find((c) => c.products.some((p) => p.id === productId)),
-    [menu.data, productId],
+  const requiredTypes = useMemo(
+    () => (product ? getRequiredOptionTypes(Object.values(product.options).flat()) : []),
+    [product],
   );
 
-  const sizeOptions = product?.options.size ?? [];
-  const flavorOptions = product?.options.flavor ?? [];
+  // Flatten current selection to the option objects it represents.
+  const selectedOptions = useMemo<ProductOption[]>(() => {
+    if (!product) return [];
+    const selectedIds = new Set(Object.values(selection).flat());
+    return Object.values(product.options)
+      .flat()
+      .filter((option) => selectedIds.has(option.optionId));
+  }, [product, selection]);
 
-  const selectedSize = sizeOptions.find((o) => o.optionId === sizeId);
-  const selectedFlavor = flavorOptions.find((o) => o.optionId === flavorId);
-
-  const unitPriceCents = product
-    ? product.basePriceCents +
-      (selectedSize?.priceDeltaCents ?? 0) +
-      (selectedFlavor?.priceDeltaCents ?? 0)
-    : 0;
-
-  // A product can't be customized without knowing which branch it belongs to.
-  if (!branchId) {
+  // Unit price is a trivial cents sum: base + selected option deltas (all cents).
+  const unitPriceCents = useMemo(() => {
+    if (!product) return 0;
     return (
-      <ScreenMessage
-        title="Pick a branch first"
-        subtitle="Choose a pickup branch to start your order."
-        actionLabel="Browse branches"
-        onAction={() => router.replace('/(tabs)/branches')}
-      />
+      product.basePriceCents +
+      selectedOptions.reduce((sum, option) => sum + option.priceDeltaCents, 0)
     );
-  }
+  }, [product, selectedOptions]);
 
-  if (menu.loading) return <ScreenLoader />;
-  if (menu.error || !product) {
-    return (
-      <ScreenMessage
-        title="Couldn't load this product"
-        subtitle={menu.error ?? 'Product not found on this branch menu.'}
-        actionLabel="Retry"
-        onAction={menu.refetch}
-      />
-    );
-  }
+  const canAdd = useMemo(() => {
+    if (!product) return false;
+    return requiredTypes.every((type) => {
+      const selected = selection[type]?.[0];
+      return selected !== undefined && selected !== '';
+    });
+  }, [product, requiredTypes, selection]);
 
-  const needsSize = sizeOptions.length > 0 && !selectedSize;
-  const needsFlavor = flavorOptions.length > 0 && !selectedFlavor;
-  const canAdd = !needsSize && !needsFlavor;
-
-  const onAddToCart = () => {
-    const opts: CartItemOption[] = [];
-    if (selectedSize)
-      opts.push({
-        id: selectedSize.optionId,
-        optionType: 'size',
-        name: selectedSize.name,
-        priceDeltaCents: selectedSize.priceDeltaCents,
-      });
-    if (selectedFlavor)
-      opts.push({
-        id: selectedFlavor.optionId,
-        optionType: 'flavor',
-        name: selectedFlavor.name,
-        priceDeltaCents: selectedFlavor.priceDeltaCents,
-      });
-
-    const menuItem: MenuItem = {
-      id: product.id,
-      name: product.name,
-      description: product.description,
-      priceCents: product.basePriceCents,
-      imageUrl: product.imageUrl,
-      categoryId: category?.id ?? '',
-      isAvailable: true,
-    };
-
-    // Ensure the cart is scoped to this branch before adding (clears any cart
-    // from a different branch — pickup is single-branch per order).
-    setBranch(branchId);
-    addItem(menuItem, opts, quantity);
-    router.push('/(tabs)/order/cart');
+  const handleChange = (type: ProductOptionType, optionId: string) => {
+    setAddedNotice(false);
+    setSelection((prev) => {
+      if (type === 'add_on') {
+        const current = prev.add_on ?? [];
+        const next = current.includes(optionId)
+          ? current.filter((id) => id !== optionId)
+          : [...current, optionId];
+        return { ...prev, add_on: next };
+      }
+      // Single-select groups (size / flavor).
+      return { ...prev, [type]: [optionId] };
+    });
   };
 
+  const handleAdd = () => {
+    if (!product) return;
+    if (!selectedBranch) {
+      Alert.alert('No branch selected', 'Please select a pickup branch before adding items.');
+      return;
+    }
+
+    const opts: CartItemOption[] = selectedOptions.map((option) => ({
+      id: option.optionId,
+      optionType: option.optionType,
+      name: option.name,
+      priceDeltaCents: option.priceDeltaCents,
+    }));
+    const menuItem = productToMenuItem(product, product.isAvailable);
+
+    const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
+    if (isSwitchingBranch) {
+      Alert.alert(
+        'Switch branch?',
+        `Your cart has items from a different branch. Clear it and start a new order at ${selectedBranch.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Clear and switch',
+            style: 'destructive',
+            onPress: () => {
+              clearCart();
+              setBranch(selectedBranch.id);
+              addItem(menuItem, opts);
+              setAddedNotice(true);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (cart.pickupBranchId !== selectedBranch.id) {
+      setBranch(selectedBranch.id);
+    }
+    addItem(menuItem, opts);
+    setAddedNotice(true);
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.stateContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.accent} />
+      </View>
+    );
+  }
+
+  if (isError || !product) {
+    return (
+      <View style={[styles.stateContainer, { backgroundColor: theme.background }]}>
+        <Text style={[styles.stateText, { color: theme.textSecondary }]}>
+          This product isn’t available.
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Card>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
+          {product.imageUrl ? (
+            <Image
+              source={{ uri: product.imageUrl }}
+              style={styles.image}
+              contentFit="cover"
+              accessibilityLabel={product.name}
+            />
+          ) : (
+            <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
+          )}
+        </View>
+
         <Text style={[styles.name, { color: theme.text }]}>{product.name}</Text>
         {product.description ? (
           <Text style={[styles.description, { color: theme.textSecondary }]}>
@@ -125,99 +180,83 @@ export default function ProductDetailsScreen() {
         <Text style={[styles.basePrice, { color: theme.text }]}>
           {formatCurrency(product.basePriceCents)}
         </Text>
-      </Card>
 
-      {sizeOptions.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Size</Text>
-          <SizeSelector
-            sizes={sizeOptions.map((o) => ({
-              id: o.optionId,
-              label: o.name,
-              priceModifierCents: o.priceDeltaCents,
-            }))}
-            selectedSizeId={sizeId}
-            onSelect={(s) => setSizeId(s.id)}
+        {groups.map((group) => (
+          <OptionGroupSelector
+            key={group.type}
+            group={group}
+            required={requiredTypes.includes(group.type)}
+            selectedIds={selection[group.type] ?? []}
+            onChange={(optionId) => handleChange(group.type, optionId)}
           />
-        </View>
-      ) : null}
+        ))}
 
-      {flavorOptions.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Flavor</Text>
-          <FlavorSelector
-            flavors={flavorOptions.map((o) => ({ id: o.optionId, name: o.name }))}
-            selectedFlavorId={flavorId}
-            onSelect={(f) => setFlavorId(f.id)}
-          />
-        </View>
-      ) : null}
+        {addedNotice ? (
+          <Text style={[styles.addedNotice, { color: theme.accent }]}>Added to cart ✓</Text>
+        ) : null}
+      </ScrollView>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Quantity</Text>
-        <View style={styles.stepper}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Decrease quantity"
-            onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-            style={[styles.stepBtn, { borderColor: theme.border }]}
-          >
-            <Text style={[styles.stepLabel, { color: theme.text }]}>-</Text>
-          </Pressable>
-          <Text style={[styles.qty, { color: theme.text }]}>{quantity}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Increase quantity"
-            onPress={() => setQuantity((q) => q + 1)}
-            style={[styles.stepBtn, { borderColor: theme.border }]}
-          >
-            <Text style={[styles.stepLabel, { color: theme.text }]}>+</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {!canAdd ? (
-        <Text style={[styles.hint, { color: theme.textSecondary }]}>
-          {needsSize ? 'Select a size' : 'Select a flavor'} to continue.
-        </Text>
-      ) : null}
-
-      <Button
-        label={`Add to cart • ${formatCurrency(unitPriceCents * quantity)}`}
-        onPress={onAddToCart}
-        disabled={!canAdd}
+      <AddToCartBar
+        unitPriceCents={unitPriceCents}
+        canAdd={canAdd}
+        isAvailable={product.isAvailable}
+        onAdd={handleAdd}
       />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
-  name: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2 },
-  description: {
-    fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.body,
-    marginTop: Spacing.one,
+  container: {
+    flex: 1,
   },
-  basePrice: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h3, marginTop: Spacing.two },
-  section: { gap: Spacing.two },
-  sectionTitle: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  stepBtn: {
-    width: 44,
-    height: 44,
-    borderWidth: 2,
-    borderRadius: Radii.full,
+  stateContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Palette.creamTint2,
+    padding: Spacing.four,
   },
-  stepLabel: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
-  qty: {
-    fontFamily: FontFamily.body.bold,
+  stateText: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.body,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  imageWrap: {
+    width: '100%',
+    aspectRatio: 1.4,
+    borderRadius: Radii.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: '100%',
+  },
+  name: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h1,
+  },
+  description: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.body,
+  },
+  basePrice: {
+    fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
-    minWidth: 32,
-    textAlign: 'center',
   },
-  hint: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall },
+  addedNotice: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.body,
+  },
 });

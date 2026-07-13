@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
-import { useBranch } from '@/features/branches/hooks/use-branches';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { ScreenMessage } from '@/features/shared/components/screen-message';
@@ -31,7 +31,8 @@ function prepPickupTime(prepMinutes: number) {
 export default function CheckoutScreen() {
   const theme = useTheme();
   const { cart, subtotalCents, clearCart } = useCart();
-  const branch = useBranch(cart.pickupBranchId);
+  const { branches } = useBranch();
+  const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
   const { placeOrder, submitting, error } = useCheckout();
   const [paymentMethod] = useState<PaymentMethod>('pay_at_branch');
 
@@ -74,10 +75,10 @@ export default function CheckoutScreen() {
       <Card>
         <Text style={[styles.label, { color: theme.textSecondary }]}>Pickup from</Text>
         <Text style={[styles.branchName, { color: theme.text }]}>
-          {branch.data?.name ?? 'Selected branch'}
+          {branch?.name ?? 'Selected branch'}
         </Text>
         <PickupTimeBadge
-          pickupTime={prepPickupTime(branch.data?.estimatedPrepMinutes ?? 20)}
+          pickupTime={prepPickupTime(branch?.estimatedPrepMinutes ?? 20)}
           style={styles.badge}
         />
       </Card>

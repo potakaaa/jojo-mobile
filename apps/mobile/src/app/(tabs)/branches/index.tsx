@@ -6,38 +6,38 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useBranches } from '@/features/branches/hooks/use-branches';
-import { useCart } from '@/features/cart/hooks/use-cart';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * Branch Locator (Branches tab root). Lists the active pickup branches; tapping
- * one sets it as the cart's branch and pushes its detail + menu.
+ * one sets it as the currently-browsing branch (`BranchProvider`) and pushes its
+ * detail + menu. Browsing does NOT touch the cart's branch (plan Gap C) — the
+ * cart branch is only set at add-to-cart time.
  */
 export default function BranchLocatorScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { data: branches, loading, error, refetch } = useBranches();
-  const { setBranch } = useCart();
+  const { branches, isLoading, isError, refetch, setSelectedBranch } = useBranch();
 
   const openBranch = (branch: PickupBranch) => {
-    setBranch(branch.id);
+    setSelectedBranch(branch);
     router.push({ pathname: '/(tabs)/branches/[branchId]', params: { branchId: branch.id } });
   };
 
-  if (loading) return <ScreenLoader />;
-  if (error) {
+  if (isLoading) return <ScreenLoader />;
+  if (isError) {
     return (
       <ScreenMessage
         title="Couldn't load branches"
-        subtitle={error}
+        subtitle="Please try again."
         actionLabel="Retry"
         onAction={refetch}
       />
     );
   }
-  if (!branches || branches.length === 0) {
+  if (branches.length === 0) {
     return <ScreenMessage title="No branches available" subtitle="Please check back soon." />;
   }
 

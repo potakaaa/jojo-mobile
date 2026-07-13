@@ -1,18 +1,17 @@
-import type { MenuItem } from '@jojopotato/types';
+import type { MenuItem, Product } from '@jojopotato/types';
 import { Card, ProductCard } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Spacing, FontFamily, TypeScale } from '@/constants/theme';
-import { useBranch } from '@/features/branches/hooks/use-branches';
-import { useBranchMenu } from '@/features/menu/hooks/use-branch-menu';
-import type { MenuProduct } from '@/features/menu/lib/api-client';
+import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useMenu } from '@/features/menu/hooks/use-menu';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Map a menu product to the `MenuItem` shape `ProductCard` renders. */
-function toMenuItem(product: MenuProduct, categoryId: string): MenuItem {
+function toMenuItem(product: Product, categoryId: string): MenuItem {
   return {
     id: product.id,
     name: product.name,
@@ -26,14 +25,18 @@ function toMenuItem(product: MenuProduct, categoryId: string): MenuItem {
 
 /**
  * Branch Details: branch header (name/address/prep time) plus the branch menu
- * grouped by category. Tapping a product opens the customization screen scoped
- * to this branch.
+ * grouped by category. Reads the branch from the shared `BranchProvider` list
+ * and the menu from `useMenu()` (scoped to the currently-selected branch, set
+ * when the user tapped this branch in the locator). Tapping a product opens the
+ * customization screen scoped to this branch.
  */
 export default function BranchDetailsScreen() {
   const theme = useTheme();
   const { branchId } = useLocalSearchParams<{ branchId: string }>();
-  const branch = useBranch(branchId);
-  const menu = useBranchMenu(branchId);
+  const { branches, isLoading: branchLoading, isError: branchError, refetch: refetchBranch } =
+    useBranch();
+  const branch = branches.find((b) => b.id === branchId) ?? null;
+  const menu = useMenu();
 
   const openProduct = (productId: string) => {
     router.push({
@@ -42,16 +45,16 @@ export default function BranchDetailsScreen() {
     });
   };
 
-  if (branch.loading || menu.loading) return <ScreenLoader />;
-  if (branch.error || !branch.data) {
+  if (branchLoading || menu.isLoading) return <ScreenLoader />;
+  if (branchError || !branch) {
     return (
       <ScreenMessage
         title="Couldn't load this branch"
-        subtitle={branch.error ?? 'Branch not found.'}
+        subtitle="Branch not found."
         actionLabel="Retry"
         onAction={() => {
-          branch.refetch();
-          menu.refetch();
+          refetchBranch();
+          void menu.refetch();
         }}
       />
     );
@@ -64,21 +67,19 @@ export default function BranchDetailsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Card>
-        <Text style={[styles.branchName, { color: theme.text }]}>{branch.data.name}</Text>
+        <Text style={[styles.branchName, { color: theme.text }]}>{branch.name}</Text>
+        <Text style={[styles.branchMeta, { color: theme.textSecondary }]}>{branch.address}</Text>
         <Text style={[styles.branchMeta, { color: theme.textSecondary }]}>
-          {branch.data.address}
-        </Text>
-        <Text style={[styles.branchMeta, { color: theme.textSecondary }]}>
-          Ready in about {branch.data.estimatedPrepMinutes} min
+          Ready in about {branch.estimatedPrepMinutes} min
         </Text>
       </Card>
 
-      {menu.error || !menu.data ? (
+      {menu.isError || !menu.data ? (
         <ScreenMessage
           title="Menu unavailable"
-          subtitle={menu.error ?? 'No menu for this branch yet.'}
+          subtitle="No menu for this branch yet."
           actionLabel="Retry"
-          onAction={menu.refetch}
+          onAction={() => void menu.refetch()}
         />
       ) : (
         menu.data.categories.map((category) => (

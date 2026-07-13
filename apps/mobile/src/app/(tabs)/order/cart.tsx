@@ -6,7 +6,7 @@ import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-nativ
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { useBranch, useBranches } from '@/features/branches/hooks/use-branches';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -68,10 +68,8 @@ export default function CartScreen() {
     setBranch,
   } = useCart();
 
-  const branchQuery = useBranch(cart.pickupBranchId);
-  const branch = branchQuery.data;
-  const branchesQuery = useBranches();
-  const branches = branchesQuery.data ?? [];
+  const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
+  const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
 
   const isEmpty = cart.items.length === 0;
   const pickupTime = useMemo(
@@ -121,14 +119,14 @@ export default function CartScreen() {
             onAction={() => router.push('/(tabs)/order')}
             mode={mode}
           />
-        ) : branchQuery.loading ? (
+        ) : branchesLoading ? (
           <ScreenLoader />
-        ) : branchQuery.error || !branch ? (
+        ) : branchesError || !branch ? (
           <ScreenMessage
             title="Couldn't load your pickup branch"
             subtitle="Please try again."
             actionLabel="Retry"
-            onAction={branchQuery.refetch}
+            onAction={refetch}
           />
         ) : (
           <>
