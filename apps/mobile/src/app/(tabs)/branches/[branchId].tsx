@@ -20,7 +20,7 @@ import {
   mapApiBranch,
   mapApiBranchDeal,
 } from '@/features/branches/api';
-import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
@@ -42,7 +42,7 @@ export default function BranchDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { coords, status: locationStatus } = useUserLocation();
-  const { setSelectedBranch } = useSelectedBranch();
+  const { setSelectedBranch } = useBranch();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -55,8 +55,8 @@ export default function BranchDetailsScreen() {
 
   const branch = data ? mapApiBranch(data.branch) : null;
   const deals = data ? data.deals.map(mapApiBranchDeal) : [];
-  const isOpen = branch ? getIsOpenNow(branch.openingHours) : false;
-  const hoursLines = branch ? formatOpeningHours(branch.openingHours) : [];
+  const isOpen = branch && branch.openingHours ? getIsOpenNow(branch.openingHours) : false;
+  const hoursLines = branch && branch.openingHours ? formatOpeningHours(branch.openingHours) : [];
   const distance =
     branch && locationStatus === 'granted' && coords
       ? distanceKm(coords.latitude, coords.longitude, branch.latitude, branch.longitude)
@@ -90,7 +90,7 @@ export default function BranchDetailsScreen() {
   };
 
   const onOrder = () => {
-    setSelectedBranch(branch.id);
+    setSelectedBranch(branch);
     router.push('/(tabs)/order');
   };
 

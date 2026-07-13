@@ -10,12 +10,15 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
-import { SelectedBranchProvider } from '@/features/branches/hooks/use-selected-branch';
+import { BranchProvider } from '@/features/branch/hooks/use-branch';
+import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
+import { queryClient } from '@/lib/query-client';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
 // never flashes system fonts before Fredoka / Plus Jakarta Sans load.
@@ -46,6 +49,18 @@ function RootNavigator() {
   );
 }
 
+function AuthedTree() {
+  const { user } = useAuth();
+
+  return (
+    <BranchProvider>
+      <CartSessionProvider key={user?.id ?? 'anonymous'}>
+        <RootNavigator />
+      </CartSessionProvider>
+    </BranchProvider>
+  );
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -65,6 +80,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  // Bridge RN app foregrounding into TanStack Query's focus manager so
+  // `refetchOnWindowFocus` (query-client.ts) actually refetches on native.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (status: AppStateStatus) => {
+      focusManager.setFocused(status === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
+
   if (!fontsLoaded && !fontError) {
     return null;
   }
@@ -72,11 +96,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AuthProvider>
-          <SelectedBranchProvider>
-            <RootNavigator />
-          </SelectedBranchProvider>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <AuthedTree />
+          </AuthProvider>
+        </QueryClientProvider>
         <StatusBar style="auto" />
       </ThemeProvider>
     </GestureHandlerRootView>

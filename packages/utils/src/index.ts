@@ -4,3 +4,4 @@ export * from './geo';
 export * from './hours';
 export * from './maps';
 export * from './number';
+export * from './product-options';

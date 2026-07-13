@@ -87,6 +87,7 @@ const SAMPLE_BRANCH: PickupBranch = {
   isAcceptingPickup: true,
   estimatedPrepMinutes: 15,
   priority: 1,
+  isOpen: true,
 };
 
 const SAMPLE_BRANCH_CLOSED: PickupBranch = {
@@ -102,6 +103,7 @@ const SAMPLE_BRANCH_CLOSED: PickupBranch = {
   isAcceptingPickup: false,
   estimatedPrepMinutes: 20,
   priority: 2,
+  isOpen: false,
 };
 
 const SAMPLE_REWARDS: RewardsAccount = {
@@ -133,8 +135,12 @@ const SAMPLE_COUPON_REDEEMED: Coupon = {
 };
 
 const SAMPLE_CART_ITEM: CartItemData = {
+  lineId: 'line-showcase-1',
   menuItemId: 'prod-fries-classic',
   quantity: 2,
+  productNameSnapshot: 'Classic Fries',
+  unitPriceCents: 12000,
+  selectedOptions: [],
 };
 
 const SAMPLE_FLAVORS: Flavor[] = [
@@ -166,9 +172,10 @@ const SAMPLE_PICKUP_TIME_FULL: PickupTime = {
 
 const ORDER_STATUSES: OrderStatus[] = [
   'pending',
-  'confirmed',
+  'accepted',
   'preparing',
-  'ready_for_pickup',
+  'flavoring',
+  'ready',
   'completed',
   'cancelled',
 ];

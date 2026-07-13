@@ -107,6 +107,7 @@ export const MOCK_BRANCH: PickupBranch = {
   isAcceptingPickup: true,
   estimatedPrepMinutes: 15,
   priority: 1,
+  isOpen: true,
 };
 
 export const MOCK_REWARDS: RewardsAccount = {

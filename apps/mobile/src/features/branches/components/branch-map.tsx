@@ -110,7 +110,7 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
   const branchMarkers = useMemo(
     () =>
       branches.map((branch) => {
-        const isOpen = getIsOpenNow(branch.openingHours);
+        const isOpen = branch.openingHours ? getIsOpenNow(branch.openingHours) : false;
         const isActive = isOpen && branch.isAcceptingPickup;
         return {
           id: branch.id,

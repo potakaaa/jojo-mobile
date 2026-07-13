@@ -1,9 +1,11 @@
 import { Badge, BranchCard, RewardProgressCard } from '@jojopotato/ui';
+import { router } from 'expo-router';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { useCart } from '@/features/cart/hooks/use-cart';
 import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
@@ -19,10 +21,27 @@ import { useTheme } from '@/hooks/use-theme';
 /**
  * Home browse screen. Composes the six `features/home` section components,
  * top to bottom, inside a single `ScrollView`, backed by local mock data.
+ * The branch card and product grid are wired into the real order flow.
  */
 export default function HomeScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { setBranch } = useCart();
+
+  const openBranch = () => {
+    setBranch(MOCK_BRANCH.id);
+    router.push({
+      pathname: '/(tabs)/branches/[branchId]',
+      params: { branchId: MOCK_BRANCH.id },
+    });
+  };
+
+  const openProduct = (productId: string) => {
+    router.push({
+      pathname: '/(tabs)/order/product/[productId]',
+      params: { productId, branchId: MOCK_BRANCH.id },
+    });
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -41,7 +60,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <HomeHeader />
-          <BranchCard branch={MOCK_BRANCH} isOpen={false} />
+          <BranchCard branch={MOCK_BRANCH} onPress={openBranch} />
           <PromoBanner />
           <RewardProgressCard rewards={MOCK_REWARDS} />
           <CategorySelector categories={MOCK_CATEGORIES} />
@@ -49,7 +68,7 @@ export default function HomeScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
             <Badge label="Popular" />
           </View>
-          <ProductGrid products={MOCK_PRODUCTS} />
+          <ProductGrid products={MOCK_PRODUCTS} onProductPress={openProduct} />
         </ScrollView>
       </SafeAreaView>
     </View>

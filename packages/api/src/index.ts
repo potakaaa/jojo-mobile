@@ -11,9 +11,22 @@ import { db } from './db/client';
 import { branches, dealBranches, deals } from './db/schema/index';
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { branchesRouter } from './routes/branches';
+import { ordersRouter } from './routes/orders';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
+
+// Request logger — runs for EVERY request (incl. /api/auth/*). Does NOT parse or
+// consume the body, so it's safe to register before the better-auth mount which
+// needs the raw body. Logs method, path, status, and timing on response finish.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
 
 // Mount the better-auth handler BEFORE any body-parsing middleware — better-auth
 // reads the raw request body itself, so `express.json()` must not consume it
@@ -140,6 +153,11 @@ app.get('/api/branches/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch branch' });
   }
 });
+
+// App order-flow routes (public branch reads + session-gated orders), mounted
+// after express.json() so they get parsed JSON bodies.
+app.use('/branches', branchesRouter);
+app.use('/orders', ordersRouter);
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An

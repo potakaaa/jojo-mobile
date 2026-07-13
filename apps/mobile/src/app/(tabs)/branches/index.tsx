@@ -20,7 +20,6 @@ import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { ApiBranch, mapApiBranch } from '@/features/branches/api';
 import { BranchMap, type BranchMapHandle } from '@/features/branches/components/branch-map';
-import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
@@ -42,7 +41,6 @@ export default function BranchLocatorScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
   const { coords, status: locationStatus } = useUserLocation();
-  const { setSelectedBranch } = useSelectedBranch();
 
   const [branches, setBranches] = useState<PickupBranch[]>([]);
   const [query, setQuery] = useState('');
@@ -90,7 +88,7 @@ export default function BranchLocatorScreen() {
     if (showDistance) {
       return list.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     }
-    return list.sort((a, b) => a.priority - b.priority);
+    return list.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   }, [branches, showDistance, coords]);
 
   const filteredBranches = useMemo(() => {
@@ -117,7 +115,6 @@ export default function BranchLocatorScreen() {
   const isLoading = isFetching || locationStatus === 'loading';
 
   const onOrderPress = (id: string) => {
-    setSelectedBranch(id);
     router.push({
       pathname: '/(tabs)/branches/[branchId]',
       params: { branchId: id },
@@ -138,7 +135,7 @@ export default function BranchLocatorScreen() {
   };
 
   const renderItem = ({ item }: { item: PickupBranch }) => {
-    const isOpen = getIsOpenNow(item.openingHours);
+    const isOpen = item.openingHours ? getIsOpenNow(item.openingHours) : false;
     const isEnabled = isOpen && item.isAcceptingPickup;
     return (
       <BranchListItem
