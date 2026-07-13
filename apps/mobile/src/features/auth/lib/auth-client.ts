@@ -39,6 +39,11 @@ export const authClient = createAuthClient({
         // Read-only on the client too (mirrors the server's `input: false`), so
         // `role` is never a required/allowed signup input — it is server-owned.
         role: { type: 'string', input: false },
+        // Self-owned profile fields the client may write via `updateUser` on its
+        // OWN record (mirrors the server's `input: true`).
+        birthday: { type: 'string', input: true },
+        address: { type: 'string', input: true },
+        onboardedAt: { type: 'date', input: true },
       },
     }),
   ],

@@ -1,0 +1,24 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Privilege escalation: an authenticated client sets role='admin' via authClient.updateUser to elevate itself.",
+      "ruled_out": true,
+      "rationale": "role remains additionalFields input:false on both server (auth.ts) and client (auth-client.ts inferAdditionalFields). better-auth rejects/strips input:false writes. B0 vitest asserts that after an updateUser({role:'admin'}) attempt the DB row role stays 'customer'. No new client-writable privilege field was introduced."
+    },
+    {
+      "scenario": "Cross-user tampering: a caller writes another user's birthday/address/onboardedAt.",
+      "ruled_out": true,
+      "rationale": "better-auth updateUser scopes writes to the authenticated caller's OWN record (session-cookie derived). The new input:true fields (birthday/address/onboardedAt) are self-data only; there is no endpoint that accepts a target userId. No cross-user surface added."
+    },
+    {
+      "scenario": "Onboarding-gate bypass: a user reaches (tabs) without completing the required info form.",
+      "ruled_out": true,
+      "rationale": "The (tabs) gate is isAuthenticated && hasCompletedProfile; hasCompletedProfile is derived from server-owned onboardedAt (user.onboardedAt != null). onboardedAt is only stamped by completeProfile -> updateUser({onboardedAt:new Date()}) on real form submit, then a session refetch flips the gate. Self-set onboardedAt is accepted low risk (self-data only, no cross-user or privilege impact) per the plan's STRIDE section."
+    },
+    {
+      "scenario": "Information disclosure via the new fields.",
+      "ruled_out": true,
+      "rationale": "New fields ride the existing authenticated session payload; no new unauthenticated endpoint was added and no secrets are involved."
+    }
+  ]
+}

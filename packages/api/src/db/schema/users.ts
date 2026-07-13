@@ -24,6 +24,8 @@ export const users = pgTable('users', {
   phoneNumberVerified: boolean('phone_number_verified').default(false).notNull(),
   image: varchar('image'),
   birthday: date('birthday'),
+  address: varchar('address'),
+  onboardedAt: timestamp('onboarded_at'),
   favoriteBranchId: uuid('favorite_branch_id').references(() => branches.id),
   role: userRoleEnum('role').default('customer').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
