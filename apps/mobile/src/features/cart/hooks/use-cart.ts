@@ -1,146 +1,167 @@
-import type { SelectedOption } from '@jojopotato/types';
+import type { AppliedDiscount, Cart, CartItem, CartItemOption, MenuItem } from '@jojopotato/types';
 import {
   createContext,
   createElement,
   useCallback,
   useContext,
   useMemo,
-  useReducer,
+  useState,
   type ReactNode,
 } from 'react';
 
 /**
- * A single line in the cart: one product with a fixed set of selected options
- * and a quantity. `unitPriceCents` already folds in every selected option's
- * price delta (computed at add time), so the cart never has to re-price.
+ * In-memory cart state seam, mirroring the auth Context pattern in
+ * `features/auth/hooks/use-auth.ts`. There is NO persistence yet: state lives in
+ * React state held above the navigator, so it survives backgrounding and
+ * navigation (Tier A) but is cleared on app force-quit by design (A2/D3 — no
+ * AsyncStorage). This is the only cart state seam; swapping to a real cart
+ * backend (CART-002) changes only this file's internals, not its consumers.
+ *
+ * The initial state is seeded from `MOCK_CART` because no cart backend exists
+ * yet; that default becomes an empty/fetched cart once the backend lands.
  */
-export interface CartLine {
-  /** Stable client identity derived from productId + sorted option ids. */
-  lineId: string;
-  productId: string;
-  name: string;
-  unitPriceCents: number;
-  quantity: number;
-  selectedOptions: SelectedOption[];
-}
-
-interface CartState {
-  /** Pickup is single-branch per order: the branch every line belongs to. */
-  branchId: string | null;
-  items: CartLine[];
-}
-
-type CartAction =
-  | { type: 'SET_BRANCH'; branchId: string }
-  | { type: 'ADD_ITEM'; item: Omit<CartLine, 'lineId'> }
-  | { type: 'UPDATE_QUANTITY'; lineId: string; quantity: number }
-  | { type: 'REMOVE_ITEM'; lineId: string }
-  | { type: 'CLEAR' };
-
-export interface CartContextValue {
-  branchId: string | null;
-  items: CartLine[];
-  /** Total quantity across all lines (for a cart badge / gating). */
+export interface CartSessionState {
+  cart: Cart;
+  subtotalCents: number;
+  discountTotalCents: number;
+  totalCents: number;
   itemCount: number;
-  /**
-   * Set the active pickup branch. Switching to a different branch clears the
-   * cart, since a pickup order can only be from one branch.
-   */
-  setBranch: (branchId: string) => void;
-  /** Add a line; merges quantity when the same product+options combo exists. */
-  addItem: (item: Omit<CartLine, 'lineId'>) => void;
-  updateQuantity: (lineId: string, quantity: number) => void;
+  /** Adds a line for the current branch; merges into an existing matching line. */
+  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number) => void;
+  /** Sets a line's quantity; `qty <= 0` removes the line (D-note). */
+  updateQuantity: (lineId: string, qty: number) => void;
   removeItem: (lineId: string) => void;
-  clear: () => void;
+  applyDiscount: (d: AppliedDiscount) => void;
+  clearDiscount: () => void;
+  clearCart: () => void;
+  setBranch: (branchId: string) => void;
 }
 
-const CartContext = createContext<CartContextValue | null>(null);
+const CartContext = createContext<CartSessionState | null>(null);
 
-const INITIAL_STATE: CartState = { branchId: null, items: [] };
-
-/** Deterministic line identity so identical product+option combos merge. */
-function buildLineId(productId: string, selectedOptions: SelectedOption[]): string {
-  const ids = selectedOptions
-    .map((o) => o.optionId)
+/** Stable line identity: same menu item + same option set == same line. */
+function lineIdFor(menuItemId: string, opts: CartItemOption[]): string {
+  const optionKey = opts
+    .map((o) => o.id)
     .sort()
-    .join(',');
-  return ids ? `${productId}#${ids}` : productId;
+    .join('+');
+  return optionKey ? `${menuItemId}::${optionKey}` : menuItemId;
 }
 
-function cartReducer(state: CartState, action: CartAction): CartState {
-  switch (action.type) {
-    case 'SET_BRANCH': {
-      if (state.branchId === action.branchId) return state;
-      // Branch changed — a pickup order is single-branch, so start fresh.
-      return { branchId: action.branchId, items: [] };
-    }
-    case 'ADD_ITEM': {
-      const lineId = buildLineId(action.item.productId, action.item.selectedOptions);
-      const existing = state.items.find((l) => l.lineId === lineId);
-      if (existing) {
-        return {
-          ...state,
-          items: state.items.map((l) =>
-            l.lineId === lineId ? { ...l, quantity: l.quantity + action.item.quantity } : l,
-          ),
-        };
-      }
-      return { ...state, items: [...state.items, { ...action.item, lineId }] };
-    }
-    case 'UPDATE_QUANTITY': {
-      if (action.quantity <= 0) {
-        return { ...state, items: state.items.filter((l) => l.lineId !== action.lineId) };
-      }
-      return {
-        ...state,
-        items: state.items.map((l) =>
-          l.lineId === action.lineId ? { ...l, quantity: action.quantity } : l,
-        ),
-      };
-    }
-    case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter((l) => l.lineId !== action.lineId) };
-    case 'CLEAR':
-      return INITIAL_STATE;
-  }
+function unitPriceFor(menuItem: MenuItem, opts: CartItemOption[]): number {
+  return opts.reduce((sum, o) => sum + o.priceDeltaCents, menuItem.priceCents);
 }
 
-export function CartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(cartReducer, INITIAL_STATE);
+const EMPTY_CART: Cart = { id: 'cart-local', items: [], pickupBranchId: '' };
 
-  const setBranch = useCallback((branchId: string) => dispatch({ type: 'SET_BRANCH', branchId }), []);
-  const addItem = useCallback(
-    (item: Omit<CartLine, 'lineId'>) => dispatch({ type: 'ADD_ITEM', item }),
-    [],
-  );
+export function CartSessionProvider({
+  children,
+  initialCart = EMPTY_CART,
+}: {
+  children: ReactNode;
+  initialCart?: Cart;
+}) {
+  const [cart, setCart] = useState<Cart>(initialCart);
+
+  const addItem = useCallback((menuItem: MenuItem, opts: CartItemOption[], qty = 1) => {
+    if (qty <= 0) return;
+    setCart((prev) => {
+      const lineId = lineIdFor(menuItem.id, opts);
+      const existing = prev.items.find((it) => it.lineId === lineId);
+      const items = existing
+        ? prev.items.map((it) =>
+            it.lineId === lineId ? { ...it, quantity: it.quantity + qty } : it,
+          )
+        : [
+            ...prev.items,
+            {
+              lineId,
+              menuItemId: menuItem.id,
+              quantity: qty,
+              productNameSnapshot: menuItem.name,
+              unitPriceCents: unitPriceFor(menuItem, opts),
+              selectedOptions: opts,
+            } satisfies CartItem,
+          ];
+      return { ...prev, items };
+    });
+  }, []);
+
+  const removeItem = useCallback((lineId: string) => {
+    setCart((prev) => ({ ...prev, items: prev.items.filter((it) => it.lineId !== lineId) }));
+  }, []);
+
   const updateQuantity = useCallback(
-    (lineId: string, quantity: number) => dispatch({ type: 'UPDATE_QUANTITY', lineId, quantity }),
-    [],
+    (lineId: string, qty: number) => {
+      if (qty <= 0) {
+        removeItem(lineId);
+        return;
+      }
+      setCart((prev) => ({
+        ...prev,
+        items: prev.items.map((it) => (it.lineId === lineId ? { ...it, quantity: qty } : it)),
+      }));
+    },
+    [removeItem],
   );
-  const removeItem = useCallback((lineId: string) => dispatch({ type: 'REMOVE_ITEM', lineId }), []);
-  const clear = useCallback(() => dispatch({ type: 'CLEAR' }), []);
 
-  const value = useMemo<CartContextValue>(
-    () => ({
-      branchId: state.branchId,
-      items: state.items,
-      itemCount: state.items.reduce((n, l) => n + l.quantity, 0),
-      setBranch,
+  const applyDiscount = useCallback((d: AppliedDiscount) => {
+    setCart((prev) => ({ ...prev, appliedDiscount: d }));
+  }, []);
+
+  const clearDiscount = useCallback(() => {
+    setCart((prev) => ({ ...prev, appliedDiscount: undefined }));
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCart((prev) => ({ ...prev, items: [], appliedDiscount: undefined }));
+  }, []);
+
+  const setBranch = useCallback((branchId: string) => {
+    setCart((prev) =>
+      prev.pickupBranchId === branchId
+        ? prev
+        : { ...prev, pickupBranchId: branchId, items: [], appliedDiscount: undefined },
+    );
+  }, []);
+
+  const value = useMemo<CartSessionState>(() => {
+    const subtotalCents = cart.items.reduce((sum, it) => sum + it.unitPriceCents * it.quantity, 0);
+    const discountTotalCents = cart.appliedDiscount?.amountCents ?? 0;
+    const totalCents = Math.max(0, subtotalCents - discountTotalCents);
+    const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
+    return {
+      cart,
+      subtotalCents,
+      discountTotalCents,
+      totalCents,
+      itemCount,
       addItem,
       updateQuantity,
       removeItem,
-      clear,
-    }),
-    [state, setBranch, addItem, updateQuantity, removeItem, clear],
-  );
+      applyDiscount,
+      clearDiscount,
+      clearCart,
+      setBranch,
+    };
+  }, [
+    cart,
+    addItem,
+    updateQuantity,
+    removeItem,
+    applyDiscount,
+    clearDiscount,
+    clearCart,
+    setBranch,
+  ]);
 
   return createElement(CartContext.Provider, { value }, children);
 }
 
-export function useCart(): CartContextValue {
+export function useCart(): CartSessionState {
   const ctx = useContext(CartContext);
   if (!ctx) {
-    throw new Error('useCart must be used within a CartProvider');
+    throw new Error('useCart must be used within a CartSessionProvider');
   }
   return ctx;
 }

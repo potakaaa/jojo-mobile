@@ -1,4 +1,4 @@
-import type { SelectedOption } from '@jojopotato/types';
+import type { CartItemOption, MenuItem } from '@jojopotato/types';
 import { Button, Card, FlavorSelector, SizeSelector } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -8,7 +8,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useBranchMenu } from '@/features/menu/hooks/use-branch-menu';
-import { toSelectedOption } from '@/features/menu/lib/api-client';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -28,6 +27,11 @@ export default function ProductDetailsScreen() {
 
   const product = useMemo(
     () => menu.data?.categories.flatMap((c) => c.products).find((p) => p.id === productId),
+    [menu.data, productId],
+  );
+
+  const category = useMemo(
+    () => menu.data?.categories.find((c) => c.products.some((p) => p.id === productId)),
     [menu.data, productId],
   );
 
@@ -72,14 +76,36 @@ export default function ProductDetailsScreen() {
   const canAdd = !needsSize && !needsFlavor;
 
   const onAddToCart = () => {
-    const selectedOptions: SelectedOption[] = [];
-    if (selectedSize) selectedOptions.push(toSelectedOption(selectedSize, 'size'));
-    if (selectedFlavor) selectedOptions.push(toSelectedOption(selectedFlavor, 'flavor'));
+    const opts: CartItemOption[] = [];
+    if (selectedSize)
+      opts.push({
+        id: selectedSize.optionId,
+        optionType: 'size',
+        name: selectedSize.name,
+        priceDeltaCents: selectedSize.priceDeltaCents,
+      });
+    if (selectedFlavor)
+      opts.push({
+        id: selectedFlavor.optionId,
+        optionType: 'flavor',
+        name: selectedFlavor.name,
+        priceDeltaCents: selectedFlavor.priceDeltaCents,
+      });
+
+    const menuItem: MenuItem = {
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      priceCents: product.basePriceCents,
+      imageUrl: product.imageUrl,
+      categoryId: category?.id ?? '',
+      isAvailable: true,
+    };
 
     // Ensure the cart is scoped to this branch before adding (clears any cart
     // from a different branch — pickup is single-branch per order).
     setBranch(branchId);
-    addItem({ productId: product.id, name: product.name, unitPriceCents, quantity, selectedOptions });
+    addItem(menuItem, opts, quantity);
     router.push('/(tabs)/order/cart');
   };
 

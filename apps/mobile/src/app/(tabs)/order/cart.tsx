@@ -1,92 +1,280 @@
-import type { CartItem as CartItemData, MenuItem } from '@jojopotato/types';
-import { Button, CartItem } from '@jojopotato/ui';
-import { formatCurrency } from '@jojopotato/utils';
+import type { MenuItem, PickupTime } from '@jojopotato/types';
+import { BranchCard, Button, CartItem, CartSummary, EmptyState } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
-import { cartSubtotalCents } from '@/features/cart/lib/cart-totals';
-import { useCart, type CartLine } from '@/features/cart/hooks/use-cart';
-import { ScreenMessage } from '@/features/shared/components/screen-message';
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { useBranch, useBranches } from '@/features/branches/hooks/use-branches';
+import { useCart } from '@/features/cart/hooks/use-cart';
+import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-/** A cart line already folds its option deltas into `unitPriceCents`, so the
- *  reused `CartItem` gets a synthetic product priced at that unit price. */
-function toProduct(line: CartLine): MenuItem {
+/** Build the display-only estimated pickup time (D5): now + branch prep minutes. */
+function estimatedPickup(prepMinutes: number): PickupTime {
+  const ready = new Date(Date.now() + prepMinutes * 60_000);
+  const label = ready.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
   return {
-    id: line.productId,
-    name: line.name,
-    priceCents: line.unitPriceCents,
-    categoryId: '',
+    id: 'cart-eta',
+    label: `Ready ~ ${label}`,
+    isoTime: ready.toISOString(),
     isAvailable: true,
   };
 }
 
-function toCartItemData(line: CartLine): CartItemData {
+/** Resolve a cart line to a `MenuItem` for `<CartItem>` (snapshot-consistent). */
+function productForLine(
+  menuItemId: string,
+  nameSnapshot: string,
+  unitPriceCents: number,
+): MenuItem {
   return {
-    lineId: line.lineId,
-    menuItemId: line.productId,
-    quantity: line.quantity,
-    selectedOptions: line.selectedOptions,
+    id: menuItemId,
+    name: nameSnapshot,
+    // Use the snapshot unit price so the row total matches the cart math exactly.
+    priceCents: unitPriceCents,
+    categoryId: '',
+    // No per-line image snapshot on the canonical Cart shape — CartItem renders a
+    // placeholder for a falsy imageUrl (accepted cosmetic gap, see plan Step 5.5).
+    imageUrl: undefined,
+    isAvailable: true,
   };
 }
 
-function optionSummary(line: CartLine): string | undefined {
-  const parts = line.selectedOptions.map((o) => o.name);
-  return parts.length > 0 ? parts.join(' • ') : undefined;
-}
-
-/** Cart review: line rows with quantity steppers, a subtotal, and checkout. */
+/**
+ * Cart screen. Renders the selected branch (real branch data), line items with
+ * quantity steppers + remove, an estimated pickup time, and the subtotal/total
+ * summary — all driven by the in-memory `useCart()` seam wired to the real
+ * branch/menu/order backend. Coupons are deferred (no backend support yet).
+ */
 export default function CartScreen() {
   const theme = useTheme();
-  const { items, updateQuantity } = useCart();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
 
-  if (items.length === 0) {
-    return (
-      <ScreenMessage
-        title="Your cart is empty"
-        subtitle="Browse a branch menu to add something tasty."
-        actionLabel="Browse branches"
-        onAction={() => router.replace('/(tabs)/branches')}
-      />
+  const {
+    cart,
+    subtotalCents,
+    discountTotalCents,
+    totalCents,
+    itemCount,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    setBranch,
+  } = useCart();
+
+  const branchQuery = useBranch(cart.pickupBranchId);
+  const branch = branchQuery.data;
+  const branchesQuery = useBranches();
+  const branches = branchesQuery.data ?? [];
+
+  const isEmpty = cart.items.length === 0;
+  const pickupTime = useMemo(
+    () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
+    [branch?.estimatedPrepMinutes],
+  );
+
+  // Switch pickup to the next real branch (cyclic). If the cart has items,
+  // switching clears it first (branches can't be mixed — single-branch per order).
+  const handleChangeBranch = () => {
+    if (branches.length <= 1) return;
+    const currentIndex = branches.findIndex((b) => b.id === cart.pickupBranchId);
+    const nextBranch = branches[(currentIndex + 1) % branches.length];
+    if (!nextBranch || nextBranch.id === cart.pickupBranchId) return;
+    if (cart.items.length === 0) {
+      setBranch(nextBranch.id);
+      return;
+    }
+    Alert.alert(
+      'Change branch?',
+      `Switching to ${nextBranch.name} will clear your current cart from ${branch?.name ?? 'this branch'}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change & clear',
+          style: 'destructive',
+          onPress: () => {
+            clearCart();
+            setBranch(nextBranch.id);
+          },
+        },
+      ],
     );
-  }
+  };
 
-  const subtotalCents = cartSubtotalCents(items);
+  const canChangeBranch = branches.length > 1;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {items.map((line) => (
-          <CartItem
-            key={line.lineId}
-            item={toCartItemData(line)}
-            product={toProduct(line)}
-            flavor={optionSummary(line)}
-            onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
-            onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
+      <SafeAreaView style={styles.safeArea} edges={[]}>
+        {isEmpty ? (
+          <EmptyState
+            iconName="cart-outline"
+            title="Your cart is empty"
+            description="Add some fries and snacks to get started."
+            actionLabel="Browse menu"
+            onAction={() => router.push('/(tabs)/order')}
+            mode={mode}
           />
-        ))}
-      </ScrollView>
+        ) : branchQuery.loading ? (
+          <ScreenLoader />
+        ) : branchQuery.error || !branch ? (
+          <ScreenMessage
+            title="Couldn't load your pickup branch"
+            subtitle="Please try again."
+            actionLabel="Retry"
+            onAction={branchQuery.refetch}
+          />
+        ) : (
+          <>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+            >
+              <BranchCard
+                branch={branch}
+                mode={mode}
+                onChange={canChangeBranch ? handleChangeBranch : undefined}
+                footer={
+                  <View style={styles.pickupRow}>
+                    <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
+                      Estimated pickup
+                    </Text>
+                    <Text style={[styles.pickupValue, { color: theme.text }]}>
+                      {pickupTime.label}
+                    </Text>
+                  </View>
+                }
+              />
 
-      <View style={[styles.footer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
-        <View style={styles.subtotalRow}>
-          <Text style={[styles.subtotalLabel, { color: theme.textSecondary }]}>Subtotal</Text>
-          <Text style={[styles.subtotalValue, { color: theme.text }]}>
-            {formatCurrency(subtotalCents)}
-          </Text>
-        </View>
-        <Button label="Checkout" onPress={() => router.push('/(tabs)/order/checkout')} />
-      </View>
+              <View
+                style={[
+                  styles.itemsCard,
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>Items</Text>
+                {cart.items.map((line) => (
+                  <CartItem
+                    key={line.lineId}
+                    item={line}
+                    product={productForLine(
+                      line.menuItemId,
+                      line.productNameSnapshot,
+                      line.unitPriceCents,
+                    )}
+                    onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
+                    onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
+                    onRemove={() => removeItem(line.lineId)}
+                    mode={mode}
+                    style={styles.cartItemFlat}
+                  />
+                ))}
+              </View>
+
+              <View style={styles.couponSlot}>
+                <Text style={[styles.sectionLabel, { color: theme.text }]}>Coupon / reward</Text>
+                <Text style={[styles.couponNote, { color: theme.textSecondary }]}>
+                  Coupons coming soon
+                </Text>
+              </View>
+
+              <CartSummary
+                subtotalCents={subtotalCents}
+                discountCents={discountTotalCents}
+                discountLabel={cart.appliedDiscount?.label}
+                totalCents={totalCents}
+                mode={mode}
+              />
+            </ScrollView>
+
+            <View
+              style={[
+                styles.footer,
+                Platform.OS !== 'web' && {
+                  paddingBottom: getFloatingTabBarClearance(insets.bottom),
+                },
+              ]}
+            >
+              <Button
+                label={`Checkout • ${itemCount} item${itemCount === 1 ? '' : 's'}`}
+                onPress={() => router.push('/(tabs)/order/checkout')}
+                disabled={isEmpty}
+                mode={mode}
+              />
+            </View>
+          </>
+        )}
+      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { padding: Spacing.four, gap: Spacing.two, paddingBottom: Spacing.six },
-  footer: { padding: Spacing.four, gap: Spacing.three, borderTopWidth: 2 },
-  subtotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  subtotalLabel: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.body },
-  subtotalValue: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h3 },
+  container: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    gap: Spacing.three,
+  },
+  pickupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  metaLabel: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  pickupValue: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+  },
+  itemsCard: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 2,
+    borderRadius: Radii.md,
+  },
+  cartItemFlat: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+  },
+  couponSlot: {
+    gap: Spacing.two,
+  },
+  sectionLabel: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  couponNote: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  footer: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
 });

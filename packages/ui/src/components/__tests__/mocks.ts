@@ -62,6 +62,8 @@ export const MOCK_CART_ITEM: CartItem = {
   lineId: 'line-1',
   menuItemId: 'p1',
   quantity: 2,
+  productNameSnapshot: 'Classic Fries',
+  unitPriceCents: 12000,
   selectedOptions: [],
 };
 

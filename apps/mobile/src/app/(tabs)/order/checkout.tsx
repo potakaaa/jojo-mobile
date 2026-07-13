@@ -8,7 +8,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branches/hooks/use-branches';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { cartSubtotalCents } from '@/features/cart/lib/cart-totals';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { ScreenMessage } from '@/features/shared/components/screen-message';
 import { useTheme } from '@/hooks/use-theme';
@@ -31,12 +30,12 @@ function prepPickupTime(prepMinutes: number) {
  */
 export default function CheckoutScreen() {
   const theme = useTheme();
-  const { branchId, items, clear } = useCart();
-  const branch = useBranch(branchId ?? '');
+  const { cart, subtotalCents, clearCart } = useCart();
+  const branch = useBranch(cart.pickupBranchId);
   const { placeOrder, submitting, error } = useCheckout();
   const [paymentMethod] = useState<PaymentMethod>('pay_at_branch');
 
-  if (!branchId || items.length === 0) {
+  if (cart.items.length === 0) {
     return (
       <ScreenMessage
         title="Nothing to check out"
@@ -47,20 +46,18 @@ export default function CheckoutScreen() {
     );
   }
 
-  const subtotalCents = cartSubtotalCents(items);
-
   const onPlaceOrder = async () => {
     const order = await placeOrder({
-      branchId,
+      branchId: cart.pickupBranchId,
       paymentMethod,
-      items: items.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        selectedOptions: line.selectedOptions.map((o) => ({ optionId: o.optionId })),
+      items: cart.items.map((item) => ({
+        productId: item.menuItemId,
+        quantity: item.quantity,
+        selectedOptions: item.selectedOptions.map((o) => ({ optionId: o.id })),
       })),
     });
     if (order) {
-      clear();
+      clearCart();
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',
         params: { orderId: order.id },

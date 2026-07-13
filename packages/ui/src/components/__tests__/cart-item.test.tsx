@@ -12,3 +12,7 @@ test('renders CartItem with typed Flavor/Size objects without throwing', () => {
 test('renders CartItem with plain-string flavor/size without throwing', () => {
   render(<CartItem item={MOCK_CART_ITEM} product={MOCK_PRODUCT} flavor="Cheese" size="Large" />);
 });
+
+test('renders CartItem with onRemove trash affordance without throwing', () => {
+  render(<CartItem item={MOCK_CART_ITEM} product={MOCK_PRODUCT} onRemove={() => {}} />);
+});

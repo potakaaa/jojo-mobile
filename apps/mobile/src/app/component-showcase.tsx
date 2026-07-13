@@ -125,9 +125,11 @@ const SAMPLE_COUPON_REDEEMED: Coupon = {
 };
 
 const SAMPLE_CART_ITEM: CartItemData = {
-  lineId: 'line-fries-classic',
+  lineId: 'line-showcase-1',
   menuItemId: 'prod-fries-classic',
   quantity: 2,
+  productNameSnapshot: 'Classic Fries',
+  unitPriceCents: 12000,
   selectedOptions: [],
 };
 

@@ -13,7 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { CartProvider } from '@/features/cart/hooks/use-cart';
+import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
@@ -71,9 +71,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <CartProvider>
+        <CartSessionProvider>
           <RootNavigator />
-        </CartProvider>
+        </CartSessionProvider>
       </AuthProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
