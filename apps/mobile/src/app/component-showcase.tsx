@@ -80,6 +80,8 @@ const SAMPLE_BRANCH: PickupBranch = {
   address: 'North Ave cor. EDSA, Quezon City',
   latitude: 14.6564,
   longitude: 121.03,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 
@@ -89,6 +91,8 @@ const SAMPLE_BRANCH_CLOSED: PickupBranch = {
   address: 'Seaside Blvd, Pasay City',
   latitude: 14.535,
   longitude: 120.982,
+  estimatedPrepMinutes: 25,
+  isAcceptingPickup: false,
   isOpen: false,
 };
 
@@ -121,8 +125,10 @@ const SAMPLE_COUPON_REDEEMED: Coupon = {
 };
 
 const SAMPLE_CART_ITEM: CartItemData = {
+  lineId: 'line-fries-classic',
   menuItemId: 'prod-fries-classic',
   quantity: 2,
+  selectedOptions: [],
 };
 
 const SAMPLE_FLAVORS: Flavor[] = [
@@ -154,9 +160,10 @@ const SAMPLE_PICKUP_TIME_FULL: PickupTime = {
 
 const ORDER_STATUSES: OrderStatus[] = [
   'pending',
-  'confirmed',
+  'accepted',
   'preparing',
-  'ready_for_pickup',
+  'flavoring',
+  'ready',
   'completed',
   'cancelled',
 ];

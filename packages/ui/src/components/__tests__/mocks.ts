@@ -33,6 +33,8 @@ export const MOCK_BRANCH: PickupBranch = {
   address: '123 Main St',
   latitude: 0,
   longitude: 0,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 
@@ -57,8 +59,10 @@ export const MOCK_COUPON: Coupon = {
 };
 
 export const MOCK_CART_ITEM: CartItem = {
+  lineId: 'line-1',
   menuItemId: 'p1',
   quantity: 2,
+  selectedOptions: [],
 };
 
 export const MOCK_FLAVOR: Flavor = { id: 'f1', name: 'Cheese' };

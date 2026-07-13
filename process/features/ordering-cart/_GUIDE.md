@@ -9,23 +9,39 @@ item display, cart state (add/remove/update quantity), price calculation, and th
 sequence leading up to order placement. Payments processor is not yet decided (see
 `process/context/all-context.md`).
 
-**Status as of setup: not started.** No source files exist yet for this feature — `packages/types`
-has placeholder types reserved for menu/cart/order domains, but no implementation.
+**Status as of 13-07-26: partially implemented.** The customer-facing menu → cart → checkout →
+order-placement → confirmation/tracking/history flow is real and working end-to-end, delivered by
+`process/general-plans/completed/pickup-order-flow_10-07-26/` (this plan lived in
+`general-plans/` rather than this feature folder because it spanned both `ordering-cart` and
+`pickup-branches` as one continuous flow — see that plan's Scope section).
+
+**Done:** menu browsing (`GET /branches/:branchId/menu`), product size/flavor customization,
+cart state (`CartProvider`/`useCart()` reducer), price calculation (server-recomputed cents,
+never trusts client prices), checkout with `pay_at_branch`, order placement (`POST /orders`,
+DB-unique `order_number`, correct `estimated_ready_at`), confirmation/tracking/history screens.
+
+**Deferred / not yet done (future work, not a gap in what shipped):**
+- Live `online_payment` processing — visibly disabled this pass, no processor chosen yet.
+- Coupon redemption (`orders.discount_total` stays `0`).
+- Automated mobile-side (RN) test coverage for the new cart/menu/checkout logic — see
+  `process/context/tests/all-tests.md` §Known Gaps.
 
 ## Key Source Files
 
-None yet. Expected future locations based on current repo conventions:
-- `apps/mobile/src/app/` -- Expo Router routes for menu/cart/checkout screens
-- `packages/types/src/` -- shared menu, cart, and order domain types (placeholders exist)
-- `packages/ui/src/` -- shared UI components (cart item, price display, etc.)
+- `apps/mobile/src/app/(tabs)/order/` -- product detail, cart, checkout, confirmation, tracking, history screens
+- `apps/mobile/src/features/{cart,menu,orders,shared}/` -- cart state, menu/order api-clients + hooks, shared fetch plumbing
+- `packages/api/src/routes/orders.ts` + `routes/lib/{order-number,serializers}.ts` -- order placement/read API
+- `packages/types/src/{order,cart,product-option}.ts` -- reconciled shared types (real 7-value `OrderStatus`, `SelectedOption`)
+- `packages/ui/src/components/{order-status-badge,order-status-timeline,cart-item,flavor-selector,size-selector}.tsx` -- shared UI
 
 ## Related Context
 
-- `process/context/all-context.md` -- overall repo structure and tech stack
+- `process/context/all-context.md` -- overall repo structure and tech stack, §Current Implementation State
+- `process/general-plans/completed/pickup-order-flow_10-07-26/` -- the plan, validate journey, and closeout report that delivered this
 
 ## Current Status
 
-Status: not-started
+Status: partially-implemented (customer-facing flow done; payments/coupons/automated mobile tests deferred)
 
 ## Folder Contents
 

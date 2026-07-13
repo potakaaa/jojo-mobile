@@ -1,0 +1,155 @@
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { Router } from 'express';
+import { z } from 'zod';
+
+const uuidSchema = z.string().uuid();
+
+import { db } from '../db/client';
+import {
+  branchProductAvailability,
+  branches,
+  categories,
+  productOptions,
+  products,
+} from '../db/schema/index';
+import {
+  serializeBranch,
+  serializeMenuCategory,
+  serializeMenuProduct,
+  type ApiMenuProduct,
+} from './lib/serializers';
+
+export const branchesRouter: Router = Router();
+
+/** Great-circle distance in kilometres between two lat/lng points (haversine). */
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // km
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// GET /branches — active branches. Optional `lat`/`lng` query params add a
+// `distanceKm` field and sort nearest-first.
+branchesRouter.get('/', async (req, res) => {
+  const rows = await db.select().from(branches).where(eq(branches.is_active, true));
+
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+
+  if (!hasPoint) {
+    res.json({ branches: rows.map((b) => serializeBranch(b)) });
+    return;
+  }
+
+  const withDistance = rows
+    .map((b) => ({ branch: b, km: distanceKm(lat, lng, Number(b.latitude), Number(b.longitude)) }))
+    .sort((a, b) => a.km - b.km)
+    .map(({ branch, km }) => serializeBranch(branch, km));
+
+  res.json({ branches: withDistance });
+});
+
+// GET /branches/:branchId — branch detail; 404 if missing or inactive.
+branchesRouter.get('/:branchId', async (req, res) => {
+  const branchId = String(req.params.branchId);
+  if (!uuidSchema.safeParse(branchId).success) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
+  const [branch] = await db
+    .select()
+    .from(branches)
+    .where(and(eq(branches.id, branchId), eq(branches.is_active, true)));
+
+  if (!branch) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
+  res.json({ branch: serializeBranch(branch) });
+});
+
+// GET /branches/:branchId/menu — categories → active products available at the
+// branch → each product's active options grouped by option_type.
+branchesRouter.get('/:branchId/menu', async (req, res) => {
+  const branchId = String(req.params.branchId);
+
+  if (!uuidSchema.safeParse(branchId).success) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
+  const [branch] = await db
+    .select()
+    .from(branches)
+    .where(and(eq(branches.id, branchId), eq(branches.is_active, true)));
+
+  if (!branch) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
+  // Active products available at this branch, joined to their (active) category.
+  const productRows = await db
+    .select({ product: products, category: categories })
+    .from(products)
+    .innerJoin(
+      branchProductAvailability,
+      and(
+        eq(branchProductAvailability.product_id, products.id),
+        eq(branchProductAvailability.branch_id, branchId),
+        eq(branchProductAvailability.is_available, true),
+      ),
+    )
+    .innerJoin(categories, eq(categories.id, products.category_id))
+    .where(and(eq(products.is_active, true), eq(categories.is_active, true)))
+    .orderBy(asc(categories.sort_order), asc(products.name));
+
+  const productIds = productRows.map((r) => r.product.id);
+
+  // Active options for all those products in one query.
+  const optionRows = productIds.length
+    ? await db
+        .select()
+        .from(productOptions)
+        .where(
+          and(inArray(productOptions.product_id, productIds), eq(productOptions.is_active, true)),
+        )
+        .orderBy(asc(productOptions.sort_order))
+    : [];
+
+  const optionsByProduct = new Map<string, typeof optionRows>();
+  for (const option of optionRows) {
+    const list = optionsByProduct.get(option.product_id) ?? [];
+    list.push(option);
+    optionsByProduct.set(option.product_id, list);
+  }
+
+  // Preserve first-seen category order (already sorted by category.sort_order).
+  const categoryOrder: string[] = [];
+  const categoryById = new Map<string, { id: string; name: string }>();
+  const productsByCategory = new Map<string, ApiMenuProduct[]>();
+
+  for (const { product, category } of productRows) {
+    if (!productsByCategory.has(category.id)) {
+      categoryOrder.push(category.id);
+      categoryById.set(category.id, { id: category.id, name: category.name });
+      productsByCategory.set(category.id, []);
+    }
+    const apiProduct = serializeMenuProduct(product, optionsByProduct.get(product.id) ?? []);
+    productsByCategory.get(category.id)!.push(apiProduct);
+  }
+
+  const menuCategories = categoryOrder.map((categoryId) =>
+    serializeMenuCategory(categoryById.get(categoryId)!, productsByCategory.get(categoryId)!),
+  );
+
+  res.json({ branchId, categories: menuCategories });
+});

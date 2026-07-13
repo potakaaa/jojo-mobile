@@ -1,14 +1,14 @@
 ---
 name: context:all-tests
 description: "Test runner selection, commands, and verification order — vitest now live in packages/api"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart
 related: []
-date: 09-07-26
+date: 13-07-26
 ---
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-09
+Last updated: 2026-07-13
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -60,12 +60,18 @@ Use this file when you need to:
 ### `packages/api` now has Vitest — `apps/mobile` and the other packages still do not
 
 `packages/api` declares `vitest` (`"test": "vitest run"`) and has real coverage:
-`src/db/schema/__tests__/smoke.test.ts` plus `src/lib/__tests__/auth.integration.test.ts` (5
+`src/db/schema/__tests__/smoke.test.ts`, `src/lib/__tests__/auth.integration.test.ts` (5
 integration tests covering better-auth's email/password, phone-OTP-stub, magic-link, Google-OAuth
-config, and the `role` `input:false` guard — run against a real local Postgres via
-`docker compose up -d` + `db:migrate`, same DB the app itself uses). No other `package.json`
+config, and the `role` `input:false` guard), and `src/routes/__tests__/{branches,orders}.test.ts`
+(44 tests total in the suite as of `pickup-order-flow` — covers `order_number` retry-on-collision,
+session-boundary 401/403 isolation, `estimated_ready_at` derivation, concurrent-order-number
+uniqueness, and back-to-back order independence) — run against a real local Postgres via
+`docker compose up -d` + `db:migrate`, same DB the app itself uses. No other `package.json`
 (root, `apps/mobile`, `packages/{types,ui,utils}`) declares Jest, Vitest, Detox, Playwright, or any
-other runner yet.
+other runner yet. `packages/ui` now has vitest-run component tests too
+(`order-status-badge`/`order-status-timeline`, 32 tests) even though `packages/ui` itself has no
+`test` script wired the same way as `packages/api` — check `packages/ui/package.json` before
+assuming otherwise.
 
 Until a mobile-side (RN) runner is chosen, "verification" for `apps/mobile` and the other packages
 means:
@@ -111,7 +117,8 @@ Unless the task clearly needs a different path:
 
 ## Known Gaps
 
-- **No mobile-side (RN) test runner** — `apps/mobile` and `packages/{types,ui,utils}` still have no Jest/Vitest/Detox/Playwright. `packages/api` is the one exception (Vitest, since the `db-schema` plan; extended with auth integration tests by `wire-better-auth`). Flag in any plan that adds real business logic to the mobile app or shared packages (cart math, pricing, a `useAuth()` hook) without also proposing a runner for that surface.
+- **No mobile-side (RN) test runner** — `apps/mobile` and `packages/{types,utils}` still have no Jest/Vitest/Detox/Playwright. `packages/api` is the one exception (Vitest, since the `db-schema` plan; extended with auth integration tests by `wire-better-auth` and route tests by `pickup-order-flow`); `packages/ui` also runs vitest for its components. Flag in any plan that adds real business logic to the mobile app or shared packages (cart math, pricing, a `useAuth()` hook) without also proposing a runner for that surface. **Still open as of `pickup-order-flow` (13-07-26):** that plan added a non-trivial amount of new mobile business logic with zero automated coverage — `CartProvider`'s reducer, `cart-totals.ts`, all 9 new screens, and every mobile API-client mapping function are verified only by typecheck/lint + a manual Agent-Probe QA script, not by unit/component tests. This is also the surface where an EVL confirmation run caught a real bug (`tsc` cannot validate a `fetch` response shape against a bare `as T` cast) that a runtime-validated fixture or a component test would likely have caught earlier — see `process/general-plans/completed/pickup-order-flow_10-07-26/` closeout report.
 - **No automated coverage for `apps/mobile`'s `useAuth()` hook** — the better-auth server integration is tested (5 vitest cases in `packages/api`), but the mobile consumption side (`src/features/auth/hooks/use-auth.ts`, `src/features/auth/lib/auth-client.ts`) has no automated test, consistent with the mobile-side runner gap above. Manual/simulator verification (sign-up/login, phone OTP, Google button, magic-link deep link, session persistence across restart, logout) is still required — see backlog note `process/features/auth-accounts/backlog/wire-better-auth-hook-test-coverage_NOTE_09-07-26.md`.
 - **No CI pipeline** — no `.github/workflows/`, so `typecheck`/`lint`/`packages/api`'s vitest suite are not automatically enforced on PRs yet.
-- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app; see `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md` (navigation-focused, pre-dates auth; auth flows would be additional scenarios for the same future harness).
+- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app; see `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md` (navigation-focused, pre-dates auth; auth flows would be additional scenarios for the same future harness). The `pickup-order-flow` plan's full cold-open→confirmation customer journey is another concrete scenario this future harness should cover — it currently relies on a one-off Agent-Probe manual QA script for its primary happy-path gate.
+- **No live-integration check between parallel EXECUTE phases building opposite sides of a network contract** — surfaced by `pickup-order-flow`'s EVL cycle 1 (API and mobile drifted on menu response field names when built in parallel against a documented-but-not-live-tested contract; caught only by the independent EVL confirmation run, not by `tsc` or either agent's self-report). Not a fixable test-runner gap in the traditional sense, but worth remembering as a process/workflow risk: treat a live-integration checkpoint or a shared runtime-validated contract fixture (see `apps/mobile/src/features/menu/lib/api-client.contract.ts`) as close to mandatory whenever a plan splits a network-contract's two sides across parallel execute agents.

@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-09
+Last updated: 2026-07-13
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 09-07-26)
+## Current Implementation State (as of 13-07-26)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -77,20 +77,43 @@ top of it later without re-plumbing the project.
   and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
   is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
   both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
-- **Screens:** Home tab (`(tabs)/index.tsx`) is the only tab with real business UI. Every other
-  tab-root screen (`order/index.tsx`, `rewards/index.tsx`, `branches/index.tsx`,
-  `account/index.tsx`) and every nested/pushed screen under them (product details, cart, checkout,
-  branch details, notifications, etc.) is still a `<ComingSoon>` placeholder. Building out real
-  feature UI for these is future work — the navigation shell only proves the route
-  structure/typed-params/stack-nesting works end-to-end.
-- **Known tech debt:** the placeholder tab-root screens carry temporary "Dev: ..." nav links
-  (added to manually exercise nested stacks) that are **not** gated behind `__DEV__` — see
-  `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md`.
+- **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
+  full customer pickup-order journey (branch select → menu → product customize → cart → checkout
+  → confirmation → tracking → order history) is implemented and working, not just placeholder.
+  Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
+  them) remain `<ComingSoon>` placeholders — future work.
+- **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
+  surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
+  `middleware/require-session.ts`; new mobile state/data layer in
+  `apps/mobile/src/features/{cart,branches,menu,orders,shared}/`; `CartProvider` mounted alongside
+  `AuthProvider` in `_layout.tsx`. `orders.order_number` is DB-unique/human-readable
+  (`JP-YYMMDD-XXXX`), `estimated_ready_at` is derived from the branch's `estimated_prep_minutes` at
+  placement time, each `POST /orders` is a fully independent transaction. `packages/types`'s
+  `OrderStatus` enum was rewritten from a 6-value placeholder to the real 7-value DB enum (breaking
+  rename, all consumers reconciled). Deferred/out of scope this pass: staff-side order-status
+  transitions, star-earning/rewards accrual, coupon redemption (`discount_total` stays `0`), live
+  `online_payment` processing (visibly disabled, no processor chosen — see §Open Questions),
+  polling/websocket live status updates (fetch-on-focus only). See
+  `process/features/ordering-cart/_GUIDE.md` and `process/features/pickup-branches/_GUIDE.md` for
+  the per-feature breakdown, and
+  `process/general-plans/completed/pickup-order-flow_10-07-26/` for the full plan, validate
+  journey, and closeout report.
+- **Known tech debt:** un-gated "Dev: ..." nav links (added to manually exercise nested stacks
+  before real UI existed) are resolved for `order/`, `branches/`, and
+  `order/confirmation/[orderId].tsx` — the `pickup-order-flow` plan removed them once real
+  navigation entry points superseded them. One instance remains: `rewards/index.tsx`'s
+  `Dev: View Coupons` link, since the Rewards tab is still a placeholder — see
+  `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md` (narrowed scope).
 - **Known gap:** no automated E2E/regression harness exists for any navigation flow (project-wide
   test-runner gap, see `tests/all-tests.md`) — see
-  `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
-- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (archived
-  plan — read for full route tree, decisions, and validate-contract).
+  `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`. The
+  `pickup-order-flow` plan's happy-path coverage relied on an Agent-Probe manual QA script for this
+  reason, not an automated E2E gate.
+- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
+  shell — archived plan, full route tree/decisions/validate-contract) and
+  `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
+  plan, API design, validate journey incl. the CONDITIONAL→PASS PVL cycle and the EVL cross-phase
+  bug catch-and-fix, closeout report).
 
 ## Quick Start
 
@@ -218,11 +241,17 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, phone-otp, terms
           (tabs)/                      -- authenticated 5-tab shell (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
-            index.tsx                  -- Home tab root (only tab with real business UI)
-            order/, rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
+            index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
+            order/                      -- real: index, product/[productId], cart, checkout, confirmation/[orderId], tracking/[orderId], history
+            branches/                   -- real: index (list), [branchId] (detail + menu)
+            rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
         features/
           auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam (backed by lib/auth-client.ts)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
+          cart/hooks/use-cart.ts       -- CartProvider + useCart(): reducer-based cart state (mirrors AuthProvider pattern)
+          cart/lib/cart-totals.ts      -- pure line/subtotal cents helpers
+          branches/, menu/, orders/    -- api-client + hooks per domain (branches list/detail, branch menu, order create/get/history)
+          shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
@@ -231,9 +260,13 @@ jojo-mobile/                           (package.json name: jojo-potato)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
   packages/
+    api/
+      src/routes/                      -- branches.ts, orders.ts (session-gated), routes/lib/{order-number,serializers}.ts, __tests__/
+      src/middleware/require-session.ts -- better-auth session-check Express middleware
+      src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards) -- currently placeholders, no implementation consumes them yet
-    ui/                                -- @jojopotato/ui: shared UI (brand-wordmark.tsx, theme.ts) -- brand tokens are placeholder
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option) -- order/cart/pickup now reconciled to the real ordering-flow API contract; menu/notifications/rewards still placeholders
+    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum) -- brand tokens are placeholder
     utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts)
   docs/
     jojo-potato-mobile-prd.md         -- product PRD (navigation §7, auth §6.1) — source of truth for scope
