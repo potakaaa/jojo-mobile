@@ -2,8 +2,14 @@ import type { PickupBranch } from '@jojopotato/types';
 import { Palette, type ThemeMode } from '@jojopotato/ui';
 import { getIsOpenNow } from '@jojopotato/utils';
 import { AppleMaps, GoogleMaps } from 'expo-maps';
+import {
+  AppleMapPointOfInterestCategory,
+  AppleMapsMapStyleEmphasis,
+} from 'expo-maps/build/apple/AppleMaps.types';
 import { useMemo } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
+
+import { MAP_STYLE_JSON } from '../map-style';
 
 /**
  * Native-only branch map. iOS renders Apple Maps, Android renders Google Maps
@@ -69,42 +75,94 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
 
   if (Platform.OS === 'ios') {
     return (
-      <AppleMaps.View
+      <View style={styles.mapWrap}>
+        <AppleMaps.View
+          style={styles.map}
+          cameraPosition={cameraPosition}
+          // Force light appearance to approximate the warm brand look
+          // (`colorScheme` is a top-level view prop, not part of `properties`).
+          colorScheme={AppleMaps.MapColorScheme.LIGHT}
+          properties={{
+            // Muted emphasis deemphasizes map imagery for the low-clutter look.
+            emphasis: AppleMapsMapStyleEmphasis.MUTED,
+            // Hide high-clutter POI categories so branch pins stand out.
+            pointsOfInterest: { excluding: EXCLUDED_POI_CATEGORIES },
+          }}
+          markers={branchMarkers.map((m) => ({
+            id: m.id,
+            coordinates: m.coordinates,
+            title: m.title,
+            tintColor: m.isActive ? Palette.jyellow : Palette.neutral400,
+          }))}
+          onMarkerClick={(event) => {
+            if (event.id) onBranchPress(event.id);
+          }}
+        />
+        <WarmTintOverlay />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mapWrap}>
+      <GoogleMaps.View
         style={styles.map}
         cameraPosition={cameraPosition}
+        properties={{ mapStyleOptions: { json: MAP_STYLE_JSON } }}
         markers={branchMarkers.map((m) => ({
           id: m.id,
           coordinates: m.coordinates,
           title: m.title,
-          tintColor: m.isActive ? Palette.jyellow : Palette.neutral400,
+          zIndex: m.isActive ? 1 : 0,
         }))}
         onMarkerClick={(event) => {
           if (event.id) onBranchPress(event.id);
         }}
       />
-    );
-  }
-
-  return (
-    <GoogleMaps.View
-      style={styles.map}
-      cameraPosition={cameraPosition}
-      markers={branchMarkers.map((m) => ({
-        id: m.id,
-        coordinates: m.coordinates,
-        title: m.title,
-        zIndex: m.isActive ? 1 : 0,
-      }))}
-      onMarkerClick={(event) => {
-        if (event.id) onBranchPress(event.id);
-      }}
-    />
+      <WarmTintOverlay />
+    </View>
   );
 }
 
+/**
+ * Low-opacity warm brand tint painted ABOVE the map. `pointerEvents="none"` is
+ * mandatory — the overlay must never intercept map pan/zoom or marker taps.
+ */
+function WarmTintOverlay() {
+  return <View pointerEvents="none" style={styles.warmOverlay} />;
+}
+
+/** High-clutter POI categories hidden on iOS to keep branch pins legible. */
+const EXCLUDED_POI_CATEGORIES: AppleMapPointOfInterestCategory[] = [
+  AppleMapPointOfInterestCategory.STORE,
+  AppleMapPointOfInterestCategory.RESTAURANT,
+  AppleMapPointOfInterestCategory.CAFE,
+  AppleMapPointOfInterestCategory.GAS_STATION,
+  AppleMapPointOfInterestCategory.PARKING,
+  AppleMapPointOfInterestCategory.ATM,
+  AppleMapPointOfInterestCategory.BANK,
+  AppleMapPointOfInterestCategory.HOTEL,
+  AppleMapPointOfInterestCategory.NIGHTLIFE,
+];
+
 const styles = StyleSheet.create({
-  map: {
+  mapWrap: {
     flex: 1,
     width: '100%',
+  },
+  map: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  warmOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,246,230,0.12)',
   },
 });

@@ -1,6 +1,7 @@
 import type { PickupBranch } from '@jojopotato/types';
-import { BranchListItem, Button, Input } from '@jojopotato/ui';
+import { BranchListItem, Input, Palette, Radii, Shadows } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
+import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, View } from 'react-native';
@@ -21,6 +22,10 @@ import { apiFetch } from '@/lib/api-fetch';
  * status, sorts by distance (when location granted) or priority (otherwise),
  * filters by name search, and lets the user select a branch and navigate to its
  * detail screen.
+ *
+ * Native: a full-bleed map base with the branch list in a draggable
+ * `@gorhom/bottom-sheet` over it and a floating search pill above the sheet.
+ * Web: list-only (expo-maps + the sheet have no web target) — preserved as-is.
  */
 export default function BranchLocatorScreen() {
   const theme = useTheme();
@@ -34,7 +39,6 @@ export default function BranchLocatorScreen() {
   const [query, setQuery] = useState('');
   const [isFetching, setIsFetching] = useState(true);
   const [fetchError, setFetchError] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   useEffect(() => {
     let mounted = true;
@@ -83,103 +87,157 @@ export default function BranchLocatorScreen() {
 
   const isLoading = isFetching || locationStatus === 'loading';
 
+  const onOrderPress = (id: string) => {
+    setSelectedBranch(id);
+    router.push({
+      pathname: '/(tabs)/branches/[branchId]',
+      params: { branchId: id },
+    });
+  };
+
+  const renderItem = ({ item }: { item: PickupBranch }) => {
+    const isOpen = getIsOpenNow(item.openingHours);
+    const isEnabled = isOpen && item.isAcceptingPickup;
+    return (
+      <BranchListItem
+        branch={item}
+        isOpen={isOpen}
+        showDistance={showDistance}
+        isEnabled={isEnabled}
+        mode={mode}
+        onOrderPress={() => onOrderPress(item.id)}
+      />
+    );
+  };
+
+  // --- Web: list-only (no map, no sheet) — preserved byte-for-byte. ---
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <Input
+            style={styles.search}
+            placeholder="Search branches..."
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            mode={mode}
+          />
+
+          {isLoading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator color={theme.accent} />
+            </View>
+          ) : fetchError ? (
+            <View style={styles.centered}>
+              <Text style={[styles.message, { color: theme.textSecondary }]}>
+                Could not load branches — please try again
+              </Text>
+            </View>
+          ) : filteredBranches.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={[styles.message, { color: theme.textSecondary }]}>
+                No branches match your search
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredBranches}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+              renderItem={renderItem}
+            />
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // --- Native: full-bleed map base + floating search pill + bottom sheet. ---
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <View style={styles.container}>
+      {/* z0: map base */}
+      <BranchMap
+        branches={filteredBranches}
+        coords={coords}
+        onBranchPress={onOrderPress}
+        mode={mode}
+      />
+
+      {/* z1 (search pill) sits above the map via absolute positioning; the sheet
+          renders last so it stacks on top when expanded. */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.searchPillWrap, { top: insets.top + Spacing.two }]}
+      >
         <Input
-          style={styles.search}
+          style={styles.searchPillInput}
           placeholder="Search branches..."
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
           mode={mode}
         />
+      </View>
 
-        {Platform.OS !== 'web' && (
-          <View style={styles.toggleRow}>
-            <Button
-              label="List"
-              variant={viewMode === 'list' ? 'primary' : 'outline'}
-              iconName="list-outline"
-              onPress={() => setViewMode('list')}
-              mode={mode}
-            />
-            <Button
-              label="Map"
-              variant={viewMode === 'map' ? 'primary' : 'outline'}
-              iconName="map-outline"
-              onPress={() => setViewMode('map')}
-              mode={mode}
-            />
-          </View>
-        )}
+      {/* z2: draggable branch list. Opens at half; drags up to cover the map. */}
+      <BottomSheet
+        index={0}
+        snapPoints={SNAP_POINTS}
+        enableDynamicSizing={false}
+        backgroundStyle={styles.sheetBackground}
+        handleIndicatorStyle={styles.sheetHandle}
+        style={Shadows.offsetMd}
+      >
+        {/* Fixed header: stays put while the list below drags/scrolls. Sibling
+            View above BottomSheetFlatList, both direct children of BottomSheet. */}
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>Pickup Branches</Text>
+          <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>
+            {isLoading
+              ? '—'
+              : `${filteredBranches.length} ${
+                  filteredBranches.length === 1 ? 'branch' : 'branches'
+                }${showDistance ? ' · Nearest first' : ' · By location'}`}
+          </Text>
+        </View>
 
         {isLoading ? (
-          <View style={styles.centered}>
+          <View style={styles.sheetCentered}>
             <ActivityIndicator color={theme.accent} />
           </View>
         ) : fetchError ? (
-          <View style={styles.centered}>
+          <View style={styles.sheetCentered}>
             <Text style={[styles.message, { color: theme.textSecondary }]}>
               Could not load branches — please try again
             </Text>
           </View>
         ) : filteredBranches.length === 0 ? (
-          <View style={styles.centered}>
+          <View style={styles.sheetCentered}>
             <Text style={[styles.message, { color: theme.textSecondary }]}>
               No branches match your search
             </Text>
           </View>
-        ) : viewMode === 'map' && Platform.OS !== 'web' ? (
-          <BranchMap
-            branches={filteredBranches}
-            coords={coords}
-            onBranchPress={(id) => {
-              setSelectedBranch(id);
-              router.push({
-                pathname: '/(tabs)/branches/[branchId]',
-                params: { branchId: id },
-              });
-            }}
-            mode={mode}
-          />
         ) : (
-          <FlatList
+          <BottomSheetFlatList
             data={filteredBranches}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[
-              styles.list,
-              Platform.OS !== 'web' && {
-                paddingBottom: getFloatingTabBarClearance(insets.bottom),
-              },
+              styles.sheetList,
+              { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
             ]}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => {
-              const isOpen = getIsOpenNow(item.openingHours);
-              const isEnabled = isOpen && item.isAcceptingPickup;
-              return (
-                <BranchListItem
-                  branch={item}
-                  isOpen={isOpen}
-                  showDistance={showDistance}
-                  isEnabled={isEnabled}
-                  mode={mode}
-                  onOrderPress={() => {
-                    setSelectedBranch(item.id);
-                    router.push({
-                      pathname: '/(tabs)/branches/[branchId]',
-                      params: { branchId: item.id },
-                    });
-                  }}
-                />
-              );
-            }}
+            renderItem={renderItem}
           />
         )}
-      </SafeAreaView>
+      </BottomSheet>
     </View>
   );
 }
+
+/** Bottom peek by default (index 0): handle + fixed header + first branch card visible; drags up to half, then near-full cover. */
+const SNAP_POINTS = ['32%', '50%', '92%'];
 
 const styles = StyleSheet.create({
   container: {
@@ -196,12 +254,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
     marginBottom: Spacing.three,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-    justifyContent: 'flex-end',
-  },
   list: {
     gap: Spacing.three,
     paddingBottom: Spacing.six,
@@ -216,5 +268,56 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.body,
     textAlign: 'center',
+  },
+  // Native floating search pill (comic/flat brand style) over the map.
+  searchPillWrap: {
+    position: 'absolute',
+    left: Spacing.four,
+    right: Spacing.four,
+  },
+  searchPillInput: {
+    borderRadius: Radii['2xl'],
+    ...Shadows.offsetMd,
+  },
+  // Bottom-sheet visuals (cream bg, ink handle, comic radius/shadow).
+  sheetBackground: {
+    backgroundColor: Palette.cream,
+    borderTopLeftRadius: Radii['2xl'],
+    borderTopRightRadius: Radii['2xl'],
+    borderWidth: 2,
+    borderColor: Palette.ink,
+  },
+  sheetHandle: {
+    backgroundColor: Palette.ink,
+    width: 44,
+  },
+  // Fixed sheet header (title + live count/sort line) above the draggable list.
+  sheetHeader: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Palette.neutral100,
+  },
+  sheetTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+    color: Palette.ink,
+  },
+  sheetSubtitle: {
+    marginTop: Spacing.half,
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  sheetList: {
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+  },
+  sheetCentered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
   },
 });

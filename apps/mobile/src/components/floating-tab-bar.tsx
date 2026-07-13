@@ -124,6 +124,7 @@ interface TabItemProps {
   iconActive?: keyof typeof Ionicons.glyphMap;
   iconInactive?: keyof typeof Ionicons.glyphMap;
   activeColor: string;
+  labelActiveColor: string;
   inactiveColor: string;
   accessibilityLabel?: string;
   onPress: () => void;
@@ -140,6 +141,7 @@ function TabItem({
   iconActive,
   iconInactive,
   activeColor,
+  labelActiveColor,
   inactiveColor,
   accessibilityLabel,
   onPress,
@@ -166,7 +168,7 @@ function TabItem({
   }));
 
   const labelColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
+    color: interpolateColor(progress.value, [0, 1], [inactiveColor, labelActiveColor]),
   }));
 
   // Glyph swap (outline ↔ filled) is discrete; color cross-fades over it.
@@ -243,6 +245,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             iconActive={iconPair?.active}
             iconInactive={iconPair?.inactive}
             activeColor={Palette.ink}
+            labelActiveColor={colors.text}
             inactiveColor={colors.textSecondary}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             onPress={onPress}
