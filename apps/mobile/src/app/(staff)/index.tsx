@@ -1,13 +1,6 @@
 import { Badge, BrandWordmark, Button, Card, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -21,7 +14,11 @@ import { useTheme } from '@/hooks/use-theme';
 const NAV_CARDS = [
   // MOCK PREVIEW: subtitle updated to signal tappability — revert to 'Coming soon'
   // when STAFF-002 replaces the mock screen.
-  { title: 'Active Orders', subtitle: '5 active (preview)', navigateTo: '/(staff)/active-orders' as const },
+  {
+    title: 'Active Orders',
+    subtitle: '5 active (preview)',
+    navigateTo: '/(staff)/active-orders' as const,
+  },
   { title: 'Completed Orders', subtitle: 'Coming soon', navigateTo: null },
   { title: 'Product Availability', subtitle: 'Coming soon', navigateTo: null },
   { title: 'Branch Pickup Settings', subtitle: 'Coming soon', navigateTo: null },

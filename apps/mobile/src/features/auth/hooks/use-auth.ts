@@ -132,7 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : null;
     const role = user?.role ?? null;
     const isStaff =
-      role !== null && (['staff', 'admin', 'super_admin'] as readonly StaffRole[]).includes(role as StaffRole);
+      role !== null &&
+      (['staff', 'admin', 'super_admin'] as readonly StaffRole[]).includes(role as StaffRole);
     return {
       user,
       role,

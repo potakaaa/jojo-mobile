@@ -14,7 +14,11 @@ type Auth = typeof authInstance;
  * `admin`/`super_admin` are admitted but NOT branch-restricted here — see the
  * `assertBranchScope` TODO seam (STAFF-ADM is a post-STAFF-001 concern).
  */
-export const STAFF_ROLES = ['staff', 'admin', 'super_admin'] as const satisfies readonly StaffRole[];
+export const STAFF_ROLES = [
+  'staff',
+  'admin',
+  'super_admin',
+] as const satisfies readonly StaffRole[];
 
 // Attach the resolved staff session to the Express request so downstream
 // handlers (canary + future STAFF-002/003/004 routes) can read it type-safely.

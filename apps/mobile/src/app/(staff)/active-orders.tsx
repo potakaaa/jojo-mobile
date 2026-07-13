@@ -74,9 +74,7 @@ const MOCK_ORDERS: MockOrder[] = [
     status: 'preparing',
     placedAgo: '7 min ago',
     totalCents: 32000,
-    items: [
-      { qty: 3, name: 'Loaded Fries', option: 'Bacon & Cheese' },
-    ],
+    items: [{ qty: 3, name: 'Loaded Fries', option: 'Bacon & Cheese' }],
   },
   {
     id: 'm4',
@@ -95,19 +93,14 @@ const MOCK_ORDERS: MockOrder[] = [
     status: 'ready',
     placedAgo: '18 min ago',
     totalCents: 24000,
-    items: [
-      { qty: 2, name: 'Loaded Fries', option: 'Cheese' },
-    ],
+    items: [{ qty: 2, name: 'Loaded Fries', option: 'Cheese' }],
   },
 ];
 
 // ─── Status pill config ───────────────────────────────────────────────────────
 // NOTE: types/OrderStatus (@jojopotato/types) is out of sync with the DB orders
 // enum — reconcile in STAFF-002/003.
-const STATUS_CONFIG: Record<
-  DbOrderStatus,
-  { label: string; bg: string; text: string }
-> = {
+const STATUS_CONFIG: Record<DbOrderStatus, { label: string; bg: string; text: string }> = {
   pending: { label: 'Pending', bg: Palette.jorange, text: Palette.ink },
   accepted: { label: 'Accepted', bg: Palette.jyellow, text: Palette.ink },
   preparing: { label: 'Preparing', bg: Palette.jgold, text: Palette.ink },
@@ -144,34 +137,13 @@ function OrderActions({ status, mode }: { status: DbOrderStatus; mode: ThemeMode
     );
   }
   if (status === 'accepted' || status === 'preparing') {
-    return (
-      <Button
-        label="Mark Flavoring"
-        variant="ink"
-        mode={mode}
-        onPress={noop}
-      />
-    );
+    return <Button label="Mark Flavoring" variant="ink" mode={mode} onPress={noop} />;
   }
   if (status === 'flavoring') {
-    return (
-      <Button
-        label="Mark Ready"
-        variant="primary"
-        mode={mode}
-        onPress={noop}
-      />
-    );
+    return <Button label="Mark Ready" variant="primary" mode={mode} onPress={noop} />;
   }
   if (status === 'ready') {
-    return (
-      <Button
-        label="Mark Picked Up"
-        variant="primary"
-        mode={mode}
-        onPress={noop}
-      />
-    );
+    return <Button label="Mark Picked Up" variant="primary" mode={mode} onPress={noop} />;
   }
   return null;
 }
@@ -231,11 +203,13 @@ export default function ActiveOrdersScreen() {
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const { data, isLoading, error } = useStaffMe();
 
-  const branchName =
-    isLoading ? null
-    : error || !data ? 'Branch unavailable'
-    : data.assignedBranch ? data.assignedBranch.name
-    : 'No branch assigned';
+  const branchName = isLoading
+    ? null
+    : error || !data
+      ? 'Branch unavailable'
+      : data.assignedBranch
+        ? data.assignedBranch.name
+        : 'No branch assigned';
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -246,9 +220,7 @@ export default function ActiveOrdersScreen() {
             {isLoading ? (
               <ActivityIndicator size="small" color={theme.text} />
             ) : (
-              <Text style={[styles.branchName, { color: theme.textSecondary }]}>
-                {branchName}
-              </Text>
+              <Text style={[styles.branchName, { color: theme.textSecondary }]}>{branchName}</Text>
             )}
             <Badge label={`${MOCK_ORDERS.length} active`} mode={mode} />
           </View>
