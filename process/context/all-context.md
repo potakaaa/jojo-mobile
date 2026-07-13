@@ -64,8 +64,9 @@ top of it later without re-plumbing the project.
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
   nested `Stack` navigators so deep screens (Product Details, Cart, Checkout, Branch Details, etc.)
-  have somewhere to live with correct back-navigation. Root gating (`(tabs)` vs `(auth)`) uses
-  `Stack.Protected` in `apps/mobile/src/app/_layout.tsx`.
+  have somewhere to live with correct back-navigation. Root gating is now a THREE-way
+  `Stack.Protected` split in `apps/mobile/src/app/_layout.tsx` — see the new post-auth onboarding
+  entry below.
 - **Auth:** real provider decided and wired — **better-auth**, hosted in `packages/api` (Express +
   Drizzle + Postgres). Server config lives in `packages/api/src/lib/auth.ts` (email/password, phone
   OTP, Google OAuth, magic link), mounted at `/api/auth/*` in `src/index.ts`; the existing `users`
@@ -77,6 +78,32 @@ top of it later without re-plumbing the project.
   and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
   is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
   both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
+- **Post-auth onboarding (DELIVERED):** a second, separate onboarding layer sits between login and
+  Home — distinct from the existing pre-auth welcome flow, which is unchanged. `users` gains two
+  nullable columns (`address`, `onboarded_at`, migration `0002_bored_captain_flint.sql`);
+  `birthday`/`address`/`onboardedAt` are now client-writable better-auth `additionalFields`
+  (`input:true`; `role` stays `input:false`). `useAuth()` gains `hasCompletedProfile`
+  (`user?.onboardedAt != null`) and `completeProfile()` (calls `authClient.updateUser` then
+  explicitly `refetch()`s the session so the nav gate flips without an app restart). `_layout.tsx`'s
+  root gate is three mutually-exclusive `Stack.Protected` blocks: `isAuthenticated &&
+  hasCompletedProfile` → `(tabs)`; `isAuthenticated && !hasCompletedProfile` → new `(onboarding)`
+  route group; `!isAuthenticated` → `(auth)` (unchanged). The new `(onboarding)/index.tsx` is a
+  single screen with 3 internal steps (feature previews → promo previews, both skippable — Skip
+  jumps to the info form, never Home — → a required Full name/birthday/address form; submitting
+  completes onboarding). The birthday field is three separate auto-tabbing MM/DD/YYYY numeric
+  inputs (not one free-text field) backed by an enhanced shared `@jojopotato/ui` `Input`
+  (`forwardRef<TextInput, InputProps>` + optional `maxLength`/`onKeyPress`/`textAlign`/
+  `returnKeyType` passthrough props, added additively — existing callers unaffected); the assembled
+  value is still validated and submitted as a single `YYYY-MM-DD` string. Server-side persistence
+  (self-write + `role`-write-rejection + read-back shape) has real automated coverage
+  (`packages/api/src/lib/__tests__/auth.integration.test.ts`); typecheck/lint/migration-sync/AC1
+  pre-auth-regression are all automated-green. **Caveat: the mobile runtime behavior — the
+  nav-gate flip, Skip semantics, and the MM/DD/YYYY auto-tab form validation — is covered by manual
+  Agent-Probe only.** No automated RN-runner coverage exists for this surface (project-wide gap, see
+  `tests/all-tests.md`); it remains a tracked backlog gap, not a claimed automated coverage. The
+  user's manual Agent-Probe walkthrough (AC1–AC7) confirmed the flow works end to end. Delivered by:
+  `process/features/auth-accounts/completed/onboarding-screens_13-07-26/` (archived plan — read for
+  full design, validate-contract, and execution/EVL evidence).
 - **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
   full customer pickup-order journey (branch select → menu → product customize → cart → checkout
   → confirmation → tracking → order history) is implemented and working, not just placeholder.

@@ -33,13 +33,21 @@ SplashScreen.preventAutoHideAsync();
  * covers the brief cold-start beat.
  */
 function RootNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, hasCompletedProfile } = useAuth();
   const isAuthenticated = !isLoading && user !== null;
 
+  // Three mutually-exclusive gates so exactly one group mounts:
+  //   authenticated + profile complete   → (tabs)
+  //   authenticated + profile incomplete → (onboarding)  [post-auth account onboarding]
+  //   unauthenticated                    → (auth)         [public/pre-auth welcome]
+  // `isLoading` keeps the user in the public stack (the in-stack Splash covers cold start).
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isAuthenticated && hasCompletedProfile}>
         <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isAuthenticated && !hasCompletedProfile}>
+        <Stack.Screen name="(onboarding)" />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(auth)" />
