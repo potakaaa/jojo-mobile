@@ -10,9 +10,11 @@
  * the branch name — it is not added here.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { Badge, Button, Card, type ThemeMode } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -200,6 +202,7 @@ function OrderCard({ order, mode }: { order: MockOrder; mode: ThemeMode }) {
 export default function ActiveOrdersScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
+  const router = useRouter();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const { data, isLoading, error } = useStaffMe();
 
@@ -213,7 +216,19 @@ export default function ActiveOrdersScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        {/* Compact brand header — matches the shell instead of a tall native header */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Active Orders</Text>
+        </View>
         <ScrollView contentContainerStyle={styles.content}>
           {/* Branch context */}
           <View style={styles.branchRow}>
@@ -249,8 +264,22 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.two,
+  },
+  headerTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+  },
   content: {
-    padding: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.four,
     gap: Spacing.three,
   },
   branchRow: {
