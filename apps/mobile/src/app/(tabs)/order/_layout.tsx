@@ -15,6 +15,7 @@ export default function OrderStackLayout() {
       <Stack.Screen name="confirmation/[orderId]" options={{ title: 'Order Confirmed' }} />
       <Stack.Screen name="tracking/[orderId]" options={{ title: 'Order Tracking' }} />
       <Stack.Screen name="history" options={{ title: 'Order History' }} />
+      <Stack.Screen name="reorder/[orderId]" options={{ title: 'Review Reorder' }} />
     </Stack>
   );
 }
