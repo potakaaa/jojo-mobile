@@ -87,10 +87,15 @@ export default function CheckoutScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: true }}
-          style={[styles.payRow, { borderColor: theme.accent, backgroundColor: Palette.creamTint2 }]}
+          style={[
+            styles.payRow,
+            { borderColor: theme.accent, backgroundColor: Palette.creamTint2 },
+          ]}
         >
           <Text style={[styles.payLabel, { color: theme.text }]}>Pay at branch</Text>
-          <View style={[styles.radio, { borderColor: theme.accent, backgroundColor: theme.accent }]} />
+          <View
+            style={[styles.radio, { borderColor: theme.accent, backgroundColor: theme.accent }]}
+          />
         </Pressable>
         <View style={[styles.payRow, styles.payDisabled, { borderColor: theme.border }]}>
           <View>
@@ -121,7 +126,11 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   label: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall },
-  branchName: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3, marginTop: Spacing.half },
+  branchName: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+    marginTop: Spacing.half,
+  },
   badge: { marginTop: Spacing.two },
   section: { gap: Spacing.two },
   sectionTitle: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },

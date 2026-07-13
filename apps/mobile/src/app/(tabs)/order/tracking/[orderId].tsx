@@ -45,5 +45,9 @@ export default function OrderTrackingScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   label: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall },
-  orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2, marginTop: Spacing.half },
+  orderNumber: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+    marginTop: Spacing.half,
+  },
 });

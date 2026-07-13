@@ -69,8 +69,16 @@ export default function OrderConfirmationScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   heading: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h1 },
-  label: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall, marginTop: Spacing.two },
-  orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2, marginTop: Spacing.half },
+  label: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.two,
+  },
+  orderNumber: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+    marginTop: Spacing.half,
+  },
   badgeRow: { marginTop: Spacing.two },
   readyTime: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h3, marginTop: Spacing.half },
 });

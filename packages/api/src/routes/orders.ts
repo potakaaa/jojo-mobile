@@ -29,9 +29,7 @@ const createOrderSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         quantity: z.number().int().positive(),
-        selectedOptions: z
-          .array(z.object({ optionId: z.string().uuid() }))
-          .default([]),
+        selectedOptions: z.array(z.object({ optionId: z.string().uuid() })).default([]),
       }),
     )
     .min(1),

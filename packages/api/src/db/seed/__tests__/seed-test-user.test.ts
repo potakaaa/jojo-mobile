@@ -35,8 +35,7 @@ const TEST_EMAIL = 'jojo@test.com';
 // 8-char minimum enforced by better-auth (SPEC's jojo123 is 7 chars); mirrors seed.ts TEST_USER.
 const TEST_PASSWORD = 'jojo1234';
 
-const rowsForTestUser = () =>
-  db.select().from(users).where(eq(users.email, TEST_EMAIL));
+const rowsForTestUser = () => db.select().from(users).where(eq(users.email, TEST_EMAIL));
 
 const deleteTestUser = () => db.delete(users).where(eq(users.email, TEST_EMAIL));
 

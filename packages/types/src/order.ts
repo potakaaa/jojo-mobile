@@ -1,13 +1,7 @@
 import type { SelectedOption } from './product-option';
 
 export type OrderStatus =
-  | 'pending'
-  | 'accepted'
-  | 'preparing'
-  | 'flavoring'
-  | 'ready'
-  | 'completed'
-  | 'cancelled';
+  'pending' | 'accepted' | 'preparing' | 'flavoring' | 'ready' | 'completed' | 'cancelled';
 
 export type PaymentMethod = 'pay_at_branch' | 'online_payment';
 

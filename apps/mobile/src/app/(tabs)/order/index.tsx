@@ -53,7 +53,16 @@ export default function OrderScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: MaxContentWidth },
-  content: { flex: 1, justifyContent: 'center', gap: Spacing.three, paddingHorizontal: Spacing.four },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+  },
   title: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h1 },
-  subtitle: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body, marginBottom: Spacing.two },
+  subtitle: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.body,
+    marginBottom: Spacing.two,
+  },
 });

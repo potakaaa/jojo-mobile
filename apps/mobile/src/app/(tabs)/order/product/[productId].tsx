@@ -194,7 +194,11 @@ export default function ProductDetailsScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   name: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2 },
-  description: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body, marginTop: Spacing.one },
+  description: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.body,
+    marginTop: Spacing.one,
+  },
   basePrice: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h3, marginTop: Spacing.two },
   section: { gap: Spacing.two },
   sectionTitle: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
@@ -209,6 +213,11 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.creamTint2,
   },
   stepLabel: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
-  qty: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h3, minWidth: 32, textAlign: 'center' },
+  qty: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.h3,
+    minWidth: 32,
+    textAlign: 'center',
+  },
   hint: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall },
 });

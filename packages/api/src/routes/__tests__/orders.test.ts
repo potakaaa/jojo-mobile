@@ -247,7 +247,9 @@ describe('POST /orders — order_number uniqueness', () => {
   it('produces distinct order_numbers under ~20 concurrent creates', async () => {
     const N = 20;
     const results = await Promise.all(
-      Array.from({ length: N }, () => post('/orders', { user: userA, body: singleItemBody(branch20Id) })),
+      Array.from({ length: N }, () =>
+        post('/orders', { user: userA, body: singleItemBody(branch20Id) }),
+      ),
     );
     results.forEach((r) => expect(r.status).toBe(201));
     const numbers = new Set(results.map((r) => r.json.order.orderNumber));

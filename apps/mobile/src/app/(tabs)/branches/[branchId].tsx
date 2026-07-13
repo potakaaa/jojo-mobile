@@ -107,7 +107,11 @@ export default function BranchDetailsScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   branchName: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
-  branchMeta: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall, marginTop: Spacing.one },
+  branchMeta: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.one,
+  },
   category: { gap: Spacing.two },
   categoryTitle: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },

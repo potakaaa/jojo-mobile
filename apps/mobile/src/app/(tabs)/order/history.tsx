@@ -82,6 +82,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
   total: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.body },
-  date: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.bodySmall, marginTop: Spacing.half },
+  date: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.half,
+  },
   badgeRow: { marginTop: Spacing.two },
 });
