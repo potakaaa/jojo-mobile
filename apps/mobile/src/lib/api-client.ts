@@ -9,8 +9,20 @@ import { env } from '@/config/env';
  */
 const commonHeaders = { 'ngrok-skip-browser-warning': 'true' } as const;
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${env.apiUrl}${path}`, { headers: commonHeaders });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${env.apiUrl}${path}`, {
+      headers: commonHeaders,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     throw new Error(`API request failed (${res.status}): ${path}`);
   }

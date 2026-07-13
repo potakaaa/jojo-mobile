@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
 
 import { eq } from 'drizzle-orm';
 import express from 'express';
@@ -24,8 +25,9 @@ let branches: SchemaModule['branches'];
 let server: Server;
 let baseUrl: string;
 
-const SLUG_ACTIVE = 'zz-test-branches-active';
-const SLUG_INACTIVE = 'zz-test-branches-inactive';
+const RUN_SUFFIX = randomUUID().slice(0, 8);
+const SLUG_ACTIVE = `zz-test-branches-active-${RUN_SUFFIX}`;
+const SLUG_INACTIVE = `zz-test-branches-inactive-${RUN_SUFFIX}`;
 let activeId = '';
 let inactiveId = '';
 

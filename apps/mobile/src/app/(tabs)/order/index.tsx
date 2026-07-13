@@ -12,6 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { BranchSwitcher } from '@/features/menu/components/branch-switcher';
 import { CategorySection } from '@/features/menu/components/category-section';
 import { useMenu } from '@/features/menu/hooks/use-menu';
@@ -28,6 +29,7 @@ export default function OrderScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useMenu();
+  const { isLoading: isBranchLoading } = useBranch();
 
   const openProduct = (productId: string) =>
     router.push({
@@ -51,7 +53,7 @@ export default function OrderScreen() {
           <Text style={[styles.heading, { color: theme.text }]}>Menu</Text>
           <BranchSwitcher />
 
-          {isLoading ? (
+          {isLoading || isBranchLoading ? (
             <View style={styles.stateBox}>
               <ActivityIndicator color={theme.accent} />
             </View>
@@ -76,18 +78,20 @@ export default function OrderScreen() {
             </View>
           )}
 
-          <View style={styles.devLinks}>
-            <DevLink
-              label="Dev: View Cart"
-              onPress={() => router.push('/(tabs)/order/cart')}
-              color={theme.accent}
-            />
-            <DevLink
-              label="Dev: Order History"
-              onPress={() => router.push('/(tabs)/order/history')}
-              color={theme.accent}
-            />
-          </View>
+          {__DEV__ ? (
+            <View style={styles.devLinks}>
+              <DevLink
+                label="Dev: View Cart"
+                onPress={() => router.push('/(tabs)/order/cart')}
+                color={theme.accent}
+              />
+              <DevLink
+                label="Dev: Order History"
+                onPress={() => router.push('/(tabs)/order/history')}
+                color={theme.accent}
+              />
+            </View>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </View>

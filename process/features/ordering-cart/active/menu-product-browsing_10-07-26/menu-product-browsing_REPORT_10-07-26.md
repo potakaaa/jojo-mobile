@@ -55,7 +55,7 @@ order untouched.
 | API routes (AC1/AC2/AC11-API/branchId/branches) | `pnpm --filter @jojopotato/api test` | 32/32 PASS |
 | Shared UI regression | `pnpm --filter @jojopotato/ui test` (jest) | 19/19 PASS |
 | Whole-repo compile (AC5 typed route + type-fallout) | `pnpm typecheck` | 5/5 PASS |
-| Whole-repo lint | `pnpm lint` | 6/6 PASS (0 errors; 3 pre-existing warnings in untouched `dev-with-tunnel.mjs`) |
+| Whole-repo lint | `pnpm lint` | 6/6 PASS (0 errors; 3 warnings in `dev-with-tunnel.mjs` — new file added by this PR, warnings are unused `eslint-disable-next-line no-await-in-loop` directives, non-blocking) |
 | Manual sim walk (AC3/AC4/AC6/AC9/AC11-UI) | `pnpm ios`/`android`/`web` | NOT RUN — headless env; see Gaps |
 
 Precondition met for the hybrid gate: `docker compose up -d` (started Docker Desktop) +

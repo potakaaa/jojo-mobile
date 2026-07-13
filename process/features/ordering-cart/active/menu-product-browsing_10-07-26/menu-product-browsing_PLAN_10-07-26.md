@@ -15,7 +15,9 @@ MENU-002 per the locked INNOVATE decision. Touches 5 packages, ~32 files, no sch
 auth/billing surface.
 
 **Date**: 10-07-26
-**Status**: PLANNED
+**Status**: EXECUTED — all 36 implementation checklist steps complete; automated/hybrid gates
+green (`pnpm typecheck` 5/5, `pnpm lint` 6/6); Agent-Probe manual sim walk (AC3/AC4/AC6/AC9/
+AC11-UI) still pending — see companion `menu-product-browsing_REPORT_10-07-26.md` §Gaps.
 **Complexity**: COMPLEX (multi-package, phase-gated Infra -> MENU-001 -> MENU-002)
 
 Classification: **COMPLEX** (4+ packages, new dependency, new API surface, new shared plumbing
@@ -162,7 +164,7 @@ first load if nothing is persisted yet.
 | `apps/mobile/src/features/menu/components/option-group-selector.tsx` | CREATE | Renders one option group: label + `Badge` ("Required"/"Optional" per INNOVATE #7) + the matching selector (`FlavorSelector` for `flavor`, `SizeSelector` for `size`, new `AddOnSelector` for `add_on`). **[Found during VALIDATE]** `FlavorSelector` expects `Flavor[]` (`{id, name}`) and `SizeSelector` expects `Size[]` (`{id, label}`) — neither is directly assignable from `ProductOption[]` (`{id, productId, optionType, name, priceDelta, isActive, sortOrder}`). This component must map each option-group's `ProductOption[]` into the target shape before rendering (e.g. `options.map(o => ({ id: o.id, name: o.name }))` for flavor, `options.map(o => ({ id: o.id, label: o.name }))` for size) — do not assume the existing selectors accept `ProductOption[]` directly. |
 | `packages/ui/src/components/addon-selector.tsx` | CREATE | New shared component — multi-select toggle chip row for `add_on` options (no existing shared component covers multi-select; `FlavorSelector`/`SizeSelector` are single-select) |
 | `packages/ui/src/index.ts` | MODIFY | Export `addon-selector` |
-| `apps/mobile/src/features/menu/components/add-to-cart-bar.tsx` | CREATE | Sticky bottom bar: live computed price (`computeUnitPrice`), `Button` ("Add to Cart", disabled until `isRequiredSelectionComplete`), inline validation message on blocked attempt (AC9), "unavailable" state when `useProductDetails()` reports `isAvailable: false` (AC11) |
+| `apps/mobile/src/features/menu/components/add-to-cart-bar.tsx` | CREATE | Sticky bottom bar: live computed price (`computeUnitPrice`), `Button` ("Add to Cart", visually dimmed but still pressable until `isRequiredSelectionComplete` so the blocked-attempt message can show), inline validation message on blocked attempt (AC9), "unavailable" state when `useProductDetails()` reports `isAvailable: false` (AC11) |
 | `apps/mobile/src/app/(tabs)/order/product/[productId].tsx` | MODIFY | Replace the 2-line `<ComingSoon>` stub with the real screen: `useProductDetails()` + name/description/photo/base price + one `OptionGroupSelector` per group + `AddToCartBar`; on successful add, calls `useCart().addItem(buildCartItemSnapshot(...))` and navigates back or shows a brief confirmation |
 
 ## Public Contracts
@@ -170,7 +172,7 @@ first load if nothing is persisted yet.
 ### `GET /api/branches`
 
 Response `200`:
-```
+```typescript
 { branches: [{ id, name, slug, address, latitude, longitude, phone, openingHours, isActive, isAcceptingPickup, estimatedPrepMinutes }] }
 ```
 Only `is_active = true` branches are returned.
@@ -180,7 +182,7 @@ Only `is_active = true` branches are returned.
 - `400` if `branchId` is missing or does not match an existing **active** branch (security
   follow-up from INNOVATE — never trust an arbitrary client-supplied ID).
 - `200`:
-```
+```typescript
 {
   categories: [
     {
@@ -202,7 +204,7 @@ Only `is_active = true` branches are returned.
 - `400` for invalid/inactive `branchId` (same validation as above). `404` if `productId` doesn't
   exist or isn't active.
 - `200`:
-```
+```typescript
 {
   id, categoryId, name, slug, description, imageUrl, basePrice, isActive, isRewardEligible,
   isAvailable, // computed: is_active AND exists in branch_product_availability(branchId) with is_available = true
@@ -213,7 +215,7 @@ Only `is_active = true` options are included, sorted by `sort_order`.
 
 ### `useBranch()` / `BranchProvider`
 
-```
+```typescript
 { selectedBranch: Branch | null, setSelectedBranch: (branch: Branch) => void, branches: Branch[], isLoading: boolean }
 ```
 Persists `selectedBranch.id` via `expo-secure-store` under a `jojopotato.selectedBranchId` key;
@@ -222,7 +224,7 @@ persisted id no longer exists/isn't active).
 
 ### `useCart()` / `CartProvider`
 
-```
+```typescript
 { cart: Cart, addItem: (item: CartItem) => void }
 ```
 `Cart = { items: CartItem[] }`. In-memory only this phase (no persistence — matches SPEC Out Of
@@ -344,8 +346,8 @@ Scope). `CartItem` carries `unitPrice` and `selectedOptions` as a frozen snapsho
     into the shape `FlavorSelector`/`SizeSelector` expect (`{id, name}` / `{id, label}`) before
     rendering — these components do not accept `ProductOption[]` directly (see Touchpoints note).
 33. Create `apps/mobile/src/features/menu/components/add-to-cart-bar.tsx` (live price via
-    `computeUnitPrice`, disabled/enabled `Button` via `isRequiredSelectionComplete`, inline
-    blocked-attempt message, "unavailable" state).
+    `computeUnitPrice`, `Button` visually dimmed (not disabled) via `isRequiredSelectionComplete`
+    so the press still fires the inline blocked-attempt message, "unavailable" state).
 34. Rewrite `apps/mobile/src/app/(tabs)/order/product/[productId].tsx`: real screen wiring
     `useProductDetails()`, the option groups, and `AddToCartBar`; on successful add, call
     `useCart().addItem(buildCartItemSnapshot(...))`.
@@ -392,7 +394,7 @@ helper is unbounded busywork relative to the SPEC. Flagged here so it is not sil
 
 ## Verification Commands
 
-```
+```shell
 pnpm typecheck                                    # whole repo, tsc --noEmit via turbo
 pnpm lint                                          # whole repo, eslint flat config via turbo
 pnpm --filter @jojopotato/utils test               # new: vitest — pricing/product-options/cart
@@ -421,9 +423,11 @@ pnpm ios   # or: pnpm android / pnpm web           # manual Agent-Probe verifica
 
 ## Test Infra Improvement Notes
 
-- **New:** this plan adds `vitest` to `packages/utils` — the first non-`packages/api` package with
-  an automated test runner. Update `process/context/tests/all-tests.md`'s Commands table and Known
-  Gaps section at UPDATE PROCESS to reflect this (currently says only `packages/api` has Vitest).
+- **New:** this plan adds `vitest` to `packages/utils` — the first `packages/*` runner to use
+  Vitest outside `packages/api` (`packages/ui` already has its own pre-existing Jest suite via
+  `jest-expo`, so this is not the first automated test runner outside `packages/api` overall).
+  Update `process/context/tests/all-tests.md`'s Commands table and Known Gaps section at UPDATE
+  PROCESS to reflect this (currently says only `packages/api` has Vitest).
 - **Still open:** no mobile-side (RN) component/screen test runner exists — every screen-rendering
   assertion in this plan's Test Plan stays Agent-Probe. Not resolved by this plan; carried forward
   per SPEC Constraints.
@@ -461,8 +465,8 @@ pnpm ios   # or: pnpm android / pnpm web           # manual Agent-Probe verifica
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/ordering-cart/active/menu-product-browsing_10-07-26/menu-product-browsing_PLAN_10-07-26.md`
-2. **Last completed phase or step:** PLAN written and VALIDATE-supplemented (2 stale-consumer
-   files + 1 component-shape adapter note added) — no EXECUTE steps started yet.
+2. **Last completed phase or step:** EXECUTE — all 36 Implementation Checklist steps (Infra →
+   MENU-001 → MENU-002) implemented; see companion `menu-product-browsing_REPORT_10-07-26.md`.
 3. **Validate-contract status:** PASS (see below).
 4. **Supporting context files loaded during PLAN:**
    - `process/features/ordering-cart/active/menu-product-browsing_10-07-26/menu-product-browsing_SPEC_10-07-26.md`
@@ -476,12 +480,12 @@ pnpm ios   # or: pnpm android / pnpm web           # manual Agent-Probe verifica
      `apps/mobile/src/features/{auth,home}/**`, `apps/mobile/src/app/(tabs)/order/**`,
      `packages/utils/src/{currency.ts,index.ts}`, `apps/mobile/package.json`,
      `packages/{api,utils}/package.json`.
-5. **Next step for a fresh agent picking up mid-execution:** VALIDATE has run (PASS). Proceed to
-   EXECUTE. If resuming mid-EXECUTE, check which Implementation Checklist sections (1/2/3) have a
-   green `pnpm typecheck` + `pnpm lint` + relevant `pnpm --filter ... test` run recorded in the
-   phase report, and resume from the first unchecked step in the earliest incomplete section
-   (Infra steps must all be green before MENU-001 steps begin; MENU-001 steps must all be green
-   before MENU-002 steps begin — this is a hard sequencing rule, not a suggestion).
+5. **Next step for a fresh agent picking up mid-execution:** EXECUTE is complete and all
+   automated/hybrid gates are green (`pnpm typecheck` 5/5, `pnpm lint` 6/6, relevant
+   `pnpm --filter ... test` suites). The only remaining gate is the Agent-Probe manual sim walk
+   (AC3/AC4/AC6/AC9/AC11-UI) — not yet run (headless env at EXECUTE time). A fresh agent should run
+   that manual walk next, then proceed to UPDATE PROCESS; do not restart or re-implement any of the
+   36 completed steps.
 
 ## Validate Contract
 

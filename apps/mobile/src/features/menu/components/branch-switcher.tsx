@@ -11,10 +11,21 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export function BranchSwitcher() {
   const theme = useTheme();
-  const { branches, selectedBranch, setSelectedBranch, isLoading } = useBranch();
+  const { branches, selectedBranch, setSelectedBranch, isLoading, isError, refetch } = useBranch();
 
   if (isLoading) {
     return <Text style={[styles.hint, { color: theme.textSecondary }]}>Loading branches…</Text>;
+  }
+
+  if (isError) {
+    return (
+      <View style={styles.errorRow}>
+        <Text style={[styles.hint, { color: theme.textSecondary }]}>Couldn’t load branches.</Text>
+        <Pressable accessibilityRole="button" onPress={() => refetch()}>
+          <Text style={[styles.hint, styles.retry, { color: theme.accent }]}>Retry</Text>
+        </Pressable>
+      </View>
+    );
   }
 
   if (branches.length === 0) {
@@ -86,5 +97,13 @@ const styles = StyleSheet.create({
   hint: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  retry: {
+    fontFamily: FontFamily.body.semibold,
   },
 });

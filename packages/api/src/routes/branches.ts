@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 
 import { db } from '../db/client';
@@ -11,7 +11,11 @@ import { branches } from '../db/schema/index';
 export const branchesRouter: Router = Router();
 
 branchesRouter.get('/', async (_req, res) => {
-  const rows = await db.select().from(branches).where(eq(branches.is_active, true));
+  const rows = await db
+    .select()
+    .from(branches)
+    .where(eq(branches.is_active, true))
+    .orderBy(asc(branches.name));
   res.json({
     branches: rows.map((row) => ({
       id: row.id,

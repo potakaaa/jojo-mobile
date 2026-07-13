@@ -127,22 +127,23 @@ menuRouter.get('/products/:productId', async (req, res) => {
   }
 
   // isAvailable: active AND available at this branch.
-  const [availabilityRow] = await db
-    .select({ isAvailable: branchProductAvailability.is_available })
-    .from(branchProductAvailability)
-    .where(
-      and(
-        eq(branchProductAvailability.product_id, productId),
-        eq(branchProductAvailability.branch_id, branchId),
-        eq(branchProductAvailability.is_available, true),
+  const [[availabilityRow], optionRows] = await Promise.all([
+    db
+      .select({ isAvailable: branchProductAvailability.is_available })
+      .from(branchProductAvailability)
+      .where(
+        and(
+          eq(branchProductAvailability.product_id, productId),
+          eq(branchProductAvailability.branch_id, branchId),
+          eq(branchProductAvailability.is_available, true),
+        ),
       ),
-    );
-
-  const optionRows = await db
-    .select()
-    .from(productOptions)
-    .where(and(eq(productOptions.product_id, productId), eq(productOptions.is_active, true)))
-    .orderBy(asc(productOptions.sort_order));
+    db
+      .select()
+      .from(productOptions)
+      .where(and(eq(productOptions.product_id, productId), eq(productOptions.is_active, true)))
+      .orderBy(asc(productOptions.sort_order)),
+  ]);
 
   res.json({
     id: product.id,

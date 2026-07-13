@@ -4,7 +4,6 @@ import {
   computeUnitPrice,
   formatPricePHP,
   getRequiredOptionTypes,
-  isRequiredSelectionComplete,
 } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
@@ -53,12 +52,11 @@ export default function ProductDetailsScreen() {
 
   const canAdd = useMemo(() => {
     if (!product) return false;
-    const selectedByType: Partial<Record<ProductOptionType, string | undefined>> = {};
-    for (const [type, ids] of Object.entries(selection)) {
-      selectedByType[type as ProductOptionType] = ids?.[0];
-    }
-    return isRequiredSelectionComplete(product.options, selectedByType);
-  }, [product, selection]);
+    return requiredTypes.every((type) => {
+      const selected = selection[type]?.[0];
+      return selected !== undefined && selected !== '';
+    });
+  }, [product, requiredTypes, selection]);
 
   const handleChange = (type: ProductOptionType, optionId: string) => {
     setAddedNotice(false);

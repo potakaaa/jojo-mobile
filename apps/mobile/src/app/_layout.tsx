@@ -10,9 +10,9 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 import { BranchProvider } from '@/features/branch/hooks/use-branch';
@@ -48,6 +48,18 @@ function RootNavigator() {
   );
 }
 
+function AuthedTree() {
+  const { user } = useAuth();
+
+  return (
+    <BranchProvider>
+      <CartProvider key={user?.id ?? 'anonymous'}>
+        <RootNavigator />
+      </CartProvider>
+    </BranchProvider>
+  );
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -67,6 +79,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  // Bridge RN app foregrounding into TanStack Query's focus manager so
+  // `refetchOnWindowFocus` (query-client.ts) actually refetches on native.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (status: AppStateStatus) => {
+      focusManager.setFocused(status === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
+
   if (!fontsLoaded && !fontError) {
     return null;
   }
@@ -75,11 +96,7 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <BranchProvider>
-            <CartProvider>
-              <RootNavigator />
-            </CartProvider>
-          </BranchProvider>
+          <AuthedTree />
         </AuthProvider>
       </QueryClientProvider>
       <StatusBar style="auto" />

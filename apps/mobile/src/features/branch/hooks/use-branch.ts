@@ -24,17 +24,26 @@ export interface BranchContextValue {
   /** Active branches available to pick from. */
   branches: PickupBranch[];
   isLoading: boolean;
+  /** Whether the branches request failed. */
+  isError: boolean;
+  /** Retry the branches request. */
+  refetch: () => void;
 }
 
 const BranchContext = createContext<BranchContextValue | null>(null);
 
-/** Active branches only (undefined `isActive` is treated as active for safety). */
-function activeOnly(branches: PickupBranch[]): PickupBranch[] {
-  return branches.filter((branch) => branch.isActive !== false);
+/** Branches currently available for pickup. */
+function openOnly(branches: PickupBranch[]): PickupBranch[] {
+  return branches.filter((branch) => branch.isOpen);
 }
 
 export function BranchProvider({ children }: { children: ReactNode }) {
-  const { data: branches = [], isPending } = useQuery({
+  const {
+    data: branches = [],
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['branches'],
     queryFn: getBranches,
   });
@@ -62,7 +71,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<BranchContextValue>(() => {
-    const active = activeOnly(branches);
+    const active = openOnly(branches);
     // Resolve the persisted id against the live list; fall back to first active.
     const persisted = active.find((branch) => branch.id === selectedBranchId);
     const selectedBranch = persisted ?? active[0] ?? null;
@@ -71,8 +80,10 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       setSelectedBranch,
       branches: active,
       isLoading: isPending || !hydrated,
+      isError,
+      refetch: () => void refetch(),
     };
-  }, [branches, selectedBranchId, hydrated, isPending, setSelectedBranch]);
+  }, [branches, selectedBranchId, hydrated, isPending, isError, refetch, setSelectedBranch]);
 
   return createElement(BranchContext.Provider, { value }, children);
 }

@@ -1,6 +1,6 @@
-import type { Category } from '@jojopotato/types';
+import type { Category, Product } from '@jojopotato/types';
 import { ProductCard } from '@jojopotato/ui';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -10,13 +10,26 @@ export interface CategorySectionProps {
   onProductPress: (productId: string) => void;
 }
 
+/** Chunk a flat list into fixed-size rows (2-column grid rows here). */
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size));
+  }
+  return rows;
+}
+
 /**
  * One menu category: header + a 2-column grid of the branch-available products
  * (already server-filtered, so all are available). Renders an explicit empty
- * state when the category has no products at the selected branch (AC4).
+ * state when the category has no products at the selected branch (AC4). Uses a
+ * plain `View`-based grid (not `FlatList`) — this screen already scrolls inside
+ * an outer `ScrollView`, and nesting a `FlatList`/`VirtualizedList` there
+ * triggers RN's nested-list warning regardless of `scrollEnabled`.
  */
 export function CategorySection({ category, onProductPress }: CategorySectionProps) {
   const theme = useTheme();
+  const rows = chunk(category.products, 2);
 
   return (
     <View style={styles.section}>
@@ -26,17 +39,18 @@ export function CategorySection({ category, onProductPress }: CategorySectionPro
           Nothing in this category at this branch yet.
         </Text>
       ) : (
-        <FlatList
-          data={category.products}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <ProductCard product={item} onPress={() => onProductPress(item.id)} />
-          )}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.grid}
-        />
+        <View style={styles.grid}>
+          {rows.map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.row}>
+              {row.map((product: Product) => (
+                <View key={product.id} style={styles.cell}>
+                  <ProductCard product={product} onPress={() => onProductPress(product.id)} />
+                </View>
+              ))}
+              {row.length < 2 ? <View style={styles.cell} /> : null}
+            </View>
+          ))}
+        </View>
       )}
     </View>
   );
@@ -58,6 +72,10 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   row: {
+    flexDirection: 'row',
     gap: Spacing.two,
+  },
+  cell: {
+    flex: 1,
   },
 });

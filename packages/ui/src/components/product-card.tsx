@@ -43,6 +43,8 @@ export function ProductCard({
 }: ProductCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
+  const resolvedImageSource: ImageSourcePropType | undefined =
+    imageSource ?? (product.imageUrl ? { uri: product.imageUrl } : undefined);
 
   return (
     <Pressable
@@ -62,9 +64,9 @@ export function ProductCard({
       ]}
     >
       <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
-        {imageSource ? (
+        {resolvedImageSource ? (
           <Image
-            source={imageSource}
+            source={resolvedImageSource}
             style={styles.image}
             contentFit="contain"
             accessibilityLabel={product.name}

@@ -14,7 +14,10 @@ function round2(value: number): number {
  * silently yielding NaN.
  */
 export function parsePriceString(value: string): number {
-  const parsed = Number.parseFloat(value);
+  if (value.trim() === '') {
+    throw new Error(`parsePriceString: cannot parse "${value}" as a number`);
+  }
+  const parsed = Number(value);
   if (Number.isNaN(parsed)) {
     throw new Error(`parsePriceString: cannot parse "${value}" as a number`);
   }
