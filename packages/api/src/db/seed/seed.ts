@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { auth } from '../../lib/auth';
 import { db } from '../client';
 import {
   branchProductAvailability,
@@ -9,8 +10,41 @@ import {
   deals,
   productOptions,
   products,
+  users,
 } from '../schema/index';
 import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
+
+const STAFF_EMAIL = 'staff-branch1@jojopotato.local';
+
+/**
+ * Seed one `staff` user scoped to the first seeded branch (STAFF-001 testability).
+ *
+ * Uses `auth.api.signUpEmail` so better-auth creates BOTH the `users` row AND
+ * the `account` credential entry — a bare `db.insert(users)` would create an
+ * orphan row that cannot authenticate. `role`/`assignedBranchId` are then set
+ * directly (both are server-owned; `role` is `input:false` in better-auth).
+ * Idempotent: a duplicate email hits the unique constraint and is skipped.
+ */
+async function seedStaffUser(branchIdBySlug: Map<string, string>): Promise<void> {
+  const [firstBranchId] = branchIdBySlug.values();
+  if (!firstBranchId) {
+    throw new Error('Seed error: cannot seed staff user — no branches were seeded');
+  }
+
+  try {
+    await auth.api.signUpEmail({
+      body: { email: STAFF_EMAIL, password: 'staff-dev-password', name: 'Branch 1 Staff' },
+    });
+  } catch {
+    // User already exists (email unique constraint) — fall through to the update
+    // so re-seeding still guarantees the correct role/branch assignment.
+  }
+
+  await db
+    .update(users)
+    .set({ role: 'staff', assignedBranchId: firstBranchId })
+    .where(eq(users.email, STAFF_EMAIL));
+}
 
 async function seedBranchesTable(): Promise<Map<string, string>> {
   const idBySlug = new Map<string, string>();
@@ -205,6 +239,7 @@ async function seedDealScopingTables(
 
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
+  await seedStaffUser(branchIdBySlug);
   const categoryIdBySlug = await seedCategoriesTable();
   const productIdBySlug = await seedProductsTable(categoryIdBySlug);
   await seedProductOptionsTable(productIdBySlug);
@@ -214,6 +249,7 @@ export async function runSeed(): Promise<void> {
 
   console.log('Seed complete:');
   console.log(`  branches: ${branchIdBySlug.size}`);
+  console.log(`  staff users: 1 (${STAFF_EMAIL})`);
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);

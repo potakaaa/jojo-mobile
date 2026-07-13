@@ -4,12 +4,15 @@
 import 'dotenv/config';
 
 import { toNodeHandler } from 'better-auth/node';
-import express from 'express';
+import express, { type Express } from 'express';
 
 import { auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { requireStaff } from './lib/require-staff';
+import staffRouter from './routes/staff';
 
-const app = express();
+// Exported so supertest can attach to the Express app without binding a port.
+export const app: Express = express();
 const port = Number(process.env.PORT ?? 3000);
 
 // Mount the better-auth handler BEFORE any body-parsing middleware — better-auth
@@ -24,6 +27,10 @@ app.use(express.json());
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
 });
+
+// Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
+// routes only add handlers to staffRouter and inherit the guard.
+app.use('/api/staff', requireStaff(auth), staffRouter);
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An
@@ -71,11 +78,16 @@ if (DEV_AUTO_LOGIN_ENABLED) {
   });
 }
 
-app.listen(port, () => {
-  console.log(`jojopotato-api listening on port ${port}`);
-  if (DEV_AUTO_LOGIN_ENABLED) {
-    console.warn(
-      `⚠  DEV AUTO-LOGIN ENABLED — POST /dev/session signs in ${DEV_LOGIN_EMAIL}. Never expose this server publicly.`,
-    );
-  }
-});
+// Do NOT bind a port under test — supertest attaches to `app` directly and the
+// `role`-guard tests import this module for its exported `app`. Binding here
+// would occupy port 3000 and keep the vitest process alive.
+if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
+  app.listen(port, () => {
+    console.log(`jojopotato-api listening on port ${port}`);
+    if (DEV_AUTO_LOGIN_ENABLED) {
+      console.warn(
+        `⚠  DEV AUTO-LOGIN ENABLED — POST /dev/session signs in ${DEV_LOGIN_EMAIL}. Never expose this server publicly.`,
+      );
+    }
+  });
+}

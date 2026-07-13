@@ -10,3 +10,4 @@ export * from './pickup';
 export * from './pickup-time';
 export * from './rewards';
 export * from './sizes';
+export * from './staff';
