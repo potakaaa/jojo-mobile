@@ -12,7 +12,7 @@ phase: "STAFF-001"
 **Priority**: P0 — Milestone: Phase 3 Pickup Live Updates
 **GitHub Issue**: #31
 **Date**: 2026-07-13
-**Status**: CODE DONE (all automated + hybrid gates green; mobile Agent-Probe pending operator manual confirmation)
+**Status**: VERIFIED (all automated + hybrid gates green per EVL; mobile Agent-Probe for AC1/AC4 operator on-device is the one remaining Known-Gap residual — no RN test runner)
 
 ---
 
@@ -290,7 +290,7 @@ Proves:
   - Follow `SafeAreaView`/insets pattern from `coming-soon.tsx` (edges `['top', 'bottom']`; no floating-tab-bar clearance needed since `(staff)` has no tab bar).
   - No inline hex colors, no one-off `StyleSheet` values that duplicate theme tokens.
 - [x] **F3d.** Run `expo start` in `apps/mobile` and Ctrl-C to trigger Expo Router typed-routes codegen for the new `(staff)/index.tsx` file. Required before typecheck resolves the typed hrefs.
-- [ ] **F3e.** Verify shell renders correctly in dev: sign in as seeded staff user (`staff-branch1@jojopotato.local`) and confirm: header shows `BrandWordmark` + "Staff" badge; branch name from API is displayed; all four nav cards visible and labeled correctly; sign-out button visible and functional (returns to login screen).
+- [ ] **F3e.** [Known-Gap / Agent-Probe] Verify shell renders correctly in dev: sign in as seeded staff user (`staff-branch1@jojopotato.local`) and confirm: header shows `BrandWordmark` + "Staff" badge; branch name from API is displayed; all four nav cards visible and labeled correctly; sign-out button visible and functional (returns to login screen). Deferred — no RN test runner; backlog: `mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
 - [x] **F4.** In `apps/mobile/src/app/_layout.tsx` — update `RootNavigator`:
   - Destructure `isStaff` alongside `user, isLoading` from `useAuth()`.
   - Rewrite the guard logic:
@@ -388,24 +388,11 @@ Proves:
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/staff-dashboard/active/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md`
-2. **Last completed phase or step:** None — not started.
-3. **Validate-contract status:** Written — see `## Validate Contract` below.
-4. **Supporting context files loaded:**
-   - `process/context/all-context.md`
-   - `process/context/tests/all-tests.md`
-   - `apps/mobile/src/app/_layout.tsx`
-   - `apps/mobile/src/features/auth/hooks/use-auth.ts`
-   - `apps/mobile/src/features/auth/lib/auth-client.ts`
-   - `apps/mobile/src/components/coming-soon.tsx`
-   - `packages/ui/src/index.ts`
-   - `packages/ui/src/theme.ts`
-   - `packages/api/src/db/schema/users.ts`
-   - `packages/api/src/db/schema/branches.ts`
-   - `packages/api/src/index.ts`
-   - `packages/api/src/lib/auth.ts`
-   - `packages/api/src/lib/__tests__/auth.integration.test.ts`
-   - `packages/api/src/db/schema/index.ts`
-5. **Next step for a fresh agent:** Start at Phase A (schema). Run `pnpm --filter @jojopotato/api db:generate` after editing `users.ts`. Follow checklist phases A → B → C → D → E → F → G in order. Do not start F (mobile) before E (tests pass) and before C (StaffMe type exists). Add supertest in E0 before writing E6/E7. Export `app` from index.ts in B3. For the shell: F3a (staff-api.ts) → F3b (use-staff-me.ts) → F3c (index.tsx shell) → F3d (codegen) → F3e (manual verify) → F4 (root gate).
+2. **Last completed phase or step:** ALL PHASES COMPLETE — archived to `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` on 2026-07-13.
+3. **Validate-contract status:** PASS — see `## Validate Contract` section.
+4. **EVL status:** ALL GATES GREEN — 34/34 api tests, all typecheck and lint gates green. EVL confirmed in orchestrator shell (spawned vc-tester was Bash-blocked). Committed on branch `feat/staff-001-login-branch-scope` (commits: `1fb3e88` migration, `2216e05` backend, `b3db1a4` mobile shell + mock, `a153ec5` process artifacts).
+5. **Residual Known-Gap:** Mobile Agent-Probe (AC1/AC4) — operator on-device confirmation. No RN test runner; backlog: `mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
+6. **Next work:** STAFF-002 (#32) — Active orders dashboard. Uses `requireStaff` + `assertBranchScope` from this plan. See `process/features/staff-dashboard/backlog/`.
 
 **Execution order dependency graph:**
 
