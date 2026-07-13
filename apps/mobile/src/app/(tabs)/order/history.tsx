@@ -1,5 +1,5 @@
 import type { Order } from '@jojopotato/types';
-import { Card, OrderStatusBadge } from '@jojopotato/ui';
+import { Card, EmptyState, OrderStatusBadge } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,6 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Format an ISO date as a short local date (e.g. "Jul 13"). */
@@ -19,6 +20,8 @@ function formatPlacedDate(iso: string): string {
 /** Order History: the caller's past orders, newest first. */
 export default function OrderHistoryScreen() {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const { data: orders, loading, error, refetch } = useOrderHistory();
 
   if (loading) return <ScreenLoader />;
@@ -34,12 +37,18 @@ export default function OrderHistoryScreen() {
   }
   if (!orders || orders.length === 0) {
     return (
-      <ScreenMessage
-        title="No orders yet"
-        subtitle="Your placed orders will show up here."
-        actionLabel="Start an order"
-        onAction={() => router.replace('/(tabs)/branches')}
-      />
+      <View
+        style={[styles.container, styles.emptyContainer, { backgroundColor: theme.background }]}
+      >
+        <EmptyState
+          iconName="receipt-outline"
+          title="No orders yet"
+          description="When you place an order, it'll show up here so you can track it and reorder in a tap."
+          actionLabel="Start an order"
+          onAction={() => router.replace('/(tabs)/branches')}
+          mode={mode}
+        />
+      </View>
     );
   }
 
@@ -78,6 +87,7 @@ export default function OrderHistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: Spacing.four },
   content: { padding: Spacing.four, gap: Spacing.three, paddingBottom: Spacing.six },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
