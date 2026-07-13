@@ -176,8 +176,8 @@ Scanned against the canonical Context Group Detection Table
   UPDATE PROCESS pass or when a role/permissions design doc is written.
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
-- No Dockerfile/docker-compose → no `container/` group
-- No CI/CD config (`.github/workflows`, `.circleci`, `.gitlab-ci`) → no `cicd/` group
+- `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
+- CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
 - Only 1 UI package (`packages/ui`) with 3 source files → below the 3+ dedicated dirs threshold for `uxui/`
 - No workflow/queue system → no `workflows/` group
@@ -302,7 +302,7 @@ Metro/Expo resolves them like any other dependency.
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
 - **Testing:** `packages/api` uses **vitest** + **supertest** (added STAFF-001). Run `pnpm --filter @jojopotato/api test` (requires `docker compose up -d` + `db:migrate` first). 34 tests covering auth and staff authz. No test runner exists for `apps/mobile` (no Jest/Vitest/Detox) — mobile verification is typecheck + lint + Agent-Probe only. See `process/context/tests/all-tests.md`.
-- **Deploy:** EAS Build/Submit planned (per user, 2026-07-08) but not yet wired — no `eas.json`, no `.github/workflows/` in the repo.
+- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
 
 ## Key Patterns and Conventions
 
@@ -387,7 +387,7 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 - **Database:** not decided.
 - **Payments processor:** not decided.
 - **Notifications provider:** not decided.
-- **CI/CD:** EAS Build/Submit is the intended path but not yet configured (no `eas.json`, no GitHub Actions workflow yet).
+- **CI/CD:** GitHub Actions CI exists (`.github/workflows/ci.yml`). EAS Build/Submit (deploy) is the intended path but not yet configured (no `eas.json`).
 
 ## Scan Metadata
 

@@ -31,19 +31,35 @@ async function seedStaffUser(branchIdBySlug: Map<string, string>): Promise<void>
     throw new Error('Seed error: cannot seed staff user — no branches were seeded');
   }
 
+  // Never seed a reusable dev credential into a production database.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Seed error: refusing to seed the staff test user while NODE_ENV=production');
+  }
+  // Prefer an env-provided password so the fallback dev credential is never the only option.
+  const staffPassword = process.env.STAFF_SEED_PASSWORD ?? 'staff-dev-password';
+
   try {
     await auth.api.signUpEmail({
-      body: { email: STAFF_EMAIL, password: 'staff-dev-password', name: 'Branch 1 Staff' },
+      body: { email: STAFF_EMAIL, password: staffPassword, name: 'Branch 1 Staff' },
     });
   } catch {
     // User already exists (email unique constraint) — fall through to the update
     // so re-seeding still guarantees the correct role/branch assignment.
   }
 
-  await db
+  // Verify the update actually hit a row: if signUpEmail failed for a NON-duplicate
+  // reason (e.g. password policy, transient auth error), no user exists and the
+  // update silently affects 0 rows — surface that instead of reporting success.
+  const [updated] = await db
     .update(users)
     .set({ role: 'staff', assignedBranchId: firstBranchId })
-    .where(eq(users.email, STAFF_EMAIL));
+    .where(eq(users.email, STAFF_EMAIL))
+    .returning({ id: users.id });
+  if (!updated) {
+    throw new Error(
+      'Seed error: staff user was not created — signUpEmail failed for a non-duplicate reason',
+    );
+  }
 }
 
 async function seedBranchesTable(): Promise<Map<string, string>> {

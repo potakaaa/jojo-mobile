@@ -18,12 +18,12 @@ metadata:
 ## Problem
 
 `packages/types/src/order.ts` defines `OrderStatus` as:
-```
+```text
 pending | confirmed | preparing | ready_for_pickup | completed | cancelled
 ```
 
 The DB `orders` table enum is:
-```
+```text
 pending | accepted | preparing | flavoring | ready | completed | cancelled
 ```
 

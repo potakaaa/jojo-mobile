@@ -12,7 +12,7 @@ phase: "STAFF-001"
 **Priority**: P0 — Milestone: Phase 3 Pickup Live Updates
 **GitHub Issue**: #31
 **Date**: 2026-07-13
-**Status**: VERIFIED (all automated + hybrid gates green per EVL; mobile Agent-Probe for AC1/AC4 operator on-device is the one remaining Known-Gap residual — no RN test runner)
+**Status**: COMPLETE_WITH_GAPS (all automated + hybrid gates green per EVL; mobile AC1/AC2/AC4 remain on-device Agent-Probe **pending operator confirmation** — Known-Gap, no RN test runner). Not VERIFIED until the device checks pass.
 
 ---
 
@@ -103,7 +103,7 @@ ALTER TABLE users ADD COLUMN assigned_branch_id uuid REFERENCES branches(id);
 
 All staff routes will be protected by a two-layer guard chain mounted in `packages/api/src/index.ts`:
 
-```
+```text
 Request → requireStaff(auth) → resolveBranchScope(db, req) → route handler → assertBranchScope(resolved, requested)
 ```
 
@@ -396,7 +396,7 @@ Proves:
 
 **Execution order dependency graph:**
 
-```
+```text
 A (schema + migrate) → B (server primitives) → C (types) → D (seed)
                      → E (tests — needs A, B, D done; E0 adds supertest first)
                      → F (mobile — needs C done; F3a/F3b/F3c also need B done for endpoint to exist)
@@ -468,7 +468,7 @@ Legacy line form:
 
 Failing stubs (Fully-Automated rows only):
 
-```
+```ts
 test("should assertBranchScope return true for same branch uuid (AC3 positive)", () => {
   throw new Error("NOT IMPLEMENTED — TDD stub for: assertBranchScope same branch → true")
 })

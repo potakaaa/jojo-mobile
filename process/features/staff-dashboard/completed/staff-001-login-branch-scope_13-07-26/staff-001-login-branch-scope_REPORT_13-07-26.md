@@ -3,7 +3,7 @@ phase: staff-001-login-branch-scope
 date: 2026-07-13
 status: COMPLETE_WITH_GAPS
 feature: staff-dashboard
-plan: process/features/staff-dashboard/active/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md
+plan: process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md
 ---
 
 # STAFF-001 Closeout Report
@@ -66,7 +66,7 @@ No locked `*_SPEC_*.md` file was produced for STAFF-001 (standalone plan, not a 
 | AC2 (mobile) | Customer cannot see (staff) stack | UNMET (Known-Gap) | Agent-Probe only — no RN runner |
 | AC3 (pure function) | assertBranchScope: same branch → true, different → false | MET | tests E4 + E5 (Fully-Automated) |
 | AC3 (route) | GET /api/staff/me staff → 200 + own assignedBranch | MET | test E7 (Hybrid) |
-| AC4 | Session persists across restarts via expo-secure-store | MET (server-side) | test E8 (auth regression) confirms no forked auth; mobile persistence is Agent-Probe only |
+| AC4 | Session persists across restarts via expo-secure-store | PARTIAL (server-side only; mobile Known-Gap) | test E8 (auth regression) confirms reuse of the server auth flow (no forked auth); `expo-secure-store` persistence across mobile restarts is UNVERIFIED — Agent-Probe pending |
 
 SPEC Gaps (backlog stubs required):
 - AC1-mobile: backlog → `mobile-e2e-navigation-harness_NOTE_09-07-26.md`
@@ -75,7 +75,7 @@ SPEC Gaps (backlog stubs required):
 
 ## Closeout Packet
 
-**1. Selected plan path:** `process/features/staff-dashboard/active/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md`
+**1. Selected plan path:** `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md`
 
 **2. Closeout classification:** Ready for UPDATE PROCESS archival (automated + hybrid EVL gates green; Known-Gap mobile residuals are documented; validate-contract PASS present in plan file)
 
