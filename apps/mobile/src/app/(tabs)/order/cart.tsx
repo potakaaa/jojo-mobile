@@ -1,13 +1,24 @@
 import type { MenuItem, PickupTime } from '@jojopotato/types';
-import { BranchCard, Button, CartItem, CartSummary, EmptyState } from '@jojopotato/ui';
+import {
+  BranchCard,
+  Button,
+  CartItem,
+  CartSummary,
+  CouponCard,
+  EmptyState,
+  Input,
+} from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
+import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
+import { checkDealEligibility } from '@/features/deals/lib/eligibility';
+import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -46,9 +57,10 @@ function productForLine(
 
 /**
  * Cart screen. Renders the selected branch (real branch data), line items with
- * quantity steppers + remove, an estimated pickup time, and the subtotal/total
+ * quantity steppers + remove, an estimated pickup time, coupon/deal apply-remove
+ * (mock deal catalog + client-side eligibility engine), and the subtotal/total
  * summary — all driven by the in-memory `useCart()` seam wired to the real
- * branch/menu/order backend. Coupons are deferred (no backend support yet).
+ * branch backend.
  */
 export default function CartScreen() {
   const theme = useTheme();
@@ -66,16 +78,81 @@ export default function CartScreen() {
     removeItem,
     clearCart,
     setBranch,
+    applyDiscount,
+    clearDiscount,
   } = useCart();
 
   const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
+
+  const [couponCode, setCouponCode] = useState('');
 
   const isEmpty = cart.items.length === 0;
   const pickupTime = useMemo(
     () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
     [branch?.estimatedPrepMinutes],
   );
+
+  // Re-lookup the applied deal from the mock catalog so richer display data
+  // (title, discountLabel) is sourced from the catalog, not just the stored
+  // label (deals-screens plan Decision #3). Falls back to stored fields on miss.
+  const appliedDeal = useMemo(
+    () =>
+      cart.appliedDiscount
+        ? MOCK_DEALS.find((d) => d.id === cart.appliedDiscount?.refId)
+        : undefined,
+    [cart.appliedDiscount],
+  );
+
+  // Expiry/ineligibility-at-checkout: if the applied deal has become ineligible
+  // (e.g. expired window, or subtotal dropped below its minimum after removing
+  // items), auto-clear it with a one-time notice. Home for this recheck is
+  // cart.tsx — checkout.tsx is a bare ComingSoon placeholder with no mount-time
+  // state to hook into (deals-screens plan step 9/12).
+  useEffect(() => {
+    const applied = cart.appliedDiscount;
+    if (!applied) return;
+    const deal = MOCK_DEALS.find((d) => d.id === applied.refId);
+    if (!deal) return;
+    const result = checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+    if (!result.eligible) {
+      clearDiscount();
+      Alert.alert('Deal removed', result.message);
+    }
+  }, [cart, clearDiscount]);
+
+  const handleApplyCoupon = () => {
+    const code = couponCode.trim();
+    if (!code) return;
+
+    const doApply = () => {
+      // Known gap: usage is not persisted here — real consumption happens at
+      // order placement (out of scope this round).
+      const result = resolveAndApplyDeal(code, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+      if (!result.ok) {
+        // Keep couponCode on failure so the user can see what they typed.
+        Alert.alert('Cannot apply deal', result.message);
+        return;
+      }
+      applyDiscount(result.discount);
+      setCouponCode('');
+    };
+
+    // One-deal-per-cart: replace-with-confirmation (mirrors this file's
+    // branch-switch confirmation UX; deals-screens plan step 11).
+    if (cart.appliedDiscount) {
+      Alert.alert(
+        'Replace applied deal?',
+        `This cart already has '${cart.appliedDiscount.label}' applied.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Replace', onPress: doApply },
+        ],
+      );
+      return;
+    }
+    doApply();
+  };
 
   // Switch pickup to the next real branch (cyclic). If the cart has items,
   // switching clears it first (branches can't be mixed — single-branch per order).
@@ -180,9 +257,40 @@ export default function CartScreen() {
 
               <View style={styles.couponSlot}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Coupon / reward</Text>
-                <Text style={[styles.couponNote, { color: theme.textSecondary }]}>
-                  Coupons coming soon
-                </Text>
+                {cart.appliedDiscount ? (
+                  <>
+                    <CouponCard
+                      coupon={{
+                        id: cart.appliedDiscount.refId,
+                        code: appliedDeal?.code ?? cart.appliedDiscount.label,
+                        title: appliedDeal?.title ?? 'Applied discount',
+                        discountLabel:
+                          appliedDeal?.discountLabel ?? `-${(discountTotalCents / 100).toFixed(2)}`,
+                        isRedeemed: false,
+                      }}
+                      mode={mode}
+                    />
+                    <Button
+                      label="Remove discount"
+                      variant="outline"
+                      onPress={clearDiscount}
+                      mode={mode}
+                    />
+                  </>
+                ) : (
+                  <View style={styles.couponEntry}>
+                    <View style={styles.couponInput}>
+                      <Input
+                        value={couponCode}
+                        onChangeText={setCouponCode}
+                        placeholder="Enter coupon code"
+                        autoCapitalize="characters"
+                        mode={mode}
+                      />
+                    </View>
+                    <Button label="Apply" size="sm" onPress={handleApplyCoupon} mode={mode} />
+                  </View>
+                )}
               </View>
 
               <CartSummary
@@ -268,9 +376,13 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
-  couponNote: {
-    fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.bodySmall,
+  couponEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  couponInput: {
+    flex: 1,
   },
   footer: {
     paddingHorizontal: Spacing.four,
