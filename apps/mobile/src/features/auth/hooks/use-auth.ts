@@ -1,3 +1,4 @@
+import { STAFF_ROLES } from '@jojopotato/types';
 import type { AuthUser, StaffRole, UserRole } from '@jojopotato/types';
 import {
   createContext,
@@ -131,9 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       : null;
     const role = user?.role ?? null;
-    const isStaff =
-      role !== null &&
-      (['staff', 'admin', 'super_admin'] as readonly StaffRole[]).includes(role as StaffRole);
+    const isStaff = role !== null && STAFF_ROLES.includes(role as StaffRole);
     return {
       user,
       role,

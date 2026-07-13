@@ -6,7 +6,8 @@
  */
 
 /** Roles allowed through the staff guard. Subset of `UserRole` (see `auth.ts`). */
-export type StaffRole = 'staff' | 'admin' | 'super_admin';
+export const STAFF_ROLES = ['staff', 'admin', 'super_admin'] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
 
 /** The branch a staff member is scoped to, as returned by `GET /api/staff/me`. */
 export interface StaffBranch {
