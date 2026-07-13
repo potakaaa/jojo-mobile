@@ -85,19 +85,36 @@ top of it later without re-plumbing the project.
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
-  `apps/mobile/src/features/{cart,branches,menu,orders,shared}/`; `CartProvider` mounted alongside
-  `AuthProvider` in `_layout.tsx`. `orders.order_number` is DB-unique/human-readable
-  (`JP-YYMMDD-XXXX`), `estimated_ready_at` is derived from the branch's `estimated_prep_minutes` at
-  placement time, each `POST /orders` is a fully independent transaction. `packages/types`'s
-  `OrderStatus` enum was rewritten from a 6-value placeholder to the real 7-value DB enum (breaking
-  rename, all consumers reconciled). Deferred/out of scope this pass: staff-side order-status
-  transitions, star-earning/rewards accrual, coupon redemption (`discount_total` stays `0`), live
-  `online_payment` processing (visibly disabled, no processor chosen — see §Open Questions),
-  polling/websocket live status updates (fetch-on-focus only). See
+  `apps/mobile/src/features/{cart,branches,menu,orders,shared}/`. `orders.order_number` is
+  DB-unique/human-readable (`JP-YYMMDD-XXXX`), `estimated_ready_at` is derived from the branch's
+  `estimated_prep_minutes` at placement time, each `POST /orders` is a fully independent
+  transaction. `packages/types`'s `OrderStatus` enum was rewritten from a 6-value placeholder to
+  the real 7-value DB enum (breaking rename, all consumers reconciled). Deferred/out of scope this
+  pass: staff-side order-status transitions, star-earning/rewards accrual, coupon redemption
+  (`discount_total` stays `0`), live `online_payment` processing (visibly disabled, no processor
+  chosen — see §Open Questions), polling/websocket live status updates (fetch-on-focus only). See
   `process/features/ordering-cart/_GUIDE.md` and `process/features/pickup-branches/_GUIDE.md` for
   the per-feature breakdown, and
   `process/general-plans/completed/pickup-order-flow_10-07-26/` for the full plan, validate
   journey, and closeout report.
+- **Cart architecture (superseded 13-07-26):** `pickup-order-flow`'s original `CartProvider`/
+  `useCart()` (`CartLine`-shaped, backed by `apps/mobile/src/features/cart/lib/cart-totals.ts`) is
+  **no longer in the codebase.** `development` independently shipped its own mock-only cart screen
+  (PR #62, CART-001 — see `process/features/ordering-cart/completed/cart-screen_09-07-26/`, now
+  archived as superseded) with a different, richer type/state model. When the two branches merged,
+  the user chose development's model as canonical and this branch's real backend wiring
+  (branches/menu/orders API calls) was ported onto it — see
+  `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`. The **current, real** cart
+  seam is `CartSessionProvider`/`useCart()` in `apps/mobile/src/features/cart/hooks/use-cart.ts`
+  (mounted in `_layout.tsx`, no `CartProvider` name remains), backed by `packages/types/src/cart.ts`'s
+  `Cart`/`CartItem`/`CartItemOption`/`AppliedDiscount` (not `CartLine`). `cart-totals.ts` is
+  deleted — totals (`subtotalCents`/`discountTotalCents`/`totalCents`) are now derived inside the
+  hook itself. The order-placement backend wiring (API routes, `order_number`, `estimated_ready_at`,
+  transaction independence, the `OrderStatus` rewrite described above) is **unchanged and still
+  real** — only the cart's own type/state layer changed. A coupon-apply UI exists in the merged
+  cart screen but is disabled/hidden (no backend coupon support yet, same `discount_total` stance
+  as before). The merge is EVL-verified but was staged, not yet committed, as of this pass — check
+  `git log`/`git status` before assuming it landed.
 - **Known tech debt:** un-gated "Dev: ..." nav links (added to manually exercise nested stacks
   before real UI existed) are resolved for `order/`, `branches/`, and
   `order/confirmation/[orderId].tsx` — the `pickup-order-flow` plan removed them once real
@@ -248,8 +265,8 @@ jojo-mobile/                           (package.json name: jojo-potato)
         features/
           auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam (backed by lib/auth-client.ts)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
-          cart/hooks/use-cart.ts       -- CartProvider + useCart(): reducer-based cart state (mirrors AuthProvider pattern)
-          cart/lib/cart-totals.ts      -- pure line/subtotal cents helpers
+          cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
+          cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
           branches/, menu/, orders/    -- api-client + hooks per domain (branches list/detail, branch menu, order create/get/history)
           shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars

@@ -15,14 +15,32 @@ order-placement → confirmation/tracking/history flow is real and working end-t
 `general-plans/` rather than this feature folder because it spanned both `ordering-cart` and
 `pickup-branches` as one continuous flow — see that plan's Scope section).
 
+**Cart type/state layer superseded (13-07-26):** `pickup-order-flow`'s original `CartProvider`/
+`useCart()` (`CartLine`-shaped, backed by `cart-totals.ts`) is no longer in the codebase. While this
+branch was building `pickup-order-flow`, `development` independently shipped its own cart screen
+(PR #62, this feature's own CART-001 plan — `process/features/ordering-cart/completed/cart-screen_09-07-26/`,
+now archived as superseded, its own EXECUTE never ran on this branch). When the branches merged, the
+user chose development's `Cart`/`CartItem`/`CartItemOption`/`AppliedDiscount`/`CartSessionProvider`
+model as canonical and this branch's real backend wiring was ported onto it — see
+`process/general-plans/completed/merge-cart-reconciliation_13-07-26/` for the full merge-resolution
+plan, the branch-switch regression it caught and fixed (Findings F1/F5), and its closeout report.
+The order-placement backend (API routes, `order_number`, pricing, transactions) described below is
+**unchanged** — only the cart's own type/state seam changed shape.
+
 **Done:** menu browsing (`GET /branches/:branchId/menu`), product size/flavor customization,
-cart state (`CartProvider`/`useCart()` reducer), price calculation (server-recomputed cents,
-never trusts client prices), checkout with `pay_at_branch`, order placement (`POST /orders`,
-DB-unique `order_number`, correct `estimated_ready_at`), confirmation/tracking/history screens.
+cart state (`CartSessionProvider`/`useCart()`, `Cart`/`CartItem`-shaped — see superseded note
+above), price calculation (server-recomputed cents, never trusts client prices; cart-side totals
+now derived inside the hook itself, `cart-totals.ts` deleted), checkout with `pay_at_branch`, order
+placement (`POST /orders`, DB-unique `order_number`, correct `estimated_ready_at`),
+confirmation/tracking/history screens.
 
 **Deferred / not yet done (future work, not a gap in what shipped):**
 - Live `online_payment` processing — visibly disabled this pass, no processor chosen yet.
-- Coupon redemption (`orders.discount_total` stays `0`).
+- Coupon redemption — a coupon-apply UI exists in the merged cart screen but is disabled/hidden
+  (`orders.discount_total` stays `0`, no backend coupon support yet).
+- Cart line-item product images — accepted cosmetic known-gap since the merge (`imageUrl:
+  undefined`; `CartItem` renders a placeholder), see `merge-cart-reconciliation_13-07-26`'s Test
+  Infra Improvement Notes for the follow-up options.
 - Automated mobile-side (RN) test coverage for the new cart/menu/checkout logic — see
   `process/context/tests/all-tests.md` §Known Gaps.
 
@@ -36,8 +54,10 @@ DB-unique `order_number`, correct `estimated_ready_at`), confirmation/tracking/h
 
 ## Related Context
 
-- `process/context/all-context.md` -- overall repo structure and tech stack, §Current Implementation State
-- `process/general-plans/completed/pickup-order-flow_10-07-26/` -- the plan, validate journey, and closeout report that delivered this
+- `process/context/all-context.md` -- overall repo structure and tech stack, §Current Implementation State (incl. "Cart architecture (superseded)")
+- `process/general-plans/completed/pickup-order-flow_10-07-26/` -- the plan, validate journey, and closeout report that delivered the backend-wired ordering flow
+- `process/general-plans/completed/merge-cart-reconciliation_13-07-26/` -- the plan that reconciled development's independently-shipped cart (PR #62) with this flow's real backend wiring; current canonical cart architecture
+- `process/features/ordering-cart/completed/cart-screen_09-07-26/` -- this feature's own CART-001 plan, archived as superseded (its requirements were fulfilled by development's PR #62 + the merge reconciliation, not by executing this plan itself)
 
 ## Current Status
 
