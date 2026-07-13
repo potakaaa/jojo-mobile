@@ -1,0 +1,33 @@
+{
+  "feature": "auth-accounts",
+  "plan": "dev-temp-login-button_PLAN_13-07-26.md",
+  "evl_run": "post-DONE confirmation sweep",
+  "date": "2026-07-13",
+  "run_context": "EVL Step 3 — independent re-run of validate-contract gates (not diff-aware; exact contract gates)",
+  "gates": [
+    {
+      "id": "G1",
+      "command": "pnpm --filter @jojopotato/api test",
+      "status": "PASS",
+      "detail": "47/47 tests, 6 files. New seed-test-user.test.ts: 3/3 (create+sign-in, idempotent double-call, prod-guard throws+0-rows). Existing auth.integration.test.ts 5/5, no regressions."
+    },
+    { "id": "G2", "command": "tsc --noEmit (packages/api)", "status": "PASS", "detail": "exit 0" },
+    { "id": "G3", "command": "tsc --noEmit (apps/mobile)", "status": "PASS", "detail": "exit 0" },
+    {
+      "id": "G4",
+      "command": "pnpm lint",
+      "status": "PASS",
+      "detail": "6/6 tasks, 0 errors. 3 pre-existing warnings in untouched apps/mobile/scripts/dev-with-tunnel.mjs (unused eslint-disable), not a regression."
+    }
+  ],
+  "hard_constraints": {
+    "dev_auto_login_files_unmodified": true,
+    "prod_guard_throws_not_noop": true,
+    "button_behind_real_dev_conditional": true,
+    "password_deviation_consistent": "all literal password values = jojo1234; residual jojo123 only in explanatory comments/test-description strings (non-functional)"
+  },
+  "overall": "PASS",
+  "known_gaps": [
+    "AC-5..AC-9 mobile UI behavior (visibility, tap-to-authed, loading/disabled, error-on-unseeded, __DEV__ strip) — Agent-Probe/Known-Gap; inherited project-wide no-RN-runner residual, already backlogged."
+  ]
+}
