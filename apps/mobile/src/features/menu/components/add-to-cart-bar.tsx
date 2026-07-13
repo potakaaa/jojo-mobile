@@ -56,7 +56,9 @@ export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: Add
       <View style={styles.row}>
         <View>
           <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Total</Text>
-          <Text style={[styles.price, { color: theme.text }]}>{formatCurrency(unitPriceCents)}</Text>
+          <Text style={[styles.price, { color: theme.text }]}>
+            {formatCurrency(unitPriceCents)}
+          </Text>
         </View>
         {isAvailable ? (
           <Button

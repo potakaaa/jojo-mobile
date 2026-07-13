@@ -33,8 +33,12 @@ function toMenuItem(product: Product, categoryId: string): MenuItem {
 export default function BranchDetailsScreen() {
   const theme = useTheme();
   const { branchId } = useLocalSearchParams<{ branchId: string }>();
-  const { branches, isLoading: branchLoading, isError: branchError, refetch: refetchBranch } =
-    useBranch();
+  const {
+    branches,
+    isLoading: branchLoading,
+    isError: branchError,
+    refetch: refetchBranch,
+  } = useBranch();
   const branch = branches.find((b) => b.id === branchId) ?? null;
   const menu = useMenu();
 
