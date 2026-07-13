@@ -10,6 +10,7 @@ import {
   PAYMENT_METHOD_ICONS,
   PAYMENT_METHOD_LABELS,
 } from '@jojopotato/ui';
+import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -284,10 +285,7 @@ export default function CheckoutScreen() {
             ]}
           >
             <Button
-              label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
-                style: 'currency',
-                currency: 'PHP',
-              })}`}
+              label={`Place order • ${formatCurrency(totalCents)}`}
               onPress={openConfirm}
               loading={isPlacingOrder}
               disabled={isEmpty}

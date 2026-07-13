@@ -58,25 +58,17 @@ const OPTIONS: OptionSpec[] = [
  * Checkout "Change" row and the Order Confirmation summary so the label list
  * lives in exactly one place.
  */
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  pay_at_branch: 'Pay at pickup',
-  app_wallet: 'App wallet',
-  gcash: 'GCash',
-  maya: 'Maya',
-  card: 'Credit/debit card',
-};
+export const PAYMENT_METHOD_LABELS = Object.fromEntries(
+  OPTIONS.map((option) => [option.method, option.label]),
+) as Record<PaymentMethod, string>;
 
 /**
  * Shared source of truth for payment-method icons, reused by the Checkout
  * "Change" row so the selected method shows its glyph alongside the label.
  */
-export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, keyof typeof Ionicons.glyphMap> = {
-  pay_at_branch: 'storefront-outline',
-  app_wallet: 'wallet-outline',
-  gcash: 'phone-portrait-outline',
-  maya: 'card-outline',
-  card: 'card-outline',
-};
+export const PAYMENT_METHOD_ICONS = Object.fromEntries(
+  OPTIONS.map((option) => [option.method, option.icon]),
+) as Record<PaymentMethod, keyof typeof Ionicons.glyphMap>;
 
 /**
  * Per-method availability (D2): `pay_at_branch` is always selectable;

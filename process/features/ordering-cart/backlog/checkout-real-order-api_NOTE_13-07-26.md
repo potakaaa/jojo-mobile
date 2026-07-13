@@ -27,14 +27,15 @@ so the backend swap is isolated. This note tracks the deferred real work.
    commit time, returning the same `branch_unavailable` / `item_unavailable`
    discriminated failures the mock returns.
 
-3. **Mobile HTTP client swap-in point.** The ONLY file that changes on the app
-   side is `apps/mobile/src/features/order/hooks/use-order.ts` — replace the
-   in-memory `validatePlaceOrderRequest` + `buildOrderFromRequest` calls with a
-   `fetch('{apiUrl}/api/orders', ...)` call. `PlaceOrderRequest` /
-   `PlaceOrderResult` / `Order` need no change (already backend-shaped). Screen
-   consumers (`checkout.tsx`, `confirmation/[orderId].tsx`) need no change.
-   The confirmation screen's `lastOrder` fallback should become a real
-   `GET /api/orders/:orderNumber` fetch for direct-link / cold-start resilience.
+3. **Mobile HTTP client swap-in points.** Two app-side files change:
+   - `apps/mobile/src/features/order/hooks/use-order.ts` — replace the in-memory
+     `validatePlaceOrderRequest` + `buildOrderFromRequest` calls with a
+     `fetch('{apiUrl}/api/orders', ...)` call.
+   - `apps/mobile/src/app/(tabs)/order/confirmation/[orderId].tsx` — replace the
+     `lastOrder` fallback with a real `GET /api/orders/:orderNumber` fetch for
+     direct-link / cold-start resilience.
+   `PlaceOrderRequest` / `PlaceOrderResult` / `Order` need no change (already
+   backend-shaped), and `checkout.tsx` needs no change.
 
 4. **Payment-gateway integration for `online_payment`.** Currently flag-gated
    off by default (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED=false`) and a UI-only
