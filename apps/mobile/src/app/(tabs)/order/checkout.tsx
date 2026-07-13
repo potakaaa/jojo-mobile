@@ -12,9 +12,10 @@ import {
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import {
   MOCK_BRANCH_PREP_MINUTES,
@@ -70,6 +71,7 @@ export default function CheckoutScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
 
   const { cart, subtotalCents, discountTotalCents, totalCents } = useCart();
   const { placeOrder, isPlacingOrder, paymentMethod } = useOrder();
@@ -134,7 +136,7 @@ export default function CheckoutScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={[]}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
@@ -205,7 +207,14 @@ export default function CheckoutScreen() {
           {__DEV__ ? <DevEdgeCaseControls mode={mode} /> : null}
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            Platform.OS !== 'web' && {
+              paddingBottom: getFloatingTabBarClearance(insets.bottom),
+            },
+          ]}
+        >
           <Button
             label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
               style: 'currency',
