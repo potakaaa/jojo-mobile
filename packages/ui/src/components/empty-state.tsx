@@ -34,7 +34,12 @@ export function EmptyState({
 
   return (
     <View style={[styles.container, style]}>
-      <View style={[styles.iconCircle, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+      <View
+        style={[
+          styles.iconCircle,
+          { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+        ]}
+      >
         <Ionicons name={iconName} size={40} color={theme.textSecondary} />
       </View>
       <Text style={[styles.title, { color: theme.text }]}>{title}</Text>

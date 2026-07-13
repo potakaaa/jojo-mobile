@@ -92,7 +92,10 @@ export function BranchCard({ branch, onPress, mode = 'light', footer, onChange }
 
   return (
     <View
-      style={[styles.container, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}
+      style={[
+        styles.container,
+        { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+      ]}
     >
       {content}
     </View>

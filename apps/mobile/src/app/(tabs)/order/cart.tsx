@@ -44,7 +44,11 @@ function estimatedPickup(prepMinutes: number): PickupTime {
 }
 
 /** Resolve a cart line to a `MenuItem` for `<CartItem>` (snapshot-consistent). */
-function productForLine(menuItemId: string, nameSnapshot: string, unitPriceCents: number): MenuItem {
+function productForLine(
+  menuItemId: string,
+  nameSnapshot: string,
+  unitPriceCents: number,
+): MenuItem {
   const catalog = MOCK_PRODUCTS.find((p) => p.id === menuItemId);
   return {
     id: menuItemId,

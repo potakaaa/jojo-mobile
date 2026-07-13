@@ -122,10 +122,7 @@ export function CartSessionProvider({
   }, []);
 
   const value = useMemo<CartSessionState>(() => {
-    const subtotalCents = cart.items.reduce(
-      (sum, it) => sum + it.unitPriceCents * it.quantity,
-      0,
-    );
+    const subtotalCents = cart.items.reduce((sum, it) => sum + it.unitPriceCents * it.quantity, 0);
     const discountTotalCents = cart.appliedDiscount?.amountCents ?? 0;
     const totalCents = Math.max(0, subtotalCents - discountTotalCents);
     const itemCount = cart.items.reduce((sum, it) => sum + it.quantity, 0);
