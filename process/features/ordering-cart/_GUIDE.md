@@ -9,23 +9,30 @@ item display, cart state (add/remove/update quantity), price calculation, and th
 sequence leading up to order placement. Payments processor is not yet decided (see
 `process/context/all-context.md`).
 
-**Status as of setup: not started.** No source files exist yet for this feature — `packages/types`
-has placeholder types reserved for menu/cart/order domains, but no implementation.
+**Status as of 13-07-26:** Cart (CART-001) and Checkout + Order Confirmation + Payment-method
+selection (CART-002, issue #18, and its follow-up) are implemented — real screen UI backed by
+in-memory state seams (`useCart()`, `useOrder()`), not a real backend. Menu browsing is still
+not started.
 
 ## Key Source Files
 
-None yet. Expected future locations based on current repo conventions:
-- `apps/mobile/src/app/` -- Expo Router routes for menu/cart/checkout screens
-- `packages/types/src/` -- shared menu, cart, and order domain types (placeholders exist)
-- `packages/ui/src/` -- shared UI components (cart item, price display, etc.)
+- `apps/mobile/src/app/(tabs)/order/{checkout.tsx, payment-method.tsx, confirmation/[orderId].tsx}` -- checkout, payment-method, confirmation screens
+- `apps/mobile/src/features/cart/hooks/use-cart.ts`, `apps/mobile/src/features/order/hooks/use-order.ts` -- in-memory state seams
+- `apps/mobile/src/features/order/mock-order.ts` -- pure order-building/validation functions (unit-tested via vitest)
+- `packages/types/src/order.ts`, `packages/types/src/cart.ts` -- shared cart/order domain types
+- `packages/ui/src/components/{cart-item, branch-card, payment-method-selector, order-status-badge, order-status-timeline}.tsx` -- shared UI
+- Menu browsing screens/types: not started yet — `packages/types/src/menu.ts` remains a placeholder.
 
 ## Related Context
 
-- `process/context/all-context.md` -- overall repo structure and tech stack
+- `process/context/all-context.md` -- overall repo structure and tech stack, §Current Implementation State for the Order-flow detail
+- `process/features/ordering-cart/completed/checkout-flow_13-07-26/` -- CART-002 plan (Gate: PASS)
+- `process/features/ordering-cart/completed/payment-method-screen_13-07-26/` -- payment-method screen plan (Gate: PASS)
+- `process/features/ordering-cart/backlog/` -- real order API + payment-method enum divergence follow-ups
 
 ## Current Status
 
-Status: not-started
+Status: in-progress (Cart + Checkout + Payment-method done; Menu browsing not started)
 
 ## Folder Contents
 

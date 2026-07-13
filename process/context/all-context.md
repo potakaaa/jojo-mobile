@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-09
+Last updated: 2026-07-13
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 09-07-26)
+## Current Implementation State (as of 13-07-26)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -77,20 +77,44 @@ top of it later without re-plumbing the project.
   and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
   is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
   both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
-- **Screens:** Home tab (`(tabs)/index.tsx`) is the only tab with real business UI. Every other
-  tab-root screen (`order/index.tsx`, `rewards/index.tsx`, `branches/index.tsx`,
-  `account/index.tsx`) and every nested/pushed screen under them (product details, cart, checkout,
-  branch details, notifications, etc.) is still a `<ComingSoon>` placeholder. Building out real
-  feature UI for these is future work — the navigation shell only proves the route
-  structure/typed-params/stack-nesting works end-to-end.
+- **Screens:** Home tab (`(tabs)/index.tsx`) has real business UI. The Order tab now also has real
+  business UI for cart → checkout → confirmation: Cart (CART-001, tab-root `order/index.tsx`),
+  Checkout (`order/checkout.tsx`), Payment-method selection (`order/payment-method.tsx`, follow-up
+  screen), and Order Confirmation (`order/confirmation/[orderId].tsx`) are all real screens backed
+  by in-memory state seams (`useCart()`/`useOrder()`) — **not** a real backend (see next bullet).
+  Every other tab-root screen (`rewards/index.tsx`, `branches/index.tsx`, `account/index.tsx`) and
+  every nested/pushed screen outside the Order cart/checkout path (product details, branch details,
+  notifications, order tracking, etc.) is still a `<ComingSoon>` placeholder. Building out real
+  feature UI for those is future work — the navigation shell proves the route
+  structure/typed-params/stack-nesting works end-to-end for the untouched screens.
+- **Order flow contract-shaped mock boundary:** `placeOrder()` (in `useOrder()`, backed by pure
+  functions in `apps/mobile/src/features/order/mock-order.ts`) is an **in-memory seam** whose
+  request/response TypeScript shapes mirror the real intended `POST /api/orders` API (real Drizzle
+  enum values/field names from `packages/api/src/db/schema/{orders,order_items}.ts`) — there is no
+  Express route, no Drizzle write, and no HTTP client yet. `packages/types/src/order.ts` carries the
+  full `Order`/`OrderItem`/`PlaceOrderRequest`/`PlaceOrderResult` contract (7-value `OrderStatus`:
+  `pending/accepted/preparing/flavoring/ready/completed/cancelled`). The real endpoint is a tracked
+  follow-up — see `process/features/ordering-cart/backlog/checkout-real-order-api_NOTE_13-07-26.md`.
+  App-side `PaymentMethod` (`pay_at_branch|app_wallet|gcash|maya|card`) intentionally diverges from
+  the DB `payment_method` enum (`pay_at_branch|online_payment`) — mock/UI-only widening, no
+  migration; `payment_status` stays `'unpaid'` for every method. See
+  `process/features/ordering-cart/backlog/payment-method-enum-divergence_NOTE_13-07-26.md`.
+  `apps/mobile/src/config/env.ts` gained `onlinePaymentEnabled` (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED`,
+  default false) gating which payment methods are selectable.
+- **Verification level for the Order flow:** code-verified only (typecheck/lint/format/raw-token
+  gates green, plus `vitest` unit tests for the pure seam functions in `apps/mobile` — the repo's
+  first `apps/mobile` test runner, node-environment, pure-TS only) and Agent-Probe walkthroughs. No
+  simulator/device run and no project-wide E2E harness exist yet — see the E2E known-gap below.
 - **Known tech debt:** the placeholder tab-root screens carry temporary "Dev: ..." nav links
   (added to manually exercise nested stacks) that are **not** gated behind `__DEV__` — see
   `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md`.
 - **Known gap:** no automated E2E/regression harness exists for any navigation flow (project-wide
   test-runner gap, see `tests/all-tests.md`) — see
   `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`.
-- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (archived
-  plan — read for full route tree, decisions, and validate-contract).
+- Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
+  shell — archived plan, full route tree/decisions/validate-contract) and
+  `process/features/ordering-cart/completed/{checkout-flow_13-07-26,payment-method-screen_13-07-26}/`
+  (Checkout/Confirmation + Payment-method screens, issue #18 and its follow-up).
 
 ## Quick Start
 
@@ -115,14 +139,14 @@ For most substantial tasks:
 |---|---|
 | `process/context/all-context.md` | any substantial planning, research, review, or implementation task |
 | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
+| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
 
 ## Current Context Groups
 
 | Group | Entry point | Scope |
 |---|---|---|
 | `planning/` | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
+| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
 <!-- /GENERATED:routing -->
 
 No other context groups exist beyond the baseline `tests`/`planning` groups every repo gets
@@ -218,12 +242,15 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, phone-otp, terms
           (tabs)/                      -- authenticated 5-tab shell (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
-            index.tsx                  -- Home tab root (only tab with real business UI)
-            order/, rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
+            index.tsx                  -- Home tab root (real business UI)
+            order/                     -- real UI: index.tsx (Cart, CART-001), checkout.tsx, payment-method.tsx, confirmation/[orderId].tsx; other nested screens (tracking, product details) still <ComingSoon>
+            rewards/, branches/, account/  -- per-tab folders, each with its own _layout.tsx (Stack) + nested screens; tab-root index.tsx is <ComingSoon> placeholder
         features/
           auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam (backed by lib/auth-client.ts)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
-        config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
+          cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): in-memory cart state seam (mock-cart.ts seed data)
+          order/hooks/use-order.ts     -- OrderSessionProvider + useOrder(): in-memory placeOrder() seam, contract-shaped to mirror the real orders/order_items schema (mock-order.ts pure functions)
+        config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars (incl. onlinePaymentEnabled)
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
         components/                    -- floating-tab-bar.tsx (ICONS map keyed by route name), coming-soon.tsx (isNestedScreen? prop)
@@ -261,7 +288,7 @@ Metro/Expo resolves them like any other dependency.
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
-- **Testing:** none configured yet — no Jest/Vitest/Detox in any `package.json`. Do not assume a test runner exists; propose one when a feature plan needs test coverage.
+- **Testing:** `vitest` in `packages/api` (integration, needs local Postgres) and `apps/mobile` (pure-TS logic, node env, added by the checkout-flow plan); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
 - **Deploy:** EAS Build/Submit planned (per user, 2026-07-08) but not yet wired — no `eas.json`, no `.github/workflows/` in the repo.
 
 ## Key Patterns and Conventions
