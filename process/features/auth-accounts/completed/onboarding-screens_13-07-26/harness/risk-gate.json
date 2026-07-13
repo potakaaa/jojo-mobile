@@ -1,0 +1,9 @@
+{
+  "task": "onboarding-screens (post-auth 3-step account onboarding)",
+  "planPath": "process/features/auth-accounts/active/onboarding-screens_13-07-26/onboarding-screens_PLAN_13-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": ["auth or identity", "schema/data migration", "public API or external contract changes"],
+  "mustStopBeforeFinalize": true,
+  "humanApprovalRequired": true,
+  "why": "Adds nullable users.address + users.onboarded_at columns (migration 0002) and exposes birthday/address/onboardedAt as writable better-auth additionalFields (input:true, self-data only; role stays input:false). Touches auth identity payload, a DB migration, and the better-auth API contract consumed by the mobile client. Manual-first evidence required before finalize."
+}

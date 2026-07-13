@@ -219,7 +219,16 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
         Shadows.offsetMd,
       ]}
     >
+      {/*
+        Filter to the known 5-tab allowlist (`ICONS` keys) before rendering.
+        `<Tabs>` auto-appends every undeclared file-system child of `(tabs)/` to
+        `state.routes` (e.g. the non-tab `deals/` stack), and this custom tab bar
+        ignores `href:null`/`tabBarButton` — so without this filter, `deals`
+        would render as an unstyled 6th tab button. Reachability of `deals` is
+        via `router.push` only. See deals-screens plan Decision #1 / step 5b.
+      */}
       {state.routes.map((route, i) => {
+        if (!(route.name in ICONS)) return null;
         const isActive = state.index === i;
         const options = descriptors[route.key]?.options ?? {};
         const label = typeof options.title === 'string' ? options.title : route.name;

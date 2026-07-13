@@ -19,8 +19,22 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1783656505601,
-      "tag": "0002_powerful_earthquake",
+      "when": 1783908920079,
+      "tag": "0002_bored_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783927846068,
+      "tag": "0003_lean_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783930586644,
+      "tag": "0004_add_branch_priority",
       "breakpoints": true
     }
   ]

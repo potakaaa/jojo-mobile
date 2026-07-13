@@ -145,3 +145,88 @@ describe('google oauth (config-level wiring)', () => {
     expect(res.url!).toContain('client_id=test-google-client-id');
   });
 });
+
+/**
+ * Reconstruct a `Cookie` request header from the `Set-Cookie`(s) a better-auth
+ * response wrote, so a follow-up server API call is authenticated as that user.
+ * Takes each cookie's `name=value` (drops attributes) and joins them — exactly
+ * what a browser sends back.
+ */
+function cookieFromHeaders(headers: Headers): string {
+  const all =
+    typeof headers.getSetCookie === 'function'
+      ? headers.getSetCookie()
+      : [headers.get('set-cookie') ?? ''];
+  return all
+    .map((c) => c.split(';')[0])
+    .filter(Boolean)
+    .join('; ');
+}
+
+describe('profile fields (updateUser self-write, additionalFields input:true)', () => {
+  // B0: proves the high-risk auth API-contract change — a signed-in user may
+  // write their OWN birthday/address/onboardedAt and read them back, but a
+  // `role` write is still ignored (elevation guard). Also documents the
+  // read-back shape (Date vs ISO string) that `use-auth.ts` maps to string|null.
+  it('lets a signed-in user write birthday/address/onboardedAt and read them back, but ignores a role write', async () => {
+    const email = `profile-${unique()}@example.com`;
+    const password = 'sup3r-secret-pw';
+
+    // Sign up to get an authenticated session cookie.
+    const { headers: signUpHeaders } = await auth.api.signUpEmail({
+      body: { email, password, name: 'Profile Person' },
+      returnHeaders: true,
+    });
+    const cookie = cookieFromHeaders(signUpHeaders);
+    expect(cookie, 'signUpEmail should set a session cookie').toBeTruthy();
+    const authedHeaders = new Headers({ cookie });
+
+    const birthday = '1990-05-15';
+    const address = '123 Spud Lane';
+    const onboardedAt = new Date();
+
+    // Self-write the three input:true profile fields.
+    await auth.api.updateUser({
+      body: { birthday, address, onboardedAt },
+      headers: authedHeaders,
+    });
+
+    // Read back on the session — additionalFields ride the session user payload.
+    const session = await auth.api.getSession({ headers: authedHeaders });
+    expect(session, 'session should resolve for the authed caller').toBeTruthy();
+    const sessionUser = session!.user as Record<string, unknown>;
+    expect(sessionUser.address).toBe(address);
+    // birthday is additionalField type:'string' — read back as an ISO date string.
+    expect(String(sessionUser.birthday).slice(0, 10)).toBe(birthday);
+    // onboardedAt is additionalField type:'date' — present and non-null after write.
+    expect(sessionUser.onboardedAt).not.toBeNull();
+    expect(sessionUser.onboardedAt).toBeDefined();
+
+    // Persistence proof direct from Postgres (drizzle column read-back shape):
+    // `birthday` (date column) → 'YYYY-MM-DD' string; `onboarded_at` (timestamp) → Date.
+    const [row] = await db.select().from(users).where(eq(users.email, email));
+    expect(row).toBeDefined();
+    expect(row!.address).toBe(address);
+    expect(String(row!.birthday)).toContain(birthday);
+    expect(row!.onboardedAt).not.toBeNull();
+    expect(row!.onboardedAt).toBeInstanceOf(Date);
+
+    // Elevation guard: attempting to set `role` (input:false) must NOT persist —
+    // better-auth either throws or strips the field; either way the role is
+    // unchanged. This mirrors the signup role-rejection test's intent.
+    let roleWriteThrew = false;
+    try {
+      await auth.api.updateUser({
+        body: { role: 'admin' } as never,
+        headers: authedHeaders,
+      });
+    } catch {
+      roleWriteThrew = true;
+    }
+
+    const [afterRoleWrite] = await db.select().from(users).where(eq(users.email, email));
+    expect(afterRoleWrite!.role, 'role must stay customer (input:false guard)').toBe('customer');
+    // Document behavior: whether it threw or silently stripped, role stayed customer.
+    expect(typeof roleWriteThrew).toBe('boolean');
+  });
+});

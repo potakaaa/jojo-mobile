@@ -1,0 +1,11 @@
+{
+  "task": "onboarding-screens (post-auth 3-step account onboarding)",
+  "decision": "approved-with-concerns",
+  "reviewer": "vc-execute-agent self-review vs onboarding-screens_PLAN_13-07-26.md + validate-contract E1-E7",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "Mobile hook + (onboarding) screen runtime behavior (nav-gate flip after completeProfile, form/skip/validation UX) has NO automated coverage — project-wide RN test-runner gap. Accepted named Known-Gap; requires Agent-Probe manual confirmation (AC2/AC3/AC4/AC6) before whole-plan VERIFIED. Backlog test-building stub required at UPDATE PROCESS.",
+    "Dev-bypass (packages/api/src/lib/dev-auto-login.ts) sessions start onboarded_at=NULL, so the dev auto-login user will hit post-auth onboarding until completed once. Left as-is per plan (optional to seed onboarded_at)."
+  ],
+  "notes": "All fully-automated + hybrid gates green: migration 0002 adds exactly two nullable columns (hard constraint held), db:migrate applied, 27 vitest tests pass incl. B0 self-write persistence + role-rejection + read-back-shape, typecheck + lint clean, AC7 UI-only styling, AC1 zero (auth)/ changes. role stays input:false (no privilege escalation). This decision covers the high-risk backend/contract surface; the manual mobile walkthrough is still outstanding."
+}

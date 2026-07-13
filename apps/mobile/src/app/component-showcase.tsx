@@ -72,6 +72,14 @@ const SAMPLE_DEAL: Deal = {
   title: 'Fry-day Combo',
   description: 'Any large fries + a drink, every Friday.',
   discountLabel: '-25%',
+  dealType: 'percentage_discount',
+  discountValue: 25,
+  minimumOrderAmount: 0,
+  startAt: new Date().toISOString(),
+  endAt: new Date().toISOString(),
+  isActive: true,
+  eligibleProductIds: [],
+  eligibleBranchIds: [],
 };
 
 const SAMPLE_BRANCH: PickupBranch = {

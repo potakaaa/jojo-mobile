@@ -1,0 +1,13 @@
+{
+  "task": "STAFF-001 — Staff login and branch-scoped access",
+  "reviewer": "vc-execute-agent (self-review against approved plan STAFF-001; PVL Gate: PASS)",
+  "decision": "approved",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "Mobile role-gate, useStaffMe hook, and shell render remain Agent-Probe (no RN test runner) — documented known-gap; requires operator manual confirmation before VERIFIED status.",
+    "Within-blast-radius deviation: app.listen guarded behind NODE_ENV!=='test' && VITEST!=='true' so importing `app` in supertest tests (E6/E7) never binds port 3000. Necessary to make the plan's supertest route tests work.",
+    "Within-blast-radius deviation: explicit `Express` / `Router` type annotations added on the now-exported `app` and `staffRouter` (TS2883 portability requirement once exported).",
+    "Within-blast-radius deviation: added `@jojopotato/types` as a packages/api dependency — required by plan B1/P5 (types package is the canonical StaffRole source) but not previously a dependency."
+  ],
+  "notes": "Implementation matches the approved plan. All fully-automated + hybrid gates green (34/34 api tests, typecheck x3, lint clean). Auth reuses better-auth session (no forked logic, AC4). Server-side authz is the trust boundary (AC2/AC3) verified by integration tests against real Postgres. Canary accepts no client branch id => cross-branch read structurally impossible. No admin/super_admin bypass (TODO(STAFF-ADM) seam only). Scope guards honored: no real data endpoints, no fetch library, single authClient.$fetch, inert nav cards, theme tokens only."
+}

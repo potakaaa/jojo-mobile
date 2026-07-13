@@ -1,4 +1,4 @@
-import { Badge, BranchCard, RewardProgressCard } from '@jojopotato/ui';
+import { Badge, BranchCard, Button, Card, RewardProgressCard } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -63,6 +63,13 @@ export default function HomeScreen() {
           <BranchCard branch={MOCK_BRANCH} onPress={openBranch} />
           <PromoBanner />
           <RewardProgressCard rewards={MOCK_REWARDS} />
+          <Card style={styles.dealsCard}>
+            <Text style={[styles.dealsHeading, { color: theme.text }]}>Deals & offers</Text>
+            <Text style={[styles.dealsSubtitle, { color: theme.textSecondary }]}>
+              Save on your next order with active deals at your branch.
+            </Text>
+            <Button label="View deals" size="sm" onPress={() => router.push('/(tabs)/deals')} />
+          </Card>
           <CategorySelector categories={MOCK_CATEGORIES} />
           <View style={styles.sectionTitleRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
@@ -102,5 +109,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+  },
+  dealsCard: {
+    gap: Spacing.two,
+  },
+  dealsHeading: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  dealsSubtitle: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
 });

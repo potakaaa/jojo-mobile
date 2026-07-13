@@ -59,13 +59,16 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26, incl. merge-menu-api-reconciliation)
+## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
   nested `Stack` navigators so deep screens (Product Details, Cart, Checkout, Branch Details, etc.)
-  have somewhere to live with correct back-navigation. Root gating (`(tabs)` vs `(auth)`) uses
-  `Stack.Protected` in `apps/mobile/src/app/_layout.tsx`.
+  have somewhere to live with correct back-navigation. Root gating is now a FOUR-way, role-aware
+  `Stack.Protected` split in `apps/mobile/src/app/_layout.tsx`: staff/admin/super_admin →
+  `(staff)` (checked FIRST — staff skip customer profile onboarding); customer with completed
+  profile → `(tabs)`; customer without → `(onboarding)` (see the post-auth onboarding entry
+  below); unauthenticated → `(auth)`.
 - **Auth:** real provider decided and wired — **better-auth**, hosted in `packages/api` (Express +
   Drizzle + Postgres). Server config lives in `packages/api/src/lib/auth.ts` (email/password, phone
   OTP, Google OAuth, magic link), mounted at `/api/auth/*` in `src/index.ts`; the existing `users`
@@ -77,11 +80,62 @@ top of it later without re-plumbing the project.
   and slide (30-day expiry, 1-day refresh). Phone-OTP SMS delivery is a server-side STUB (the code
   is logged, not texted) and a live Google OAuth round-trip needs real provisioned credentials —
   both flagged as follow-ups. `role` is server-owned (`input: false`), defaulting to `customer`.
+  `useAuth()` also exposes `isStaff: boolean` (role ∈ {staff, admin, super_admin}) — STAFF-001.
+- **Post-auth onboarding (DELIVERED):** a second, separate onboarding layer sits between login and
+  Home — distinct from the existing pre-auth welcome flow, which is unchanged. `users` gains two
+  nullable columns (`address`, `onboarded_at`, migration `0002_bored_captain_flint.sql`);
+  `birthday`/`address`/`onboardedAt` are now client-writable better-auth `additionalFields`
+  (`input:true`; `role` stays `input:false`). `useAuth()` gains `hasCompletedProfile`
+  (`user?.onboardedAt != null`) and `completeProfile()` (calls `authClient.updateUser` then
+  explicitly `refetch()`s the session so the nav gate flips without an app restart). `_layout.tsx`'s
+  root gate is three mutually-exclusive `Stack.Protected` blocks: `isAuthenticated &&
+  hasCompletedProfile` → `(tabs)`; `isAuthenticated && !hasCompletedProfile` → new `(onboarding)`
+  route group; `!isAuthenticated` → `(auth)` (unchanged). The new `(onboarding)/index.tsx` is a
+  single screen with 3 internal steps (feature previews → promo previews, both skippable — Skip
+  jumps to the info form, never Home — → a required Full name/birthday/address form; submitting
+  completes onboarding). The birthday field is three separate auto-tabbing MM/DD/YYYY numeric
+  inputs (not one free-text field) backed by an enhanced shared `@jojopotato/ui` `Input`
+  (`forwardRef<TextInput, InputProps>` + optional `maxLength`/`onKeyPress`/`textAlign`/
+  `returnKeyType` passthrough props, added additively — existing callers unaffected); the assembled
+  value is still validated and submitted as a single `YYYY-MM-DD` string. Server-side persistence
+  (self-write + `role`-write-rejection + read-back shape) has real automated coverage
+  (`packages/api/src/lib/__tests__/auth.integration.test.ts`); typecheck/lint/migration-sync/AC1
+  pre-auth-regression are all automated-green. **Caveat: the mobile runtime behavior — the
+  nav-gate flip, Skip semantics, and the MM/DD/YYYY auto-tab form validation — is covered by manual
+  Agent-Probe only.** No automated RN-runner coverage exists for this surface (project-wide gap, see
+  `tests/all-tests.md`); it remains a tracked backlog gap, not a claimed automated coverage. The
+  user's manual Agent-Probe walkthrough (AC1–AC7) confirmed the flow works end to end. Delivered by:
+  `process/features/auth-accounts/completed/onboarding-screens_13-07-26/` (archived plan — read for
+  full design, validate-contract, and execution/EVL evidence). Note: staff users bypass this
+  onboarding entirely — the root gate checks `isStaff` first (STAFF-001 merge decision).
 - **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
   full customer pickup-order journey (branch select → menu → product customize → cart → checkout
   → confirmation → tracking → order history) is implemented and working, not just placeholder.
   Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
-  them) remain `<ComingSoon>` placeholders — future work.
+  them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
+  (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
+- **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
+  surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
+  non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
+  `assigned_branch_id`), and `assertBranchScope(assignedBranchId, requestedBranchId)` pure guard.
+  Applied at router level: `app.use('/api/staff', requireStaff(auth), staffRouter)` — all future
+  `/api/staff/*` routes automatically inherit the guard without re-applying it. `GET /api/staff/me`
+  canary returns `{ role, assignedBranch: { id, name, slug } | null }`. `StaffMe`, `StaffRole`, and
+  the shared `STAFF_ROLES` runtime constant live in `packages/types/src/staff.ts`. A
+  `TODO(STAFF-ADM)` seam in `assertBranchScope` marks where admin bypass logic goes (not yet
+  implemented). Migration `0003_lean_kang.sql` added nullable `users.assigned_branch_id`
+  (originally generated as `0002_elite_bishop.sql`, renumbered to 0003 when development's
+  onboarding migration `0002_bored_captain_flint.sql` took the 0002 slot in the merge); the
+  seed creates a staff test user (`staff-branch1@jojopotato.local`, role=staff, assigned to branch
+  1) alongside dev's customer test user (`jojo@test.com`).
+- **Staff dashboard shell (STAFF-001):** `apps/mobile/src/app/(staff)/` is a role-gated Expo
+  Router group. `(staff)/index.tsx` shows: BrandWordmark + "Staff" Badge header; assigned-branch
+  name fetched from `GET /api/staff/me` via `useStaffMe()` hook
+  (`features/staff/hooks/use-staff-me.ts` → `features/staff/lib/staff-api.ts` using
+  `authClient.$fetch`); four PRD §6.13 nav cards (Active Orders / Completed Orders / Product
+  Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx` is a
+  **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
+  plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
@@ -164,15 +218,23 @@ top of it later without re-plumbing the project.
   test-runner gap, see `tests/all-tests.md`) — see
   `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`. The
   `pickup-order-flow` plan's happy-path coverage relied on an Agent-Probe manual QA script for this
-  reason, not an automated E2E gate.
+  reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
+  the same reason.
+- **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
+  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
+  cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
+  branches, and customer order placement. `app` is exported from `packages/api/src/index.ts` (port
+  binding guarded so tests never bind a port).
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
   plan, API design, validate journey incl. the CONDITIONAL→PASS PVL cycle and the EVL cross-phase
   bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
-  (cart architecture reconciliation), and
+  (cart architecture reconciliation),
   `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
-  + react-query reconciliation).
+  + react-query reconciliation), and
+  `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
+  layer + role-gated staff shell — STAFF-001).
 
 ## Quick Start
 
@@ -215,18 +277,19 @@ No other context groups exist beyond the baseline `tests`/`planning` groups ever
 Scanned against the canonical Context Group Detection Table
 (`.claude/skills/vc-generate-context/references/generate-context.md`):
 
-- Drizzle ORM + PostgreSQL now present (`packages/api` — schema, migrations, `db:generate`/
-  `db:migrate` scripts) → `database/` group threshold is likely now met; not yet created — this
-  landed via the `db-schema` plan (still active, not yet closed via UPDATE PROCESS as of
-  09-07-26). Revisit group creation when that plan is reconciled.
-- Auth dependency now present — **better-auth**, wired into `packages/api` (`src/lib/auth.ts`)
-  and consumed by `apps/mobile` (`src/features/auth/`). Evaluated against the `auth/` group
-  threshold at the 09-07-26 UPDATE PROCESS pass (wire-better-auth): **not yet warranted** — only
-  1 durable narrative (the §Current Implementation State auth paragraph), no file over ~800
-  lines, and no repeated multi-agent slicing need yet. Re-evaluate once a second durable auth doc
-  exists (e.g. a role/permissions design doc, or a live-provider integration writeup).
-- No Dockerfile/docker-compose → no `container/` group
-- No CI/CD config (`.github/workflows`, `.circleci`, `.gitlab-ci`) → no `cicd/` group
+- Drizzle ORM + PostgreSQL present (`packages/api` — full schema ~15 tables, 2 migrations, `db:generate`/
+  `db:migrate` scripts, seed, vitest integration tests). `database/` group threshold is likely met
+  (full schema + seed + migration pattern established). Not yet created — run `vc-generate-context`
+  (delta mode) to create it when ready.
+- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. Also
+  the new staff authz layer (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types)
+  adds a second durable narrative. `auth/` group threshold is now plausibly met — two narratives
+  (auth provider setup + staff authz pattern). Not yet created; re-evaluate at next
+  UPDATE PROCESS pass or when a role/permissions design doc is written.
+- `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
+  exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
+- `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
+- CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
 - Only 1 UI package (`packages/ui`) with 3 source files → below the 3+ dedicated dirs threshold for `uxui/`
 - No workflow/queue system → no `workflows/` group
@@ -241,7 +304,8 @@ crossed — it will create the matching group automatically.
 | general repo research | `all-context.md` | this file's Repository Structure / Technology Stack sections |
 | implementation planning | `all-context.md`, `planning/all-planning.md` | the relevant feature's `_GUIDE.md` under `process/features/{feature}/` |
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
-| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`) if it exists, else `process/general-plans/active/` |
+| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`) if it exists, else `process/general-plans/active/` |
+| staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
 
 ## Context Group Lifecycle
 
@@ -298,14 +362,18 @@ jojo-mobile/                           (package.json name: jojo-potato)
         app/                           -- Expo Router file-based routes
           _layout.tsx                  -- wraps tree in AuthProvider, RootNavigator gates (tabs) vs (auth) via Stack.Protected
           (auth)/                      -- public/onboarding stack: _layout.tsx, splash, onboarding, login, signup, phone-otp, terms
-          (tabs)/                      -- authenticated 5-tab shell (Home/Order/Rewards/Branches/Account, PRD order)
+          (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
             order/                      -- real: index, product/[productId], cart, checkout, confirmation/[orderId], tracking/[orderId], history
             branches/                   -- real: index (list), [branchId] (detail + menu)
             rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
+          (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
+            _layout.tsx                -- Stack navigator (headerShown:false for root; STAFF-002+ screens add their own headers)
+            index.tsx                  -- staff dashboard shell: BrandWordmark+Staff badge, branch name from /api/staff/me, 4 inert nav cards, sign-out
+            active-orders.tsx          -- MOCK PREVIEW ONLY (hardcoded sample data, inert buttons); replaced by STAFF-002
         features/
-          auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam (backed by lib/auth-client.ts)
+          auth/hooks/use-auth.ts       -- AuthProvider + useAuth(): real better-auth session seam; exposes isStaff boolean (role ∈ {staff,admin,super_admin})
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
           cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
           cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
@@ -314,6 +382,8 @@ jojo-mobile/                           (package.json name: jojo-potato)
           menu/components/             -- add-to-cart-bar, branch-switcher, category-section, option-group-selector (adopted from development)
           orders/                      -- api-client + hooks, unchanged/out-of-scope for the react-query migration (order create/get/history)
           shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE; both api-request.ts/use-async-data.ts explicitly carved out of the menu/branch data-layer merge since orders/ still depends on them)
+          staff/lib/staff-api.ts       -- fetchStaffMe(): authClient.$fetch wrapper for GET /api/staff/me → StaffMe | null
+          staff/hooks/use-staff-me.ts  -- useStaffMe(): useState/useEffect hook returning { data, isLoading, error }
         lib/{api-client,query-client}.ts  -- global react-query client + getBranches()/getMenu() (menu/branch data layer, added by merge-menu-api-reconciliation)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
@@ -328,7 +398,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
       src/middleware/require-session.ts -- better-auth session-check Express middleware
       src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); notifications/rewards still placeholders
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); staff.ts (StaffMe, StaffRole, STAFF_ROLES, StaffBranch) is live; notifications/rewards still placeholders
     ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26) -- brand tokens are placeholder
     utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts, product-options.ts -- adopted 13-07-26, unit-agnostic option-selection helpers)
   docs/
@@ -336,7 +406,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
   process/
     context/                          -- this context system
     general-plans/                    -- plans, reports, references (task-folder convention)
-    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications)
+    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications, staff-dashboard)
     development-protocols/            -- RIPER-5 methodology docs
   package.json                        -- root scripts (turbo pipelines)
   pnpm-workspace.yaml                 -- workspaces: apps/*, packages/*
@@ -358,8 +428,8 @@ Metro/Expo resolves them like any other dependency.
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
 - **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
-- **Testing:** none configured yet — no Jest/Vitest/Detox in any `package.json`. Do not assume a test runner exists; propose one when a feature plan needs test coverage.
-- **Deploy:** EAS Build/Submit planned (per user, 2026-07-08) but not yet wired — no `eas.json`, no `.github/workflows/` in the repo.
+- **Testing:** `packages/api` uses **vitest** + **supertest** (added STAFF-001). Run `pnpm --filter @jojopotato/api test` (requires `docker compose up -d` + `db:migrate` first). 34 tests covering auth and staff authz. No test runner exists for `apps/mobile` (no Jest/Vitest/Detox) — mobile verification is typecheck + lint + Agent-Probe only. See `process/context/tests/all-tests.md`.
+- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
 
 ## Key Patterns and Conventions
 
@@ -392,18 +462,31 @@ public `(auth)` stack and authenticated `(tabs)` shell is driven by `Stack.Prote
 root `_layout.tsx`, reading `useAuth()` (`user`/`isLoading`).
 
 **Auth-state seam:** `useAuth()` (from `apps/mobile/src/features/auth/hooks/use-auth.ts`) is the
-only way any screen should read/mutate auth state. It exposes `{ user, role, isLoading, signIn,
-signOut, hasOnboarded, completeOnboarding }`, derives the session from better-auth's
-`authClient.useSession()`, and persists it via `expo-secure-store` (survives restarts). `signIn`
-is a dispatcher over the supported methods (email/password + signup, Google OAuth, magic link, and
-the two-step phone OTP flow). The better-auth client itself lives in
-`apps/mobile/src/features/auth/lib/auth-client.ts` and talks to `{EXPO_PUBLIC_API_URL}/api/auth/*`;
-consumers never import it directly. `hasOnboarded`/`completeOnboarding` remain local, non-auth
-state (onboarding-seen flag), independent of the better-auth session. **Magic link is not a plain
-`authClient.magicLink` round trip** — better-auth's default flow doesn't log the user in on Expo
-(session lands in an external browser, not the app), so this repo relays the token through a
-custom `/magic-link/native` redirect + an app-side `(auth)/magic-link.tsx` verify step; see
+only way any screen should read/mutate auth state. It exposes `{ user, role, isLoading, isStaff,
+signIn, signOut, hasOnboarded, completeOnboarding }`, derives the session from better-auth's
+`authClient.useSession()`, and persists it via `expo-secure-store` (survives restarts). `isStaff`
+is a derived boolean (`role ∈ {staff, admin, super_admin}`) — the root gate uses it to route to
+`(staff)` vs `(tabs)`. `signIn` is a dispatcher over the supported methods (email/password +
+signup, Google OAuth, magic link, and the two-step phone OTP flow). The better-auth client itself
+lives in `apps/mobile/src/features/auth/lib/auth-client.ts` and talks to
+`{EXPO_PUBLIC_API_URL}/api/auth/*`; consumers never import it directly.
+`hasOnboarded`/`completeOnboarding` remain local, non-auth state, independent of the better-auth
+session. **Magic link is not a plain `authClient.magicLink` round trip** — better-auth's default
+flow doesn't log the user in on Expo (session lands in an external browser, not the app), so this
+repo relays the token through a custom `/magic-link/native` redirect + an app-side
+`(auth)/magic-link.tsx` verify step; see
 `process/features/auth-accounts/backlog/wire-better-auth-magic-link-expo-caveat_NOTE_09-07-26.md`.
+
+**Staff API authz pattern (first protected API surface, established STAFF-001):** all `/api/staff/*`
+routes are guarded by `requireStaff(auth)` applied at the router level in
+`packages/api/src/index.ts`. New staff routes only need to be added to `packages/api/src/routes/staff.ts`
+— the guard is inherited automatically. The middleware chain is:
+`requireStaff(auth)` → `resolveBranchScope(db, userId)` → `assertBranchScope(assignedBranchId, requestedBranchId)`.
+`requireStaff` admits roles `staff | admin | super_admin`; it returns 403 for customer roles.
+`assertBranchScope` is a pure function (testable without DB); `resolveBranchScope` is the DB read.
+A `TODO(STAFF-ADM)` comment in `assertBranchScope` marks where admin bypass logic goes (not
+implemented — post-STAFF-001). Always import `StaffRole` / `StaffMe` from `@jojopotato/types`,
+not from `packages/api` server code.
 
 **Always use the shared `@jojopotato/ui` component library — never one-off screen UI.** `packages/ui/src/components/` is the canonical, theme-token-driven component set (`Button`, `Card`, `Badge`, `Input`, `ProductCard`, `DealCard`, `BranchCard`, `RewardProgressCard`, `StarProgressBar`, `OrderStatusBadge`, `OrderStatusTimeline`, `CouponCard`, `CartItem`, `FlavorSelector`, `SizeSelector`, `PickupTimeBadge`, plus `BrandWordmark`). Before writing new inline markup in any `apps/mobile` screen, check `packages/ui/src/index.ts` for an existing export first. If a needed component doesn't exist yet, prefer adding it to `packages/ui` over a local one-off, unless it's truly screen-specific and not reusable elsewhere. Never hardcode colors/spacing that duplicate `theme.ts` tokens — components take a `mode: ThemeMode = 'light'` prop (see `BrandWordmark`/`Button`) rather than depending on an app-level theme hook, since the package has no such dependency. `Button` is the single canonical button — `JojoButton` (an earlier proof-of-concept primitive) was removed on 2026-07-09 in favor of it; do not reintroduce a parallel button primitive.
 
@@ -431,11 +514,11 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 - **Database:** not decided.
 - **Payments processor:** not decided.
 - **Notifications provider:** not decided.
-- **CI/CD:** EAS Build/Submit is the intended path but not yet configured (no `eas.json`, no GitHub Actions workflow yet).
+- **CI/CD:** GitHub Actions CI exists (`.github/workflows/ci.yml`). EAS Build/Submit (deploy) is the intended path but not yet configured (no `eas.json`).
 
 ## Scan Metadata
 
-- Generated: 2026-07-08
-- HEAD: 0253435 (`0253435 Initialized repo`)
-- Mode: full scan (fresh install, Flow A — new project)
+- Generated: 2026-07-08 (full scan)
+- Last delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
+- HEAD at last delta: `a153ec5` (process artifacts, branch `feat/staff-001-login-branch-scope`)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)
