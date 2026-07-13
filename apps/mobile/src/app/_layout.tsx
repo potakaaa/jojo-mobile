@@ -10,9 +10,11 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
+import { Colors } from '@/constants/theme';
 import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
 import { OrderSessionProvider } from '@/features/order/hooks/use-order';
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
@@ -64,6 +66,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Paint the window background (visible behind the transparent Android edge-to-edge
+  // system nav bar) with the palette background, reacting to the color scheme.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(
+      Colors[colorScheme === 'dark' ? 'dark' : 'light'].background,
+    );
+  }, [colorScheme]);
 
   if (!fontsLoaded && !fontError) {
     return null;

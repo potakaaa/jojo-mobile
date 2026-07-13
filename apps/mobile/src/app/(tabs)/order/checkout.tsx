@@ -12,7 +12,7 @@ import {
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -26,7 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import {
   MOCK_BRANCH_PREP_MINUTES,
@@ -133,6 +133,9 @@ export default function CheckoutScreen() {
   // seconds remaining. Navigating away unmounts the screen, the effect cleanup
   // clears the timer, and the order never fires.
   const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Hide the floating tab bar while the confirm drawer is open so it doesn't cover the drawer.
+  useHideTabBarWhile(countdown !== null);
 
   // Keep the latest submit in a ref so the ticking effect can depend only on
   // `countdown` (submitOrder is re-created every render).
@@ -290,12 +293,7 @@ export default function CheckoutScreen() {
         </View>
       </SafeAreaView>
 
-      <Modal
-        visible={countdown !== null}
-        transparent
-        animationType="none"
-        onRequestClose={dismissConfirm}
-      >
+      {countdown !== null ? (
         <Animated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(150)}
@@ -353,7 +351,7 @@ export default function CheckoutScreen() {
             </View>
           </Animated.View>
         </Animated.View>
-      </Modal>
+      ) : null}
     </View>
   );
 }
@@ -495,9 +493,14 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   sheetBackdrop: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 10,
   },
   sheet: {
     borderTopLeftRadius: Radii.lg,
