@@ -33,20 +33,27 @@ SplashScreen.preventAutoHideAsync();
  * covers the brief cold-start beat.
  */
 function RootNavigator() {
-  const { user, isLoading, hasCompletedProfile } = useAuth();
+  const { user, isLoading, isStaff, hasCompletedProfile } = useAuth();
   const isAuthenticated = !isLoading && user !== null;
+  const isStaffUser = isAuthenticated && isStaff;
+  const isCustomer = isAuthenticated && !isStaff;
 
-  // Three mutually-exclusive gates so exactly one group mounts:
-  //   authenticated + profile complete   → (tabs)
-  //   authenticated + profile incomplete → (onboarding)  [post-auth account onboarding]
+  // Four mutually-exclusive gates so exactly one group mounts:
+  //   staff/admin/super_admin            → (staff)        [checked FIRST — staff skip the
+  //                                                        customer profile onboarding entirely]
+  //   customer + profile complete        → (tabs)
+  //   customer + profile incomplete      → (onboarding)   [post-auth account onboarding]
   //   unauthenticated                    → (auth)         [public/pre-auth welcome]
   // `isLoading` keeps the user in the public stack (the in-stack Splash covers cold start).
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isAuthenticated && hasCompletedProfile}>
+      <Stack.Protected guard={isStaffUser}>
+        <Stack.Screen name="(staff)" />
+      </Stack.Protected>
+      <Stack.Protected guard={isCustomer && hasCompletedProfile}>
         <Stack.Screen name="(tabs)" />
       </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated && !hasCompletedProfile}>
+      <Stack.Protected guard={isCustomer && !hasCompletedProfile}>
         <Stack.Screen name="(onboarding)" />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>

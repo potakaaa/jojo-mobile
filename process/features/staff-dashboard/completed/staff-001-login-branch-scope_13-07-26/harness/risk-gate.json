@@ -1,0 +1,11 @@
+{
+  "task": "STAFF-001 — Staff login and branch-scoped access",
+  "planPath": "process/features/staff-dashboard/active/staff-001-login-branch-scope_13-07-26/staff-001-login-branch-scope_PLAN_13-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": ["auth or identity"],
+  "mustStopBeforeFinalize": true,
+  "humanApprovalRequired": true,
+  "why": "First protected app API route in the project. Adds requireStaff Express middleware + resolveBranchScope + assertBranchScope authz primitives, a canary GET /api/staff/me route, a schema migration (nullable assigned_branch_id FK), and a role-aware mobile root gate. The middleware IS the trust boundary that determines who may reach staff data. Sets the authz pattern all future STAFF-002/003/004 routes reuse.",
+  "workDescription": "Add assigned_branch_id to users; requireStaff/resolveBranchScope/assertBranchScope in packages/api/src/lib/require-staff.ts; canary GET /api/staff/me; role-aware (staff) mobile shell + root gate; designed staff dashboard shell fetching the auth-gated /api/staff/me.",
+  "approver": "vc-execute-agent (autonomous /goal execution; PVL Gate: PASS)"
+}
