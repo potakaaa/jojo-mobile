@@ -1,67 +1,77 @@
 /**
- * Menu domain types — shaped to the real DB schema (see
- * `packages/api/src/db/schema/{categories,products,product_options}.ts`).
+ * Menu (catalog) domain types.
  *
- * The API layer maps snake_case DB columns to these camelCase fields and parses
- * `numeric` money columns (`base_price`, `price_delta`) into plain `number`s
- * (whole PHP units, e.g. `89` = ₱89.00) — clients never see the raw string form.
+ * Two distinct sets live here:
+ *
+ * 1. The **cents-native catalog types** (`ProductOption`, `Product`, `Category`,
+ *    `ProductDetail`, `MenuResponse`) — the public shape the mobile client reads
+ *    from this branch's real backend (`GET /branches/:id/menu`). Field names and
+ *    money units mirror `packages/api/src/routes/lib/serializers.ts`'s
+ *    `ApiMenuOption`/`ApiMenuProduct`/`ApiMenuCategory`/`ApiMenu` EXACTLY: the
+ *    option identity is `optionId` (not `id`), and all money is integer cents
+ *    (`basePriceCents`/`priceDeltaCents`, e.g. `890` = ₱8.90) — never whole-PHP
+ *    decimals. Options arrive already grouped by type (a `Record`), matching
+ *    `serializeMenuProduct`'s grouped output, so no client-side grouping is needed.
+ *
+ * 2. The **cart-internal catalog shape** (`MenuItem`, `MenuCategory`) — the input
+ *    to `useCart().addItem()`. Also cents (`priceCents`). Callers build a
+ *    `MenuItem` from a `Product`/`ProductDetail` at the add-to-cart boundary.
  */
 
-export type ProductOptionType = 'size' | 'flavor' | 'add_on';
+import type { ProductOptionType } from './product-option';
 
+/**
+ * One selectable product option (a size, flavor, or add-on). Mirrors the server's
+ * `ApiMenuOption` — identity is `optionId`, price adjustment is `priceDeltaCents`
+ * (integer cents).
+ */
 export interface ProductOption {
-  id: string;
-  productId: string;
+  optionId: string;
   optionType: ProductOptionType;
   name: string;
-  /** Added to the base price when this option is selected (whole PHP units). */
-  priceDelta: number;
-  isActive: boolean;
-  sortOrder: number;
+  priceDeltaCents: number;
 }
 
+/**
+ * A product on a branch menu, with its options grouped by type. Mirrors the
+ * server's `ApiMenuProduct` — base price is `basePriceCents` (integer cents),
+ * options are grouped into `size`/`flavor`/`add_on` buckets (each always present,
+ * possibly empty).
+ */
 export interface Product {
   id: string;
-  categoryId: string;
   name: string;
-  slug: string;
-  description: string | null;
-  imageUrl: string | null;
-  /** Whole PHP units (e.g. `89` = ₱89.00). */
-  basePrice: number;
-  isActive: boolean;
-  isRewardEligible: boolean;
+  description?: string;
+  imageUrl?: string;
+  basePriceCents: number;
+  options: Record<ProductOptionType, ProductOption[]>;
 }
 
+/** A menu category with its branch-available, active products. Mirrors `ApiMenuCategory`. */
 export interface Category {
   id: string;
   name: string;
-  slug: string;
-  sortOrder: number;
-  isActive: boolean;
-  /** Branch-available, active products. May be empty (client renders empty state). */
   products: Product[];
 }
 
-/** Single-product detail payload (`GET /api/menu/products/:id`). */
-export interface ProductDetail extends Product {
-  /** Computed: product active AND available at the requested branch. */
-  isAvailable: boolean;
-  /** Active options, sorted by `sortOrder`. */
-  options: ProductOption[];
-}
+/**
+ * Single-product detail — derived client-side from the branch menu tree (this
+ * branch's backend has no dedicated per-product endpoint). `isAvailable` reflects
+ * presence in the branch's menu tree (the tree only contains available products).
+ */
+export type ProductDetail = Product & { isAvailable: boolean };
 
-/** `GET /api/menu?branchId=` response. */
+/** `GET /branches/:branchId/menu` response — categories → products → grouped options. */
 export interface MenuResponse {
+  branchId?: string;
   categories: Category[];
 }
 
 /**
  * Cart-internal catalog shape (cents convention) — used only as the input to
  * `useCart().addItem()` (see `features/cart/hooks/use-cart.ts`). Distinct from
- * `Product`/`ProductDetail` above (the real API catalog types, whole-PHP-unit
- * convention); callers building a cart line from a `ProductDetail` convert at
- * the boundary (see the Product Details "Add to Cart" handler).
+ * `Product`/`ProductDetail` above; callers building a cart line from a `Product`
+ * convert at the boundary (see `features/cart/lib/product-to-menu-item.ts`).
  */
 export interface MenuItem {
   id: string;

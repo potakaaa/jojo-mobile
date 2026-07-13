@@ -9,8 +9,6 @@ import {
   type ReactNode,
 } from 'react';
 
-import { MOCK_CART } from '@/features/cart/mock-cart';
-
 /**
  * In-memory cart state seam, mirroring the auth Context pattern in
  * `features/auth/hooks/use-auth.ts`. There is NO persistence yet: state lives in
@@ -54,9 +52,11 @@ function unitPriceFor(menuItem: MenuItem, opts: CartItemOption[]): number {
   return opts.reduce((sum, o) => sum + o.priceDeltaCents, menuItem.priceCents);
 }
 
+const EMPTY_CART: Cart = { id: 'cart-local', items: [], pickupBranchId: '' };
+
 export function CartSessionProvider({
   children,
-  initialCart = MOCK_CART,
+  initialCart = EMPTY_CART,
 }: {
   children: ReactNode;
   initialCart?: Cart;
@@ -118,7 +118,11 @@ export function CartSessionProvider({
   }, []);
 
   const setBranch = useCallback((branchId: string) => {
-    setCart((prev) => ({ ...prev, pickupBranchId: branchId }));
+    setCart((prev) =>
+      prev.pickupBranchId === branchId
+        ? prev
+        : { ...prev, pickupBranchId: branchId, items: [], appliedDiscount: undefined },
+    );
   }, []);
 
   const value = useMemo<CartSessionState>(() => {

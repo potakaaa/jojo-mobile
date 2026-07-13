@@ -1,5 +1,5 @@
 import type { CartItemOption, ProductOption, ProductOptionType } from '@jojopotato/types';
-import { computeUnitPrice, formatPricePHP, getRequiredOptionTypes } from '@jojopotato/utils';
+import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -12,10 +12,12 @@ import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { AddToCartBar } from '@/features/menu/components/add-to-cart-bar';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
-import { groupOptions } from '@/features/menu/lib/group-options';
 import { useTheme } from '@/hooks/use-theme';
 
 type SelectionState = Partial<Record<ProductOptionType, string[]>>;
+
+/** Fixed display order for option groups (matches the former `groupOptions` order). */
+const GROUP_ORDER: ProductOptionType[] = ['size', 'flavor', 'add_on'];
 
 export default function ProductDetailsScreen() {
   const theme = useTheme();
@@ -27,9 +29,22 @@ export default function ProductDetailsScreen() {
   const [selection, setSelection] = useState<SelectionState>({});
   const [addedNotice, setAddedNotice] = useState(false);
 
-  const groups = useMemo(() => (product ? groupOptions(product.options) : []), [product]);
+  // The backend already returns options grouped by type (a `Record`), so build
+  // the display groups inline in fixed order — no client-side `groupOptions()`
+  // (plan Gap E). Server pre-sorts options within each group by `sort_order`.
+  const groups = useMemo(
+    () =>
+      product
+        ? GROUP_ORDER.filter((type) => (product.options[type]?.length ?? 0) > 0).map((type) => ({
+            type,
+            options: product.options[type],
+          }))
+        : [],
+    [product],
+  );
+
   const requiredTypes = useMemo(
-    () => (product ? getRequiredOptionTypes(product.options) : []),
+    () => (product ? getRequiredOptionTypes(Object.values(product.options).flat()) : []),
     [product],
   );
 
@@ -37,14 +52,17 @@ export default function ProductDetailsScreen() {
   const selectedOptions = useMemo<ProductOption[]>(() => {
     if (!product) return [];
     const selectedIds = new Set(Object.values(selection).flat());
-    return product.options.filter((option) => selectedIds.has(option.id));
+    return Object.values(product.options)
+      .flat()
+      .filter((option) => selectedIds.has(option.optionId));
   }, [product, selection]);
 
-  const unitPrice = useMemo(() => {
+  // Unit price is a trivial cents sum: base + selected option deltas (all cents).
+  const unitPriceCents = useMemo(() => {
     if (!product) return 0;
-    return computeUnitPrice(
-      product.basePrice,
-      selectedOptions.map((option) => option.priceDelta),
+    return (
+      product.basePriceCents +
+      selectedOptions.reduce((sum, option) => sum + option.priceDeltaCents, 0)
     );
   }, [product, selectedOptions]);
 
@@ -79,10 +97,10 @@ export default function ProductDetailsScreen() {
     }
 
     const opts: CartItemOption[] = selectedOptions.map((option) => ({
-      id: option.id,
+      id: option.optionId,
       optionType: option.optionType,
       name: option.name,
-      priceDeltaCents: Math.round(option.priceDelta * 100),
+      priceDeltaCents: option.priceDeltaCents,
     }));
     const menuItem = productToMenuItem(product, product.isAvailable);
 
@@ -160,7 +178,7 @@ export default function ProductDetailsScreen() {
           </Text>
         ) : null}
         <Text style={[styles.basePrice, { color: theme.text }]}>
-          {formatPricePHP(product.basePrice)}
+          {formatCurrency(product.basePriceCents)}
         </Text>
 
         {groups.map((group) => (
@@ -179,7 +197,7 @@ export default function ProductDetailsScreen() {
       </ScrollView>
 
       <AddToCartBar
-        unitPrice={unitPrice}
+        unitPriceCents={unitPriceCents}
         canAdd={canAdd}
         isAvailable={product.isAvailable}
         onAdd={handleAdd}

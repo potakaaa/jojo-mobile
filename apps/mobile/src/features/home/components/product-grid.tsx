@@ -1,4 +1,4 @@
-import type { Product } from '@jojopotato/types';
+import type { MenuItem } from '@jojopotato/types';
 import { ProductCard } from '@jojopotato/ui';
 import { FlatList, StyleSheet } from 'react-native';
 
@@ -6,7 +6,9 @@ import { Spacing } from '@/constants/theme';
 import { getProductImage } from '../product-images';
 
 export interface ProductGridProps {
-  products: Product[];
+  products: MenuItem[];
+  /** Called with the tapped product's id, for navigation wiring. */
+  onProductPress?: (productId: string) => void;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface ProductGridProps {
  * renders inside the Home screen's outer `ScrollView` — the outer scroll owns
  * vertical scrolling, avoiding nested-VirtualizedList warnings.
  */
-export function ProductGrid({ products }: ProductGridProps) {
+export function ProductGrid({ products, onProductPress }: ProductGridProps) {
   return (
     <FlatList
       data={products}
@@ -24,8 +26,8 @@ export function ProductGrid({ products }: ProductGridProps) {
       renderItem={({ item }) => (
         <ProductCard
           product={item}
-          isAvailable={item.isActive}
           imageSource={getProductImage(item.categoryId)}
+          onPress={onProductPress ? () => onProductPress(item.id) : undefined}
         />
       )}
       columnWrapperStyle={styles.row}
