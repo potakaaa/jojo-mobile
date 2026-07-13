@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { forwardRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -27,25 +27,40 @@ export interface InputProps {
   secureTextEntry?: boolean;
   /** Auto-capitalization behavior; default `sentences` (RN default). */
   autoCapitalize?: TextInputProps['autoCapitalize'];
+  /** Cap the number of characters accepted (e.g. `2` for MM/DD, `4` for YYYY). */
+  maxLength?: number;
+  /** Raw key-press handler, e.g. to detect Backspace for auto-tab-back. */
+  onKeyPress?: TextInputProps['onKeyPress'];
+  /** Horizontal text alignment inside the field. */
+  textAlign?: TextInputProps['textAlign'];
+  /** Return-key variant for the on-screen keyboard. */
+  returnKeyType?: TextInputProps['returnKeyType'];
 }
 
 /**
  * Themed single-line text input with an optional label and error message.
  * Wraps RN `TextInput`, pulling border/background/text colors from the theme.
  */
-export function Input({
-  value,
-  onChangeText,
-  placeholder,
-  editable = true,
-  label,
-  error,
-  mode = 'light',
-  style,
-  keyboardType,
-  secureTextEntry,
-  autoCapitalize,
-}: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  {
+    value,
+    onChangeText,
+    placeholder,
+    editable = true,
+    label,
+    error,
+    mode = 'light',
+    style,
+    keyboardType,
+    secureTextEntry,
+    autoCapitalize,
+    maxLength,
+    onKeyPress,
+    textAlign,
+    returnKeyType,
+  },
+  ref,
+) {
   const theme = Colors[mode];
   const [hidden, setHidden] = useState(true);
 
@@ -54,6 +69,7 @@ export function Input({
       {label ? <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text> : null}
       <View style={styles.field}>
         <TextInput
+          ref={ref}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -62,6 +78,10 @@ export function Input({
           keyboardType={keyboardType}
           secureTextEntry={secureTextEntry && hidden}
           autoCapitalize={autoCapitalize}
+          maxLength={maxLength}
+          onKeyPress={onKeyPress}
+          textAlign={textAlign}
+          returnKeyType={returnKeyType}
           accessibilityLabel={label}
           style={[
             styles.input,
@@ -88,7 +108,9 @@ export function Input({
       {error ? <Text style={[styles.error, { color: theme.accent }]}>{error}</Text> : null}
     </View>
   );
-}
+});
+
+Input.displayName = 'Input';
 
 const styles = StyleSheet.create({
   wrap: {

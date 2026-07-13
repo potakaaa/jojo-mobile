@@ -46,6 +46,7 @@ export default function LoginRoute() {
   const [email, setEmail] = useState('');
   const [pending, setPending] = useState<'magic-link' | 'google' | 'dev-temp-login' | null>(null);
   const [error, setError] = useState<string>();
+  const [emailError, setEmailError] = useState<string>();
   const [magicSent, setMagicSent] = useState(false);
 
   const busy = pending !== null;
@@ -67,6 +68,7 @@ export default function LoginRoute() {
   const onChangeEmail = (value: string) => {
     setEmail(value);
     setError(undefined);
+    setEmailError(undefined);
     setMagicSent(false);
   };
 
@@ -76,11 +78,11 @@ export default function LoginRoute() {
     setMagicSent(false);
     const trimmed = email.trim();
     if (!trimmed) {
-      setError('Enter your email address');
+      setEmailError('Enter your email address');
       return;
     }
     if (!/^\S+@\S+\.\S+$/.test(trimmed)) {
-      setError('Enter a valid email address');
+      setEmailError('Enter a valid email address');
       return;
     }
     const result = await run('magic-link', { method: 'magic-link', email: trimmed });
@@ -135,6 +137,7 @@ export default function LoginRoute() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   editable={!busy}
+                  error={emailError}
                 />
                 <Button
                   mode={mode}

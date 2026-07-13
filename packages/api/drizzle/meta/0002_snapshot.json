@@ -1,5 +1,5 @@
 {
-  "id": "e3bff100-8642-4c03-80be-ce131a7d9cb9",
+  "id": "59d8a3cd-b0e9-4b1b-928f-35133c94dcc5",
   "prevId": "53ef0df1-6fc5-4f35-a69f-7aef255b71d1",
   "version": "7",
   "dialect": "postgresql",
@@ -851,14 +851,20 @@
           "primaryKey": false,
           "notNull": false
         },
-        "favorite_branch_id": {
-          "name": "favorite_branch_id",
-          "type": "uuid",
+        "address": {
+          "name": "address",
+          "type": "varchar",
           "primaryKey": false,
           "notNull": false
         },
-        "assigned_branch_id": {
-          "name": "assigned_branch_id",
+        "onboarded_at": {
+          "name": "onboarded_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "favorite_branch_id": {
+          "name": "favorite_branch_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -893,15 +899,6 @@
           "tableFrom": "users",
           "tableTo": "branches",
           "columnsFrom": ["favorite_branch_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "users_assigned_branch_id_branches_id_fk": {
-          "name": "users_assigned_branch_id_branches_id_fk",
-          "tableFrom": "users",
-          "tableTo": "branches",
-          "columnsFrom": ["assigned_branch_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"

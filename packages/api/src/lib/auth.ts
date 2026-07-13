@@ -68,6 +68,12 @@ export const auth = betterAuth({
         required: false,
         input: false, // never settable by a client — DB default 'customer' wins
       },
+      // Self-owned profile fields the client may write via `updateUser` on its
+      // OWN record (input: true). Scoped to the authenticated caller by
+      // better-auth — no cross-user or privilege impact. `role` stays server-owned.
+      birthday: { type: 'string', required: false, input: true }, // 'YYYY-MM-DD'
+      address: { type: 'string', required: false, input: true },
+      onboardedAt: { type: 'date', required: false, input: true },
     },
   },
   trustedOrigins: ['jojopotato://', ...(isDev ? ['exp://'] : [])],

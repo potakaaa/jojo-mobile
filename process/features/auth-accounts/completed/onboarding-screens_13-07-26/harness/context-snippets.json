@@ -1,0 +1,35 @@
+{
+  "task": "onboarding-screens (post-auth 3-step account onboarding)",
+  "snippets": [
+    {
+      "file": "packages/api/src/db/schema/users.ts",
+      "lines": "27-28",
+      "description": "New nullable columns: address (varchar), onboardedAt (timestamp 'onboarded_at')",
+      "content": "address: varchar('address'),\nonboardedAt: timestamp('onboarded_at'),"
+    },
+    {
+      "file": "packages/api/src/lib/auth.ts",
+      "lines": "66-76",
+      "description": "additionalFields — role stays input:false; birthday/address/onboardedAt are input:true (self-write only)",
+      "content": "role: { type: 'string', required: false, input: false },\nbirthday: { type: 'string', required: false, input: true },\naddress: { type: 'string', required: false, input: true },\nonboardedAt: { type: 'date', required: false, input: true },"
+    },
+    {
+      "file": "packages/api/drizzle/0002_bored_captain_flint.sql",
+      "lines": "1-2",
+      "description": "Migration adds ONLY the two nullable columns",
+      "content": "ALTER TABLE \"users\" ADD COLUMN \"address\" varchar;\nALTER TABLE \"users\" ADD COLUMN \"onboarded_at\" timestamp;"
+    },
+    {
+      "file": "apps/mobile/src/features/auth/hooks/use-auth.ts",
+      "lines": "completeProfile + hasCompletedProfile",
+      "description": "completeProfile calls authClient.updateUser({name,birthday,address,onboardedAt:new Date()}) then awaits refetch(); hasCompletedProfile = user?.onboardedAt != null",
+      "content": "const { error } = await authClient.updateUser({ name, birthday, address, onboardedAt: new Date() });\nif (error) return toResult(error);\nawait refetch();\nreturn toResult(null);"
+    },
+    {
+      "file": "apps/mobile/src/app/_layout.tsx",
+      "lines": "RootNavigator gates",
+      "description": "Three mutually-exclusive gates; (tabs) requires isAuthenticated && hasCompletedProfile",
+      "content": "guard={isAuthenticated && hasCompletedProfile}  -> (tabs)\nguard={isAuthenticated && !hasCompletedProfile} -> (onboarding)\nguard={!isAuthenticated}                        -> (auth)"
+    }
+  ]
+}
