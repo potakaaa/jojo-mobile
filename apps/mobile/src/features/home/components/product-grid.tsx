@@ -7,6 +7,8 @@ import { getProductImage } from '../product-images';
 
 export interface ProductGridProps {
   products: MenuItem[];
+  /** Called with the tapped product's id, for navigation wiring. */
+  onProductPress?: (productId: string) => void;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface ProductGridProps {
  * renders inside the Home screen's outer `ScrollView` — the outer scroll owns
  * vertical scrolling, avoiding nested-VirtualizedList warnings.
  */
-export function ProductGrid({ products }: ProductGridProps) {
+export function ProductGrid({ products, onProductPress }: ProductGridProps) {
   return (
     <FlatList
       data={products}
@@ -22,7 +24,11 @@ export function ProductGrid({ products }: ProductGridProps) {
       numColumns={2}
       scrollEnabled={false}
       renderItem={({ item }) => (
-        <ProductCard product={item} imageSource={getProductImage(item.categoryId)} />
+        <ProductCard
+          product={item}
+          imageSource={getProductImage(item.categoryId)}
+          onPress={onProductPress ? () => onProductPress(item.id) : undefined}
+        />
       )}
       columnWrapperStyle={styles.row}
       contentContainerStyle={styles.content}

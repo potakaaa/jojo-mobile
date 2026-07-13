@@ -44,14 +44,17 @@ export default function LoginRoute() {
   const mascotSize = compact ? MASCOT_SIZE_COMPACT : MASCOT_SIZE;
 
   const [email, setEmail] = useState('');
-  const [pending, setPending] = useState<'magic-link' | 'google' | null>(null);
+  const [pending, setPending] = useState<'magic-link' | 'google' | 'dev-temp-login' | null>(null);
   const [error, setError] = useState<string>();
   const [emailError, setEmailError] = useState<string>();
   const [magicSent, setMagicSent] = useState(false);
 
   const busy = pending !== null;
 
-  const run = async (action: 'magic-link' | 'google', input: Parameters<typeof signIn>[0]) => {
+  const run = async (
+    action: 'magic-link' | 'google' | 'dev-temp-login',
+    input: Parameters<typeof signIn>[0],
+  ) => {
     setPending(action);
     setError(undefined);
     const result = await signIn(input);
@@ -165,6 +168,30 @@ export default function LoginRoute() {
                 disabled={busy}
                 loading={pending === 'google'}
               />
+
+              {/*
+              Dev-only one-tap sign-in using the seeded better-auth test account
+              (jojo@test.com / jojo123). `__DEV__` strips this whole branch from
+              production Metro bundles (dead-branch elimination). Failures surface
+              in the shared inline `error` area above (via `run()`).
+              */}
+              {__DEV__ ? (
+                <Button
+                  mode={mode}
+                  variant="outline"
+                  label="[DEV] Temp Login"
+                  onPress={() =>
+                    run('dev-temp-login', {
+                      method: 'email-password',
+                      email: 'jojo@test.com',
+                      // 8-char min enforced by better-auth (SPEC's jojo123 is 7); matches seedTestUser().
+                      password: 'jojo1234',
+                    })
+                  }
+                  disabled={busy}
+                  loading={pending === 'dev-temp-login'}
+                />
+              ) : null}
 
               {/*
               Phone OTP is implemented (`(auth)/phone-otp.tsx`) and still routed, but is

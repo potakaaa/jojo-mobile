@@ -92,6 +92,8 @@ export const MOCK_BRANCH: PickupBranch = {
   address: '7th Ave cor 30th St, Bonifacio Global City, Taguig',
   latitude: 14.5509,
   longitude: 121.0512,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 

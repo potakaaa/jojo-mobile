@@ -8,21 +8,51 @@ Store/branch selection and pickup scheduling for the Jojo Potato mobile app. Cov
 available pickup branches/locations, selecting a branch for an order, and scheduling a pickup
 time window. No backend/location service is decided yet (see `process/context/all-context.md`).
 
-**Status as of setup: not started.** No source files exist yet for this feature.
+**Status as of 13-07-26: partially implemented.** Branch browsing and branch selection for an
+order are real and working, delivered by
+`process/general-plans/completed/pickup-order-flow_10-07-26/` (this plan lived in
+`general-plans/` rather than this feature folder because it spanned both `pickup-branches` and
+`ordering-cart` as one continuous flow — see that plan's Scope section).
+
+**Done:** branch list (`GET /branches`, optional `lat`/`lng` distance sort), branch detail + menu
+(`GET /branches/:branchId`, `GET /branches/:branchId/menu`), branch selection tied to cart state
+(`SET_BRANCH` clears cart on branch change — pickup is single-branch per order),
+`estimated_ready_at` derived from the branch's `estimated_prep_minutes`.
+
+**Branch data layer superseded (13-07-26):** the original plain `useEffect`/`useState`
+`features/branches/hooks/use-branches.ts` no longer exists — it was replaced by a react-query-backed
+`BranchProvider`/`useBranch()` (`apps/mobile/src/features/branch/hooks/use-branch.ts`) adopted from
+development's independently-shipped menu/branch feature during
+`process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/`. The backend API surface
+(`GET /branches`, `GET /branches/:branchId`, `GET /branches/:branchId/menu`) is **unchanged** —
+only the mobile-side data-fetching layer changed (react-query instead of a manual hook), and
+`isOpen` is now actually computed client-side (`branch.isAcceptingPickup`) instead of always being
+`undefined`/falsy.
+
+**Deferred / not yet done (future work, not a gap in what shipped):**
+- Explicit pickup *time-window scheduling* (choosing a slot ahead of time) — this pass only
+  derives an estimated-ready timestamp from prep time at order placement; no scheduling UI exists.
+- A real location/distance service — `lat`/`lng` sort is a query param the API accepts, no
+  geolocation-permission UI was built this pass.
 
 ## Key Source Files
 
-None yet. Expected future locations based on current repo conventions:
-- `apps/mobile/src/app/` -- Expo Router routes for branch selection / pickup scheduling screens
-- `packages/types/src/` -- shared pickup/branch domain types (placeholders exist)
+- `apps/mobile/src/app/(tabs)/branches/` -- branch list + branch detail/menu screens
+- `apps/mobile/src/features/branch/hooks/use-branch.ts` -- `BranchProvider`/`useBranch()`, react-query-backed (replaces the deleted `features/branches/`)
+- `apps/mobile/src/lib/api-client.ts` -- `getBranches()` (envelope unwrap + `isOpen` derivation)
+- `packages/api/src/routes/branches.ts` -- branch list/detail/menu API
+- `packages/types/src/pickup.ts` -- `PickupBranch` shape (`estimatedPrepMinutes`, `isAcceptingPickup`, client-computed `isOpen`)
+- `packages/ui/src/components/{branch-card,pickup-time-badge}.tsx` -- shared UI
 
 ## Related Context
 
-- `process/context/all-context.md` -- overall repo structure and tech stack
+- `process/context/all-context.md` -- overall repo structure and tech stack, §Current Implementation State
+- `process/general-plans/completed/pickup-order-flow_10-07-26/` -- the plan, validate journey, and closeout report that delivered this
+- `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` -- the plan that replaced the mobile-side branch data-fetching hook with react-query's `BranchProvider`/`useBranch()` and fixed the `isOpen` derivation
 
 ## Current Status
 
-Status: not-started
+Status: partially-implemented (branch browsing/selection done; scheduling UI and a real location service deferred)
 
 ## Folder Contents
 

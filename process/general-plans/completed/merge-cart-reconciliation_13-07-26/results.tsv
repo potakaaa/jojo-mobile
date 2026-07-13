@@ -1,0 +1,7 @@
+cycle	date	gate	gaps_open	notes
+0	13-07-26	START	N/A	PLAN written for merge-cart-reconciliation; proceeding to VALIDATE V1
+1	13-07-26	BLOCKED	1	Finding F1: development's setBranch drops cart-clear-on-branch-switch for Home/Branches tab callers; fix drafted inline in plan by validate-agent, needs formal plan-agent supplement pass
+2	13-07-26	SUPPLEMENT_APPLIED	0	F1 setBranch fix independently reviewed and confirmed correct/consistent across all 8 plan locations; no edits needed, already complete
+3	13-07-26	PASS	0	fresh V1-V7 re-validation; F1 fix confirmed byte-for-byte correct against real source; found+resolved 1 new non-blocking completeness gap (3rd setBranch call site in product/[productId].tsx, already covered by the hook-level fix); HALTED_SUCCESS
+4	13-07-26	EVL_BASELINE	N/A	EXECUTE complete (merge staged, uncommitted); execute-agent self-reported all gates green (typecheck 5/5, ui 37/37, api 47/47) + code-traced Agent-Probe scenarios. Starting independent EVL confirmation.
+5	13-07-26	PASS	0	EVL: all 8 checks independently verified against live source (conflict-marker sweep, 3 gate re-runs, F1 fix + all 5 setBranch call sites, optionId/categoryId mappings, coupon-UI disable, cart-totals deletion, showcase deviation); zero discrepancies; HALTED_SUCCESS
