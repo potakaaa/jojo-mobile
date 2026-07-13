@@ -8,7 +8,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { MOCK_CART_BRANCH, MOCK_OTHER_BRANCH } from '@/features/cart/mock-cart';
-import { MOCK_CURRENT_USER_ID, MOCK_ORDER_HISTORY } from '@/features/order-history/mock-order-history';
+import {
+  MOCK_CURRENT_USER_ID,
+  MOCK_ORDER_HISTORY,
+} from '@/features/order-history/mock-order-history';
 import { applyReorderPlan, buildReorderPlan } from '@/features/order-history/reorder';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';

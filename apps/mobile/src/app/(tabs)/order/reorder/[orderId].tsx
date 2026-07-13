@@ -7,7 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { MOCK_ORDER_HISTORY } from '@/features/order-history/mock-order-history';
-import { applyReorderPlan, buildReorderPlan, type ReorderLine } from '@/features/order-history/reorder';
+import {
+  applyReorderPlan,
+  buildReorderPlan,
+  type ReorderLine,
+} from '@/features/order-history/reorder';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -121,7 +125,9 @@ export default function ReorderReviewScreen() {
                       {line.originalItem.productNameSnapshot}
                     </Text>
                     <Text style={[styles.price, { color: theme.text }]}>
-                      {formatCurrency((line.currentUnitPriceCents ?? 0) * line.originalItem.quantity)}
+                      {formatCurrency(
+                        (line.currentUnitPriceCents ?? 0) * line.originalItem.quantity,
+                      )}
                     </Text>
                   </View>
                   {optionSummary(line) ? (
@@ -152,7 +158,12 @@ export default function ReorderReviewScreen() {
             disabled={plan.available.length === 0}
             mode={mode}
           />
-          <Button label="Back to History" variant="outline" onPress={() => router.back()} mode={mode} />
+          <Button
+            label="Back to History"
+            variant="outline"
+            onPress={() => router.back()}
+            mode={mode}
+          />
         </View>
       </SafeAreaView>
     </View>

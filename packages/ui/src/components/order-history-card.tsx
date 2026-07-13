@@ -34,9 +34,7 @@ function formatOrderDate(iso: string): string {
 
 /** e.g. "Cheddar Loaded Fries x2, Yuzu Lemonade x1". */
 function itemSummary(order: Order): string {
-  return order.cart.items
-    .map((it) => `${it.productNameSnapshot} x${it.quantity}`)
-    .join(', ');
+  return order.cart.items.map((it) => `${it.productNameSnapshot} x${it.quantity}`).join(', ');
 }
 
 /**
@@ -75,7 +73,9 @@ export function OrderHistoryCard({
       </Text>
 
       <View style={styles.footerRow}>
-        <Text style={[styles.total, { color: theme.text }]}>{formatCurrency(order.totalCents)}</Text>
+        <Text style={[styles.total, { color: theme.text }]}>
+          {formatCurrency(order.totalCents)}
+        </Text>
         <View
           style={styles.starsRow}
           accessibilityLabel={`${order.starsEarned} stars earned`}
