@@ -11,7 +11,7 @@ import {
   PAYMENT_METHOD_LABELS,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -105,7 +105,7 @@ export default function CheckoutScreen() {
     );
   };
 
-  const handlePlaceOrder = async () => {
+  const submitOrder = async () => {
     const result = await placeOrder(paymentMethod);
     if (result.ok) {
       router.replace({
@@ -116,6 +116,32 @@ export default function CheckoutScreen() {
     }
     handleFailure(result);
   };
+
+  // 5-second cancelable grace window before the order actually submits, so the
+  // user can back out or change something. `countdown` null = idle; a number =
+  // seconds remaining. Navigating away unmounts the screen, the effect cleanup
+  // clears the timer, and the order never fires.
+  const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Keep the latest submit in a ref so the ticking effect can depend only on
+  // `countdown` (submitOrder is re-created every render).
+  const submitRef = useRef(submitOrder);
+  useEffect(() => {
+    submitRef.current = submitOrder;
+  });
+
+  useEffect(() => {
+    if (countdown === null) return;
+    const id = setTimeout(() => {
+      if (countdown <= 1) {
+        setCountdown(null);
+        void submitRef.current();
+      } else {
+        setCountdown(countdown - 1);
+      }
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [countdown]);
 
   if (isEmpty) {
     return (
@@ -220,16 +246,25 @@ export default function CheckoutScreen() {
             },
           ]}
         >
-          <Button
-            label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
-              style: 'currency',
-              currency: 'PHP',
-            })}`}
-            onPress={handlePlaceOrder}
-            loading={isPlacingOrder}
-            disabled={isEmpty}
-            mode={mode}
-          />
+          {countdown !== null ? (
+            <Button
+              label={`Cancel • placing in ${countdown}s`}
+              variant="accent"
+              onPress={() => setCountdown(null)}
+              mode={mode}
+            />
+          ) : (
+            <Button
+              label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
+                style: 'currency',
+                currency: 'PHP',
+              })}`}
+              onPress={() => setCountdown(5)}
+              loading={isPlacingOrder}
+              disabled={isEmpty}
+              mode={mode}
+            />
+          )}
         </View>
       </SafeAreaView>
     </View>
