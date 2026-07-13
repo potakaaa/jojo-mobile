@@ -7,9 +7,10 @@
  * realistic populated cart on-device. Every value is typed against the real
  * `@jojopotato/types` cart contracts. Replace with backend-backed state later.
  */
-import type { Cart, CartItem, MenuItem } from '@jojopotato/types';
+import type { Cart, CartItem, Product } from '@jojopotato/types';
 
 import { MOCK_BRANCH, MOCK_PRODUCTS } from '@/features/home/mock-home';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 
 /** The branch a seeded cart is scoped to (single-branch rule, A7). */
 export const MOCK_CART_BRANCH = MOCK_BRANCH;
@@ -17,7 +18,8 @@ export const MOCK_CART_BRANCH = MOCK_BRANCH;
 /** How long the mock branch takes to prepare an order (display estimate, D5). */
 export const MOCK_BRANCH_PREP_MINUTES = 15;
 
-function seedLine(product: MenuItem, quantity: number): CartItem {
+function seedLine(sourceProduct: Product, quantity: number): CartItem {
+  const product = productToMenuItem(sourceProduct);
   return {
     lineId: `line-${product.id}`,
     menuItemId: product.id,

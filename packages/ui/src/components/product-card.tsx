@@ -1,5 +1,5 @@
-import type { MenuItem } from '@jojopotato/types';
-import { formatCurrency } from '@jojopotato/utils';
+import type { Product } from '@jojopotato/types';
+import { formatPricePHP } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
@@ -16,7 +16,13 @@ import {
 } from '../theme';
 
 export interface ProductCardProps {
-  product: MenuItem;
+  product: Product;
+  /**
+   * Whether this product is orderable. Defaults to `true` — menu-context
+   * products are already server-filtered to available ones; callers rendering
+   * a mixed list (e.g. mock data) pass the flag explicitly.
+   */
+  isAvailable?: boolean;
   imageSource?: ImageSourcePropType;
   onPress?: () => void;
   mode?: ThemeMode;
@@ -28,14 +34,22 @@ export interface ProductCardProps {
  * description, price, and an "Add" affordance. Tapping toggles a local
  * pressed highlight — it does not navigate or add to a cart yet.
  */
-export function ProductCard({ product, imageSource, onPress, mode = 'light' }: ProductCardProps) {
+export function ProductCard({
+  product,
+  isAvailable = true,
+  imageSource,
+  onPress,
+  mode = 'light',
+}: ProductCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
+  const resolvedImageSource: ImageSourcePropType | undefined =
+    imageSource ?? (product.imageUrl ? { uri: product.imageUrl } : undefined);
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={!product.isAvailable}
+      disabled={!isAvailable}
       onPress={() => {
         setPressed((p) => !p);
         onPress?.();
@@ -45,14 +59,14 @@ export function ProductCard({ product, imageSource, onPress, mode = 'light' }: P
         {
           backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
           borderColor: theme.border,
-          opacity: product.isAvailable ? 1 : 0.7,
+          opacity: isAvailable ? 1 : 0.7,
         },
       ]}
     >
       <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
-        {imageSource ? (
+        {resolvedImageSource ? (
           <Image
-            source={imageSource}
+            source={resolvedImageSource}
             style={styles.image}
             contentFit="contain"
             accessibilityLabel={product.name}
@@ -60,7 +74,7 @@ export function ProductCard({ product, imageSource, onPress, mode = 'light' }: P
         ) : (
           <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
         )}
-        {!product.isAvailable ? (
+        {!isAvailable ? (
           <View style={styles.soldOutBadge}>
             <Text style={styles.soldOutLabel}>Sold out</Text>
           </View>
@@ -77,11 +91,9 @@ export function ProductCard({ product, imageSource, onPress, mode = 'light' }: P
         ) : null}
         <View style={styles.footer}>
           <Text style={[styles.price, { color: theme.text }]}>
-            {formatCurrency(product.priceCents)}
+            {formatPricePHP(product.basePrice)}
           </Text>
-          <View
-            style={[styles.addButton, { opacity: product.isAvailable ? 1 : 0.4 }, Shadows.offsetSm]}
-          >
+          <View style={[styles.addButton, { opacity: isAvailable ? 1 : 0.4 }, Shadows.offsetSm]}>
             <Text style={styles.addButtonLabel}>+</Text>
           </View>
         </View>

@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import {
   MOCK_BRANCH_PREP_MINUTES,
   MOCK_CART_BRANCH,
@@ -56,7 +57,7 @@ function productForLine(
     // Use the snapshot unit price so the row total matches the cart math exactly.
     priceCents: unitPriceCents,
     categoryId: catalog?.categoryId ?? '',
-    imageUrl: catalog?.imageUrl,
+    imageUrl: catalog?.imageUrl ?? undefined,
     isAvailable: true,
   };
 }
@@ -108,8 +109,10 @@ export default function CartScreen() {
   // switch, never silently mix branches. Dev-only affordance to exercise it.
   const handleAddFromOtherBranch = () => {
     const other = MOCK_OTHER_BRANCH;
-    const sample = MOCK_PRODUCTS.find((p) => p.id === 'corndog-mozzarella') ?? MOCK_PRODUCTS[0];
-    if (!sample) return;
+    const sampleProduct =
+      MOCK_PRODUCTS.find((p) => p.id === 'corndog-mozzarella') ?? MOCK_PRODUCTS[0];
+    if (!sampleProduct) return;
+    const sample = productToMenuItem(sampleProduct);
     const opts: CartItemOption[] = [];
     if (cart.pickupBranchId === other.id || cart.items.length === 0) {
       setBranch(other.id);
