@@ -9,7 +9,7 @@ import {
   Input,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,6 +21,9 @@ import {
   MOCK_CART_BRANCH,
   MOCK_OTHER_BRANCH,
 } from '@/features/cart/mock-cart';
+import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
+import { checkDealEligibility } from '@/features/deals/lib/eligibility';
+import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { MOCK_PRODUCTS } from '@/features/home/mock-home';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -95,14 +98,65 @@ export default function CartScreen() {
   const pickupTime = useMemo(() => estimatedPickup(MOCK_BRANCH_PREP_MINUTES), []);
   const isEmpty = cart.items.length === 0;
 
+  // Re-lookup the applied deal from the mock catalog so richer display data
+  // (title, discountLabel) is sourced from the catalog, not just the stored
+  // label (deals-screens plan Decision #3). Falls back to stored fields on miss.
+  const appliedDeal = useMemo(
+    () =>
+      cart.appliedDiscount
+        ? MOCK_DEALS.find((d) => d.id === cart.appliedDiscount?.refId)
+        : undefined,
+    [cart.appliedDiscount],
+  );
+
+  // Expiry/ineligibility-at-checkout: if the applied deal has become ineligible
+  // (e.g. expired window, or subtotal dropped below its minimum after removing
+  // items), auto-clear it with a one-time notice. Home for this recheck is
+  // cart.tsx — checkout.tsx is a bare ComingSoon placeholder with no mount-time
+  // state to hook into (deals-screens plan step 9/12).
+  useEffect(() => {
+    const applied = cart.appliedDiscount;
+    if (!applied) return;
+    const deal = MOCK_DEALS.find((d) => d.id === applied.refId);
+    if (!deal) return;
+    const result = checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+    if (!result.eligible) {
+      clearDiscount();
+      Alert.alert('Deal removed', result.message);
+    }
+  }, [cart, clearDiscount]);
+
   const handleApplyCoupon = () => {
     const code = couponCode.trim();
     if (!code) return;
-    // Real coupon pricing is stubbed (CART-002). Model a light client-side 10%
-    // discount so the total recalculation is demonstrable (D2/D9).
-    const amountCents = Math.round(subtotalCents * 0.1);
-    applyDiscount({ source: 'coupon', refId: code, label: code.toUpperCase(), amountCents });
-    setCouponCode('');
+
+    const doApply = () => {
+      // Known gap: usage is not persisted here — real consumption happens at
+      // order placement (out of scope this round).
+      const result = resolveAndApplyDeal(code, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+      if (!result.ok) {
+        // Keep couponCode on failure so the user can see what they typed.
+        Alert.alert('Cannot apply deal', result.message);
+        return;
+      }
+      applyDiscount(result.discount);
+      setCouponCode('');
+    };
+
+    // One-deal-per-cart: replace-with-confirmation (mirrors this file's
+    // branch-switch confirmation UX; deals-screens plan step 11).
+    if (cart.appliedDiscount) {
+      Alert.alert(
+        'Replace applied deal?',
+        `This cart already has '${cart.appliedDiscount.label}' applied.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Replace', onPress: doApply },
+        ],
+      );
+      return;
+    }
+    doApply();
   };
 
   // AC6 (D4): adding a product from a different branch must prompt to clear and
@@ -230,9 +284,10 @@ export default function CartScreen() {
                     <CouponCard
                       coupon={{
                         id: cart.appliedDiscount.refId,
-                        code: cart.appliedDiscount.label,
-                        title: 'Applied discount',
-                        discountLabel: `-${(discountTotalCents / 100).toFixed(2)}`,
+                        code: appliedDeal?.code ?? cart.appliedDiscount.label,
+                        title: appliedDeal?.title ?? 'Applied discount',
+                        discountLabel:
+                          appliedDeal?.discountLabel ?? `-${(discountTotalCents / 100).toFixed(2)}`,
                         isRedeemed: false,
                       }}
                       mode={mode}
