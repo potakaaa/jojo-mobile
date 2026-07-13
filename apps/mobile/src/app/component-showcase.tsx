@@ -3,6 +3,7 @@ import type {
   Coupon,
   Deal,
   Flavor,
+  MenuItem,
   OrderStatus,
   PickupBranch,
   PickupTime,
@@ -127,17 +128,23 @@ const SAMPLE_COUPON_REDEEMED: Coupon = {
 };
 
 const SAMPLE_CART_ITEM: CartItemData = {
-  id: 'line-fries-classic',
-  productId: 'prod-fries-classic',
-  name: 'Classic Fries',
-  imageUrl: null,
-  basePrice: 120,
-  unitPrice: 160,
+  lineId: 'line-showcase-1',
+  menuItemId: 'prod-fries-classic',
   quantity: 2,
-  selectedOptions: [
-    { optionId: 'sz-large', optionType: 'size', name: 'Large', priceDelta: 40 },
-    { optionId: 'flv-cheese', optionType: 'flavor', name: 'Cheese', priceDelta: 0 },
-  ],
+  productNameSnapshot: 'Classic Fries',
+  unitPriceCents: 12000,
+  selectedOptions: [],
+};
+
+/** `MenuItem`-shaped counterpart of `SAMPLE_CART_ITEM`, for `<CartItem product={...}>`. */
+const SAMPLE_MENU_ITEM: MenuItem = {
+  id: 'prod-fries-classic',
+  name: 'Classic Fries',
+  description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
+  priceCents: 12000,
+  imageUrl: undefined,
+  categoryId: 'cat-fries',
+  isAvailable: true,
 };
 
 const SAMPLE_FLAVORS: Flavor[] = [
@@ -302,8 +309,12 @@ export default function ComponentShowcaseScreen() {
           <Section title="CartItem">
             <CartItem
               item={{ ...SAMPLE_CART_ITEM, quantity }}
+              product={SAMPLE_MENU_ITEM}
+              flavor="Cheese"
+              size="Large"
               onIncrement={() => setQuantity((q) => q + 1)}
               onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
+              onRemove={log('CartItem remove')}
             />
           </Section>
 

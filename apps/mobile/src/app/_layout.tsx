@@ -16,7 +16,7 @@ import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 import { BranchProvider } from '@/features/branch/hooks/use-branch';
-import { CartProvider } from '@/features/cart/hooks/use-cart';
+import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
 import { queryClient } from '@/lib/query-client';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
@@ -53,9 +53,9 @@ function AuthedTree() {
 
   return (
     <BranchProvider>
-      <CartProvider key={user?.id ?? 'anonymous'}>
+      <CartSessionProvider key={user?.id ?? 'anonymous'}>
         <RootNavigator />
-      </CartProvider>
+      </CartSessionProvider>
     </BranchProvider>
   );
 }

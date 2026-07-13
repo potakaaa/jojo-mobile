@@ -1,21 +1,18 @@
-import type { CartSelectedOption, ProductOption, ProductOptionType } from '@jojopotato/types';
-import {
-  buildCartItemSnapshot,
-  computeUnitPrice,
-  formatPricePHP,
-  getRequiredOptionTypes,
-} from '@jojopotato/utils';
+import type { CartItemOption, ProductOption, ProductOptionType } from '@jojopotato/types';
+import { computeUnitPrice, formatPricePHP, getRequiredOptionTypes } from '@jojopotato/utils';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useCart } from '@/features/cart/hooks/use-cart';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { AddToCartBar } from '@/features/menu/components/add-to-cart-bar';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
 import { groupOptions } from '@/features/menu/lib/group-options';
-import { useCart } from '@/features/cart/hooks/use-cart';
 import { useTheme } from '@/hooks/use-theme';
 
 type SelectionState = Partial<Record<ProductOptionType, string[]>>;
@@ -24,7 +21,8 @@ export default function ProductDetailsScreen() {
   const theme = useTheme();
   const { productId } = useLocalSearchParams<{ productId: string }>();
   const { data: product, isLoading, isError } = useProductDetails(productId);
-  const { addItem } = useCart();
+  const { cart, addItem, setBranch, clearCart } = useCart();
+  const { selectedBranch } = useBranch();
 
   const [selection, setSelection] = useState<SelectionState>({});
   const [addedNotice, setAddedNotice] = useState(false);
@@ -74,14 +72,42 @@ export default function ProductDetailsScreen() {
   };
 
   const handleAdd = () => {
-    if (!product) return;
-    const snapshotOptions: CartSelectedOption[] = selectedOptions.map((option) => ({
-      optionId: option.id,
+    if (!product || !selectedBranch) return;
+
+    const opts: CartItemOption[] = selectedOptions.map((option) => ({
+      id: option.id,
       optionType: option.optionType,
       name: option.name,
-      priceDelta: option.priceDelta,
+      priceDeltaCents: Math.round(option.priceDelta * 100),
     }));
-    addItem(buildCartItemSnapshot(product, snapshotOptions, unitPrice));
+    const menuItem = productToMenuItem(product, product.isAvailable);
+
+    const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
+    if (isSwitchingBranch) {
+      Alert.alert(
+        'Switch branch?',
+        `Your cart has items from a different branch. Clear it and start a new order at ${selectedBranch.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Clear and switch',
+            style: 'destructive',
+            onPress: () => {
+              clearCart();
+              setBranch(selectedBranch.id);
+              addItem(menuItem, opts);
+              setAddedNotice(true);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (cart.pickupBranchId !== selectedBranch.id) {
+      setBranch(selectedBranch.id);
+    }
+    addItem(menuItem, opts);
     setAddedNotice(true);
   };
 

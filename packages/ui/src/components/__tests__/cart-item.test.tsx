@@ -1,26 +1,41 @@
 import { render } from '@testing-library/react-native';
-import { formatPricePHP } from '@jojopotato/utils';
+import { formatCurrency } from '@jojopotato/utils';
 
 import { CartItem } from '../cart-item';
-import { MOCK_CART_ITEM } from './mocks';
+import { MOCK_CART_ITEM, MOCK_FLAVOR, MOCK_MENU_ITEM, MOCK_SIZE } from './mocks';
 
-test('renders CartItem from a snapshot with selected options', async () => {
+test('renders CartItem with flavor and size variant', async () => {
   const { getByText } = await render(
-    <CartItem item={MOCK_CART_ITEM} onIncrement={() => {}} onDecrement={() => {}} />,
+    <CartItem
+      item={MOCK_CART_ITEM}
+      product={MOCK_MENU_ITEM}
+      flavor={MOCK_FLAVOR}
+      size={MOCK_SIZE}
+      onIncrement={() => {}}
+      onDecrement={() => {}}
+    />,
   );
 
-  expect(getByText(MOCK_CART_ITEM.name)).toBeTruthy();
-  expect(getByText('Large')).toBeTruthy();
-  expect(
-    getByText(formatPricePHP(MOCK_CART_ITEM.unitPrice * MOCK_CART_ITEM.quantity)),
-  ).toBeTruthy();
+  const lineTotalCents =
+    (MOCK_MENU_ITEM.priceCents + MOCK_SIZE.priceModifierCents!) * MOCK_CART_ITEM.quantity;
+
+  expect(getByText(MOCK_MENU_ITEM.name)).toBeTruthy();
+  expect(getByText(`${MOCK_FLAVOR.name} • ${MOCK_SIZE.label}`)).toBeTruthy();
+  expect(getByText(formatCurrency(lineTotalCents))).toBeTruthy();
 });
 
-test('renders CartItem with no selected options', async () => {
-  const item = { ...MOCK_CART_ITEM, selectedOptions: [] };
-  const { getByText, queryByText } = await render(<CartItem item={item} />);
+test('renders CartItem with no flavor/size variant', async () => {
+  const { getByText, queryByText } = await render(
+    <CartItem item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} />,
+  );
 
-  expect(getByText(item.name)).toBeTruthy();
-  expect(getByText(formatPricePHP(item.unitPrice * item.quantity))).toBeTruthy();
-  expect(queryByText('Large')).toBeNull();
+  const lineTotalCents = MOCK_MENU_ITEM.priceCents * MOCK_CART_ITEM.quantity;
+
+  expect(getByText(MOCK_MENU_ITEM.name)).toBeTruthy();
+  expect(getByText(formatCurrency(lineTotalCents))).toBeTruthy();
+  expect(queryByText(MOCK_SIZE.label)).toBeNull();
+});
+
+test('renders CartItem with onRemove trash affordance without throwing', async () => {
+  await render(<CartItem item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} onRemove={() => {}} />);
 });

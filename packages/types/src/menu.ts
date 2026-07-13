@@ -55,3 +55,26 @@ export interface ProductDetail extends Product {
 export interface MenuResponse {
   categories: Category[];
 }
+
+/**
+ * Cart-internal catalog shape (cents convention) — used only as the input to
+ * `useCart().addItem()` (see `features/cart/hooks/use-cart.ts`). Distinct from
+ * `Product`/`ProductDetail` above (the real API catalog types, whole-PHP-unit
+ * convention); callers building a cart line from a `ProductDetail` convert at
+ * the boundary (see the Product Details "Add to Cart" handler).
+ */
+export interface MenuItem {
+  id: string;
+  name: string;
+  description?: string;
+  priceCents: number;
+  imageUrl?: string;
+  categoryId: string;
+  isAvailable: boolean;
+}
+
+export interface MenuCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+}

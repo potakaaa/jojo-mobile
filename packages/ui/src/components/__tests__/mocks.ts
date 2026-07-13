@@ -3,6 +3,7 @@ import type {
   Coupon,
   Deal,
   Flavor,
+  MenuItem,
   PickupBranch,
   PickupTime,
   Product,
@@ -60,14 +61,23 @@ export const MOCK_COUPON: Coupon = {
 };
 
 export const MOCK_CART_ITEM: CartItem = {
-  id: 'line-1',
-  productId: 'p1',
-  name: 'Classic Fries',
-  imageUrl: null,
-  basePrice: 120,
-  unitPrice: 140,
+  lineId: 'line-1',
+  menuItemId: 'p1',
   quantity: 2,
-  selectedOptions: [{ optionId: 's1', optionType: 'size', name: 'Large', priceDelta: 20 }],
+  productNameSnapshot: 'Classic Fries',
+  unitPriceCents: 12000,
+  selectedOptions: [],
+};
+
+/** `MenuItem`-shaped counterpart of `MOCK_PRODUCT`, for `<CartItem product={...}>`. */
+export const MOCK_MENU_ITEM: MenuItem = {
+  id: 'p1',
+  name: 'Classic Fries',
+  description: 'Crispy golden fries',
+  priceCents: 12000,
+  imageUrl: undefined,
+  categoryId: 'classic',
+  isAvailable: true,
 };
 
 export const MOCK_FLAVOR: Flavor = { id: 'f1', name: 'Cheese' };
