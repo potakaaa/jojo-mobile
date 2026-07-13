@@ -24,9 +24,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 
 /** `GET /orders/:orderId` — full order + items (session required). */
 export async function fetchOrder(orderId: string): Promise<Order> {
-  const { order } = await apiRequest<{ order: Order }>(
-    `/orders/${encodeURIComponent(orderId)}`,
-  );
+  const { order } = await apiRequest<{ order: Order }>(`/orders/${encodeURIComponent(orderId)}`);
   return order;
 }
 

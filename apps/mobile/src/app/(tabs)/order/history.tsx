@@ -37,7 +37,9 @@ export default function OrderHistoryScreen() {
   }
   if (!orders || orders.length === 0) {
     return (
-      <View style={[styles.container, styles.emptyContainer, { backgroundColor: theme.background }]}>
+      <View
+        style={[styles.container, styles.emptyContainer, { backgroundColor: theme.background }]}
+      >
         <EmptyState
           iconName="receipt-outline"
           title="No orders yet"

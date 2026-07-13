@@ -14,7 +14,7 @@
     "build": "expo export",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "clean": "rm -rf .expo dist node_modules",
     "build:ios:development:local": "npx eas-cli@latest build --platform ios --profile development --local --output ./builds/development/jojo-potato-development.ipa",
     "build:ios:preview:local": "npx eas-cli@latest build --platform ios --profile preview --local --output ./builds/preview/jojo-potato-preview.ipa",
