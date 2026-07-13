@@ -67,6 +67,18 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 };
 
 /**
+ * Shared source of truth for payment-method icons, reused by the Checkout
+ * "Change" row so the selected method shows its glyph alongside the label.
+ */
+export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, keyof typeof Ionicons.glyphMap> = {
+  pay_at_branch: 'storefront-outline',
+  app_wallet: 'wallet-outline',
+  gcash: 'phone-portrait-outline',
+  maya: 'card-outline',
+  card: 'card-outline',
+};
+
+/**
  * Per-method availability (D2): `pay_at_branch` is always selectable;
  * `app_wallet` is always disabled (no wallet backing yet); `gcash`/`maya`/`card`
  * are selectable only when the online-payment feature flag is enabled. Disabled

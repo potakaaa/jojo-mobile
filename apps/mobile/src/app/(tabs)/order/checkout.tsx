@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { MenuItem, PickupBranch, PlaceOrderResult } from '@jojopotato/types';
 import {
   BranchCard,
@@ -6,6 +7,7 @@ import {
   CartItem,
   CartSummary,
   EmptyState,
+  PAYMENT_METHOD_ICONS,
   PAYMENT_METHOD_LABELS,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
@@ -173,29 +175,6 @@ export default function CheckoutScreen() {
             ))}
           </View>
 
-          <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: theme.text }]}>Payment</Text>
-            <Card mode={mode}>
-              <View style={styles.paymentRow}>
-                <View style={styles.paymentText}>
-                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
-                    Payment method
-                  </Text>
-                  <Text style={[styles.paymentValue, { color: theme.text }]}>
-                    {PAYMENT_METHOD_LABELS[paymentMethod]}
-                  </Text>
-                </View>
-                <Button
-                  label="Change"
-                  variant="outline"
-                  size="sm"
-                  mode={mode}
-                  onPress={() => router.push('/(tabs)/order/payment-method')}
-                />
-              </View>
-            </Card>
-          </View>
-
           <CartSummary
             subtotalCents={subtotalCents}
             discountCents={discountTotalCents}
@@ -203,6 +182,25 @@ export default function CheckoutScreen() {
             totalCents={totalCents}
             mode={mode}
           />
+
+          <Card mode={mode} style={styles.paymentCard}>
+            <Text style={[styles.sectionLabel, { color: theme.text }]}>Payment</Text>
+            <View style={styles.paymentRow}>
+              <View style={styles.paymentMethodValue}>
+                <Ionicons name={PAYMENT_METHOD_ICONS[paymentMethod]} size={18} color={theme.text} />
+                <Text style={[styles.paymentValue, { color: theme.text }]}>
+                  {PAYMENT_METHOD_LABELS[paymentMethod]}
+                </Text>
+              </View>
+              <Button
+                label="Change"
+                variant="outline"
+                size="sm"
+                mode={mode}
+                onPress={() => router.push('/(tabs)/order/payment-method')}
+              />
+            </View>
+          </Card>
 
           {__DEV__ ? <DevEdgeCaseControls mode={mode} /> : null}
         </ScrollView>
@@ -321,15 +319,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  paymentCard: {
+    gap: Spacing.two,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   paymentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
   },
-  paymentText: {
+  paymentMethodValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     flex: 1,
-    gap: Spacing.half,
   },
   paymentValue: {
     fontFamily: FontFamily.body.semibold,
