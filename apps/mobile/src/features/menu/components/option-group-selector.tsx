@@ -1,10 +1,21 @@
-import type { ProductOptionType } from '@jojopotato/types';
+import type { ProductOption, ProductOptionType } from '@jojopotato/types';
 import { AddOnSelector, Badge, FlavorSelector, SizeSelector } from '@jojopotato/ui';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
-import type { OptionGroup } from '@/features/menu/lib/group-options';
 import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * One option group ready to render: a type + the options for that type. The
+ * backend already returns options grouped by type (a `Record`), so this branch
+ * builds `OptionGroup`s inline in `[productId].tsx` rather than via a client-side
+ * `groupOptions()` helper — hence this type is defined here, not imported from
+ * the un-adopted `lib/group-options.ts`.
+ */
+export interface OptionGroup {
+  type: ProductOptionType;
+  options: ProductOption[];
+}
 
 export interface OptionGroupSelectorProps {
   group: OptionGroup;
@@ -49,19 +60,19 @@ export function OptionGroupSelector({
 
       {group.type === 'flavor' ? (
         <FlavorSelector
-          flavors={group.options.map((option) => ({ id: option.id, name: option.name }))}
+          flavors={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
           selectedFlavorId={selectedId}
           onSelect={(flavor) => onChange(flavor.id)}
         />
       ) : group.type === 'size' ? (
         <SizeSelector
-          sizes={group.options.map((option) => ({ id: option.id, label: option.name }))}
+          sizes={group.options.map((option) => ({ id: option.optionId, label: option.name }))}
           selectedSizeId={selectedId}
           onSelect={(size) => onChange(size.id)}
         />
       ) : (
         <AddOnSelector
-          options={group.options.map((option) => ({ id: option.id, name: option.name }))}
+          options={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
           selectedIds={selectedIds}
           onToggle={(id) => onChange(id)}
         />

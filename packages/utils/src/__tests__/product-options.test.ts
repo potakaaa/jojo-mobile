@@ -5,30 +5,27 @@ import { getRequiredOptionTypes, isRequiredSelectionComplete } from '../product-
 
 function opt(partial: Partial<ProductOption> & Pick<ProductOption, 'optionType'>): ProductOption {
   return {
-    id: `${partial.optionType}-${partial.name ?? 'x'}`,
-    productId: 'p1',
+    optionId: `${partial.optionType}-${partial.name ?? 'x'}`,
     name: partial.name ?? 'Option',
-    priceDelta: partial.priceDelta ?? 0,
-    isActive: partial.isActive ?? true,
-    sortOrder: partial.sortOrder ?? 0,
+    priceDeltaCents: partial.priceDeltaCents ?? 0,
     ...partial,
   };
 }
 
 const FLAVOR_ONLY: ProductOption[] = [
   opt({ optionType: 'flavor', name: 'Classic' }),
-  opt({ optionType: 'flavor', name: 'Cheese-filled', priceDelta: 15 }),
+  opt({ optionType: 'flavor', name: 'Cheese-filled', priceDeltaCents: 1500 }),
 ];
 
 const SIZE_AND_FLAVOR: ProductOption[] = [
   opt({ optionType: 'size', name: 'Regular' }),
-  opt({ optionType: 'size', name: 'Large', priceDelta: 20 }),
+  opt({ optionType: 'size', name: 'Large', priceDeltaCents: 2000 }),
   opt({ optionType: 'flavor', name: 'Original' }),
-  opt({ optionType: 'flavor', name: 'Strawberry', priceDelta: 15 }),
+  opt({ optionType: 'flavor', name: 'Strawberry', priceDeltaCents: 1500 }),
 ];
 
 const ADD_ON_ONLY: ProductOption[] = [
-  opt({ optionType: 'add_on', name: 'Extra Cheese', priceDelta: 20 }),
+  opt({ optionType: 'add_on', name: 'Extra Cheese', priceDeltaCents: 2000 }),
 ];
 
 describe('getRequiredOptionTypes (AC8)', () => {
@@ -42,11 +39,6 @@ describe('getRequiredOptionTypes (AC8)', () => {
 
   it('add-on-only product requires nothing', () => {
     expect(getRequiredOptionTypes(ADD_ON_ONLY)).toEqual([]);
-  });
-
-  it('ignores inactive options when deciding required groups', () => {
-    const inactiveFlavor = [opt({ optionType: 'flavor', name: 'Gone', isActive: false })];
-    expect(getRequiredOptionTypes(inactiveFlavor)).toEqual([]);
   });
 });
 

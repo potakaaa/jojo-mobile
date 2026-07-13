@@ -7,7 +7,6 @@ import type {
   OrderStatus,
   PickupBranch,
   PickupTime,
-  Product,
   RewardsAccount,
   RewardsTierProgress,
   Size,
@@ -50,28 +49,22 @@ const log = (label: string) => () => console.log(`[showcase] ${label}`);
 
 // --- Sample data (invented, but shaped to each real type) ---
 
-const SAMPLE_PRODUCT: Product = {
+const SAMPLE_PRODUCT: MenuItem = {
   id: 'prod-fries-classic',
-  categoryId: 'cat-fries',
   name: 'Classic Fries',
-  slug: 'classic-fries',
   description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
-  imageUrl: null,
-  basePrice: 120,
-  isActive: true,
-  isRewardEligible: false,
+  priceCents: 12000,
+  categoryId: 'cat-fries',
+  isAvailable: true,
 };
 
-const SAMPLE_PRODUCT_SOLD_OUT: Product = {
+const SAMPLE_PRODUCT_SOLD_OUT: MenuItem = {
   id: 'prod-loaded-fries',
-  categoryId: 'cat-fries',
   name: 'Loaded Cheese Fries',
-  slug: 'loaded-cheese-fries',
   description: 'Melted cheese, bacon bits, spring onions.',
-  imageUrl: null,
-  basePrice: 185,
-  isActive: false,
-  isRewardEligible: false,
+  priceCents: 18500,
+  categoryId: 'cat-fries',
+  isAvailable: false,
 };
 
 const SAMPLE_DEAL: Deal = {
@@ -87,6 +80,8 @@ const SAMPLE_BRANCH: PickupBranch = {
   address: 'North Ave cor. EDSA, Quezon City',
   latitude: 14.6564,
   longitude: 121.03,
+  estimatedPrepMinutes: 20,
+  isAcceptingPickup: true,
   isOpen: true,
 };
 
@@ -96,6 +91,8 @@ const SAMPLE_BRANCH_CLOSED: PickupBranch = {
   address: 'Seaside Blvd, Pasay City',
   latitude: 14.535,
   longitude: 120.982,
+  estimatedPrepMinutes: 25,
+  isAcceptingPickup: false,
   isOpen: false,
 };
 
@@ -136,17 +133,6 @@ const SAMPLE_CART_ITEM: CartItemData = {
   selectedOptions: [],
 };
 
-/** `MenuItem`-shaped counterpart of `SAMPLE_CART_ITEM`, for `<CartItem product={...}>`. */
-const SAMPLE_MENU_ITEM: MenuItem = {
-  id: 'prod-fries-classic',
-  name: 'Classic Fries',
-  description: 'Hand-cut potatoes, double-fried until golden, dusted with sea salt.',
-  priceCents: 12000,
-  imageUrl: undefined,
-  categoryId: 'cat-fries',
-  isAvailable: true,
-};
-
 const SAMPLE_FLAVORS: Flavor[] = [
   { id: 'flv-salt', name: 'Sea Salt' },
   { id: 'flv-cheese', name: 'Cheese' },
@@ -176,9 +162,10 @@ const SAMPLE_PICKUP_TIME_FULL: PickupTime = {
 
 const ORDER_STATUSES: OrderStatus[] = [
   'pending',
-  'confirmed',
+  'accepted',
   'preparing',
-  'ready_for_pickup',
+  'flavoring',
+  'ready',
   'completed',
   'cancelled',
 ];
@@ -268,7 +255,7 @@ export default function ComponentShowcaseScreen() {
 
           <Section title="ProductCard">
             <ProductCard product={SAMPLE_PRODUCT} />
-            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} isAvailable={false} />
+            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} />
           </Section>
 
           <Section title="DealCard">
@@ -309,12 +296,11 @@ export default function ComponentShowcaseScreen() {
           <Section title="CartItem">
             <CartItem
               item={{ ...SAMPLE_CART_ITEM, quantity }}
-              product={SAMPLE_MENU_ITEM}
-              flavor="Cheese"
-              size="Large"
+              product={SAMPLE_PRODUCT}
+              flavor={SAMPLE_FLAVORS.find((f) => f.id === selectedFlavorId)}
+              size={SAMPLE_SIZES.find((s) => s.id === selectedSizeId)}
               onIncrement={() => setQuantity((q) => q + 1)}
               onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
-              onRemove={log('CartItem remove')}
             />
           </Section>
 

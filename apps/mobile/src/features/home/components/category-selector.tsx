@@ -1,4 +1,4 @@
-import type { Category } from '@jojopotato/types';
+import type { MenuCategory } from '@jojopotato/types';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
@@ -6,7 +6,7 @@ import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/them
 import { useTheme } from '@/hooks/use-theme';
 
 export interface CategorySelectorProps {
-  categories: Category[];
+  categories: MenuCategory[];
 }
 
 /** Small emoji glyph per known category id, purely decorative. */

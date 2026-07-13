@@ -1,5 +1,5 @@
 import { Button } from '@jojopotato/ui';
-import { formatPricePHP } from '@jojopotato/utils';
+import { formatCurrency } from '@jojopotato/utils';
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,8 @@ import { FontFamily, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export interface AddToCartBarProps {
-  unitPrice: number;
+  /** Live unit price in integer cents (base + selected option deltas). */
+  unitPriceCents: number;
   /** True once all required option groups have a selection (AC8). */
   canAdd: boolean;
   /** False when the product is unavailable at the selected branch (AC11). */
@@ -23,7 +24,7 @@ export interface AddToCartBarProps {
  * incomplete surfaces an inline validation message rather than adding (AC9).
  * When the product is unavailable it shows an unavailable state instead (AC11).
  */
-export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCartBarProps) {
+export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: AddToCartBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [showHint, setShowHint] = useState(false);
@@ -55,7 +56,9 @@ export function AddToCartBar({ unitPrice, canAdd, isAvailable, onAdd }: AddToCar
       <View style={styles.row}>
         <View>
           <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Total</Text>
-          <Text style={[styles.price, { color: theme.text }]}>{formatPricePHP(unitPrice)}</Text>
+          <Text style={[styles.price, { color: theme.text }]}>
+            {formatCurrency(unitPriceCents)}
+          </Text>
         </View>
         {isAvailable ? (
           <Button

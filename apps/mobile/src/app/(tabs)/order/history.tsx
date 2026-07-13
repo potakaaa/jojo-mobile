@@ -1,120 +1,99 @@
-import type { Order, PickupBranch } from '@jojopotato/types';
-import { EmptyState, OrderHistoryCard } from '@jojopotato/ui';
+import type { Order } from '@jojopotato/types';
+import { Card, EmptyState, OrderStatusBadge } from '@jojopotato/ui';
+import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { useCart } from '@/features/cart/hooks/use-cart';
-import { MOCK_CART_BRANCH, MOCK_OTHER_BRANCH } from '@/features/cart/mock-cart';
-import {
-  MOCK_CURRENT_USER_ID,
-  MOCK_ORDER_HISTORY,
-} from '@/features/order-history/mock-order-history';
-import { applyReorderPlan, buildReorderPlan } from '@/features/order-history/reorder';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
+import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Known branches, keyed by id, for resolving `order.branchId` to a display name. */
-const BRANCHES: Record<string, PickupBranch> = {
-  [MOCK_CART_BRANCH.id]: MOCK_CART_BRANCH,
-  [MOCK_OTHER_BRANCH.id]: MOCK_OTHER_BRANCH,
-};
+/** Format an ISO date as a short local date (e.g. "Jul 13"). */
+function formatPlacedDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
-/**
- * Order History (HIST-001). Lists the signed-in user's past orders (newest
- * first) against mock data, with a Reorder CTA per finished order. Reorder
- * (HIST-002) re-checks current availability/pricing: an all-available order
- * populates the cart and jumps straight to Cart; an order with any now-unavailable
- * item routes to the Reorder Review screen so nothing is ever silently dropped.
- */
+/** Order History: the caller's past orders, newest first. */
 export default function OrderHistoryScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
-  const insets = useSafeAreaInsets();
-  const { addItem, setBranch } = useCart();
+  const { data: orders, loading, error, refetch } = useOrderHistory();
 
-  const orders = useMemo(
-    () =>
-      MOCK_ORDER_HISTORY.filter((o) => o.userId === MOCK_CURRENT_USER_ID).sort(
-        (a, b) => new Date(b.placedAt).getTime() - new Date(a.placedAt).getTime(),
-      ),
-    [],
-  );
+  if (loading) return <ScreenLoader />;
+  if (error) {
+    return (
+      <ScreenMessage
+        title="Couldn't load your orders"
+        subtitle={error}
+        actionLabel="Retry"
+        onAction={refetch}
+      />
+    );
+  }
+  if (!orders || orders.length === 0) {
+    return (
+      <View style={[styles.container, styles.emptyContainer, { backgroundColor: theme.background }]}>
+        <EmptyState
+          iconName="receipt-outline"
+          title="No orders yet"
+          description="When you place an order, it'll show up here so you can track it and reorder in a tap."
+          actionLabel="Start an order"
+          onAction={() => router.replace('/(tabs)/branches')}
+          mode={mode}
+        />
+      </View>
+    );
+  }
 
-  const handleReorder = (order: Order) => {
-    const plan = buildReorderPlan(order);
-    if (plan.unavailable.length === 0) {
-      // Happy path (D3): everything still available — populate and go to Cart.
-      applyReorderPlan(plan, order.branchId, { addItem, setBranch });
-      router.push('/(tabs)/order/cart');
-      return;
-    }
-    // Conflict path (D3/D8): surface the unavailable items for an explicit choice.
-    router.push({ pathname: '/(tabs)/order/reorder/[orderId]', params: { orderId: order.id } });
-  };
-
-  const isEmpty = orders.length === 0;
+  const openOrder = (order: Order) =>
+    router.push({ pathname: '/(tabs)/order/tracking/[orderId]', params: { orderId: order.id } });
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        {isEmpty ? (
-          <EmptyState
-            iconName="receipt-outline"
-            title="No orders yet"
-            description="When you place an order, it'll show up here for easy reordering."
-            actionLabel="Browse menu"
-            onAction={() => router.push('/(tabs)/order')}
-            mode={mode}
-          />
-        ) : (
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={[
-              styles.content,
-              Platform.OS !== 'web' && {
-                paddingBottom: getFloatingTabBarClearance(insets.bottom),
-              },
-            ]}
-            showsVerticalScrollIndicator={false}
-          >
-            {orders.map((order) => (
-              <OrderHistoryCard
-                key={order.id}
-                order={order}
-                branchName={BRANCHES[order.branchId]?.name}
-                onReorder={handleReorder}
-                mode={mode}
-              />
-            ))}
-          </ScrollView>
+      <FlatList
+        data={orders}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <Pressable accessibilityRole="button" onPress={() => openOrder(item)}>
+            <Card>
+              <View style={styles.row}>
+                <Text style={[styles.orderNumber, { color: theme.text }]}>{item.orderNumber}</Text>
+                <Text style={[styles.total, { color: theme.text }]}>
+                  {formatCurrency(item.totalCents)}
+                </Text>
+              </View>
+              <Text style={[styles.date, { color: theme.textSecondary }]}>
+                {formatPlacedDate(item.placedAt)}
+              </Text>
+              <View style={styles.badgeRow}>
+                <OrderStatusBadge status={item.status} />
+              </View>
+            </Card>
+          </Pressable>
         )}
-      </SafeAreaView>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: Spacing.four },
+  content: { padding: Spacing.four, gap: Spacing.three, paddingBottom: Spacing.six },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
+  total: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.body },
+  date: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.half,
   },
-  safeArea: {
-    flex: 1,
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: MaxContentWidth,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-    gap: Spacing.three,
-  },
+  badgeRow: { marginTop: Spacing.two },
 });
