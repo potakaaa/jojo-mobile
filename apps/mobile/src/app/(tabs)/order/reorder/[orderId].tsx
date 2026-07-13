@@ -2,9 +2,10 @@ import { Badge, Button, Card, EmptyState } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { MOCK_ORDER_HISTORY } from '@/features/order-history/mock-order-history';
 import {
@@ -35,6 +36,7 @@ export default function ReorderReviewScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { addItem, setBranch } = useCart();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const insets = useSafeAreaInsets();
 
   const order = useMemo(() => MOCK_ORDER_HISTORY.find((o) => o.id === orderId), [orderId]);
   const plan = useMemo(() => (order ? buildReorderPlan(order) : null), [order]);
@@ -151,7 +153,14 @@ export default function ReorderReviewScreen() {
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            Platform.OS !== 'web' && {
+              paddingBottom: getFloatingTabBarClearance(insets.bottom),
+            },
+          ]}
+        >
           <Button
             label="Continue to Cart"
             onPress={handleContinue}

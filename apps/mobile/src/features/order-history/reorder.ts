@@ -73,7 +73,8 @@ export function buildReorderPlan(order: Order): ReorderResult {
  * Applies the `available` lines of a reorder plan to the live cart via the
  * existing useCart() seam. Sets the branch first, then re-adds each available
  * line with its current MenuItem and carried-forward historical options (which
- * makes useCart().addItem recompute the unit price from the current catalog).
+ * makes useCart().addItem recompute the unit price from the current catalog)
+ * and notes (D2 — carried over verbatim, not price/availability-bearing).
  * Unavailable lines are intentionally NOT added (the Reorder Review screen has
  * already surfaced them to the user — D8, never a silent drop).
  */
@@ -89,6 +90,7 @@ export function applyReorderPlan(
       line.currentMenuItem,
       line.originalItem.selectedOptions,
       line.originalItem.quantity,
+      line.originalItem.notes,
     );
   }
 }
