@@ -1,12 +1,13 @@
 import type { PickupBranch } from '@jojopotato/types';
 import { Palette, type ThemeMode } from '@jojopotato/ui';
 import { getIsOpenNow } from '@jojopotato/utils';
+import { useImage } from 'expo-image';
 import { AppleMaps, GoogleMaps } from 'expo-maps';
 import {
   AppleMapPointOfInterestCategory,
   AppleMapsMapStyleEmphasis,
 } from 'expo-maps/build/apple/AppleMaps.types';
-import { useMemo } from 'react';
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { MAP_STYLE_JSON } from '../map-style';
@@ -35,6 +36,10 @@ const CEBU_FALLBACK = {
 
 const USER_LOCATION_ZOOM = 14;
 
+/** Default zoom used by `focusOn` when the caller doesn't pass one — tight
+ * enough to frame a single branch pin and its surroundings. */
+const FOCUS_ZOOM = 16;
+
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
@@ -42,7 +47,51 @@ export interface BranchMapProps {
   mode?: ThemeMode;
 }
 
-export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
+/**
+ * Imperative handle exposed by `BranchMap` via ref. `focusOn` animates the map
+ * camera to the given coordinates (verified expo-maps API:
+ * `GoogleMapsViewType.setCameraPosition` / `AppleMapsViewType.setCameraPosition`,
+ * both taking `{ coordinates, zoom }`).
+ */
+export interface BranchMapHandle {
+  focusOn: (coords: { latitude: number; longitude: number }, zoom?: number) => void;
+}
+
+export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function BranchMap(
+  { branches, coords, onBranchPress },
+  ref,
+) {
+  // Ref to the underlying native map view (Apple on iOS, Google on Android).
+  // Both share the `setCameraPosition({ coordinates, zoom })` imperative method.
+  const iosMapRef = useRef<AppleMaps.MapView>(null);
+  const androidMapRef = useRef<GoogleMaps.MapView>(null);
+
+  // Custom Jojo teardrop pin used as the branch marker icon. `useImage` must run
+  // at the component top level (hooks rule) — NOT inside `branchMarkers.map`. It
+  // returns `ImageRef | null` (null while the asset loads); each platform branch
+  // falls back to the default marker/annotation while `pinIcon` is null. Loaded
+  // via a relative `require` (repo convention — see src/constants/images.ts), not
+  // the `@/assets` alias, which Metro does not resolve inside `require()`.
+  const pinIcon = useImage(require('../../../../assets/images/jojo-pin.png'));
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusOn: (target, zoom) => {
+        const config = {
+          coordinates: { latitude: target.latitude, longitude: target.longitude },
+          zoom: zoom ?? FOCUS_ZOOM,
+        };
+        if (Platform.OS === 'ios') {
+          iosMapRef.current?.setCameraPosition(config);
+        } else {
+          androidMapRef.current?.setCameraPosition(config);
+        }
+      },
+    }),
+    [],
+  );
+
   const cameraPosition = useMemo(
     () => ({
       coordinates: {
@@ -77,6 +126,7 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
     return (
       <View style={styles.mapWrap}>
         <AppleMaps.View
+          ref={iosMapRef}
           style={styles.map}
           cameraPosition={cameraPosition}
           // Force light appearance to approximate the warm brand look
@@ -93,13 +143,21 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
             // "nearest branch from you" feature.
             isMyLocationEnabled: true,
           }}
-          markers={branchMarkers.map((m) => ({
+          // Custom images on Apple Maps require `annotations` (AppleMapsMarker has
+          // no `icon` field — only AppleMapsAnnotation does). Verified expo-maps
+          // v57 types: `annotations?: AppleMapsAnnotation[]` and a dedicated
+          // `onAnnotationClick(event)` whose `event.id` mirrors `onMarkerClick`.
+          // `tintColor` is inherited from AppleMapsMarker, so the closed/active
+          // muting is preserved. While `pinIcon` is null (still loading), the
+          // default annotation renders (icon omitted).
+          annotations={branchMarkers.map((m) => ({
             id: m.id,
             coordinates: m.coordinates,
             title: m.title,
             tintColor: m.isActive ? Palette.jyellow : Palette.neutral400,
+            ...(pinIcon ? { icon: pinIcon } : {}),
           }))}
-          onMarkerClick={(event) => {
+          onAnnotationClick={(event) => {
             if (event.id) onBranchPress(event.id);
           }}
         />
@@ -111,6 +169,7 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
   return (
     <View style={styles.mapWrap}>
       <GoogleMaps.View
+        ref={androidMapRef}
         style={styles.map}
         cameraPosition={cameraPosition}
         properties={{
@@ -126,6 +185,10 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
           coordinates: m.coordinates,
           title: m.title,
           zIndex: m.isActive ? 1 : 0,
+          // Custom Jojo pin. GoogleMapsMarker.icon defaults to a bottom-center
+          // anchor, so the trimmed teardrop tip points at the coordinate. Omit
+          // while `pinIcon` is null so the default marker shows meanwhile.
+          ...(pinIcon ? { icon: pinIcon } : {}),
         }))}
         onMarkerClick={(event) => {
           if (event.id) onBranchPress(event.id);
@@ -134,7 +197,7 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
       <WarmTintOverlay />
     </View>
   );
-}
+});
 
 /**
  * Low-opacity warm brand tint painted ABOVE the map. `pointerEvents="none"` is

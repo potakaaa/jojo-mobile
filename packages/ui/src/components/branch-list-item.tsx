@@ -1,5 +1,5 @@
 import type { PickupBranch } from '@jojopotato/types';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale, type ThemeMode } from '../theme';
 import { Badge } from './badge';
@@ -13,6 +13,7 @@ export interface BranchListItemProps {
   isEnabled: boolean; // isOpen && branch.isAcceptingPickup
   isNearest?: boolean; // this is the closest branch to the user (only when distance known)
   onOrderPress?: () => void;
+  onPress?: () => void; // card-level tap (e.g. focus the map on this branch); the Order CTA still fires onOrderPress independently
   mode?: ThemeMode;
 }
 
@@ -25,6 +26,12 @@ export interface BranchListItemProps {
  * When `isNearest` is true, the card gets a jred accent outline and a
  * "Nearest to you" pill so it obviously reads as the user's closest branch.
  *
+ * When `onPress` is provided, the card's informational region (badges, name,
+ * address, meta — everything EXCEPT the Order CTA) becomes tappable so the row
+ * itself can trigger an action (e.g. focus the map on this branch). The Order
+ * CTA is kept OUTSIDE that pressable region as a sibling under `Card`, so its
+ * tap fires `onOrderPress` only and can never double-fire the card `onPress`.
+ *
  * Composed from the shared primitives: `Card` (row surface), `Badge`
  * (open/closed + pickup-availability + nearest highlight), `Button` (order CTA).
  */
@@ -35,10 +42,11 @@ export function BranchListItem({
   isEnabled,
   isNearest = false,
   onOrderPress,
+  onPress,
   mode = 'light',
 }: BranchListItemProps) {
-  return (
-    <Card mode={mode} style={StyleSheet.flatten([styles.card, isNearest && styles.cardNearest])}>
+  const infoRegion = (
+    <>
       {isNearest ? (
         <Badge label="Nearest to you" variant="danger" mode={mode} />
       ) : null}
@@ -64,6 +72,18 @@ export function BranchListItem({
         />
         <Text style={styles.meta}>~{branch.estimatedPrepMinutes} min</Text>
       </View>
+    </>
+  );
+
+  return (
+    <Card mode={mode} style={StyleSheet.flatten([styles.card, isNearest && styles.cardNearest])}>
+      {onPress ? (
+        <Pressable style={styles.infoRegion} onPress={onPress} accessibilityRole="button">
+          {infoRegion}
+        </Pressable>
+      ) : (
+        infoRegion
+      )}
 
       <Button
         label="Order from this branch"
@@ -82,6 +102,11 @@ const styles = StyleSheet.create({
   // PromoBanner treatment: yellow field, 2px ink outline, lg radius, and the
   // signature comic hard-shadow. Passed via Card's `style` override (applied
   // last), so these win over Card's default element bg / border / offsetSm.
+  // Wrapping the info block in a single Pressable collapses it to one Card
+  // child, so re-apply the same inter-element gap here to keep layout identical.
+  infoRegion: {
+    gap: Spacing.two,
+  },
   card: {
     gap: Spacing.two,
     backgroundColor: Palette.jyellow,

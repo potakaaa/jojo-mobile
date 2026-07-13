@@ -1,16 +1,25 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { PickupBranch } from '@jojopotato/types';
 import { BranchListItem, Input, Palette, Radii, Shadows } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { ApiBranch, mapApiBranch } from '@/features/branches/api';
-import { BranchMap } from '@/features/branches/components/branch-map';
+import { BranchMap, type BranchMapHandle } from '@/features/branches/components/branch-map';
 import { useSelectedBranch } from '@/features/branches/hooks/use-selected-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,6 +48,11 @@ export default function BranchLocatorScreen() {
   const [query, setQuery] = useState('');
   const [isFetching, setIsFetching] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+
+  // Native-only imperative handles: the map camera and the bottom sheet. Unused
+  // on web (the web branch renders neither the map nor the sheet).
+  const mapRef = useRef<BranchMapHandle>(null);
+  const sheetRef = useRef<BottomSheet>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -110,6 +124,19 @@ export default function BranchLocatorScreen() {
     });
   };
 
+  // Locate-me FAB: snap the map back to the user's current position. No-op if
+  // location is unknown. Native only (web renders no map).
+  const onLocatePress = () => {
+    if (coords) mapRef.current?.focusOn(coords, USER_ZOOM);
+  };
+
+  // Tap a branch card: focus the map on that branch's pin and drop the sheet to
+  // its peek (index 0) so the pin is visible. Native only.
+  const onCardPress = (branch: PickupBranch) => {
+    mapRef.current?.focusOn({ latitude: branch.latitude, longitude: branch.longitude });
+    sheetRef.current?.snapToIndex(0);
+  };
+
   const renderItem = ({ item }: { item: PickupBranch }) => {
     const isOpen = getIsOpenNow(item.openingHours);
     const isEnabled = isOpen && item.isAcceptingPickup;
@@ -122,6 +149,7 @@ export default function BranchLocatorScreen() {
         isNearest={item.id === nearestBranchId}
         mode={mode}
         onOrderPress={() => onOrderPress(item.id)}
+        onPress={Platform.OS === 'web' ? undefined : () => onCardPress(item)}
       />
     );
   };
@@ -175,6 +203,7 @@ export default function BranchLocatorScreen() {
     <View style={styles.container}>
       {/* z0: map base */}
       <BranchMap
+        ref={mapRef}
         branches={filteredBranches}
         coords={coords}
         onBranchPress={onOrderPress}
@@ -197,8 +226,27 @@ export default function BranchLocatorScreen() {
         />
       </View>
 
+      {/* z1: locate-me FAB, upper-right of the always-visible map band, clear of
+          the search pill (top) and the sheet at its 32% peek (bottom). Only
+          rendered when location is granted (otherwise there's nowhere to snap). */}
+      {showDistance ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Center map on my location"
+          onPress={onLocatePress}
+          style={({ pressed }) => [
+            styles.locateFab,
+            { top: insets.top + Spacing.two + LOCATE_FAB_BELOW_SEARCH },
+            pressed && styles.locateFabPressed,
+          ]}
+        >
+          <Ionicons name="locate" size={22} color={Palette.ink} />
+        </Pressable>
+      ) : null}
+
       {/* z2: draggable branch list. Opens at half; drags up to cover the map. */}
       <BottomSheet
+        ref={sheetRef}
         index={0}
         snapPoints={SNAP_POINTS}
         enableDynamicSizing={false}
@@ -255,6 +303,17 @@ export default function BranchLocatorScreen() {
 /** Bottom peek by default (index 0): handle + fixed header + first branch card visible; drags up to half, then near-full cover. */
 const SNAP_POINTS = ['32%', '50%', '92%'];
 
+/** Zoom used when the locate-me FAB re-centres on the user (street-ish, wider
+ * than a single-pin focus so nearby branches stay in frame). */
+const USER_ZOOM = 15;
+
+/** Vertical gap from the top of the search pill down to the locate-me FAB, so
+ * the FAB sits clearly below the pill in the map band. */
+const LOCATE_FAB_BELOW_SEARCH = 64;
+
+/** FAB diameter (dp). borderRadius = size/2 makes it a circle (RN has no % radius). */
+const LOCATE_FAB_SIZE = 48;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -294,6 +353,25 @@ const styles = StyleSheet.create({
   searchPillInput: {
     borderRadius: Radii['2xl'],
     ...Shadows.offsetMd,
+  },
+  // Locate-me FAB: on-brand cream circle with 2px ink outline + comic hard
+  // shadow, pinned to the right edge of the map band under the search pill.
+  locateFab: {
+    position: 'absolute',
+    right: Spacing.four,
+    width: LOCATE_FAB_SIZE,
+    height: LOCATE_FAB_SIZE,
+    borderRadius: LOCATE_FAB_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Palette.cream,
+    borderWidth: 2,
+    borderColor: Palette.ink,
+    ...Shadows.offsetMd,
+  },
+  locateFabPressed: {
+    // Nudge into the shadow on press for the flat "comic" pressed feel.
+    transform: [{ translateX: 2 }, { translateY: 2 }],
   },
   // Bottom-sheet visuals (cream bg, ink handle, comic radius/shadow).
   sheetBackground: {
