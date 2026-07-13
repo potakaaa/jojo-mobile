@@ -27,7 +27,7 @@ export interface CartSessionState {
   totalCents: number;
   itemCount: number;
   /** Adds a line for the current branch; merges into an existing matching line. */
-  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number) => void;
+  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number, notes?: string) => void;
   /** Sets a line's quantity; `qty <= 0` removes the line (D-note). */
   updateQuantity: (lineId: string, qty: number) => void;
   removeItem: (lineId: string) => void;
@@ -63,29 +63,33 @@ export function CartSessionProvider({
 }) {
   const [cart, setCart] = useState<Cart>(initialCart);
 
-  const addItem = useCallback((menuItem: MenuItem, opts: CartItemOption[], qty = 1) => {
-    if (qty <= 0) return;
-    setCart((prev) => {
-      const lineId = lineIdFor(menuItem.id, opts);
-      const existing = prev.items.find((it) => it.lineId === lineId);
-      const items = existing
-        ? prev.items.map((it) =>
-            it.lineId === lineId ? { ...it, quantity: it.quantity + qty } : it,
-          )
-        : [
-            ...prev.items,
-            {
-              lineId,
-              menuItemId: menuItem.id,
-              quantity: qty,
-              productNameSnapshot: menuItem.name,
-              unitPriceCents: unitPriceFor(menuItem, opts),
-              selectedOptions: opts,
-            } satisfies CartItem,
-          ];
-      return { ...prev, items };
-    });
-  }, []);
+  const addItem = useCallback(
+    (menuItem: MenuItem, opts: CartItemOption[], qty = 1, notes?: string) => {
+      if (qty <= 0) return;
+      setCart((prev) => {
+        const lineId = lineIdFor(menuItem.id, opts);
+        const existing = prev.items.find((it) => it.lineId === lineId);
+        const items = existing
+          ? prev.items.map((it) =>
+              it.lineId === lineId ? { ...it, quantity: it.quantity + qty } : it,
+            )
+          : [
+              ...prev.items,
+              {
+                lineId,
+                menuItemId: menuItem.id,
+                quantity: qty,
+                productNameSnapshot: menuItem.name,
+                unitPriceCents: unitPriceFor(menuItem, opts),
+                selectedOptions: opts,
+                notes,
+              } satisfies CartItem,
+            ];
+        return { ...prev, items };
+      });
+    },
+    [],
+  );
 
   const removeItem = useCallback((lineId: string) => {
     setCart((prev) => ({ ...prev, items: prev.items.filter((it) => it.lineId !== lineId) }));
