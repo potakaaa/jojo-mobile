@@ -99,40 +99,41 @@ async function visibleDealsForBranch(branchId: string) {
 }
 
 describe('GET /api/branches/:id query logic', () => {
-  it('returns 5 deals for jojo-it-park (4 global + 1 exclusive)', async () => {
+  it('returns 5 deals for jojo-centrio (4 global + 1 exclusive)', async () => {
     if (!dbAvailable) return;
-    const itParkId = await branchIdBySlug('jojo-it-park');
-    expect(itParkId).not.toBeNull();
-    const dealsForBranch = await visibleDealsForBranch(itParkId!);
+    const centrioId = await branchIdBySlug('jojo-centrio');
+    expect(centrioId).not.toBeNull();
+    const dealsForBranch = await visibleDealsForBranch(centrioId!);
     expect(dealsForBranch).toHaveLength(5);
   });
 
-  it('returns 4 deals for jojo-poblacion (4 global only)', async () => {
+  it('returns 4 deals for jojo-cogon (4 global only)', async () => {
     if (!dbAvailable) return;
-    const poblacionId = await branchIdBySlug('jojo-poblacion');
-    expect(poblacionId).not.toBeNull();
-    const dealsForBranch = await visibleDealsForBranch(poblacionId!);
+    const cogonId = await branchIdBySlug('jojo-cogon');
+    expect(cogonId).not.toBeNull();
+    const dealsForBranch = await visibleDealsForBranch(cogonId!);
     expect(dealsForBranch).toHaveLength(4);
   });
 
-  it('IT Park exclusive deal is absent from jojo-poblacion response', async () => {
+  it('Centrio exclusive deal is absent from jojo-cogon response', async () => {
     if (!dbAvailable) return;
-    const poblacionId = await branchIdBySlug('jojo-poblacion');
-    expect(poblacionId).not.toBeNull();
-    const dealsForBranch = await visibleDealsForBranch(poblacionId!);
+    const cogonId = await branchIdBySlug('jojo-cogon');
+    expect(cogonId).not.toBeNull();
+    const dealsForBranch = await visibleDealsForBranch(cogonId!);
     const titles = dealsForBranch.map((d) => d.title);
-    // The branch-exclusive deal is mapped only to jojo-it-park via deal_branches.
+    // The branch-exclusive deal is mapped only to jojo-centrio via deal_branches.
     expect(titles).not.toContain('Branch-exclusive opening promo');
   });
 
-  it('returns branch fields for jojo-it-park', async () => {
+  it('returns branch fields for jojo-sm-downtown', async () => {
     if (!dbAvailable) return;
-    const rows = await db.select().from(branches).where(eq(branches.slug, 'jojo-it-park'));
+    const rows = await db.select().from(branches).where(eq(branches.slug, 'jojo-sm-downtown'));
     const branchRow = rows[0];
     expect(branchRow).toBeDefined();
     expect(typeof branchRow!.id).toBe('string');
     expect(typeof branchRow!.name).toBe('string');
-    expect(branchRow!.slug).toBe('jojo-it-park');
+    expect(branchRow!.slug).toBe('jojo-sm-downtown');
+    // SM Downtown is open but pickup-paused (is_accepting_pickup: false).
     expect(branchRow!.is_accepting_pickup).toBe(false);
   });
 });

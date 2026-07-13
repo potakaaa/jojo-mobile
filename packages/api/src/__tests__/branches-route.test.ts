@@ -65,9 +65,9 @@ describe('GET /api/branches query logic', () => {
       expect(Number.isInteger(row.priority)).toBe(true);
     }
 
-    // No inactive branch (e.g. seeded jojo-mabolo) leaks into the result.
+    // No inactive branch (e.g. seeded jojo-limketkai) leaks into the result.
     const slugs = rows.map((r) => r.slug);
-    expect(slugs).not.toContain('jojo-mabolo');
+    expect(slugs).not.toContain('jojo-limketkai');
 
     // Priority ordering is non-decreasing.
     const priorities = rows.map((r) => r.priority);
