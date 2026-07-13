@@ -225,7 +225,12 @@ export default function CartScreen() {
                 ))}
               </View>
 
-              <View style={styles.couponSlot}>
+              <View
+                style={[
+                  styles.couponSlot,
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                ]}
+              >
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Coupon / reward</Text>
                 {cart.appliedDiscount ? (
                   <>
@@ -238,12 +243,14 @@ export default function CartScreen() {
                         isRedeemed: false,
                       }}
                       mode={mode}
+                      style={styles.couponFlat}
                     />
                     <Button
                       label="Remove discount"
-                      variant="outline"
+                      variant="accent"
                       onPress={clearDiscount}
                       mode={mode}
+                      style={styles.removeDiscountButton}
                     />
                   </>
                 ) : (
@@ -347,8 +354,23 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     paddingHorizontal: 0,
   },
+  couponFlat: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  removeDiscountButton: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   couponSlot: {
     gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 2,
+    borderRadius: Radii.md,
   },
   sectionLabel: {
     fontFamily: FontFamily.display.bold,
