@@ -85,6 +85,21 @@ export default function BranchLocatorScreen() {
     return sortedBranches.filter((b) => b.name.toLowerCase().includes(q));
   }, [sortedBranches, query]);
 
+  // The single closest branch: only meaningful when distance is known (location
+  // granted). Picks the min distanceKm over the currently-visible list; null
+  // when location is denied, the list is empty, or no branch has a distance.
+  const nearestBranchId = useMemo(() => {
+    if (!showDistance) return null;
+    let nearest: PickupBranch | null = null;
+    for (const b of filteredBranches) {
+      if (typeof b.distanceKm !== 'number') continue;
+      if (nearest === null || b.distanceKm < (nearest.distanceKm ?? Infinity)) {
+        nearest = b;
+      }
+    }
+    return nearest?.id ?? null;
+  }, [showDistance, filteredBranches]);
+
   const isLoading = isFetching || locationStatus === 'loading';
 
   const onOrderPress = (id: string) => {
@@ -104,6 +119,7 @@ export default function BranchLocatorScreen() {
         isOpen={isOpen}
         showDistance={showDistance}
         isEnabled={isEnabled}
+        isNearest={item.id === nearestBranchId}
         mode={mode}
         onOrderPress={() => onOrderPress(item.id)}
       />

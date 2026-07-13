@@ -87,6 +87,11 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
             emphasis: AppleMapsMapStyleEmphasis.MUTED,
             // Hide high-clutter POI categories so branch pins stand out.
             pointsOfInterest: { excluding: EXCLUDED_POI_CATEGORIES },
+            // Native "you are here" indicator — distinct from the branch pins.
+            // Uses the OS location (already permission-gated by expo-location); if
+            // permission is denied it simply doesn't show. Sets up a future
+            // "nearest branch from you" feature.
+            isMyLocationEnabled: true,
           }}
           markers={branchMarkers.map((m) => ({
             id: m.id,
@@ -108,7 +113,14 @@ export function BranchMap({ branches, coords, onBranchPress }: BranchMapProps) {
       <GoogleMaps.View
         style={styles.map}
         cameraPosition={cameraPosition}
-        properties={{ mapStyleOptions: { json: MAP_STYLE_JSON } }}
+        properties={{
+          mapStyleOptions: { json: MAP_STYLE_JSON },
+          // Native "you are here" blue dot — clearly distinct from the branch
+          // pins (works around Android's lack of a per-marker tint). Uses the OS
+          // location (already permission-gated by expo-location); if permission is
+          // denied it simply doesn't show. Sets up a future "nearest branch" feature.
+          isMyLocationEnabled: true,
+        }}
         markers={branchMarkers.map((m) => ({
           id: m.id,
           coordinates: m.coordinates,

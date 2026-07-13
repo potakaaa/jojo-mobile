@@ -11,8 +11,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import {
   BranchDetailResponse,
@@ -42,6 +43,7 @@ export default function BranchDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const { coords, status: locationStatus } = useUserLocation();
   const { setSelectedBranch } = useSelectedBranch();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!branchId) return;
@@ -96,7 +98,10 @@ export default function BranchDetailsScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <Text style={[styles.name, { color: theme.text }]}>{branch.name}</Text>
@@ -181,7 +186,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     gap: Spacing.two,
     paddingVertical: Spacing.four,
-    paddingBottom: Spacing.six,
   },
   centered: {
     alignItems: 'center',

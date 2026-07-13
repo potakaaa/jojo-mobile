@@ -11,30 +11,37 @@ export interface BranchListItemProps {
   isOpen: boolean; // pre-computed by caller via getIsOpenNow
   showDistance: boolean; // true only when location status === 'granted'
   isEnabled: boolean; // isOpen && branch.isAcceptingPickup
+  isNearest?: boolean; // this is the closest branch to the user (only when distance known)
   onOrderPress?: () => void;
   mode?: ThemeMode;
 }
 
 /**
  * Full-width branch row for the branch locator list. Purely presentational —
- * the caller pre-computes `isOpen`, `showDistance`, and `isEnabled` (this
- * component does NOT import getIsOpenNow or distanceKm). Renders name, address,
- * optional distance, open/closed badge, pickup-availability badge, prep time,
- * and an "Order from this branch" CTA that is disabled when `!isEnabled`.
+ * the caller pre-computes `isOpen`, `showDistance`, `isEnabled`, and `isNearest`
+ * (this component does NOT import getIsOpenNow or distanceKm). Renders name,
+ * address, optional distance, open/closed badge, pickup-availability badge, prep
+ * time, and an "Order from this branch" CTA that is disabled when `!isEnabled`.
+ * When `isNearest` is true, the card gets a jred accent outline and a
+ * "Nearest to you" pill so it obviously reads as the user's closest branch.
  *
  * Composed from the shared primitives: `Card` (row surface), `Badge`
- * (open/closed + pickup-availability status), `Button` (order CTA).
+ * (open/closed + pickup-availability + nearest highlight), `Button` (order CTA).
  */
 export function BranchListItem({
   branch,
   isOpen,
   showDistance,
   isEnabled,
+  isNearest = false,
   onOrderPress,
   mode = 'light',
 }: BranchListItemProps) {
   return (
-    <Card mode={mode} style={styles.card}>
+    <Card mode={mode} style={StyleSheet.flatten([styles.card, isNearest && styles.cardNearest])}>
+      {isNearest ? (
+        <Badge label="Nearest to you" variant="danger" mode={mode} />
+      ) : null}
       <View style={styles.headerRow}>
         <Text style={styles.name} numberOfLines={1}>
           {branch.name}
@@ -81,6 +88,13 @@ const styles = StyleSheet.create({
     borderColor: Palette.ink,
     borderRadius: Radii.lg,
     ...Shadows.offsetMd,
+  },
+  // Nearest branch: swap the ink outline for the jred accent and thicken it, plus
+  // a deeper comic shadow, so the closest card visibly pops out of the list.
+  cardNearest: {
+    borderColor: Palette.jred,
+    borderWidth: 3,
+    ...Shadows.offsetLg,
   },
   headerRow: {
     flexDirection: 'row',
