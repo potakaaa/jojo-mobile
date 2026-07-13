@@ -1,0 +1,10 @@
+{
+  "task": "STAFF-002 — Active Orders Dashboard: read-only branch-scoped staff order endpoints (GET /api/staff/orders, GET /api/staff/orders/:orderId) + mobile polling feed and read-only detail screen",
+  "planPath": "process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/staff-002-active-orders_PLAN_13-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": ["permission, secret, or trust-boundary logic"],
+  "mustStopBeforeFinalize": true,
+  "humanApprovalRequired": true,
+  "approver": "vc-execute-agent (session) — pending orchestrator EVL + human closeout",
+  "why": "Two new staff API endpoints sit on a cross-branch trust boundary: a staff member must only ever see orders belonging to their own assigned branch. A flaw would leak another branch's order data (customer order contents, totals, timings). Branch scope is resolved server-side from the session via resolveBranchScope; no client-supplied branch id is honored on either endpoint. This is the trust-boundary risk class, so a manual-first evidence pack is required before finalize."
+}

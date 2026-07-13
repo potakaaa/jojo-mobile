@@ -1,0 +1,58 @@
+{
+  "task": "STAFF-002 staff order endpoints — verification",
+  "commands": [
+    {
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "62 tests pass (56 existing + 6 new staff-orders hermetic integration tests). Covers AC-2 branch isolation on list, AC-3 non-terminal filter, AC-4 detail item+selectedOptions shape, AC-5 cross-branch detail → exactly 403, unassigned-staff → 403 on list, empty-branch → 200 empty array."
+    },
+    {
+      "command": "pnpm typecheck",
+      "result": "PASS",
+      "notes": "All 5 packages green (types, utils, api, ui, mobile) including the new Expo typed route order-detail/[orderId]."
+    },
+    {
+      "command": "pnpm lint",
+      "result": "PASS",
+      "notes": "0 errors across all packages. Only pre-existing warnings in apps/mobile/scripts/dev-with-tunnel.mjs (not in STAFF-002 blast radius)."
+    },
+    {
+      "command": "pnpm format:check",
+      "result": "PASS",
+      "notes": "All matched files use Prettier code style after formatting the touched files."
+    },
+    {
+      "command": "pnpm --filter @jojopotato/api db:seed (run twice)",
+      "result": "PASS",
+      "notes": "Idempotent: 5 sample orders seeded on both consecutive runs (fixed order_numbers + ON CONFLICT DO NOTHING + delete-then-reinsert items). Real product_id UUID derived from productIdBySlug (FK NOT NULL honored)."
+    }
+  ],
+  "manualChecks": [
+    {
+      "check": "AC-5 cross-branch detail access asserts EXACTLY 403 (not 403-or-404)",
+      "result": "PASS",
+      "notes": "D5 test asserts res.status === 403 for a branch-2 order id requested by branch-1 staff — deterministic, matches route A2 step 3 which returns 403 for branch mismatch (order exists but is out of scope)."
+    },
+    {
+      "check": "No client-supplied branch id is honored on either endpoint",
+      "result": "PASS",
+      "notes": "Both handlers derive branchId only from resolveBranchScope(db, userId). No branch id is read from req.query, req.params, or req.body. Cross-branch reads are structurally impossible."
+    },
+    {
+      "check": "req.staffSession.assignedBranchId (documented stale) is never used for scoping",
+      "result": "PASS",
+      "notes": "Grep confirms staff.ts references resolveBranchScope only; the stale session field is not read in either new handler."
+    },
+    {
+      "check": "No status-change WRITE endpoint or side-effecting onPress introduced (STAFF-003 boundary)",
+      "result": "PASS",
+      "notes": "Both routes are GET only. Detail-screen action buttons are inert (onPress = no-op with // STAFF-003 comment)."
+    },
+    {
+      "check": "No schema change / migration produced",
+      "result": "PASS",
+      "notes": "orders/order_items tables and orders_branch_status_idx pre-exist. git status shows no new migration file."
+    }
+  ],
+  "result": "PASS"
+}
