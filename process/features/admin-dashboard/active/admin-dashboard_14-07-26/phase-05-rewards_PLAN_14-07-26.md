@@ -204,7 +204,7 @@ High-level outline only:
 | Non-admin (customer/staff) session receives 403 on all `/api/admin/rewards/*` routes (read + write) | Fully-Automated | AC4 |
 | Deactivate reward — `is_active` flips false, row still present, excluded from default list query | Fully-Automated | AC5 |
 | Create reward with `eligible_product_id` pointing at a nonexistent product — clean 4xx, not 500 | Fully-Automated | AC6 |
-| Admin UI: reward list renders, create/edit form round-trips, deactivate shows confirmation dialog | Agent-Probe | AC2, AC3, AC5 (UI-layer judgment call — no automated RN/web component runner exists yet for `apps/admin`, confirm during RESEARCH whether Vitest + Testing Library is wired by P0 scaffold) |
+| Admin UI: reward list renders, create/edit form round-trips, deactivate shows confirmation dialog | Agent-Probe | AC2, AC3, AC5 (UI-layer judgment call — Vitest + `@testing-library/react` (jsdom) IS available in `apps/admin`, wired by the P0 scaffold; prefer a component test where practical, Agent-Probe for full-flow visual judgment) |
 
 ## Test Infra Improvement Notes
 

@@ -127,7 +127,7 @@ New HTTP surface (all behind `requireAdmin`, JSON in/out):
 | GET | `/api/admin/branches` | — | `{ branches: AdminBranch[] }` | ALL branches (active + inactive) — admin view must show inactive rows, unlike the public `/branches` route which filters `is_active = true` (`branches.ts:39`) |
 | GET | `/api/admin/branches/:branchId` | — | `{ branch: AdminBranch }` | 404 if id malformed or not found (no `is_active` filter — admin can view inactive rows) |
 | POST | `/api/admin/branches` | `{ name, slug, address, latitude, longitude, phone, openingHours, isAcceptingPickup?, estimatedPrepMinutes? }` | `201 { branch: AdminBranch }` | `slug` uniqueness → `409 { error: 'Slug already in use' }` on DB unique-constraint violation |
-| PATCH | `/api/admin/branches/:branchId` | partial of the above (any subset) | `200 { branch: AdminBranch }` | Same 409 slug-conflict handling if `slug` is changed to a duplicate |
+| PATCH | `/api/admin/branches/:branchId` | partial of the above (any subset), plus optional `isActive?: boolean` | `200 { branch: AdminBranch }` | Same 409 slug-conflict handling if `slug` is changed to a duplicate. `isActive: true` reactivates a branch the deactivate route set false |
 | PATCH | `/api/admin/branches/:branchId/deactivate` | — | `200 { branch: AdminBranch }` | Sets `is_active = false`. Separate endpoint (not a generic PATCH is_active field) so the UI's confirm-step maps to one unambiguous action; reactivation (`is_active = true`) is available via the same generic PATCH endpoint above by design (no separate "reactivate" route needed — only deactivation is the destructive direction needing its own confirm-gated endpoint) |
 
 `AdminBranch` shape (new type, `packages/types/src/admin.ts` or inline in `serializers.ts` if the
@@ -174,7 +174,9 @@ the umbrella plan rather than silently deciding to add or skip a version guard.
    - Zod schemas: `createBranchSchema` (all required fields per column constraints — `name`,
      `slug`, `address`, `latitude`/`longitude` as `z.number()`, `phone`, `openingHours`; optional
      `isAcceptingPickup: z.boolean().optional()`, `estimatedPrepMinutes: z.number().int().positive().optional()`)
-     and `updateBranchSchema` (`createBranchSchema.partial()`).
+     and `updateBranchSchema` (`createBranchSchema.partial().extend({ isActive: z.boolean().optional() })` —
+     `isActive` is NOT a field on `createBranchSchema`, so `.partial()` alone can't carry it; it must
+     be added explicitly here or a generic PATCH can never reactivate a deactivated branch).
    - `GET /` — `db.select().from(branches).orderBy(asc(branches.name))` (no `is_active` filter —
      admin sees everything). Map with `serializeAdminBranch` (or `serializeBranch` + manually spread
      `slug`/`isActive` if no new serializer is added).
@@ -187,7 +189,8 @@ the umbrella plan rather than silently deciding to add or skip a version guard.
      `orders.ts`'s in-handler catch style) converts it to `res.status(err.status).json({ error:
      err.message })`.
    - `PATCH /:branchId` — same validate/insert-conflict pattern as POST but `update(...).set(...)`
-     with only the parsed partial fields; 404 if the branch id doesn't exist.
+     with only the parsed partial fields (map `isActive` → the `is_active` column so `{ isActive: true }`
+     reactivates); 404 if the branch id doesn't exist.
    - `PATCH /:branchId/deactivate` — `update(branches).set({ is_active: false, updated_at: new
      Date() }).where(eq(branches.id, branchId))`; 404 if not found.
 3. **Add the shared admin error class** (`packages/api/src/routes/lib/admin-errors.ts`) ONLY if
