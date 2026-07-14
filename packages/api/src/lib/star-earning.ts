@@ -1,8 +1,10 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, lte, sql } from 'drizzle-orm';
 
 import { db } from '../db/client';
-import { orders, starTransactions, userStars } from '../db/schema/index';
+import { coupons, orders, rewards, starTransactions, userStars } from '../db/schema/index';
 import { numericToCents } from '../routes/lib/serializers';
+import { rewardCouponCodeGenerator } from './reward-coupon-code';
+import { notifyRewardUnlocked } from './reward-unlock-notify';
 import { getStarEarningMinimumCents, STAR_EARNING_MINIMUM_CENTS } from './star-earning-config';
 
 /**
@@ -30,7 +32,35 @@ import { getStarEarningMinimumCents, STAR_EARNING_MINIMUM_CENTS } from './star-e
  * staff status-update / refund endpoints:
  *   TODO(STAFF-003): call creditStarForCompletedOrder(order.id) after status → 'completed'
  *   TODO(STAFF-003): call reverseStarForRefundedOrder(order.id) after payment_status → 'refunded'
+ *
+ * REWARD UNLOCK (STAR-003): a credit that pushes the user's monotonic
+ * `lifetime_stars` across one or more active reward thresholds mints exactly one
+ * `coupons` row per newly-crossed tier — battle-pass cumulative model (LD1),
+ * each tier unlocks once per user forever (lifetime never resets, so a refund
+ * does NOT revoke an unlocked tier). The unlock runs INSIDE the credit
+ * transaction on the credited path only (behind the `inserted.length > 0`
+ * gate), idempotent via the `coupons_user_reward_unique` partial index
+ * (migration 0006) + ON CONFLICT DO NOTHING. A best-effort notification row is
+ * written AFTER the transaction commits (never inside it).
  */
+
+/** Max attempts to dodge a `coupons.code` UNIQUE collision (E5, ≤5). */
+const COUPON_CODE_MAX_ATTEMPTS = 5;
+
+/** pg unique-violation SQLSTATE. */
+const PG_UNIQUE_VIOLATION = '23505';
+
+/** The `coupons.code` unique constraint name (migration 0000). */
+const COUPON_CODE_CONSTRAINT = 'coupons_code_unique';
+
+function isCouponCodeCollision(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: string }).code === PG_UNIQUE_VIOLATION &&
+    (err as { constraint?: string }).constraint === COUPON_CODE_CONSTRAINT
+  );
+}
 
 /**
  * Minimum order total (in integer cents) required to earn a star. Default `0`
@@ -46,6 +76,78 @@ type OrderRow = typeof orders.$inferSelect;
 export interface StarCreditResult {
   credited: boolean;
   reason?: 'not-found' | 'not-completed' | 'below-minimum' | 'already-credited';
+  /**
+   * Reward ids for which a coupon was minted on THIS call (STAR-003). `[]` when a
+   * credit occurred but crossed no new threshold; absent (undefined) when no
+   * credit occurred (not-found / not-completed / below-minimum / already-credited).
+   */
+  unlockedRewardIds?: string[];
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Reward-unlock side-effect (STAR-003), run INSIDE the credit transaction on the
+ * credited path only. Queries all active reward tiers at/below the post-bump
+ * `lifetimeStars` LIVE (no cached constant — AC4), then mints one coupon per
+ * tier the user does not already hold (idempotent via the 0006 partial index +
+ * ON CONFLICT DO NOTHING — AC2). Returns the ids of the tiers newly unlocked on
+ * this call (empty when nothing crossed). A `coupons.code` UNIQUE collision (the
+ * conflict target is (user_id, reward_id), NOT code) is retried with a fresh
+ * code, bounded to {@link COUPON_CODE_MAX_ATTEMPTS} (E5).
+ */
+async function unlockRewardsForLifetime(
+  tx: Tx,
+  userId: string,
+  lifetimeStars: number,
+): Promise<string[]> {
+  const candidateTiers = await tx
+    .select({ id: rewards.id })
+    .from(rewards)
+    .where(and(eq(rewards.is_active, true), lte(rewards.required_stars, lifetimeStars)));
+
+  const unlockedRewardIds: string[] = [];
+  for (const tier of candidateTiers) {
+    let inserted: { reward_id: string | null }[] = [];
+    for (let attempt = 0; attempt < COUPON_CODE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        // Wrap each insert in a SAVEPOINT (nested tx): a `coupons.code` collision
+        // aborts only the savepoint, not the whole outer credit transaction, so
+        // the retry can proceed. (In Postgres a raw error inside a transaction
+        // poisons the entire tx until rollback — the savepoint is what makes an
+        // in-tx retry possible at all.)
+        inserted = await tx.transaction(async (sp) =>
+          sp
+            .insert(coupons)
+            .values({
+              user_id: userId,
+              reward_id: tier.id,
+              code: rewardCouponCodeGenerator.generate(),
+            })
+            // Partial-index arbiter — MUST carry the `where` predicate matching
+            // the 0006 `WHERE reward_id IS NOT NULL` index (E1: the bare
+            // `target`-only form throws against a partial index). Deal-coupons
+            // (reward_id NULL) are exempt via the predicate.
+            .onConflictDoNothing({
+              target: [coupons.user_id, coupons.reward_id],
+              where: sql`${coupons.reward_id} IS NOT NULL`,
+            })
+            .returning({ reward_id: coupons.reward_id }),
+        );
+        break;
+      } catch (err) {
+        // Retry ONLY on a `coupons.code` collision — never on the (user,reward)
+        // conflict (that is handled by ON CONFLICT DO NOTHING, returning [] not
+        // throwing). Exhausting the retry budget rethrows (fail-safe).
+        if (isCouponCodeCollision(err) && attempt < COUPON_CODE_MAX_ATTEMPTS - 1) continue;
+        throw err;
+      }
+    }
+    // Non-empty `.returning()` = a coupon was actually minted (already-owned
+    // tiers hit the conflict and return []).
+    if (inserted.length > 0) unlockedRewardIds.push(tier.id);
+  }
+  return unlockedRewardIds;
 }
 
 export interface StarReversalResult {
@@ -73,7 +175,7 @@ export async function creditStarForCompletedOrder(orderId: string): Promise<Star
   if (order.status !== 'completed') return { credited: false, reason: 'not-completed' };
   if (!isOrderEligibleForStar(order)) return { credited: false, reason: 'below-minimum' };
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<StarCreditResult> => {
     // 1. Insert the `earned` ledger row FIRST, guarded by the partial unique
     //    index. A second `earned` insert for this order is a no-op (empty set).
     const inserted = await tx
@@ -98,12 +200,15 @@ export async function creditStarForCompletedOrder(orderId: string): Promise<Star
       .returning();
 
     // 2. Only bump user_stars when a row was actually inserted. Empty set →
-    //    already credited → leave the counter untouched (proves AC4).
+    //    already credited → leave the counter untouched (proves AC4). This gate
+    //    ALSO guards the reward unlock below (AC3/AC5: unlock only on a real
+    //    credit, never on a duplicate completion event).
     if (inserted.length === 0) return { credited: false, reason: 'already-credited' };
 
     // 3. Lazily upsert the user's counter (+1 current, +1 lifetime). No row is
-    //    seeded, so upsert keyed on the unique user_id.
-    await tx
+    //    seeded, so upsert keyed on the unique user_id. `.returning()` gives the
+    //    post-bump lifetime_stars in-tx (E2) — used as the LIVE unlock threshold.
+    const [counter] = await tx
       .insert(userStars)
       .values({ user_id: order.user_id, current_stars: 1, lifetime_stars: 1 })
       .onConflictDoUpdate({
@@ -113,10 +218,35 @@ export async function creditStarForCompletedOrder(orderId: string): Promise<Star
           lifetime_stars: sql`${userStars.lifetime_stars} + 1`,
           updated_at: new Date(),
         },
-      });
+      })
+      .returning({ lifetime_stars: userStars.lifetime_stars });
+    if (!counter) throw new Error('user_stars upsert returned no row');
 
-    return { credited: true };
+    // 4. Reward unlock (STAR-003): mint a coupon per newly-crossed active tier.
+    //    Inside the same transaction — a coupon-insert failure rolls back the
+    //    credit atomically.
+    const unlockedRewardIds = await unlockRewardsForLifetime(
+      tx,
+      order.user_id,
+      counter.lifetime_stars,
+    );
+
+    return { credited: true, unlockedRewardIds };
   });
+
+  // 5. Best-effort notification AFTER the transaction commits (LD4) — never
+  //    inside it, so a notification failure can never roll back a real coupon.
+  //    The helper already swallows its own errors; the extra try/catch is
+  //    belt-and-suspenders against an unexpected synchronous throw.
+  if (result.credited && result.unlockedRewardIds && result.unlockedRewardIds.length > 0) {
+    try {
+      await notifyRewardUnlocked(order.user_id, result.unlockedRewardIds);
+    } catch (err) {
+      console.error('[star-earning] post-commit reward-unlock notification failed', err);
+    }
+  }
+
+  return result;
 }
 
 /**

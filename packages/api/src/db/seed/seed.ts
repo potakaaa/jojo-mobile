@@ -428,33 +428,42 @@ async function seedSampleOrders(
   }
 }
 
-// The single MVP reward (STAR-002 / PRD §6.10): 5 stars unlocks a free item.
-// `reward_value` is null — the reward is a free regular fries/lemonade, not a
-// monetary discount. Admin-configurable thresholds are ADM-005 (out of scope).
-const MVP_REWARD = {
-  name: 'Free regular fries or lemonade',
-  required_stars: 5,
-  reward_type: 'free_item',
-  reward_value: null,
-  is_active: true,
-} as const;
+// Battle-pass reward roadmap (STAR-003): a uniform 5-star-cadence escalating
+// roadmap. Tier 1 stays at 5 stars = the previous single MVP reward, so
+// STAR-002's `/rewards/summary` (MIN active reward) is unchanged and does not
+// regress. All `free_item` with `reward_value: null` (free item, not a monetary
+// discount) — no new reward_type semantics. Admin-configurable thresholds are
+// ADM-005 (unlock reads thresholds LIVE, so ADM-005 slots in without touching
+// unlock logic).
+const REWARD_ROADMAP = [
+  { name: 'Free regular fries or lemonade', required_stars: 5, reward_type: 'free_item', reward_value: null }, // prettier-ignore
+  { name: 'Free large fries', required_stars: 10, reward_type: 'free_item', reward_value: null },
+  { name: 'Free combo meal', required_stars: 15, reward_type: 'free_item', reward_value: null },
+  { name: 'Free premium loaded fries', required_stars: 20, reward_type: 'free_item', reward_value: null }, // prettier-ignore
+] as const;
 
-// rewards.name has no unique constraint, so idempotency is app-level: find the
-// active reward by name, then update or insert. Re-seeding converges to exactly
-// one active 5-star reward.
+// rewards.name has no unique constraint, so idempotency is app-level: for each
+// roadmap tier, find the reward by name, then update-or-insert (active). Re-seeding
+// converges to exactly these N active tiers. NOTE: this only upserts by name — any
+// PRE-EXISTING extra active rewards in a shared local dev DB are left as-is
+// (acceptable for a dev seed; the hermetic per-run `_test` DB used by the gates is
+// unaffected, and the self-seeding test suite uses `seedRewardTier`, not `db:seed`).
 async function seedRewardsTable(): Promise<void> {
-  const [existing] = await db
-    .select({ id: rewards.id })
-    .from(rewards)
-    .where(eq(rewards.name, MVP_REWARD.name));
+  for (const tier of REWARD_ROADMAP) {
+    const [existing] = await db
+      .select({ id: rewards.id })
+      .from(rewards)
+      .where(eq(rewards.name, tier.name));
 
-  if (existing) {
-    await db
-      .update(rewards)
-      .set({ ...MVP_REWARD, updated_at: new Date() })
-      .where(eq(rewards.id, existing.id));
-  } else {
-    await db.insert(rewards).values(MVP_REWARD);
+    const row = { ...tier, is_active: true };
+    if (existing) {
+      await db
+        .update(rewards)
+        .set({ ...row, updated_at: new Date() })
+        .where(eq(rewards.id, existing.id));
+    } else {
+      await db.insert(rewards).values(row);
+    }
   }
 }
 
@@ -482,7 +491,9 @@ export async function runSeed(): Promise<void> {
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
-  console.log(`  rewards: 1 (${MVP_REWARD.name}, ${MVP_REWARD.required_stars} stars)`);
+  console.log(
+    `  rewards: ${REWARD_ROADMAP.length} (roadmap: ${REWARD_ROADMAP.map((r) => `${r.required_stars}★`).join(', ')})`,
+  );
   console.log(`  test user: ${TEST_USER.email}`);
   console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);

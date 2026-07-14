@@ -43,6 +43,13 @@
       "when": 1783996918805,
       "tag": "0005_nosy_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784014457148,
+      "tag": "0006_windy_dexter_bennett",
+      "breakpoints": true
     }
   ]
 }
