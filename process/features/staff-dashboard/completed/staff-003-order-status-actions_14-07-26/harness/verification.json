@@ -1,0 +1,76 @@
+{
+  "steps": [
+    {
+      "step": "Section A: enum + type widening",
+      "command": "pnpm --filter @jojopotato/api typecheck",
+      "result": "PASS",
+      "notes": "packages/ui STATUS_META and STATUS_LABEL both updated with 'rejected' entry. tsc --noEmit exits 0."
+    },
+    {
+      "step": "Section A: migration 0005 applied",
+      "command": "pnpm --filter @jojopotato/api db:migrate",
+      "result": "PASS",
+      "notes": "drizzle/0005_add_rejected_order_status.sql applied cleanly. SQL is standalone ALTER TYPE order_status ADD VALUE 'rejected' — no transaction block (confirmed by reading generated file)."
+    },
+    {
+      "step": "Section B: state machine typecheck",
+      "command": "pnpm --filter @jojopotato/api typecheck",
+      "result": "PASS",
+      "notes": "order-state-machine.ts is pure; no DB import; canTransition and isTerminal exported correctly."
+    },
+    {
+      "step": "Section C+D: staff.ts PATCH + GET /completed typecheck",
+      "command": "pnpm --filter @jojopotato/api typecheck",
+      "result": "PASS",
+      "notes": "All route handlers, zod schemas, and stub functions typecheck clean."
+    },
+    {
+      "step": "Section E: mobile API layer typecheck (staff files only)",
+      "command": "pnpm --filter @jojopotato/mobile exec tsc --noEmit 2>&1 | grep features/staff",
+      "result": "PASS",
+      "notes": "No errors in staff-api.ts, use-update-order-status.ts, use-completed-orders.ts. Pre-existing unrelated errors (expo-maps, expo-location, @gorhom/bottom-sheet) are not introduced by this change."
+    },
+    {
+      "step": "AC-1: valid transitions — 6 happy-path tests",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "pending→accepted (200, estimatedReadyAt non-null), accepted→preparing, preparing→flavoring, flavoring→ready, ready→completed, pending→cancelled all return 200 with correct status."
+    },
+    {
+      "step": "AC-2: invalid transitions → 409",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "pending→ready, accepted→ready (skip states), completed→cancelled (terminal source), cancelled→pending (terminal source) all return 409."
+    },
+    {
+      "step": "AC-3: branch isolation — cross-branch PATCH → 403; unassigned → 403",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "Branch-1 staff cannot PATCH branch-2 order (returns 403, DB order unchanged). Unassigned staff → 403."
+    },
+    {
+      "step": "AC-4: rejected valid terminal; re-PATCH → 409",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "pending→rejected returns 200. Subsequent PATCH on rejected order returns 409."
+    },
+    {
+      "step": "AC-5: GET /orders/completed returns only assigned-branch terminal orders",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "Branch-1 completed/cancelled/rejected included. Branch-1 pending excluded. Branch-2 completed excluded. Unassigned staff → 403."
+    },
+    {
+      "step": "AC-6: ETA set from branch default at accept time; etaMinutes body ignored",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "estimated_ready_at is within ±5s of (now() at PATCH time) + (branch.estimated_prep_minutes * 60s). Body etaMinutes=999 is accepted but ignored."
+    },
+    {
+      "step": "Full test suite — all 84 tests across 11 test files",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "11 test files, 84 tests, 0 failures. Existing test suites (staff-orders, require-staff, orders, auth, branches, smoke) all pass — no regressions."
+    }
+  ]
+}

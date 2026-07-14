@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 14-07-26, incl. STAFF-001 + STAFF-002 + STAFF-003 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -113,7 +113,8 @@ top of it later without re-plumbing the project.
   → confirmation → tracking → order history) is implemented and working, not just placeholder.
   Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
   them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
-  (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
+  (STAFF-001, see below); STAFF-002 (Active Orders real data) and STAFF-003 (order status actions +
+  Completed Orders) are delivered (see dedicated bullets below). STAFF-004 (product availability) is next.
 - **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
   `feat/checkout-flow` reworked Checkout (`order/checkout.tsx`), Payment-method selection
   (`order/payment-method.tsx` + shared `packages/ui` `payment-method-selector.tsx` with
@@ -149,9 +150,55 @@ top of it later without re-plumbing the project.
   name fetched from `GET /api/staff/me` via `useStaffMe()` hook
   (`features/staff/hooks/use-staff-me.ts` → `features/staff/lib/staff-api.ts` using
   `authClient.$fetch`); four PRD §6.13 nav cards (Active Orders / Completed Orders / Product
-  Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx` is a
-  **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
+  Availability / Branch Pickup Settings); sign-out Button. Full
   plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
+- **Staff order status actions + Completed Orders (STAFF-003, delivered 14-07-26):** server-side
+  order-state-machine and completed orders history. Key deliverables:
+  - **DB migration `0005_add_rejected_order_status.sql`** — `ALTER TYPE order_status ADD VALUE
+    'rejected'` (standalone, not in a transaction; Postgres constraint). `OrderStatus` union in
+    `packages/types/src/order.ts` now has 8 values (adds `'rejected'`). Two exhaustive
+    `Record<OrderStatus,...>` literals in `packages/ui` (`STATUS_META` in `order-status-badge.tsx`,
+    `STATUS_LABEL` in `order-status-timeline.tsx`) updated for `rejected`. `staff-status-config.ts`
+    was `Extract`-narrowed and safe, but widened to full `Record<OrderStatus,...>` this pass to cover
+    all 8 statuses in the staff display layer.
+  - **State machine** (`packages/api/src/routes/lib/order-state-machine.ts`): pure lookup table,
+    no DB import. Exports `canTransition(from, to)` and `isTerminal(status)`. Valid transition map:
+    `pending→{accepted,rejected,cancelled}`, `accepted→{preparing,cancelled}`,
+    `preparing→{flavoring,cancelled}`, `flavoring→{ready,cancelled}`, `ready→{completed,cancelled}`,
+    `completed/cancelled/rejected→{}` (terminal).
+  - **`PATCH /api/staff/orders/:orderId`** — session-gated (inherited `requireStaff`), per-request
+    `resolveBranchScope`; zod-validated body (`status` required → 422 on failure, `etaMinutes` present
+    but IGNORED); state machine guard (409 on illegal/terminal-source transition); per-transition
+    timestamps (`accepted_at`, `ready_at`, `completed_at`, `cancelled_at`); ETA derived from branch's
+    `estimated_prep_minutes` at accept-time (NOT placed_at-based; see AC-6 note); STAR-001 /
+    PUSH-002 are **named no-op stubs** (`creditStarsForOrder`, `notifyCustomer`) — real
+    implementations are future work; 200 returns full `StaffOrderDetail`.
+  - **`GET /api/staff/orders/completed`** — returns terminal orders (`completed`/`cancelled`/`rejected`)
+    for the assigned branch, newest-first. Registered BEFORE `GET /api/staff/orders/:orderId` in
+    `staff.ts` (Express route-ordering — `completed` would otherwise be captured as `:orderId`).
+  - **Mobile:** `patchStaffOrderStatus` + `fetchCompletedStaffOrders` in `staff-api.ts`; `staffFetch`
+    extended to accept `init?: RequestInit` (backward-compatible). `use-update-order-status.ts`
+    (`useMutation` with triple cache invalidation: `['staff','orders']`, `['staff','order',orderId]`,
+    `['staff','completed']`). `use-completed-orders.ts` (`useQuery`, no polling — historical view).
+  - **Screens:** `order-detail/[orderId].tsx` — `InertOrderActions` replaced by `LiveOrderActions`
+    (SPEC button matrix per status, confirm alerts for reject/cancel, 409 inline error, loading states).
+    `completed-orders.tsx` — new screen, driven by `useCompletedOrders()`, empty state, row → detail.
+    `(staff)/index.tsx` "Completed Orders" card wired (`navigateTo: '/(staff)/completed-orders'`).
+    `(staff)/_layout.tsx` registers `completed-orders` Stack.Screen.
+  - **Integration tests:** 17 new tests in `staff-order-status.integration.test.ts` covering AC-1..AC-6
+    (valid transitions + timestamps, illegal/terminal → 409, branch isolation → 403, `rejected`
+    terminal, completed-list filtering, ETA derivation). Total API suite: 84 tests, 0 failures.
+  - **Known gaps:** AC-7..AC-10 mobile behavior (button rendering, tap→mutation, 409 inline error,
+    Completed Orders nav) are Agent-Probe only — no RN runner exists (project-wide gap; backlog:
+    `process/features/staff-dashboard/backlog/staff-mobile-rn-test-runner-gap_NOTE_13-07-26.md`).
+    AC-8 Active Orders back-list refresh is forward-compatible pending STAFF-002 mock replacement
+    with live data. `mustStopBeforeFinalize: true` — HIGH-risk trust-boundary; human review of the
+    5-artifact risk evidence pack (`harness/`) required before production deploy.
+  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions):** `apps/mobile` has 3
+    pre-existing typecheck errors in BRN-001/002/003 files tied to missing type stubs for
+    `@gorhom/bottom-sheet`, `expo-maps`, and `expo-location`. These existed before STAFF-003 and
+    are zero-diff from this plan's blast radius. Do not treat them as STAFF-003 regressions.
+  - Full plan: `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
@@ -239,8 +286,10 @@ top of it later without re-plumbing the project.
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
   (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
   cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
-  branches, and customer order placement. `app` is exported from `packages/api/src/index.ts` (port
-  binding guarded so tests never bind a port).
+  branches, customer order placement, and staff order status actions (`staff-order-status.integration.test.ts`
+  — 17 tests, AC-1..AC-6: valid transitions + timestamps, illegal/terminal → 409, branch isolation → 403,
+  ETA derivation, completed-list filtering). 84 total tests as of STAFF-003. `app` is exported from
+  `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
@@ -248,9 +297,11 @@ top of it later without re-plumbing the project.
   bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
   (cart architecture reconciliation),
   `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
-  + react-query reconciliation), and
+  + react-query reconciliation),
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
-  layer + role-gated staff shell — STAFF-001).
+  layer + role-gated staff shell — STAFF-001), and
+  `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/` (order
+  state-machine PATCH endpoint + Completed Orders screen + `rejected` enum — STAFF-003).
 
 ## Quick Start
 
@@ -536,6 +587,6 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
-- HEAD at last delta: `a153ec5` (process artifacts, branch `feat/staff-001-login-branch-scope`)
+- Last delta: 2026-07-14 (STAFF-003 UPDATE PROCESS — order state-machine PATCH endpoint, Completed Orders screen, `rejected` enum migration 0005, 17 integration tests, mobile hooks/screens/nav)
+- HEAD at last delta: `36e558f` (Merge pull request #71 from potakaaa/feat/staff-002-active-orders, branch `feat/checkout-flow`)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

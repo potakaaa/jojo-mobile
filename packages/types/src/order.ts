@@ -1,5 +1,12 @@
 export type OrderStatus =
-  'pending' | 'accepted' | 'preparing' | 'flavoring' | 'ready' | 'completed' | 'cancelled';
+  | 'pending'
+  | 'accepted'
+  | 'preparing'
+  | 'flavoring'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected';
 export type PaymentMethod = 'pay_at_branch' | 'app_wallet' | 'gcash' | 'maya' | 'card';
 export type PaymentStatus = 'unpaid' | 'paid' | 'failed' | 'refunded';
 
