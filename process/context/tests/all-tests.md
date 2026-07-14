@@ -84,12 +84,21 @@ work). `packages/{types,utils}` still declare no runner.
 `apps/admin` (added 14-07-26, admin-dashboard Phase 0 — Scaffold) is the FIRST WEB-APP test runner
 precedent in the repo: `vitest` (`"test": "vitest run --passWithNoTests"`) + `@testing-library/react`
 + `jsdom` (`apps/admin/vitest.config.ts` — deliberately SEPARATE from `apps/admin/vite.config.ts` so
-the TanStack Start SSR plugin isn't loaded during tests). Currently one trivial passing test
-(`src/routes/index.test.tsx` — renders the placeholder index route, asserts the brand wordmark
-text is present) proving the runner precedent end-to-end. Unlike `apps/mobile`'s vitest (pure-TS
-logic only, no rendering), `apps/admin`'s vitest DOES render components via `@testing-library/react`
-— it is a real component-test runner, not just a pure-function runner. As Phase 1+ build real admin
-screens, this is the runner to extend.
+the TanStack Start SSR plugin isn't loaded during tests). One trivial passing test
+(`src/routes/-index.test.tsx` — renamed from `index.test.tsx` during Phase 1 UPDATE PROCESS; the
+leading `-` makes TanStack Start's route generator ignore the file as a route while vitest still
+discovers it via the `*.test.tsx` glob — do this for any future test file placed directly inside
+`apps/admin/src/routes/`) proving the runner precedent end-to-end. Unlike `apps/mobile`'s vitest
+(pure-TS logic only, no rendering), `apps/admin`'s vitest DOES render components via
+`@testing-library/react` — it is a real component-test runner, not just a pure-function runner.
+Phase 1 (Auth/RBAC) added `packages/api/src/lib/__tests__/require-admin.integration.test.ts`
+(mirrors `require-staff.integration.test.ts`'s hermetic self-seeding pattern — no shared fixture
+dependency) — full API suite is now **78/78** (75 at first close, +3 post-AC8 CORS regression tests:
+preflight OPTIONS on `/api/auth/sign-in/email`, a real cross-origin sign-in, and a no-Origin
+mobile-path guard). A real-browser AC8 walkthrough found that credentialed CORS must be mounted on
+BOTH `/api/auth/*` and `/api/admin` — `trustedOrigins` alone (CSRF allowlist) does not add HTTP CORS
+headers, so a browser blocks the response without them even when the origin is trusted. As Phase 2+
+build real admin CRUD screens, `apps/admin`'s vitest is the runner to extend.
 
 Until a mobile-side (RN component) E2E runner is chosen, "verification" for RN-rendered UI still
 means:
@@ -137,6 +146,7 @@ Unless the task clearly needs a different path:
 - Typecheck failures are the fastest signal in this repo today — packages are TS-source-only (no build step), so `tsc --noEmit` catches cross-package type breakage immediately via workspace links.
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
 - Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).
+- **Dev-machine gotcha (this box, not a repo-wide fact):** host port 5432 is occupied by a native `postgresql.service`, so a plain `docker compose up -d` for Postgres fails to bind. `packages/api`'s vitest integration suites (which need a live migrated Postgres) run fine against the already-running native instance instead — a `jojo` role (with `CREATEDB`) + `jojopotato` database were created against it once (discovered during admin-dashboard Phase 1 RESEARCH), letting vitest's `global-setup.ts` create its own ephemeral `<db>_test` databases per run. If `pnpm --filter @jojopotato/api test` fails with a connection error, check `sudo systemctl status postgresql` before assuming docker compose is the only path.
 
 ## Known Gaps
 

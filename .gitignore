@@ -65,3 +65,7 @@ DESIGN.md
 # Expo prebuild native output. NOTE: apps/mobile/android IS committed (tracked on
 # `development`, adopted here on merge); only ios stays generated/ignored.
 /apps/mobile/ios
+
+# browser automation artifacts (manual Agent-Probe / Playwright MCP QA walkthroughs, e.g. AC8)
+.playwright-mcp/
+ac8-admin-dashboard.png

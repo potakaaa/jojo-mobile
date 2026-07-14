@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-14
+Last updated: 2026-07-14 (Phase 1 delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,57 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + Phase 1 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard auth/RBAC (`apps/admin` + `packages/api`, Phase 1 — Auth/RBAC ADM-001,
+  delivered 14-07-26, ✅ VERIFIED):** the FIRST protected `/api/admin/*` surface in the repo.
+  `packages/api/src/lib/require-admin.ts` exports `requireAdmin(auth)` (mirrors `requireStaff`,
+  admits `role ∈ {admin, super_admin}` only — never plain `staff`), mounted once at
+  `app.use('/api/admin', cors({origin: ADMIN_WEB_ORIGIN, credentials: true}), requireAdmin(auth),
+  adminRouter)` in `packages/api/src/index.ts` — later phases add sibling route files to
+  `adminRouter` and inherit the guard automatically. `ADMIN_WEB_ORIGIN` defaults to
+  `http://localhost:3100` (the `apps/admin` dev port) and is appended to better-auth's
+  `trustedOrigins` (`auth.ts`), never wildcarded. This is also the FIRST **browser-cookie session**
+  flow in this repo — contrast with `apps/mobile`'s Expo bearer-token flow
+  (`@better-auth/expo`/`expo-secure-store`): `apps/admin/src/features/auth/lib/auth-client.ts` is a
+  plain `createAuthClient({baseURL})` from `better-auth/react`, ZERO plugins — a Step 0 feasibility
+  probe proved better-auth's default cookie session (`better-auth.session_token`, `HttpOnly`,
+  `SameSite=Lax`, 30-day `Max-Age`) works end-to-end with no `nextCookies`/cookie-cache tweak
+  needed. `packages/types/src/admin.ts` (new) carries `ADMIN_ROLES`, `AdminRole`, `AdminMe`,
+  `AdminUserSummary` — `AdminMe` also carries an additive `mfaPending?: boolean` field, a
+  structural-only MFA/TOTP gateway seam (no `twoFactor` plugin, no migration, no enrollment
+  routes — deferred to a future unassigned ADM-0xx phase; `login.tsx` has a matching no-op
+  comment marking the insertion point). `POST /api/admin/users/:id/role` is the super_admin-only
+  role-management route: an inline `req.adminSession.role !== 'super_admin'` check (not a
+  `requireSuperAdmin` middleware — promote only when a second consumer appears) runs FIRST, then a
+  self-escalation guard (`req.params.id === req.adminSession.userId` → 400), then Zod validation,
+  then the Drizzle `UPDATE ... RETURNING` — this exact order is locked and automated-tested
+  (AC2/AC3). This route resolves the `TODO(STAFF-ADM)` seam left by STAFF-001:
+  `assertBranchScope(assignedBranchId, requestedBranchId, role?)` gained an additive optional
+  trailing `role` param that bypasses branch-scope checks when `role ∈ {admin, super_admin}`,
+  backward-compatible with every existing 2-arg call site. `apps/admin` gained a real login screen
+  (`routes/login.tsx`, unguarded) and a `(dashboard)` pathless route-group shell
+  (`routes/(dashboard)/route.tsx`) with a server-verified `beforeLoad` guard — it calls
+  `GET /api/admin/me` against the real session, never trusts a client-cached role flag; P2-P7 add
+  sibling child routes to this same group and must never restructure it. New integration suite
+  `packages/api/src/lib/__tests__/require-admin.integration.test.ts` mirrors
+  `require-staff.integration.test.ts`'s hermetic self-seeding pattern (78/78 API suite green,
+  independently EVL-confirmed — see CORS fix below). **CORS surface (durable API-shape fact,
+  post-AC8 fix):** a browser SPA talking to better-auth cross-origin needs credentialed CORS on
+  BOTH `/api/auth/*` (the better-auth handler itself) AND the app's own protected routes
+  (`/api/admin`) — `trustedOrigins` is a separate CSRF/redirect allowlist and does NOT emit HTTP
+  CORS response headers on its own. A single shared `adminCors` middleware
+  (`cors({origin:[ADMIN_WEB_ORIGIN], credentials:true})`) is now mounted on both prefixes in
+  `packages/api/src/index.ts`. The first real-browser AC8 walkthrough caught this gap (login hung,
+  browser blocked the uncovered `/api/auth/*` responses); the fix added 3 regression tests
+  (preflight OPTIONS + real sign-in + no-Origin mobile-path guard), taking the suite from 75→78.
+  **Known gap (non-blocking, unrelated to CORS):** a malformed `:id` on the role-management route
+  surfaces as a 500 rather than 404 (guard-order side effect, non-exploitable, reachable only by an
+  already-authenticated super_admin). AC8 (browser login + dashboard walkthrough) is now
+  browser-verified (all 3 roles: super_admin reaches the shell, customer/staff rejected) — no
+  longer an open Agent-Probe gap. Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-01-auth-rbac_PLAN_14-07-26.md`
+  (+ co-located REPORT/FEASIBILITY files in the same task folder).
 
 - **Admin dashboard web app (`apps/admin`, Phase 0 — Scaffold, delivered 14-07-26, ✅ VERIFIED):**
   new workspace app `@jojopotato/admin` scaffolded from empty — TanStack Start (Vite 8) + Tailwind
@@ -312,18 +362,25 @@ Scanned against the canonical Context Group Detection Table
   `db:migrate` scripts, seed, vitest integration tests). `database/` group threshold is likely met
   (full schema + seed + migration pattern established). Not yet created — run `vc-generate-context`
   (delta mode) to create it when ready.
-- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. Also
-  the new staff authz layer (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types)
-  adds a second durable narrative. `auth/` group threshold is now plausibly met — two narratives
-  (auth provider setup + staff authz pattern). Not yet created; re-evaluate at next
-  UPDATE PROCESS pass or when a role/permissions design doc is written.
+- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. The
+  `auth/` group threshold now plausibly has THREE durable narratives: (1) auth provider setup
+  (better-auth config, Expo bearer-token client, magic-link caveat), (2) staff authz pattern
+  (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types), and (3) admin browser-cookie
+  authz (`require-admin.ts`, `requireAdmin`, the first browser-cookie session flow, super_admin-only
+  role management, the resolved `TODO(STAFF-ADM)` bypass — Phase 1, delivered 14-07-26).
+  **Recommendation:** this is a strong candidate to formally create the `auth/` context group now —
+  three narratives across two apps (mobile + admin) and two session models (bearer-token vs
+  browser-cookie) is exactly the "stable operational domain" signal in §Context Group Lifecycle.
+  Not created in this pass (deferred per UPDATE PROCESS scope discipline — recommend only, don't
+  create speculatively mid-phase); run `vc-generate-context` (delta mode) or raise it explicitly at
+  the next UPDATE PROCESS pass to create it.
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
-- `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26). `process/features/admin-dashboard/`
-  exists with `active/`, `completed/`, `backlog/` subdirs. This is an 8-phase program (P0 scaffold
-  through P7 analytics, ADM-001..007) — see the umbrella plan for the current phase. A new web app
-  (`apps/admin`) established a SECOND durable narrative for the plausible `auth/` context group
-  (browser-cookie admin session, Phase 1) — re-evaluate the `auth/` group threshold once Phase 1 lands.
+- `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
+  delivered 14-07-26, ✅ VERIFIED). `process/features/admin-dashboard/` exists with `active/`,
+  `completed/`, `backlog/` subdirs. This is an 8-phase program (P0 scaffold through P7 analytics,
+  ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current phase
+  (Phase 2 — Branches CRUD, ADM-002, next).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -569,7 +626,8 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
-- Previous delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
-- HEAD at last delta: branch `dev/admin` (admin-dashboard Phase 0 scaffold, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status` before assuming committed)
+- Last delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
+- Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
+- Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
+- HEAD at last delta: branch `dev/admin` (admin-dashboard Phase 1 auth/RBAC + CORS fix, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status` before assuming committed)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

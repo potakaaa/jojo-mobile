@@ -281,7 +281,7 @@ incomplete and must be sent back to PLAN.
 | Order | Phase | Depends on | Status |
 |---|---|---|---|
 | 0 | P0 — Scaffold | — | ✅ VERIFIED |
-| 1 | P1 — Auth/RBAC (ADM-001) | P0 | ⏳ PLANNED |
+| 1 | P1 — Auth/RBAC (ADM-001) | P0 | ✅ VERIFIED |
 | 2 | P2 — Branches CRUD (ADM-002) | P1 | ⏳ PLANNED |
 | 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ⏳ PLANNED |
 | 4 | P4 — Deals CRUD (ADM-004) | P2, P3 | ⏳ PLANNED |
@@ -299,7 +299,7 @@ fan-in but still only depend on strictly earlier phases).
 | Phase | Status |
 |---|---|
 | P0 — Scaffold | ✅ VERIFIED |
-| P1 — Auth/RBAC (ADM-001) | ⏳ PLANNED |
+| P1 — Auth/RBAC (ADM-001) | ✅ VERIFIED |
 | P2 — Branches CRUD (ADM-002) | ⏳ PLANNED |
 | P3 — Products/Categories CRUD (ADM-003) | ⏳ PLANNED |
 | P4 — Deals CRUD (ADM-004) | ⏳ PLANNED |
@@ -355,34 +355,70 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 ## Current Execution State
 
 Last updated: 14-07-26
-Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26)
-Current phase N of total: 1 of 8 (Phase 1 — Auth/RBAC, ADM-001)
-Phase N name: Phase 1 — Auth/RBAC (ADM-001, #39)
-Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-01-auth-rbac_PLAN_14-07-26.md` —
+Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED, 14-07-26)
+Current phase N of total: 2 of 8 (Phase 2 — Branches CRUD, ADM-002)
+Phase N name: Phase 2 — Branches CRUD (ADM-002, #40)
+Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-02-branches_PLAN_14-07-26.md` —
   but Phase Loop Progress Step 1 RESEARCH has not started)
 Phase N EVL: not applicable yet (no EXECUTE has run)
 Phase N report: not written yet
-Next phase: Phase 1 — Auth/RBAC, Step 0 (RESEARCH). First RESEARCH action MUST be the
-  VC-FEASIBILITY-PROBE-NEEDED feasibility probe on better-auth browser cookie sessions before
-  INNOVATE/PLAN lock the auth design (per umbrella Phase Map risk note + Stable Program Goal).
+Next phase: Phase 2 — Branches CRUD, Step 0 (RESEARCH).
 
-Phase 0 closeout summary: `apps/admin` (`@jojopotato/admin`) scaffolded from empty — TanStack Start
-(Vite) + Tailwind v4 (`@theme`) + shadcn/ui + react-query v5. Brand tokens ported from
-`packages/ui/src/theme.ts` (two-layer `:root` + `@theme inline` shadcn semantic mapping,
-light-mode only). EVL independently re-ran all 6 automated gates → PASS. `turbo.json` UNTOUCHED
-(build outputs `dist/`, matches existing glob). Root `pnpm typecheck` red is PRE-EXISTING
-`apps/mobile` typed-route debt (commit 6e160fe) — zero apps/mobile diff this session, not an
-admin issue. AC7-9 (visual/on-brand) = user-accepted this session (Agent-Probe tier, no automated
-visual runner exists — by design, project-wide gap). Report:
-`process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-00-scaffold_REPORT_14-07-26.md`.
+Phase 1 closeout summary (RE-CLOSED 14-07-26, post-AC8 CORS fix): First `/api/admin/*` protected
+surface shipped — `requireAdmin(auth)` middleware (mirrors `requireStaff`, admits `admin`/`super_admin`
+only), mounted at `/api/admin` with credentialed CORS scoped to the `:3100` admin web origin
+(`trustedOrigins` extended, never wildcarded). First browser-cookie session flow in the repo:
+`apps/admin`'s `auth-client.ts` is a plain `createAuthClient` from `better-auth/react` — the Step 0
+feasibility probe proved the default cookie session works with ZERO plugins (contrast with Expo's
+bearer-token `@better-auth/expo` flow). `packages/types/src/admin.ts` (new) carries `ADMIN_ROLES`,
+`AdminRole`, `AdminMe` (incl. an additive `mfaPending?: boolean` MFA/TOTP structural seam — no
+plugin/migration, deferred to a future unassigned ADM-0xx), `AdminUserSummary`.
+`POST /api/admin/users/:id/role` (super_admin-only role-management route) enforces the LOCKED guard
+order (super_admin check → self-escalation guard → Zod validation → DB write) inline in the handler
+— both hard umbrella safety constraints (no self-escalation, super_admin-only) are automated-tested
+(AC2/AC3). The `TODO(STAFF-ADM)` seam in `require-staff.ts`'s `assertBranchScope` is resolved: an
+additive optional `role?` trailing param bypasses branch-scope checks for admin/super_admin,
+backward-compatible with all existing 2-arg call sites. `apps/admin` gained its login screen
+(`routes/login.tsx`, unguarded) and a `(dashboard)` pathless route-group shell with a
+server-verified `beforeLoad` guard (calls `GET /api/admin/me` — never trusts a client-cached role
+flag); P2-P7 add sibling child routes to this same group, never restructure it. New integration
+suite `require-admin.integration.test.ts` mirrors `require-staff.integration.test.ts`'s hermetic
+self-seeding pattern.
 
-Program Net Gate: 1/8 phases VERIFIED — PENDING overall
-Latest validator run: 14-07-26 — `validate-agent-parity`, `validate-context-discovery` PASS (see
-this session's Tier-1 audit results in the phase report / closeout packet)
+**Post-close CORS defect found + fixed + re-verified:** the first real-browser AC8 walkthrough
+(Firefox, `http://localhost:3100`) FAILED — admin login hung because credentialed CORS was mounted
+only on `/api/admin`, never on `/api/auth/*`, so the browser blocked the better-auth `get-session`/
+`sign-in`/`sign-out` calls (`trustedOrigins` is a CSRF allowlist only, NOT an HTTP CORS header
+source — these are two separate layers). Fix: a single shared `adminCors` middleware is now mounted
+on BOTH `/api/auth/*` (before the better-auth handler) and `/api/admin`, in
+`packages/api/src/index.ts`. 3 new regression tests added to `require-admin.integration.test.ts`
+(preflight OPTIONS + real sign-in + no-Origin mobile-path guard) — full API suite is now **78/78**
+(was 75/75 before the fix). EVL independently re-confirmed 78/78 + typecheck green, no regression.
+AC8 was then RE-WALKED in a real browser and PASSES for all 3 roles (super_admin reaches the
+dashboard shell; customer and staff are rejected, stay on `/login`) — server enforcement additionally
+curl-confirmed (403 for customer/staff, 200 for super_admin). **AC8 known-gap is now CLOSED** — it
+is no longer "Agent-Probe-recorded manual-pending"; the walkthrough has actually run and passed.
+Full detail + screenshot path: `## AC8 Verification (browser, post-fix)` in the phase report.
+
+One non-exploitable documented side effect carried forward: a malformed `:id` in the role-management
+route surfaces as a 500 rather than 404 (guard-order artifact, super_admin-only reachable) — tracked
+as a known gap, not fixed this phase (out of blast radius; unrelated to the CORS fix).
+
+**Bootstrap fact learned:** no admin/super_admin user is seeded by `packages/api/src/db/seed/seed.ts`
+(seed only makes staff + 2 customers) — the AC8 super_admin test account was bootstrapped manually
+(signup + a direct `UPDATE users SET role='super_admin'` DB write). A dev-only seeded admin account
+is recommended as a backlog candidate for future phases' QA convenience (not implemented this pass —
+touches the seed/auth surface, left as a user decision).
+
+Report: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-01-auth-rbac_REPORT_14-07-26.md`.
+
+Program Net Gate: 2/8 phases VERIFIED — PENDING overall
+Latest validator run: 14-07-26 — `validate-context-discovery`, `validate-plan-inventory` (this
+UPDATE PROCESS re-close pass; see phase report + this session's closeout packet for results)
 
 Orchestrator rule: read "Phase N status" and the named phase plan's `## Phase Loop Progress`
 before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE,
-PLAN-SUPPLEMENT, or PVL. Phase 1's plan file already exists (FULL depth) but has NOT started its
+PLAN-SUPPLEMENT, or PVL. Phase 2's plan file already exists (FULL depth) but has NOT started its
 inner loop — spawn vc-research-agent next, not vc-execute-agent.
 
 Note: this section is the only part of the umbrella plan expected to change over the program's
