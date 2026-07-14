@@ -11,6 +11,8 @@ export interface CreateOrderInput {
     quantity: number;
     selectedOptions: { optionId: string }[];
   }[];
+  /** Optional applied deal — the server recomputes the real discount from it. */
+  dealId?: string;
 }
 
 /** `POST /orders` — create an order (session required). Returns the full order. */

@@ -4,6 +4,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import type {
   branches,
   categories,
+  deals,
   orderItems,
   orders,
   productOptions,
@@ -16,8 +17,10 @@ type ProductRow = InferSelectModel<typeof products>;
 type ProductOptionRow = InferSelectModel<typeof productOptions>;
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
+type DealRow = InferSelectModel<typeof deals>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
+type DealType = DealRow['deal_type'];
 
 /**
  * A single customization snapshot stored on an order item / carried on a cart
@@ -95,6 +98,7 @@ export interface ApiOrder {
   paymentStatus: OrderRow['payment_status'];
   estimatedReadyAt: string | null;
   placedAt: string;
+  dealId: string | null;
   items: ApiOrderItem[];
 }
 
@@ -199,7 +203,108 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     paymentStatus: order.payment_status,
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     placedAt: order.placed_at.toISOString(),
+    dealId: order.deal_id,
     items: items.map(serializeOrderItem),
+  };
+}
+
+/**
+ * A promotional deal at the HTTP boundary.
+ *
+ * MUST stay structurally identical to `@jojopotato/types` `Deal` — the mobile
+ * client casts `GET /deals` responses to `Deal[]` with no runtime validation, so
+ * any field-name/optionality drift here silently breaks the client. Declared
+ * locally (not imported from the workspace types package) to keep the established
+ * no-cross-dependency boundary convention (`ApiBranch`/`ApiOrder` do the same).
+ *
+ * VALUE-UNIT NOTE (mirrors `packages/types/src/deals.ts`):
+ *  - `minimumOrderAmount` is CENTS.
+ *  - `discountValue` is polymorphic: a percentage (0–100) for
+ *    `percentage_discount`, CENTS for `fixed_discount`, and 0 for the other
+ *    four (complex) deal types.
+ */
+export interface ApiDeal {
+  id: string;
+  title: string;
+  description?: string;
+  discountLabel: string;
+  imageUrl?: string;
+  validUntil?: string;
+  dealType: DealType;
+  discountValue: number; // polymorphic — see VALUE-UNIT NOTE
+  minimumOrderAmount: number; // cents; 0 = no minimum
+  startAt: string; // ISO
+  endAt: string; // ISO
+  isActive: boolean;
+  usageLimitPerUser?: number;
+  totalUsageLimit?: number;
+  eligibleProductIds: string[]; // empty = all products
+  eligibleBranchIds: string[]; // empty = branch-agnostic
+  code?: string;
+}
+
+/**
+ * Derive the `DealCard.discountLabel` string from the deal type + already-scaled
+ * value. Mirrors the mobile `deriveDiscountLabel` (`features/deals/lib/eligibility.ts`)
+ * exactly: `percentage_discount` reads a percent, `fixed_discount` reads CENTS.
+ */
+function dealDiscountLabel(dealType: DealType, discountValue: number): string {
+  switch (dealType) {
+    case 'percentage_discount':
+      return `${discountValue}% OFF`;
+    case 'fixed_discount':
+      return `₱${(discountValue / 100).toFixed(0)} OFF`;
+    case 'buy_one_take_one':
+      return 'BOGO';
+    case 'free_item':
+      return 'FREE ITEM';
+    case 'free_upgrade':
+      return 'FREE UPGRADE';
+    case 'bundle':
+      return 'BUNDLE DEAL';
+  }
+}
+
+/**
+ * Serialize a `deals` row (+ its flattened branch/product eligibility id lists)
+ * to the client `ApiDeal` shape. Applies the polymorphic money rule:
+ *  - `minimumOrderAmount` — always cents (`numericToCents`).
+ *  - `discountValue` — percent (un-scaled) for `percentage_discount`, cents
+ *    (`numericToCents`) for `fixed_discount`, `0` for the four complex types.
+ */
+export function serializeDeal(
+  deal: DealRow,
+  eligibleBranchIds: string[],
+  eligibleProductIds: string[],
+): ApiDeal {
+  let discountValue = 0;
+  if (deal.discount_value !== null) {
+    if (deal.deal_type === 'percentage_discount') {
+      discountValue = Number(deal.discount_value); // percentage — NOT ×100
+    } else if (deal.deal_type === 'fixed_discount') {
+      discountValue = numericToCents(deal.discount_value); // cents
+    }
+    // other four deal types → discountValue stays 0
+  }
+
+  return {
+    id: deal.id,
+    title: deal.title,
+    ...(deal.description === null ? {} : { description: deal.description }),
+    discountLabel: dealDiscountLabel(deal.deal_type, discountValue),
+    ...(deal.image_url === null ? {} : { imageUrl: deal.image_url }),
+    validUntil: deal.end_at.toISOString(),
+    dealType: deal.deal_type,
+    discountValue,
+    minimumOrderAmount: numericToCents(deal.minimum_order_amount),
+    startAt: deal.start_at.toISOString(),
+    endAt: deal.end_at.toISOString(),
+    isActive: deal.is_active,
+    ...(deal.usage_limit_per_user === null ? {} : { usageLimitPerUser: deal.usage_limit_per_user }),
+    ...(deal.total_usage_limit === null ? {} : { totalUsageLimit: deal.total_usage_limit }),
+    eligibleProductIds,
+    eligibleBranchIds,
+    // `code` has no column in the `deals` schema (cart apply-by-code = Phase 3).
   };
 }
 
