@@ -47,8 +47,22 @@ function InertOrderActions({ status, mode }: { status: string; mode: ThemeMode }
   if (status === 'pending') {
     return (
       <View style={styles.actionRow}>
-        <Button label="Accept" variant="primary" mode={mode} disabled onPress={() => {}} style={styles.flex} />
-        <Button label="Reject" variant="accent" mode={mode} disabled onPress={() => {}} style={styles.flex} />
+        <Button
+          label="Accept"
+          variant="primary"
+          mode={mode}
+          disabled
+          onPress={() => {}}
+          style={styles.flex}
+        />
+        <Button
+          label="Reject"
+          variant="accent"
+          mode={mode}
+          disabled
+          onPress={() => {}}
+          style={styles.flex}
+        />
       </View>
     );
   }
@@ -59,7 +73,9 @@ function InertOrderActions({ status, mode }: { status: string; mode: ThemeMode }
     return <Button label="Mark Ready" variant="primary" mode={mode} disabled onPress={() => {}} />;
   }
   if (status === 'ready') {
-    return <Button label="Mark Picked Up" variant="primary" mode={mode} disabled onPress={() => {}} />;
+    return (
+      <Button label="Mark Picked Up" variant="primary" mode={mode} disabled onPress={() => {}} />
+    );
   }
   return null;
 }
