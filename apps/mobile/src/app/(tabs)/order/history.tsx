@@ -93,7 +93,7 @@ export default function OrderHistoryScreen() {
                   <OrderStatusBadge status={item.status} />
                 </View>
                 {reorderEligibility(item.status) ? (
-                  <View style={styles.reorderRow}>
+                  <View style={styles.reorderRow} onStartShouldSetResponder={() => true}>
                     <Button
                       label="Reorder"
                       size="sm"

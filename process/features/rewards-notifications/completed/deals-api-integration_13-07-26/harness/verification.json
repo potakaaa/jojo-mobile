@@ -12,7 +12,7 @@
     "pnpm --filter @jojopotato/mobile lint"
   ],
   "manualChecks": [
-    "Reviewed generated drizzle/0004_parched_stick.sql before applying — additive-only: ADD COLUMN deal_id uuid (nullable) + FK ON DELETE no action. No data rewrite.",
+    "Reviewed generated drizzle/0004_parched_stick.sql before applying — additive-only: ADD COLUMN deal_id uuid (nullable) + FK ON DELETE no action. No data rewrite. (Later renumbered to 0006_legal_daredevil.sql across two merge-conflict reconciliations with `development`'s own migrations — same content throughout, only the slot number changed.)",
     "Agent-Probe (deferred to simulator, RN-runner gap): browse -> Deal Details -> Apply -> lands in cart with CouponCard; complex-type deal shows 'can't be applied' feedback + disabled CTA; checkout Total shows discounted totalCents with Subtotal/Discount breakdown."
   ],
   "steps": [
@@ -20,7 +20,7 @@
       "step": "Generate migration for orders.deal_id; confirm additive-only (nullable column + FK, no data rewrite)",
       "command": "pnpm --filter @jojopotato/api db:generate",
       "result": "PASS",
-      "notes": "Emitted drizzle/0004_parched_stick.sql: ADD COLUMN deal_id uuid (nullable) + ADD CONSTRAINT orders_deal_id_deals_id_fk FOREIGN KEY REFERENCES deals(id) ON DELETE no action ON UPDATE no action. No backfill."
+      "notes": "Emitted drizzle/0004_parched_stick.sql (later renumbered to 0006_legal_daredevil.sql — see manualChecks note above): ADD COLUMN deal_id uuid (nullable) + ADD CONSTRAINT orders_deal_id_deals_id_fk FOREIGN KEY REFERENCES deals(id) ON DELETE no action ON UPDATE no action. No backfill."
     },
     {
       "step": "Apply migrations against local Postgres",

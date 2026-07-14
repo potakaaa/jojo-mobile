@@ -151,7 +151,7 @@ START: Phase 1, loop step PVL (CONDITIONAL first pass — orchestrator runs one 
 | 0 (pre-program) | this file | Confirm folder structure, create phase stubs, blast-radius registry | — |
 | 1 — Deals list (DEAL-001 / #22) | `process/features/rewards-notifications/active/deals-api-integration_13-07-26/phase-1-deals-list_PLAN_13-07-26.md` | `GET /deals?branchId=` + `serializeDeal` + react-query deals hook; swap `deals/index.tsx` MOCK_DEALS → API. NO schema change. LOW risk. | Phase 0 |
 | 2 — Deal Details + eligibility (DEAL-002 / #23) | `process/features/rewards-notifications/active/deals-api-integration_13-07-26/phase-2-deal-details-eligibility_PLAN_13-07-26.md` | `GET /deals/:id`; wire `deals/deal/[dealId].tsx` off it; feed the existing 6-step eligibility engine with real data. NO schema change. MEDIUM risk. | Phase 1 |
-| 3 — Cart apply + placement validation (DEAL-003 / #24) | `process/features/rewards-notifications/active/deals-api-integration_13-07-26/phase-3-cart-apply-placement_PLAN_13-07-26.md` | Migration `0004_*` (nullable `orders.deal_id`); rewrite `POST /orders` for server-authoritative eligibility + real discount (%/fixed only) + atomic `deal_id` persistence; wire cart apply/remove to send `dealId`. HIGH risk — billing + schema + transaction. | Phase 1 + Phase 2 |
+| 3 — Cart apply + placement validation (DEAL-003 / #24) | `process/features/rewards-notifications/active/deals-api-integration_13-07-26/phase-3-cart-apply-placement_PLAN_13-07-26.md` | Migration `0006_legal_daredevil.sql` (nullable `orders.deal_id`); rewrite `POST /orders` for server-authoritative eligibility + real discount (%/fixed only) + atomic `deal_id` persistence; wire cart apply/remove to send `dealId`. HIGH risk — billing + schema + transaction. | Phase 1 + Phase 2 |
 
 ### Join Conditions
 
@@ -239,7 +239,7 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 - **Phase 1:** `packages/api/src/routes/deals.ts` (new), `packages/api/src/routes/lib/serializers.ts` (add `serializeDeal`), `packages/api/src/index.ts` (mount `/deals`), `packages/api/src/routes/__tests__/deals.test.ts` (new), `apps/mobile/src/features/deals/hooks/*` (new react-query hook), `apps/mobile/src/lib/api-client.ts` (add `getDeals`), `apps/mobile/src/app/(tabs)/deals/index.tsx` (swap MOCK_DEALS → API).
 - **Phase 2:** `packages/api/src/routes/deals.ts` (add `GET /:id`), `packages/api/src/routes/__tests__/deals.test.ts` (extend), `apps/mobile/src/features/deals/hooks/*` (single-deal hook), `apps/mobile/src/app/(tabs)/deals/deal/[dealId].tsx` (wire off API), `apps/mobile/src/features/deals/lib/eligibility.ts` (feed real data — read).
-- **Phase 3:** migration `0004_*.sql` + `packages/api/src/db/schema/orders.ts` (`deal_id`), `packages/api/src/routes/orders.ts` (rewrite placement), `packages/types/src/*` (createOrder input adds `dealId`), `packages/api/src/routes/__tests__/orders.*` (extend), `apps/mobile/src/features/cart/hooks/use-cart.ts` + `apps/mobile/src/app/(tabs)/order/cart.tsx` (send dealId; preserve useReorderConflicts).
+- **Phase 3:** migration `0006_legal_daredevil.sql` + `packages/api/src/db/schema/orders.ts` (`deal_id`), `packages/api/src/routes/orders.ts` (rewrite placement), `packages/types/src/*` (createOrder input adds `dealId`), `packages/api/src/routes/__tests__/orders.*` (extend), `apps/mobile/src/features/cart/hooks/use-cart.ts` + `apps/mobile/src/app/(tabs)/order/cart.tsx` (send dealId; preserve useReorderConflicts).
 
 ---
 
@@ -259,7 +259,7 @@ Files directly modified or created across the program:
 - `packages/api/src/routes/lib/serializers.ts` (add `serializeDeal` — P1)
 - `packages/api/src/index.ts` (mount `/deals` — P1)
 - `packages/api/src/routes/__tests__/deals.test.ts` (new — P1, extended P2)
-- `packages/api/src/db/schema/orders.ts` + `packages/api/drizzle/0004_*.sql` (P3)
+- `packages/api/src/db/schema/orders.ts` + `packages/api/drizzle/0006_legal_daredevil.sql` (P3)
 - `packages/api/src/routes/orders.ts` (rewrite placement — P3)
 - `packages/api/src/routes/__tests__/orders.*` (extend — P3)
 - `packages/types/src/*` (createOrder input `dealId` — P3)
@@ -321,7 +321,9 @@ Program Net Gate: Phase 1 CLOSED (EVL-confirmed, CLEAN). Phase 2 CLOSED (EVL-con
 Latest validator run: 14-07-26 — high-risk evidence pack validator (0 failures/warnings); phase-3 plan-artifact validator (PVL re-validation cycle 2, 0 failures)
 
 **⚠️ HIGH-RISK PHASE 3 FLAG — RESOLVED (14-07-26):** Phase 3's schema migration
-(`0004_parched_stick.sql` — additive-only, nullable `orders.deal_id` + FK) and `POST /orders`
+(`0006_legal_daredevil.sql` — additive-only, nullable `orders.deal_id` + FK; renumbered twice
+during merge-conflict reconciliation with `development`'s own migrations, same content throughout)
+and `POST /orders`
 billing/discount/placement rewrite (server-authoritative eligibility re-validation, real discount
 computation, atomic `deal_id` persistence) both landed and were EVL-confirmed clean. The
 High-Risk Execution Handoff (manual-first evidence pack per `vc-risk-evidence-pack`, 5 artifacts)
@@ -401,7 +403,7 @@ commits, reviewed separately:
    - `apps/mobile/src/features/deals/hooks/` (new)
    - `apps/mobile/src/features/orders/lib/api-client.ts`
    - `apps/mobile/src/lib/api-client.ts` (deals-related additions only — verify no unrelated changes)
-   - `packages/api/drizzle/0004_parched_stick.sql` + `packages/api/drizzle/meta/0004_snapshot.json`
+   - `packages/api/drizzle/0006_legal_daredevil.sql` + `packages/api/drizzle/meta/0006_snapshot.json`
      + `packages/api/drizzle/meta/_journal.json`
    - `packages/api/src/db/schema/orders.ts`
    - `packages/api/src/index.ts` (deals router mount, if not already committed from Phase 1)
