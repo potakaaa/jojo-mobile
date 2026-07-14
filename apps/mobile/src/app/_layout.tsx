@@ -10,11 +10,14 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { Colors } from '@/constants/theme';
+import { OrderSessionProvider } from '@/features/order/hooks/use-order';
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 import { BranchProvider } from '@/features/branch/hooks/use-branch';
 import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
@@ -70,7 +73,9 @@ function AuthedTree() {
   return (
     <BranchProvider>
       <CartSessionProvider key={user?.id ?? 'anonymous'}>
-        <RootNavigator />
+        <OrderSessionProvider>
+          <RootNavigator />
+        </OrderSessionProvider>
       </CartSessionProvider>
     </BranchProvider>
   );
@@ -94,6 +99,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Paint the window background (visible behind the transparent Android edge-to-edge
+  // system nav bar) with the palette background, reacting to the color scheme.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(
+      Colors[colorScheme === 'dark' ? 'dark' : 'light'].background,
+    );
+  }, [colorScheme]);
 
   // Bridge RN app foregrounding into TanStack Query's focus manager so
   // `refetchOnWindowFocus` (query-client.ts) actually refetches on native.
