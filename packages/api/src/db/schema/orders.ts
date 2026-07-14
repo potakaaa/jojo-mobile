@@ -1,5 +1,6 @@
 import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { branches } from './branches';
+import { deals } from './deals';
 import { users } from './users';
 
 export const orderStatusEnum = pgEnum('order_status', [
@@ -26,6 +27,9 @@ export const orders = pgTable(
     branch_id: uuid('branch_id')
       .references(() => branches.id)
       .notNull(),
+    // Nullable FK to the applied deal (NO ACTION on delete — matches user_id/branch_id
+    // precedent). NULL when no deal was applied. Usage counts derive from this column.
+    deal_id: uuid('deal_id').references(() => deals.id),
     order_number: varchar('order_number').unique().notNull(),
     status: orderStatusEnum('status').default('pending').notNull(),
     subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),

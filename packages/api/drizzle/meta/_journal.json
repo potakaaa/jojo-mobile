@@ -29,6 +29,13 @@
       "when": 1783927846068,
       "tag": "0003_lean_kang",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783993348979,
+      "tag": "0004_parched_stick",
+      "breakpoints": true
     }
   ]
 }

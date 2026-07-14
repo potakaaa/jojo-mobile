@@ -30,7 +30,7 @@ function prepPickupTime(prepMinutes: number) {
  */
 export default function CheckoutScreen() {
   const theme = useTheme();
-  const { cart, subtotalCents, clearCart } = useCart();
+  const { cart, subtotalCents, discountTotalCents, totalCents, clearCart } = useCart();
   const { branches } = useBranch();
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
   const { placeOrder, submitting, error } = useCheckout();
@@ -56,6 +56,9 @@ export default function CheckoutScreen() {
         quantity: item.quantity,
         selectedOptions: item.selectedOptions.map((o) => ({ optionId: o.id })),
       })),
+      // Only a deal-sourced discount carries a real dealId the server can revalidate.
+      dealId:
+        cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
     });
     if (order) {
       clearCart();
@@ -107,9 +110,25 @@ export default function CheckoutScreen() {
         </View>
       </View>
 
-      <View style={[styles.section, styles.totalRow]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Total</Text>
-        <Text style={[styles.total, { color: theme.text }]}>{formatCurrency(subtotalCents)}</Text>
+      <View style={styles.section}>
+        <View style={styles.breakdownRow}>
+          <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Subtotal</Text>
+          <Text style={[styles.breakdownValue, { color: theme.text }]}>
+            {formatCurrency(subtotalCents)}
+          </Text>
+        </View>
+        {discountTotalCents > 0 ? (
+          <View style={styles.breakdownRow}>
+            <Text style={[styles.breakdownLabel, { color: theme.textSecondary }]}>Discount</Text>
+            <Text style={[styles.breakdownValue, { color: Palette.jred }]}>
+              {`-${formatCurrency(discountTotalCents)}`}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.totalRow}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Total</Text>
+          <Text style={[styles.total, { color: theme.text }]}>{formatCurrency(totalCents)}</Text>
+        </View>
       </View>
 
       {error ? <Text style={[styles.error, { color: Palette.jred }]}>{error}</Text> : null}
@@ -147,6 +166,9 @@ const styles = StyleSheet.create({
   payLabel: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.body },
   comingSoon: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.caption, marginTop: 2 },
   radio: { width: 22, height: 22, borderWidth: 2, borderRadius: Radii.full },
+  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  breakdownLabel: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.body },
+  breakdownValue: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.body },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   total: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.h2 },
   error: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall },

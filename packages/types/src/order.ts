@@ -28,5 +28,6 @@ export interface Order {
   paymentStatus: PaymentStatus;
   estimatedReadyAt: string;
   placedAt: string;
+  dealId: string | null;
   items: OrderItem[];
 }

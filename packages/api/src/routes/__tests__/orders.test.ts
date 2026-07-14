@@ -2,6 +2,7 @@
    getSession stub are loosely typed at the test boundary; assertions narrow them. */
 import type { AddressInfo } from 'node:net';
 
+import { and, eq } from 'drizzle-orm';
 import express from 'express';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -46,6 +47,21 @@ let branch20Id: string; // estimated_prep_minutes = 20
 let branch45Id: string; // estimated_prep_minutes = 45
 let productId: string;
 let sizeOptionId: string;
+let otherProductId: string; // real product, never in the test cart (product-scope reject)
+
+// Deal fixtures (Phase 3 — DEAL-003). Assert by id; hermetic per-deal.
+let pctDealId: string; // agnostic percentage_discount 20%, no minimum
+let fixedSmallDealId: string; // agnostic fixed_discount ₱5.00 (500c) — partial
+let fixedLargeDealId: string; // agnostic fixed_discount ₱50.00 (5000c) — clamps to subtotal
+let branchScopedDealId: string; // scoped to branch45 (ordering at branch20 => ineligible)
+let productScopedDealId: string; // scoped to otherProduct (not in cart => ineligible)
+let minDealId: string; // minimum_order_amount ₱100 (10000c) > 1300 subtotal
+let expiredDealId: string; // active but end_at in the past (not_in_window)
+let perUserDealId: string; // usage_limit_per_user: 1 (sequential per-user reject)
+let totalLimitDealId: string; // total_usage_limit: 1
+let concurrencyDealId: string; // usage_limit_per_user: 1 (concurrency/row-lock)
+let bogoDealId: string; // buy_one_take_one (complex type reject)
+let inactiveDealId: string; // is_active: false
 
 async function post(
   path: string,
@@ -179,6 +195,111 @@ beforeAll(async () => {
     { branch_id: branch20Id, product_id: productId, is_available: true },
     { branch_id: branch45Id, product_id: productId, is_available: true },
   ]);
+
+  // A second real product, never added to the test cart — for product-scoped
+  // deal ineligibility.
+  const [otherProduct] = await db
+    .insert(schema.products)
+    .values({
+      category_id: category!.id,
+      name: `Nuggets ${suffix}`,
+      slug: `nuggets-${suffix}`,
+      base_price: '3.00',
+    })
+    .returning();
+  otherProductId = otherProduct!.id;
+
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const nowMs = Date.now();
+  const win = { start_at: new Date(nowMs - HOUR), end_at: new Date(nowMs + DAY) };
+
+  const seedDeal = async (
+    values: Partial<typeof schema.deals.$inferInsert> &
+      Pick<typeof schema.deals.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const [row] = await db
+      .insert(schema.deals)
+      .values({ start_at: win.start_at, end_at: win.end_at, is_active: true, ...values })
+      .returning();
+    return row!.id;
+  };
+
+  pctDealId = await seedDeal({
+    title: `Pct20 ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '20.00',
+  });
+  fixedSmallDealId = await seedDeal({
+    title: `Fixed5 ${suffix}`,
+    deal_type: 'fixed_discount',
+    discount_value: '5.00',
+  });
+  fixedLargeDealId = await seedDeal({
+    title: `Fixed50 ${suffix}`,
+    deal_type: 'fixed_discount',
+    discount_value: '50.00',
+  });
+
+  branchScopedDealId = await seedDeal({
+    title: `BranchScoped ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+  });
+  await db
+    .insert(schema.dealBranches)
+    .values({ deal_id: branchScopedDealId, branch_id: branch45Id });
+
+  productScopedDealId = await seedDeal({
+    title: `ProductScoped ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+  });
+  await db
+    .insert(schema.dealProducts)
+    .values({ deal_id: productScopedDealId, product_id: otherProductId });
+
+  minDealId = await seedDeal({
+    title: `MinOrder ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    minimum_order_amount: '100.00',
+  });
+  expiredDealId = await seedDeal({
+    title: `Expired ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    start_at: new Date(nowMs - 2 * DAY),
+    end_at: new Date(nowMs - DAY),
+  });
+  perUserDealId = await seedDeal({
+    title: `PerUser1 ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    usage_limit_per_user: 1,
+  });
+  totalLimitDealId = await seedDeal({
+    title: `TotalLimit1 ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    total_usage_limit: 1,
+  });
+  concurrencyDealId = await seedDeal({
+    title: `Concurrency1 ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    usage_limit_per_user: 1,
+  });
+  bogoDealId = await seedDeal({
+    title: `Bogo ${suffix}`,
+    deal_type: 'buy_one_take_one',
+  });
+  inactiveDealId = await seedDeal({
+    title: `Inactive ${suffix}`,
+    deal_type: 'percentage_discount',
+    discount_value: '10.00',
+    is_active: false,
+  });
 });
 
 afterAll(async () => {
@@ -307,6 +428,205 @@ describe('POST /orders — back-to-back independence', () => {
     const ids = history.json.orders.map((o: any) => o.id);
     expect(new Set(ids).size).toBe(2);
     history.json.orders.forEach((o: any) => expect(o.items.length).toBeGreaterThanOrEqual(1));
+  });
+});
+
+describe('POST /orders — deal apply (DEAL-003)', () => {
+  const dealBody = (branchId: string, dealId: string) => ({
+    ...singleItemBody(branchId),
+    dealId,
+  });
+
+  async function countOrdersWithDeal(dealId: string, userId?: string): Promise<number> {
+    const where = userId
+      ? and(eq(schema.orders.deal_id, dealId), eq(schema.orders.user_id, userId))
+      : eq(schema.orders.deal_id, dealId);
+    const rows = await db.select().from(schema.orders).where(where);
+    return rows.length;
+  }
+
+  it('percentage_discount: computes real discount, total, and persists deal_id', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, pctDealId),
+    });
+    expect(status).toBe(201);
+    // subtotal 1300; 20% => 260 discount; total 1040.
+    expect(json.order.subtotalCents).toBe(1300);
+    expect(json.order.discountTotalCents).toBe(260);
+    expect(json.order.totalCents).toBe(1040);
+    expect(json.order.dealId).toBe(pctDealId);
+  });
+
+  it('fixed_discount: computes cents discount (partial) and persists deal_id', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, fixedSmallDealId),
+    });
+    expect(status).toBe(201);
+    // ₱5.00 => 500c < 1300 subtotal => discount 500, total 800.
+    expect(json.order.discountTotalCents).toBe(500);
+    expect(json.order.totalCents).toBe(800);
+    expect(json.order.dealId).toBe(fixedSmallDealId);
+  });
+
+  it('fixed_discount clamps the discount to the subtotal (never negative total)', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, fixedLargeDealId),
+    });
+    expect(status).toBe(201);
+    // ₱50.00 => 5000c > 1300 subtotal => clamped to 1300; total 0.
+    expect(json.order.discountTotalCents).toBe(1300);
+    expect(json.order.totalCents).toBe(0);
+  });
+
+  it('rejects (400) not_in_window (expired deal) and creates no order', async () => {
+    const freshUser = (
+      await db.insert(schema.users).values({ name: 'X', email: `exp-${uid()}@e.com` }).returning()
+    )[0]!.id;
+    const { status } = await post('/orders', {
+      user: freshUser,
+      body: dealBody(branch20Id, expiredDealId),
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithDeal(expiredDealId)).toBe(0);
+  });
+
+  it('rejects (400) branch-ineligible deal', async () => {
+    const { status } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, branchScopedDealId), // scoped to branch45
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithDeal(branchScopedDealId)).toBe(0);
+  });
+
+  it('rejects (400) product-ineligible deal', async () => {
+    const { status } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, productScopedDealId), // scoped to otherProduct
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithDeal(productScopedDealId)).toBe(0);
+  });
+
+  it('rejects (400) below-minimum-order deal', async () => {
+    const { status } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, minDealId), // min ₱100 > ₱13 subtotal
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithDeal(minDealId)).toBe(0);
+  });
+
+  it('rejects (400) a second placement once the per-user usage limit is reached', async () => {
+    const first = await post('/orders', {
+      user: userB,
+      body: dealBody(branch20Id, perUserDealId),
+    });
+    expect(first.status).toBe(201);
+    const second = await post('/orders', {
+      user: userB,
+      body: dealBody(branch20Id, perUserDealId),
+    });
+    expect(second.status).toBe(400);
+    // Exactly one order consumed the limit.
+    expect(await countOrdersWithDeal(perUserDealId, userB)).toBe(1);
+  });
+
+  it('rejects (400) once the total usage limit is reached', async () => {
+    const u1 = (
+      await db.insert(schema.users).values({ name: 'T1', email: `t1-${uid()}@e.com` }).returning()
+    )[0]!.id;
+    const u2 = (
+      await db.insert(schema.users).values({ name: 'T2', email: `t2-${uid()}@e.com` }).returning()
+    )[0]!.id;
+    const first = await post('/orders', {
+      user: u1,
+      body: dealBody(branch20Id, totalLimitDealId),
+    });
+    expect(first.status).toBe(201);
+    // Different user, but the total limit of 1 is already consumed.
+    const second = await post('/orders', {
+      user: u2,
+      body: dealBody(branch20Id, totalLimitDealId),
+    });
+    expect(second.status).toBe(400);
+    expect(await countOrdersWithDeal(totalLimitDealId)).toBe(1);
+  });
+
+  it('rejects (400) the buy_one_take_one complex type and never persists a deal_id', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, bogoDealId),
+    });
+    expect(status).toBe(400);
+    expect(json.error).toBe('This deal cannot be applied at checkout yet');
+    expect(await countOrdersWithDeal(bogoDealId)).toBe(0);
+  });
+
+  it('rejects (400) an unknown dealId and an inactive deal', async () => {
+    const unknown = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, '00000000-0000-4000-8000-000000000000'),
+    });
+    expect(unknown.status).toBe(400);
+
+    const inactive = await post('/orders', {
+      user: userA,
+      body: dealBody(branch20Id, inactiveDealId),
+    });
+    expect(inactive.status).toBe(400);
+    expect(await countOrdersWithDeal(inactiveDealId)).toBe(0);
+  });
+
+  it('atomicity: an eligibility 400 inserts no orders row for that placement', async () => {
+    const freshUser = (
+      await db
+        .insert(schema.users)
+        .values({ name: 'Atomic', email: `atomic-${uid()}@e.com` })
+        .returning()
+    )[0]!.id;
+    const before = await get('/orders', { user: freshUser });
+    expect(before.json.orders).toHaveLength(0);
+
+    const { status } = await post('/orders', {
+      user: freshUser,
+      body: dealBody(branch20Id, minDealId), // rejected: below minimum
+    });
+    expect(status).toBe(400);
+
+    const after = await get('/orders', { user: freshUser });
+    expect(after.json.orders).toHaveLength(0); // whole tx rolled back
+  });
+
+  it('no-dealId placement still returns discount_total 0, total = subtotal, dealId null', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: singleItemBody(branch20Id),
+    });
+    expect(status).toBe(201);
+    expect(json.order.discountTotalCents).toBe(0);
+    expect(json.order.totalCents).toBe(json.order.subtotalCents);
+    expect(json.order.dealId).toBeNull();
+  });
+
+  it('concurrency: two same-user placements of a usage_limit_per_user:1 deal => exactly one 201', async () => {
+    const freshUser = (
+      await db
+        .insert(schema.users)
+        .values({ name: 'Race', email: `race-${uid()}@e.com` })
+        .returning()
+    )[0]!.id;
+    const [a, b] = await Promise.all([
+      post('/orders', { user: freshUser, body: dealBody(branch20Id, concurrencyDealId) }),
+      post('/orders', { user: freshUser, body: dealBody(branch20Id, concurrencyDealId) }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    // FOR UPDATE serializes the two placements: exactly one succeeds.
+    expect(statuses).toEqual([201, 400]);
+    expect(await countOrdersWithDeal(concurrencyDealId, freshUser)).toBe(1);
   });
 });
 

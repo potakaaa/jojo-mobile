@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 This file is the root context entrypoint for the repo.
 
@@ -223,8 +223,50 @@ top of it later without re-plumbing the project.
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
   (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
   cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
-  branches, and customer order placement. `app` is exported from `packages/api/src/index.ts` (port
-  binding guarded so tests never bind a port).
+  branches, customer order placement, and (new, 14-07-26) deals (`deals.test.ts`). `app` is exported
+  from `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
+- **Deals feature (backend wiring COMPLETE, 14-07-26):** the Deals feature
+  (`(tabs)/deals/index.tsx` list + `deals/deal/[dealId].tsx` details, reachable from the Home tab —
+  NOT a bottom-nav tab itself) is now fully backend-wired end-to-end, real data through real cart
+  apply through real server-authoritative order placement. The `deals-api-integration` program
+  (all 3 phases, `process/features/rewards-notifications/completed/
+  deals-api-integration_13-07-26/` — archived) delivered:
+  **Phase 1 (DEAL-001 / #22):** public `GET /deals?branchId=` route
+  (`packages/api/src/routes/deals.ts`) + `serializeDeal`/`ApiDeal` boundary serializer
+  (`routes/lib/serializers.ts` — cents at the boundary, EXCEPT `percentage_discount` values are NOT
+  ×100, per `packages/types/src/deals.ts`'s VALUE-UNIT NOTE) + a react-query `useDeals()` hook
+  (`apps/mobile/src/features/deals/hooks/use-deals.ts`, reading branch from `useCart()`); the deals
+  list screen renders from the API, not `MOCK_DEALS`.
+  **Phase 2 (DEAL-002 / #23):** public `GET /deals/:id` route (additive to `deals.ts`, reuses
+  `serializeDeal` verbatim; no branch/window filter by design so the client eligibility engine can
+  render `branch_ineligible`/`not_in_window` reasons) + a react-query `useDeal(dealId)` hook
+  (`apps/mobile/src/features/deals/hooks/use-deal.ts`) + the Deal Details screen
+  (`deal/[dealId].tsx`) feeding the existing 6-step `checkDealEligibility` engine with real data.
+  **Phase 3 (DEAL-003 / #24 — the write surface):** migration `0004_parched_stick.sql` adds a
+  nullable `orders.deal_id uuid` FK (additive, NO ACTION); `POST /orders` was rewritten so that,
+  inside the existing placement transaction, it `SELECT ... FOR UPDATE`-locks the deal row, rejects
+  the 4 complex deal types (`buy_one_take_one`/`free_item`/`free_upgrade`/`bundle`) with 400 before
+  any write, re-runs the 6-step eligibility server-side (window/branch/product/minimum/per-user
+  usage/total usage — usage derives from `orders.deal_id`, no separate `deal_usages` table), and
+  computes a REAL discount for `percentage_discount`/`fixed_discount` ONLY from the raw
+  `deals.discount_value` (never a client-sent amount, always dual-clamped
+  `Math.max(0, Math.min(computed, subtotalCents))`), writing `total = subtotal − discount` and
+  `deal_id` atomically. `apps/mobile`'s cart dead coupon-code-input UI (the `deals` table has no
+  `code` column, so it could never resolve a real deal) was deleted; the real
+  browse→Deal-Details→**Apply**→cart flow is wired (`applyDealById` now performs a real `getDeal()`
+  fetch and client-side-rejects the 4 complex types before applying — `apply-deal.ts` +
+  `deal/[dealId].tsx`); checkout's Total-display bug (was showing subtotal) is fixed
+  (`checkout.tsx`, subtotal/discount/total breakdown). `cart.tsx`'s `useReorderConflicts()` import
+  and render path (unrelated `ordering-cart` feature) were explicitly preserved untouched.
+  **Test-tier split (standing, unchanged by this program):** `packages/api` vitest+supertest IS the
+  automated hard gate for all placement/discount/eligibility/atomicity/complex-reject logic
+  (`orders.test.ts` grew to 25 cases incl. 15 deal-apply; `deals.test.ts` covers the read routes).
+  `apps/mobile` has NO RN test runner (project-wide gap, see `tests/all-tests.md`) — all client-side
+  Deals UX (list render, details render, cart-apply-through-checkout flow) is Agent-Probe only,
+  never claimed as automated coverage; 3 manual walkthroughs remain owed (non-blocking backlog).
+  **Deferred/out of scope (by design, unchanged):** coupons entirely (no `/coupons`, no `code`
+  column, no Coupon Wallet); real pricing for the 4 complex deal types (shown/evaluated, not
+  cart-applicable); star/rewards accrual; live payment processing.
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
@@ -232,9 +274,11 @@ top of it later without re-plumbing the project.
   bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
   (cart architecture reconciliation),
   `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
-  + react-query reconciliation), and
+  + react-query reconciliation),
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
-  layer + role-gated staff shell — STAFF-001).
+  layer + role-gated staff shell — STAFF-001), and
+  `process/features/rewards-notifications/completed/deals-api-integration_13-07-26/` (3-phase Deals
+  backend wiring program — #22/#23/#24, archived plan + phase reports + high-risk evidence pack).
 
 ## Quick Start
 
@@ -519,6 +563,10 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
-- HEAD at last delta: `a153ec5` (process artifacts, branch `feat/staff-001-login-branch-scope`)
+- Last delta: 2026-07-14 (Deals API Integration PROGRAM CLOSEOUT — Phase 3/DEAL-003/#24 EVL-confirmed
+  clean; all 3 phases VERIFIED; program archived active/ → completed/)
+- Previous delta: 2026-07-14 (Deals API Integration Phase 2 UPDATE PROCESS — GET /deals/:id route,
+  useDeal() hook, Deal Details screen real-data wiring, deferred Apply CTA)
+- Earlier delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
+- HEAD at last delta: uncommitted (working tree, branch `development`) — see git status for the current diff set
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

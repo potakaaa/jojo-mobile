@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Client-sent-discount tampering: a malicious client sends a forged discount amount (or a forged eligibility 'pass') to POST /orders to pay less than owed.",
+      "ruled_out": true,
+      "rationale": "createOrderSchema accepts ONLY dealId: z.string().uuid().optional() — there is no discount/amount/eligibility field in the request body to forge. The server recomputes the discount inside the transaction from the raw deals.discount_value row via computeDealDiscountCents. Any extra body fields are ignored by zod. Verified: no price field in the schema (code review) + happy-path tests assert the server-computed discount, not a client value."
+    },
+    {
+      "scenario": "Usage-limit bypass via concurrency: two simultaneous placements of a usage_limit_per_user:1 (or total_usage_limit:1) deal both read the pre-insert count of 0 and both succeed, double-consuming a single-use deal.",
+      "ruled_out": true,
+      "rationale": "The deals row is locked with SELECT ... FOR UPDATE (drizzle .for('update')) BEFORE the usage counts are read, inside the same transaction. Concurrent placements of the same deal serialize on that row lock, so the second transaction reads the count only after the first commits. Verified: concurrency test fires Promise.all([post, post]) for the same user+deal and asserts exactly [201, 400], with countOrdersWithDeal === 1."
+    },
+    {
+      "scenario": "Applying an inactive / out-of-window / wrong-branch / wrong-product / below-minimum deal: a client applies a deal it is not entitled to (tampered dealId or stale client state) to obtain an unearned discount.",
+      "ruled_out": true,
+      "rationale": "The server re-runs the full 6-step eligibility (window, branch scope, product-in-cart, minimum order, per-user usage, total usage) against a freshly-read deal row + live join tables + live usage counts at placement time — it never trusts the client's eligibility view. is_active is enforced in the FOR UPDATE filter (inactive => 'Deal not found or inactive'). Each failure throws OrderError(400) and rolls back the whole transaction. Verified: 6 rejection-reason tests + not-found/inactive test, each asserting 400 and zero persisted order rows for that deal."
+    },
+    {
+      "scenario": "Negative / over-subtotal discount: a garbage or negative raw deals.discount_value, or a fixed discount larger than the order, produces a negative total (customer credited) or total > subtotal.",
+      "ruled_out": true,
+      "rationale": "computeDealDiscountCents applies both clamps: Math.max(0, Math.min(computed, subtotalCents)). The inner Math.min caps the discount at the subtotal; the outer Math.max(0, ...) floors it at zero. total = subtotal - discount is therefore always in [0, subtotal]. Verified: fixed ₱50 (5000c) on a 1300c order clamps to 1300 => total 0 (never negative)."
+    },
+    {
+      "scenario": "Complex-type discount injection: applying a buy_one_take_one/free_item/free_upgrade/bundle deal that has no real pricing engine, hoping the server persists deal_id with a guessed or zero discount.",
+      "ruled_out": true,
+      "rationale": "Complex deal types are rejected with 400 ('This deal cannot be applied at checkout yet') BEFORE any discount computation or order insert — no deal_id is ever persisted for them. The client also gates the Apply CTA + applyDealById rejects them (defense in depth). Verified: buy_one_take_one test asserts 400 + countOrdersWithDeal(bogoDealId) === 0."
+    },
+    {
+      "scenario": "Partial-order / dangling deal linkage: a rejection after some rows were written leaves an order with a deal_id but no items, or items with no order.",
+      "ruled_out": true,
+      "rationale": "All deal logic runs inside the pre-existing db.transaction, and every rejection throws OrderError inside it. The order insert + order_items insert happen after the deal block, so any deal rejection aborts before any write. Verified: atomicity test — a below-minimum 400 leaves the user with zero orders."
+    }
+  ]
+}

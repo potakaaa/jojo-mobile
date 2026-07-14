@@ -1,4 +1,4 @@
-import type { MenuResponse, PickupBranch } from '@jojopotato/types';
+import type { Deal, MenuResponse, PickupBranch } from '@jojopotato/types';
 
 import { env } from '@/config/env';
 
@@ -68,4 +68,27 @@ export async function getBranches(): Promise<PickupBranch[]> {
  */
 export function getMenu(branchId: string): Promise<MenuResponse> {
   return getJson<MenuResponse>(`/branches/${encodeURIComponent(branchId)}/menu`);
+}
+
+/**
+ * `GET /deals` → `{ deals: [...] }` envelope. Appends `?branchId=` only when a
+ * branch is supplied (absent branchId → branch-agnostic deals only, server-side).
+ * The server `ApiDeal` shape is structurally identical to `Deal` (guarded by the
+ * `deals.test.ts` field-name assertions), so no client-side mapping is needed.
+ */
+export async function getDeals(branchId?: string): Promise<Deal[]> {
+  const path = branchId ? `/deals?branchId=${encodeURIComponent(branchId)}` : '/deals';
+  const body = await getJson<{ deals: Deal[] }>(path);
+  return body.deals;
+}
+
+/**
+ * `GET /deals/:id` → `{ deal }` envelope. Returns the deal regardless of branch
+ * scope or window (client eligibility renders the specific reason). A 404
+ * (missing/inactive/malformed id) throws via `getJson`, surfaced by `useDeal`
+ * as an error/not-found state.
+ */
+export async function getDeal(dealId: string): Promise<Deal> {
+  const body = await getJson<{ deal: Deal }>(`/deals/${encodeURIComponent(dealId)}`);
+  return body.deal;
 }

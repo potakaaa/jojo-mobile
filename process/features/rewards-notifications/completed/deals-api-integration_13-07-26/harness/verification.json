@@ -1,0 +1,62 @@
+{
+  "task": "deals-api-integration Phase 3 (DEAL-003 / #24) — verification of the placement discount/eligibility/atomicity logic + migration + typecheck/lint",
+  "result": "PASS",
+  "commands": [
+    "pnpm --filter @jojopotato/api db:generate",
+    "docker compose up -d && pnpm --filter @jojopotato/api db:migrate",
+    "pnpm --filter @jojopotato/api test",
+    "pnpm --filter @jojopotato/api exec tsc --noEmit",
+    "pnpm --filter @jojopotato/types exec tsc --noEmit",
+    "pnpm -C apps/mobile exec tsc --noEmit",
+    "pnpm --filter @jojopotato/api lint",
+    "pnpm --filter @jojopotato/mobile lint"
+  ],
+  "manualChecks": [
+    "Reviewed generated drizzle/0004_parched_stick.sql before applying — additive-only: ADD COLUMN deal_id uuid (nullable) + FK ON DELETE no action. No data rewrite.",
+    "Agent-Probe (deferred to simulator, RN-runner gap): browse -> Deal Details -> Apply -> lands in cart with CouponCard; complex-type deal shows 'can't be applied' feedback + disabled CTA; checkout Total shows discounted totalCents with Subtotal/Discount breakdown."
+  ],
+  "steps": [
+    {
+      "step": "Generate migration for orders.deal_id; confirm additive-only (nullable column + FK, no data rewrite)",
+      "command": "pnpm --filter @jojopotato/api db:generate",
+      "result": "PASS",
+      "notes": "Emitted drizzle/0004_parched_stick.sql: ADD COLUMN deal_id uuid (nullable) + ADD CONSTRAINT orders_deal_id_deals_id_fk FOREIGN KEY REFERENCES deals(id) ON DELETE no action ON UPDATE no action. No backfill."
+    },
+    {
+      "step": "Apply migrations against local Postgres",
+      "command": "docker compose up -d && pnpm --filter @jojopotato/api db:migrate",
+      "result": "PASS",
+      "notes": "migrations applied successfully"
+    },
+    {
+      "step": "Full packages/api vitest suite incl. new deal-apply cases",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "8 files, 83 tests passed. orders.test.ts: 25 tests (was 10, +15 deal-apply). Covers: percentage happy (discount 260/total 1040), fixed partial (500/800), fixed clamp-to-subtotal (1300/0), 6 rejection reasons (not_in_window, branch, product, minimum, per-user usage, total usage) each 400 + zero order rows, complex-type buy_one_take_one 400 + no deal_id, unknown/inactive 400, atomicity (400 leaves zero rows), no-dealId regression (discount 0/total=subtotal/dealId null), concurrency usage_limit_per_user:1 => exactly one 201."
+    },
+    {
+      "step": "Typecheck api + types",
+      "command": "pnpm --filter @jojopotato/api exec tsc --noEmit && pnpm --filter @jojopotato/types exec tsc --noEmit",
+      "result": "PASS",
+      "notes": "both exit 0"
+    },
+    {
+      "step": "Typecheck mobile",
+      "command": "pnpm -C apps/mobile exec tsc --noEmit",
+      "result": "PASS",
+      "notes": "exit 0 — async applyDealById, dealId pass-through, deleted code-input, preserved useReorderConflicts all compile"
+    },
+    {
+      "step": "Lint api + mobile",
+      "command": "pnpm --filter @jojopotato/api lint && pnpm --filter @jojopotato/mobile lint",
+      "result": "PASS",
+      "notes": "0 errors. Mobile shows 3 pre-existing warnings in scripts/dev-with-tunnel.mjs (untouched by this phase)."
+    },
+    {
+      "step": "Boundary/failure case — negative-total guard",
+      "command": "computeDealDiscountCents unit behavior (verified via fixed clamp test)",
+      "result": "PASS",
+      "notes": "Math.max(0, Math.min(computed, subtotalCents)) — fixed ₱50 (5000c) on 1300c subtotal clamps to 1300 => total 0, never negative. Both clamps present."
+    }
+  ]
+}
