@@ -1,11 +1,13 @@
 import type { Order } from '@jojopotato/types';
-import { Card, EmptyState, OrderStatusBadge } from '@jojopotato/ui';
-import { formatCurrency } from '@jojopotato/utils';
+import { Button, Card, EmptyState, OrderStatusBadge } from '@jojopotato/ui';
+import { formatCurrency, reorderEligibility, summarizeOrderItems } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
+import { useReorder } from '@/features/orders/hooks/use-reorder';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -23,6 +25,8 @@ export default function OrderHistoryScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { data: orders, loading, error, refetch } = useOrderHistory();
+  const { branches } = useBranch();
+  const { reorder, isReordering } = useReorder();
 
   if (loading) return <ScreenLoader />;
   if (error) {
@@ -62,24 +66,48 @@ export default function OrderHistoryScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <Pressable accessibilityRole="button" onPress={() => openOrder(item)}>
-            <Card>
-              <View style={styles.row}>
-                <Text style={[styles.orderNumber, { color: theme.text }]}>{item.orderNumber}</Text>
-                <Text style={[styles.total, { color: theme.text }]}>
-                  {formatCurrency(item.totalCents)}
+        renderItem={({ item }) => {
+          const branchName = branches.find((b) => b.id === item.branchId)?.name ?? 'Unknown branch';
+          const itemsSummary = summarizeOrderItems(item.items);
+          return (
+            <Pressable accessibilityRole="button" onPress={() => openOrder(item)}>
+              <Card>
+                <View style={styles.row}>
+                  <Text style={[styles.orderNumber, { color: theme.text }]}>
+                    {item.orderNumber}
+                  </Text>
+                  <Text style={[styles.total, { color: theme.text }]}>
+                    {formatCurrency(item.totalCents)}
+                  </Text>
+                </View>
+                <Text style={[styles.branch, { color: theme.text }]}>{branchName}</Text>
+                {itemsSummary ? (
+                  <Text style={[styles.summary, { color: theme.textSecondary }]}>
+                    {itemsSummary}
+                  </Text>
+                ) : null}
+                <Text style={[styles.date, { color: theme.textSecondary }]}>
+                  {formatPlacedDate(item.placedAt)}
                 </Text>
-              </View>
-              <Text style={[styles.date, { color: theme.textSecondary }]}>
-                {formatPlacedDate(item.placedAt)}
-              </Text>
-              <View style={styles.badgeRow}>
-                <OrderStatusBadge status={item.status} />
-              </View>
-            </Card>
-          </Pressable>
-        )}
+                <View style={styles.badgeRow}>
+                  <OrderStatusBadge status={item.status} />
+                </View>
+                {reorderEligibility(item.status) ? (
+                  <View style={styles.reorderRow} onStartShouldSetResponder={() => true}>
+                    <Button
+                      label="Reorder"
+                      size="sm"
+                      variant="outline"
+                      loading={isReordering}
+                      onPress={() => reorder(item)}
+                      mode={mode}
+                    />
+                  </View>
+                ) : null}
+              </Card>
+            </Pressable>
+          );
+        }}
       />
     </View>
   );
@@ -92,10 +120,21 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderNumber: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h3 },
   total: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.body },
+  branch: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.half,
+  },
+  summary: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    marginTop: Spacing.half,
+  },
   date: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
     marginTop: Spacing.half,
   },
   badgeRow: { marginTop: Spacing.two },
+  reorderRow: { marginTop: Spacing.two, alignItems: 'flex-start' },
 });

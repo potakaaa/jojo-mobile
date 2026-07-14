@@ -1,22 +1,23 @@
 import type { MenuItem, PickupTime } from '@jojopotato/types';
 import {
+  Badge,
   BranchCard,
   Button,
+  Card,
   CartItem,
   CartSummary,
   CouponCard,
   EmptyState,
-  Input,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
+import { useReorderConflicts } from '@/features/cart/hooks/use-reorder-conflicts';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
 import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
@@ -78,16 +79,16 @@ export default function CartScreen() {
     removeItem,
     clearCart,
     setBranch,
-    applyDiscount,
     clearDiscount,
   } = useCart();
 
   const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
 
-  const [couponCode, setCouponCode] = useState('');
+  const { conflicts, clearConflicts } = useReorderConflicts();
 
   const isEmpty = cart.items.length === 0;
+  const hasConflicts = conflicts.length > 0;
   const pickupTime = useMemo(
     () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
     [branch?.estimatedPrepMinutes],
@@ -121,39 +122,6 @@ export default function CartScreen() {
     }
   }, [cart, clearDiscount]);
 
-  const handleApplyCoupon = () => {
-    const code = couponCode.trim();
-    if (!code) return;
-
-    const doApply = () => {
-      // Known gap: usage is not persisted here — real consumption happens at
-      // order placement (out of scope this round).
-      const result = resolveAndApplyDeal(code, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
-      if (!result.ok) {
-        // Keep couponCode on failure so the user can see what they typed.
-        Alert.alert('Cannot apply deal', result.message);
-        return;
-      }
-      applyDiscount(result.discount);
-      setCouponCode('');
-    };
-
-    // One-deal-per-cart: replace-with-confirmation (mirrors this file's
-    // branch-switch confirmation UX; deals-screens plan step 11).
-    if (cart.appliedDiscount) {
-      Alert.alert(
-        'Replace applied deal?',
-        `This cart already has '${cart.appliedDiscount.label}' applied.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Replace', onPress: doApply },
-        ],
-      );
-      return;
-    }
-    doApply();
-  };
-
   // Switch pickup to the next real branch (cyclic). If the cart has items,
   // switching clears it first (branches can't be mixed — single-branch per order).
   const handleChangeBranch = () => {
@@ -174,6 +142,7 @@ export default function CartScreen() {
           text: 'Change & clear',
           style: 'destructive',
           onPress: () => {
+            clearConflicts();
             clearCart();
             setBranch(nextBranch.id);
           },
@@ -184,18 +153,57 @@ export default function CartScreen() {
 
   const canChangeBranch = branches.length > 1;
 
+  // DECISION 5 / E1 (VALIDATE P1): the reorder conflict notice renders whenever
+  // there are conflicts, REGARDLESS of empty/loading/error — so an all-unavailable
+  // reorder (0 available → empty cart) still surfaces the explanation instead of a
+  // bare "Your cart is empty" (AC13: never silently dropped). Conflicts are held
+  // out-of-band (they never enter cart.items), so totals/checkout stay clean.
+  const conflictNotice = hasConflicts ? (
+    <Card style={styles.conflictCard}>
+      <Text style={[styles.conflictTitle, { color: theme.text }]}>Some items are unavailable</Text>
+      <Text style={[styles.conflictBody, { color: theme.textSecondary }]}>
+        These items from your past order can&apos;t be added at this branch today, so they were left
+        out. Everything else is in your cart.
+      </Text>
+      {conflicts.map((conflict, index) => (
+        <View key={`${conflict.productName}-${index}`} style={styles.conflictRow}>
+          <Text style={[styles.conflictName, { color: theme.text }]} numberOfLines={1}>
+            {conflict.productName}
+          </Text>
+          <Badge
+            label={conflict.reason === 'product_unavailable' ? 'Unavailable' : 'Option unavailable'}
+            variant="danger"
+            mode={mode}
+          />
+        </View>
+      ))}
+      <Button
+        label="Remove unavailable & continue"
+        variant="outline"
+        onPress={clearConflicts}
+        mode={mode}
+      />
+    </Card>
+  ) : null;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
+        {conflictNotice}
         {isEmpty ? (
-          <EmptyState
-            iconName="cart-outline"
-            title="Your cart is empty"
-            description="Add some fries and snacks to get started."
-            actionLabel="Browse menu"
-            onAction={() => router.push('/(tabs)/order')}
-            mode={mode}
-          />
+          // When the cart is empty AND there are conflicts (all-unavailable reorder),
+          // the notice above already explains the situation — suppress the bare empty
+          // state to avoid a confusing "Your cart is empty" with no context.
+          hasConflicts ? null : (
+            <EmptyState
+              iconName="cart-outline"
+              title="Your cart is empty"
+              description="Add some fries and snacks to get started."
+              actionLabel="Browse menu"
+              onAction={() => router.push('/(tabs)/order')}
+              mode={mode}
+            />
+          )
         ) : branchesLoading ? (
           <ScreenLoader />
         ) : branchesError || !branch ? (
@@ -261,50 +269,35 @@ export default function CartScreen() {
                 ))}
               </View>
 
-              <View
-                style={[
-                  styles.couponSlot,
-                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-                ]}
-              >
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>Coupon / reward</Text>
-                {cart.appliedDiscount ? (
-                  <>
-                    <CouponCard
-                      coupon={{
-                        id: cart.appliedDiscount.refId,
-                        code: appliedDeal?.code ?? cart.appliedDiscount.label,
-                        title: appliedDeal?.title ?? 'Applied discount',
-                        discountLabel:
-                          appliedDeal?.discountLabel ?? `-${(discountTotalCents / 100).toFixed(2)}`,
-                        isRedeemed: false,
-                      }}
-                      mode={mode}
-                      style={styles.couponFlat}
-                    />
-                    <Button
-                      label="Remove discount"
-                      variant="accent"
-                      onPress={clearDiscount}
-                      mode={mode}
-                      style={styles.removeDiscountButton}
-                    />
-                  </>
-                ) : (
-                  <View style={styles.couponEntry}>
-                    <View style={styles.couponInput}>
-                      <Input
-                        value={couponCode}
-                        onChangeText={setCouponCode}
-                        placeholder="Enter coupon code"
-                        autoCapitalize="characters"
-                        mode={mode}
-                      />
-                    </View>
-                    <Button label="Apply" size="sm" onPress={handleApplyCoupon} mode={mode} />
-                  </View>
-                )}
-              </View>
+              {cart.appliedDiscount ? (
+                <View
+                  style={[
+                    styles.couponSlot,
+                    { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                  ]}
+                >
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Applied deal</Text>
+                  <CouponCard
+                    coupon={{
+                      id: cart.appliedDiscount.refId,
+                      code: appliedDeal?.code ?? cart.appliedDiscount.label,
+                      title: appliedDeal?.title ?? 'Applied discount',
+                      discountLabel:
+                        appliedDeal?.discountLabel ?? `-${(discountTotalCents / 100).toFixed(2)}`,
+                      isRedeemed: false,
+                    }}
+                    mode={mode}
+                    style={styles.couponFlat}
+                  />
+                  <Button
+                    label="Remove discount"
+                    variant="accent"
+                    onPress={clearDiscount}
+                    mode={mode}
+                    style={styles.removeDiscountButton}
+                  />
+                </View>
+              ) : null}
 
               <CartSummary
                 subtotalCents={subtotalCents}
@@ -326,7 +319,7 @@ export default function CartScreen() {
               <Button
                 label={`Checkout • ${itemCount} item${itemCount === 1 ? '' : 's'}`}
                 onPress={() => router.push('/(tabs)/order/checkout')}
-                disabled={isEmpty}
+                disabled={isEmpty || hasConflicts}
                 mode={mode}
               />
             </View>
@@ -404,14 +397,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
-  couponEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  couponInput: {
-    flex: 1,
-  },
   footer: {
     position: 'absolute',
     left: 0,
@@ -421,5 +406,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
+  },
+  conflictCard: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    gap: Spacing.two,
+  },
+  conflictTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  conflictBody: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  conflictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  conflictName: {
+    flex: 1,
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.body,
   },
 });

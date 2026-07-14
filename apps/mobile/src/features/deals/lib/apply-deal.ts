@@ -1,6 +1,6 @@
 import type { AppliedDiscount, Cart, Deal } from '@jojopotato/types';
 
-import { MOCK_DEALS } from '@/features/deals/mock-deals';
+import { getDeal } from '@/lib/api-client';
 import {
   checkDealEligibility,
   computeDealDiscountCents,
@@ -11,6 +11,22 @@ import {
 export type ApplyDealResult =
   | { ok: true; discount: AppliedDiscount }
   | { ok: false; reason: 'not_found' | EligibilityFailReason; message: string };
+
+/**
+ * Deal types that cannot be applied at checkout (no real server-side discount).
+ * The client rejects them BEFORE applying so it never carries a guessed discount
+ * to a placement that the server would reject with 400 (charter consistency).
+ */
+const COMPLEX_DEAL_TYPES: readonly Deal['dealType'][] = [
+  'buy_one_take_one',
+  'free_item',
+  'free_upgrade',
+  'bundle',
+];
+
+export function isComplexDealType(dealType: Deal['dealType']): boolean {
+  return COMPLEX_DEAL_TYPES.includes(dealType);
+}
 
 /**
  * Shared apply path: run eligibility for a resolved deal and, on pass, produce
@@ -35,36 +51,30 @@ function applyResolvedDeal(
 }
 
 /**
- * Resolve a typed deal `code` to a mock `Deal`, then apply it. Entry point for
- * the cart "Apply coupon/deal" text input.
+ * Apply a deal directly by id — the ONLY real apply path (browse → Deal Details →
+ * Apply CTA → cart). Fetches the real deal from `GET /deals/:id`, rejects the four
+ * complex deal types (they compute no real discount — the server rejects them at
+ * placement, so the client must not carry a guessed discount there), then runs
+ * eligibility and produces the `AppliedDiscount`.
  */
-export function resolveAndApplyDeal(
-  code: string,
-  cart: Cart,
-  pickupBranchId: string,
-  usage: DealUsageRecord[],
-): ApplyDealResult {
-  const normalized = code.trim().toUpperCase();
-  const deal = MOCK_DEALS.find((d) => d.code?.toUpperCase() === normalized);
-  if (!deal) {
-    return { ok: false, reason: 'not_found', message: 'Deal code not found.' };
-  }
-  return applyResolvedDeal(deal, cart, pickupBranchId, usage);
-}
-
-/**
- * Apply a deal directly by id. Entry point for the deal-details Apply CTA (which
- * already holds the resolved deal, code or not).
- */
-export function applyDealById(
+export async function applyDealById(
   dealId: string,
   cart: Cart,
   pickupBranchId: string,
   usage: DealUsageRecord[],
-): ApplyDealResult {
-  const deal = MOCK_DEALS.find((d) => d.id === dealId);
-  if (!deal) {
+): Promise<ApplyDealResult> {
+  let deal: Deal;
+  try {
+    deal = await getDeal(dealId);
+  } catch {
     return { ok: false, reason: 'not_found', message: 'Deal not found.' };
+  }
+  if (isComplexDealType(deal.dealType)) {
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: "This deal can't be applied at checkout yet.",
+    };
   }
   return applyResolvedDeal(deal, cart, pickupBranchId, usage);
 }
