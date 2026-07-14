@@ -1,4 +1,4 @@
-import { STAFF_ROLES } from '@jojopotato/types';
+import { ADMIN_ROLES, STAFF_ROLES } from '@jojopotato/types';
 import type { StaffRole } from '@jojopotato/types';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
@@ -110,7 +110,7 @@ export function assertBranchScope(
   requestedBranchId: string | null,
   role?: string | null,
 ): boolean {
-  if (role === 'admin' || role === 'super_admin') return true;
+  if (role != null && (ADMIN_ROLES as readonly string[]).includes(role)) return true;
   if (assignedBranchId === null) return false;
   if (requestedBranchId === null) return true;
   return assignedBranchId === requestedBranchId;

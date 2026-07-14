@@ -62,8 +62,11 @@ export function requireAdmin(auth: Auth): RequestHandler {
         role,
       };
       next();
-    } catch {
-      // Never leak internals; an auth failure is a 403, not a 500.
+    } catch (err) {
+      // A throw here is an infra/session-service failure (DB down, malformed
+      // cookie) — NOT a legitimate authorization rejection. Log it so the two
+      // don't look identical in prod; still respond 403 (never leak internals).
+      console.error('[require-admin] session check failed:', err);
       res.status(403).json({ error: 'Forbidden' });
     }
   };

@@ -10,7 +10,7 @@ import express, { type Express } from 'express';
 
 import { db } from './db/client';
 import { branches, dealBranches, deals } from './db/schema/index';
-import { auth } from './lib/auth';
+import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
@@ -19,10 +19,6 @@ import { branchesRouter } from './routes/branches';
 import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
 import staffRouter from './routes/staff';
-
-// Browser origin of the admin web app (apps/admin, dev port 3100). Read from an
-// env var so prod can override; NEVER a wildcard (credentialed CORS forbids it).
-const ADMIN_WEB_ORIGIN = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100';
 
 // ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
 // below and the /api/admin router further down). Single definition so the origin

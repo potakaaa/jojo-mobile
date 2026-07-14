@@ -589,7 +589,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
       assets/                          -- icons, splash, favicon (placeholder branding)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
-    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 0 scaffold only, no auth/screens yet -- see process/features/admin-dashboard/)
+    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 1: browser-cookie auth + admin login + guarded (dashboard) shell -- see process/features/admin-dashboard/)
       src/
         routes/                       -- TanStack Start file-based routes: __root.tsx (shell + QueryClientProvider), index.tsx (placeholder)
         components/

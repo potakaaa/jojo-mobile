@@ -76,7 +76,7 @@ not specific to this app). Load the dev server in a browser and eyeball it.
 
 ## Project structure
 
-```
+```text
 apps/admin/
   src/
     routes/            # TanStack Start file-based routes
