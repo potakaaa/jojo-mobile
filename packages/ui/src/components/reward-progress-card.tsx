@@ -42,7 +42,7 @@ export function RewardProgressCard({ rewards, onPress, mode = 'light' }: RewardP
       ]}
     >
       <View style={[styles.badge, { backgroundColor: Palette.jgold, borderColor: theme.border }]}>
-        <Ionicons name="star" size={18} color={Palette.ink} />
+        <Ionicons name="star" size={24} color={Palette.ink} />
       </View>
       <View style={styles.textColumn}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>

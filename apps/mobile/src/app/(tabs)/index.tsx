@@ -4,7 +4,7 @@ import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { Colors, FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
@@ -62,10 +62,16 @@ export default function HomeScreen() {
           <HomeHeader />
           <BranchCard branch={MOCK_BRANCH} onPress={openBranch} />
           <PromoBanner />
-          <RewardProgressCard rewards={MOCK_REWARDS} />
+          <RewardProgressCard
+            rewards={MOCK_REWARDS}
+            onPress={() => router.push('/(tabs)/rewards')}
+          />
           <Card style={styles.dealsCard}>
-            <Text style={[styles.dealsHeading, { color: theme.text }]}>Deals & offers</Text>
-            <Text style={[styles.dealsSubtitle, { color: theme.textSecondary }]}>
+            {/* The Card defaults to the light/cream surface, so its text must use
+                the light-mode tokens (not the device-scheme `theme`, which is
+                light-colored in dark mode and vanishes on the cream card). */}
+            <Text style={[styles.dealsHeading, { color: Colors.light.text }]}>Deals & offers</Text>
+            <Text style={[styles.dealsSubtitle, { color: Colors.light.textSecondary }]}>
               Save on your next order with active deals at your branch.
             </Text>
             <Button label="View deals" size="sm" onPress={() => router.push('/(tabs)/deals')} />
