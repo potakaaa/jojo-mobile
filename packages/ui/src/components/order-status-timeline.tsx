@@ -1,5 +1,5 @@
 import type { OrderStatus } from '@jojopotato/types';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Animated, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
@@ -47,7 +47,7 @@ function StepDot({
   mode: ThemeMode;
 }) {
   const theme = Colors[mode];
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale = useMemo(() => new Animated.Value(1), []);
 
   useEffect(() => {
     if (!isCurrent || !live) {
@@ -90,8 +90,8 @@ function StepConnector({
   isCurrent: boolean;
   live: boolean;
 }) {
-  const scanY = useRef(new Animated.Value(0)).current;
-  const scanOp = useRef(new Animated.Value(0)).current;
+  const scanY = useMemo(() => new Animated.Value(0), []);
+  const scanOp = useMemo(() => new Animated.Value(0), []);
 
   useEffect(() => {
     if (!isCurrent || !live) {
