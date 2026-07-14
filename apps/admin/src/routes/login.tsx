@@ -75,7 +75,7 @@ function LoginScreen() {
             ) : null}
             <Button
               type="submit"
-              disabled={submitting}
+              isLoading={submitting}
               className="border-2 border-foreground shadow-[var(--shadow-offset-sm)]"
             >
               {submitting ? 'Signing in…' : 'Sign in'}

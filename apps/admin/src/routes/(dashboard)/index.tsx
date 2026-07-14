@@ -41,6 +41,12 @@ function DashboardHome() {
             orders, and analytics.
           </p>
           <Button
+            onClick={() => void navigate({ to: '/branches' })}
+            className="self-start border-2 border-foreground shadow-[var(--shadow-offset-sm)]"
+          >
+            Manage branches
+          </Button>
+          <Button
             variant="secondary"
             onClick={handleSignOut}
             className="self-start border-2 border-foreground shadow-[var(--shadow-offset-sm)]"

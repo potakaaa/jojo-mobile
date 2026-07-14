@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as dashboardRouteRouteImport } from './routes/(dashboard)/route'
 import { Route as dashboardIndexRouteImport } from './routes/(dashboard)/index'
+import { Route as dashboardComponentsRouteImport } from './routes/(dashboard)/components'
+import { Route as dashboardBranchesRouteImport } from './routes/(dashboard)/branches'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -27,27 +29,49 @@ const dashboardIndexRoute = dashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardComponentsRoute = dashboardComponentsRouteImport.update({
+  id: '/components',
+  path: '/components',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardBranchesRoute = dashboardBranchesRouteImport.update({
+  id: '/branches',
+  path: '/branches',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
+  '/branches': typeof dashboardBranchesRoute
+  '/components': typeof dashboardComponentsRoute
   '/': typeof dashboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/branches': typeof dashboardBranchesRoute
+  '/components': typeof dashboardComponentsRoute
   '/': typeof dashboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(dashboard)': typeof dashboardRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/(dashboard)/branches': typeof dashboardBranchesRoute
+  '/(dashboard)/components': typeof dashboardComponentsRoute
   '/(dashboard)/': typeof dashboardIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/login' | '/'
+  fullPaths: '/login' | '/branches' | '/components' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/'
-  id: '__root__' | '/(dashboard)' | '/login' | '/(dashboard)/'
+  to: '/login' | '/branches' | '/components' | '/'
+  id:
+    | '__root__'
+    | '/(dashboard)'
+    | '/login'
+    | '/(dashboard)/branches'
+    | '/(dashboard)/components'
+    | '/(dashboard)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -78,14 +102,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof dashboardIndexRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
+    '/(dashboard)/components': {
+      id: '/(dashboard)/components'
+      path: '/components'
+      fullPath: '/components'
+      preLoaderRoute: typeof dashboardComponentsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/branches': {
+      id: '/(dashboard)/branches'
+      path: '/branches'
+      fullPath: '/branches'
+      preLoaderRoute: typeof dashboardBranchesRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
   }
 }
 
 interface dashboardRouteRouteChildren {
+  dashboardBranchesRoute: typeof dashboardBranchesRoute
+  dashboardComponentsRoute: typeof dashboardComponentsRoute
   dashboardIndexRoute: typeof dashboardIndexRoute
 }
 
 const dashboardRouteRouteChildren: dashboardRouteRouteChildren = {
+  dashboardBranchesRoute: dashboardBranchesRoute,
+  dashboardComponentsRoute: dashboardComponentsRoute,
   dashboardIndexRoute: dashboardIndexRoute,
 }
 
