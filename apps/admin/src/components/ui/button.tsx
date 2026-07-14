@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -58,7 +58,7 @@ function Button({
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!onClick) return;
-    
+
     const result = onClick(e) as unknown;
     if (result instanceof Promise) {
       setInternalIsLoading(true);
@@ -70,7 +70,7 @@ function Button({
     return result;
   };
 
-  const Comp = (asChild ? Slot.Root : 'button') as any;
+  const Comp: React.ElementType = asChild ? Slot.Root : 'button';
 
   return (
     <Comp
@@ -106,12 +106,12 @@ function GhostButton(props: React.ComponentProps<typeof Button>) {
   return <Button variant="ghost" {...props} />;
 }
 
-function DestructiveButton({ 
-  requiresConfirm, 
-  onClick, 
+function DestructiveButton({
+  requiresConfirm,
+  onClick,
   onBlur,
-  children, 
-  ...props 
+  children,
+  ...props
 }: React.ComponentProps<typeof Button> & { requiresConfirm?: boolean }) {
   const [isConfirming, setIsConfirming] = React.useState(false);
 
@@ -121,7 +121,7 @@ function DestructiveButton({
       setIsConfirming(true);
       return;
     }
-    
+
     if (onClick) {
       const result = onClick(e) as unknown;
       if (result instanceof Promise) {
@@ -140,14 +140,9 @@ function DestructiveButton({
   };
 
   return (
-    <Button
-      variant="destructive"
-      onClick={handleClick}
-      onBlur={handleBlur}
-      {...props}
-    >
+    <Button variant="destructive" onClick={handleClick} onBlur={handleBlur} {...props}>
       <TriangleAlert />
-      {isConfirming ? "Click to Confirm" : children}
+      {isConfirming ? 'Click to Confirm' : children}
     </Button>
   );
 }
@@ -158,7 +153,7 @@ function SubmitButton({ children, className, ...props }: React.ComponentProps<ty
     <Button
       type="submit"
       isLoading={pending}
-      className={cn("hover:ring-2 hover:ring-border hover:ring-offset-0", className)}
+      className={cn('hover:ring-2 hover:ring-border hover:ring-offset-0', className)}
       {...props}
     >
       {children}
@@ -166,12 +161,12 @@ function SubmitButton({ children, className, ...props }: React.ComponentProps<ty
   );
 }
 
-export { 
-  Button, 
-  PrimaryButton, 
-  SecondaryButton, 
-  GhostButton, 
-  DestructiveButton, 
-  SubmitButton, 
-  buttonVariants 
+export {
+  Button,
+  PrimaryButton,
+  SecondaryButton,
+  GhostButton,
+  DestructiveButton,
+  SubmitButton,
+  buttonVariants,
 };

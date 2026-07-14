@@ -139,7 +139,7 @@ export function BranchForm({ initial, submitting, error, onSubmit, onCancel }: B
         <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" isLoading={submitting}>
           {submitting ? 'Saving…' : initial ? 'Save changes' : 'Create branch'}
         </Button>
       </div>

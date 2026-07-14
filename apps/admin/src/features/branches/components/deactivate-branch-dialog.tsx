@@ -52,7 +52,7 @@ export function DeactivateBranchDialog({
                 Cancel
               </Button>
             </Dialog.Close>
-            <Button variant="destructive" onClick={onConfirm} disabled={pending}>
+            <Button variant="destructive" onClick={onConfirm} isLoading={pending}>
               {pending ? 'Deactivating…' : 'Deactivate'}
             </Button>
           </div>
