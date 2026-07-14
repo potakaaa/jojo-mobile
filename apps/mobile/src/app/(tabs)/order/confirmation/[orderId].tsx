@@ -35,7 +35,7 @@ export default function OrderConfirmationScreen() {
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <SafeAreaView style={[styles.safeArea, styles.center]} edges={['bottom']}>
+        <SafeAreaView style={[styles.safeArea, styles.center]} edges={['top', 'bottom']}>
           <ActivityIndicator color={Palette.jorange} />
         </SafeAreaView>
       </View>
@@ -45,7 +45,7 @@ export default function OrderConfirmationScreen() {
   if (error || !order) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
           <EmptyState
             iconName="receipt-outline"
             title={`Order ${orderId}`}
@@ -63,7 +63,7 @@ export default function OrderConfirmationScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
