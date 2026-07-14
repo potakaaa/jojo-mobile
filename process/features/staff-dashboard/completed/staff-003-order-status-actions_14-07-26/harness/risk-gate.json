@@ -1,0 +1,6 @@
+{
+  "riskClass": "permission, secret, or trust-boundary logic",
+  "workDescription": "STAFF-003: PATCH /api/staff/orders/:orderId — server-side order-state mutation with branch isolation. Staff can only mutate orders belonging to their assigned branch. A branch-isolation regression would allow cross-branch order mutation.",
+  "approver": "execute-agent (STAFF-003 EXECUTE phase, 14-07-26)",
+  "mustStopBeforeFinalize": true
+}

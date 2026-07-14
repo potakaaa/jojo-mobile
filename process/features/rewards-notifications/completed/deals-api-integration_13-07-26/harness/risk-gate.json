@@ -1,0 +1,26 @@
+{
+  "task": "deals-api-integration Phase 3 (DEAL-003 / #24) — server-authoritative deal apply at placement + orders.deal_id migration + mobile apply flow",
+  "planPath": "process/features/rewards-notifications/active/deals-api-integration_13-07-26/phase-3-cart-apply-placement_PLAN_13-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": [
+    "billing or credits",
+    "schema/data migration or destructive data mutation",
+    "public API or external contract changes"
+  ],
+  "mustStopBeforeFinalize": true,
+  "humanApprovalRequired": true,
+  "why": "Rewrites the POST /orders placement transaction to compute and persist a real money discount from an applied deal, adds an orders.deal_id schema migration, and changes the public POST /orders contract. 3 of 6 high-risk classes — money math, atomicity, complex-type rejection, and usage-limit race safety must all hold before finalize.",
+  "constraints": {
+    "server-authority-over-money": "createOrderSchema accepts ONLY dealId (uuid). No client-sent discount amount or eligibility result is ever trusted. Discount computed server-side from the raw deals.discount_value.",
+    "discount-clamp": "computeDealDiscountCents applies both clamps: Math.max(0, Math.min(computed, subtotalCents)) — never negative, never exceeds subtotal.",
+    "row-lock": "deals row is SELECT ... FOR UPDATE'd BEFORE reading usage counts, inside the transaction, to serialize concurrent same-deal placements against usage limits.",
+    "complex-type-reject": "buy_one_take_one/free_item/free_upgrade/bundle are rejected with 400 BEFORE any discount computation — no deal_id persisted with a guessed/zero discount.",
+    "atomicity": "every discount/eligibility rejection throws OrderError(400) inside the transaction, rolling back the whole placement — zero order/order_items rows written.",
+    "fk-no-action": "orders.deal_id is a nullable uuid FK REFERENCES deals(id) with NO explicit onDelete (Postgres default NO ACTION) — matches user_id/branch_id precedent.",
+    "migration-additive": "0004 adds a nullable column + FK constraint only; no data backfill; existing rows get NULL."
+  },
+  "autoStopConditions": [
+    "docker compose / local Postgres unavailable -> automated gate cannot run -> verification.json cannot be produced -> phase BLOCKED for finalize (code may be written, not marked VERIFIED).",
+    "any security/correctness gate (money math, atomicity, complex-type rejection, row lock) fails -> STOP and report BLOCKED, do not work around."
+  ]
+}

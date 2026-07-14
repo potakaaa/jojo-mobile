@@ -106,21 +106,36 @@ async function visibleDealsForBranch(branchId: string) {
   return [...byId.values()];
 }
 
+// The 4 seeded branch-agnostic deals + the 1 seeded branch-exclusive deal, by
+// title. Presence-checked by identity (not an exact array length) since the
+// shared dev/test DB also carries hermetic fixture deals inserted by other
+// suites (e.g. `deals.test.ts`) — see that file's HERMETIC RULE docstring.
+const SEEDED_GLOBAL_DEAL_TITLES = [
+  'First app order: Free lemonade upgrade',
+  'Snack break deal: Fries + Lemonade bundle',
+  'Buy 1 Take 1 lemonade',
+  'Weekend combo deal',
+];
+const SEEDED_EXCLUSIVE_DEAL_TITLE = 'Branch-exclusive opening promo';
+
 describe('GET /api/branches/:id query logic', () => {
-  it('returns 5 deals for jojo-centrio (4 global + 1 exclusive)', async () => {
+  it('includes all 4 seeded global deals + the 1 seeded exclusive deal for jojo-centrio', async () => {
     if (!dbAvailable) return;
     const centrioId = await branchIdBySlug('jojo-centrio');
     expect(centrioId).not.toBeNull();
     const dealsForBranch = await visibleDealsForBranch(centrioId!);
-    expect(dealsForBranch).toHaveLength(5);
+    const titles = dealsForBranch.map((d) => d.title);
+    for (const title of SEEDED_GLOBAL_DEAL_TITLES) expect(titles).toContain(title);
+    expect(titles).toContain(SEEDED_EXCLUSIVE_DEAL_TITLE);
   });
 
-  it('returns 4 deals for jojo-cogon (4 global only)', async () => {
+  it('includes all 4 seeded global deals for jojo-cogon (exclusive deal not mapped here)', async () => {
     if (!dbAvailable) return;
     const cogonId = await branchIdBySlug('jojo-cogon');
     expect(cogonId).not.toBeNull();
     const dealsForBranch = await visibleDealsForBranch(cogonId!);
-    expect(dealsForBranch).toHaveLength(4);
+    const titles = dealsForBranch.map((d) => d.title);
+    for (const title of SEEDED_GLOBAL_DEAL_TITLES) expect(titles).toContain(title);
   });
 
   it('Centrio exclusive deal is absent from jojo-cogon response', async () => {

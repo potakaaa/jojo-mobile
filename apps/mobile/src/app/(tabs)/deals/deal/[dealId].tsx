@@ -2,15 +2,23 @@ import { Button, EmptyState } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { applyDealById } from '@/features/deals/lib/apply-deal';
+import { applyDealById, isComplexDealType } from '@/features/deals/lib/apply-deal';
+import { useDeal } from '@/features/deals/hooks/use-deal';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
-import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -24,9 +32,12 @@ function shortDate(iso: string): string {
 }
 
 /**
- * Deal details (#23). Resolves the deal by id, runs real eligibility against the
- * mock cart, shows a derived terms block, and renders Apply (works via the
- * shared apply path) + a stubbed Add to Wallet CTA.
+ * Deal details (#23, Phase 2). Fetches the real deal from `GET /deals/:id` via
+ * `useDeal`, runs the real 6-step eligibility engine against the live cart with
+ * `usage: []` (Phase 2 interim — real usage gating lands in Phase 3), and shows a
+ * derived terms block. The Apply CTA is DEFERRED this phase: it does not perform a
+ * real apply (server-authoritative apply is Phase 3) — tapping it always gives
+ * explicit feedback pointing the user to the cart.
  */
 export default function DealDetailsScreen() {
   const theme = useTheme();
@@ -36,14 +47,24 @@ export default function DealDetailsScreen() {
   const { dealId } = useLocalSearchParams<{ dealId: string }>();
   const { cart, applyDiscount } = useCart();
 
-  const deal = useMemo(() => MOCK_DEALS.find((d) => d.id === dealId), [dealId]);
+  const { data: deal, isLoading, isError } = useDeal(dealId);
 
   const eligibility = useMemo(
-    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE) : null),
+    // Phase 2: interim `usage: []` — steps 5/6 always pass (0 prior uses); real
+    // per-user/total usage gating is Phase 3 (`orders.deal_id`).
+    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, []) : null),
     [deal, cart],
   );
 
-  if (!deal || !eligibility) {
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.tint} />
+      </View>
+    );
+  }
+
+  if (isError || !deal || !eligibility) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <EmptyState
@@ -57,11 +78,15 @@ export default function DealDetailsScreen() {
   }
 
   const isEligible = eligibility.eligible;
+  // Complex deal types (BOGO/free-item/free-upgrade/bundle) have no real
+  // server-side discount — gate the CTA so the user gets clear feedback here
+  // instead of an apply-then-checkout-400 dead-end (PVL C1).
+  const isComplex = isComplexDealType(deal.dealType);
 
-  const handleApply = () => {
-    // Known gap: usage is not persisted here — real consumption happens at order
-    // placement (out of scope this round).
-    const result = applyDealById(deal.id, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+  // Real apply (Phase 3): fetch + eligibility + complex-type guard live in
+  // `applyDealById`; on success store the discount in the cart and navigate there.
+  const handleApply = async () => {
+    const result = await applyDealById(deal.id, cart, cart.pickupBranchId, []);
     if (!result.ok) {
       Alert.alert('Cannot apply deal', result.message);
       return;
@@ -132,13 +157,29 @@ export default function DealDetailsScreen() {
           ) : null}
         </View>
 
-        {!isEligible ? (
+        {isComplex ? (
+          <Text style={[styles.ineligibleMessage, { color: Palette.jred }]}>
+            This deal can&apos;t be applied at checkout yet.
+          </Text>
+        ) : !isEligible ? (
           <Text style={[styles.ineligibleMessage, { color: Palette.jred }]}>
             {eligibility.message}
           </Text>
         ) : null}
 
-        <Button label="Apply deal" onPress={handleApply} disabled={!isEligible} mode={mode} />
+        <Button
+          label="Apply deal"
+          onPress={handleApply}
+          disabled={!isEligible || isComplex}
+          mode={mode}
+        />
+        <Text style={[styles.deferredNote, { color: theme.textSecondary }]}>
+          {isComplex
+            ? 'This deal type isn’t available to apply at checkout yet.'
+            : isEligible
+              ? 'Applying adds this deal to your cart for checkout.'
+              : 'Once this deal is eligible, you can apply it to your cart.'}
+        </Text>
         <Button label="Add to Wallet" variant="outline" onPress={handleAddToWallet} mode={mode} />
       </ScrollView>
     </View>
@@ -148,6 +189,10 @@ export default function DealDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scroll: {
     flex: 1,
@@ -206,5 +251,10 @@ const styles = StyleSheet.create({
   ineligibleMessage: {
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.bodySmall,
+  },
+  deferredNote: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+    textAlign: 'center',
   },
 });
