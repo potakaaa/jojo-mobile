@@ -9,14 +9,13 @@ import { useStaffMe } from '@/features/staff/hooks/use-staff-me';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-// Nav card config. Active Orders navigates to the MOCK preview (STAFF-002);
-// the remaining three are inert placeholders (STAFF-003/004).
+// Nav card config. Active Orders navigates to the real STAFF-002 screen; the
+// remaining three are inert placeholders (STAFF-003/004). The live active-order
+// count is shown inside the Active Orders screen itself, not on this card.
 const NAV_CARDS = [
-  // MOCK PREVIEW: subtitle updated to signal tappability — revert to 'Coming soon'
-  // when STAFF-002 replaces the mock screen.
   {
     title: 'Active Orders',
-    subtitle: '5 active (preview)',
+    subtitle: 'View orders',
     navigateTo: '/(staff)/active-orders' as const,
   },
   { title: 'Completed Orders', subtitle: 'Coming soon', navigateTo: null },

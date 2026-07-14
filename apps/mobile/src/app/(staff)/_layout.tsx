@@ -10,8 +10,8 @@ export default function StaffLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      {/* MOCK PREVIEW — remove/replace when STAFF-002 lands */}
       <Stack.Screen name="active-orders" options={{ headerShown: false }} />
+      <Stack.Screen name="order-detail/[orderId]" options={{ headerShown: false }} />
     </Stack>
   );
 }

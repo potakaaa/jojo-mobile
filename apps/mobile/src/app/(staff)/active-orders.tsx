@@ -1,200 +1,86 @@
 /**
- * MOCK PREVIEW — Active Orders screen (staff dashboard).
+ * Active Orders screen (staff dashboard) — STAFF-002.
  *
- * This is a VISUAL MOCK for STAFF-002 preview only. It uses hardcoded sample
- * data, makes NO API calls for order data, performs NO mutations, and is clearly
- * separable from the real implementation. Replace this entire file when
- * STAFF-002 lands.
- *
- * The only network call present (`useStaffMe`) already exists in the shell for
- * the branch name — it is not added here.
+ * Real, branch-scoped, polling order feed from `GET /api/staff/orders`
+ * (via `useStaffOrders`, 10s poll). Read-only: tapping a card pushes the
+ * read-only Order Detail screen. No status mutations happen here (STAFF-003).
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, Button, Card, type ThemeMode } from '@jojopotato/ui';
+import { Badge, Card, type ThemeMode } from '@jojopotato/ui';
+import type { StaffOrderSummary } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useStaffMe } from '@/features/staff/hooks/use-staff-me';
+import { useStaffOrders } from '@/features/staff/hooks/use-staff-orders';
+import {
+  STAFF_STATUS_CONFIG,
+  type StaffOrderStatus,
+} from '@/features/staff/lib/staff-status-config';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-// ─── Real DB order status enum (from packages/api/src/db/schema/orders.ts) ──
-// NOTE: types/OrderStatus (@jojopotato/types) is out of sync with the DB orders
-// enum — reconcile in STAFF-002/003. Do NOT use OrderStatusBadge from
-// @jojopotato/ui for staff views; it uses a different status set
-// (confirmed/ready_for_pickup vs accepted/flavoring/ready).
-type DbOrderStatus = 'pending' | 'accepted' | 'preparing' | 'flavoring' | 'ready';
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-// MOCK DATA — STAFF-002 preview only, no API
-interface MockLineItem {
-  qty: number;
-  name: string;
-  option: string;
+/** Format an ISO placed-at timestamp as a short relative label ("Just now", "3 min ago", "2 h ago"). */
+function formatPlacedAgo(placedAt: string): string {
+  const placed = new Date(placedAt).getTime();
+  if (Number.isNaN(placed)) return '';
+  const diffMs = Date.now() - placed;
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h ago`;
 }
 
-interface MockOrder {
-  id: string;
-  orderNumber: string;
-  status: DbOrderStatus;
-  placedAgo: string;
-  /** Total in cents (e.g. 24000 = ₱240.00). Passed to formatCurrency. */
-  totalCents: number;
-  items: MockLineItem[];
+/** A status is a known staff status when it has a config entry (non-terminal). */
+function isStaffStatus(status: string): status is StaffOrderStatus {
+  return status in STAFF_STATUS_CONFIG;
 }
-
-const MOCK_ORDERS: MockOrder[] = [
-  {
-    id: 'm1',
-    orderNumber: '#A1048',
-    status: 'pending',
-    placedAgo: 'Just now',
-    totalCents: 28000,
-    items: [
-      { qty: 2, name: 'Loaded Fries', option: 'Cheese' },
-      { qty: 1, name: 'Crispy Chicken', option: 'Spicy' },
-    ],
-  },
-  {
-    id: 'm2',
-    orderNumber: '#A1047',
-    status: 'accepted',
-    placedAgo: '3 min ago',
-    totalCents: 14000,
-    items: [
-      { qty: 1, name: 'Classic Fries', option: 'Original' },
-      { qty: 1, name: 'Soda', option: 'Cola' },
-    ],
-  },
-  {
-    id: 'm3',
-    orderNumber: '#A1046',
-    status: 'preparing',
-    placedAgo: '7 min ago',
-    totalCents: 32000,
-    items: [{ qty: 3, name: 'Loaded Fries', option: 'Bacon & Cheese' }],
-  },
-  {
-    id: 'm4',
-    orderNumber: '#A1045',
-    status: 'flavoring',
-    placedAgo: '12 min ago',
-    totalCents: 19500,
-    items: [
-      { qty: 2, name: 'Twister Fries', option: 'Sour Cream' },
-      { qty: 1, name: 'Iced Tea', option: 'Lemon' },
-    ],
-  },
-  {
-    id: 'm5',
-    orderNumber: '#A1043',
-    status: 'ready',
-    placedAgo: '18 min ago',
-    totalCents: 24000,
-    items: [{ qty: 2, name: 'Loaded Fries', option: 'Cheese' }],
-  },
-];
-
-// ─── Status pill config ───────────────────────────────────────────────────────
-// NOTE: types/OrderStatus (@jojopotato/types) is out of sync with the DB orders
-// enum — reconcile in STAFF-002/003.
-const STATUS_CONFIG: Record<DbOrderStatus, { label: string; bg: string; text: string }> = {
-  pending: { label: 'Pending', bg: Palette.jorange, text: Palette.ink },
-  accepted: { label: 'Accepted', bg: Palette.jyellow, text: Palette.ink },
-  preparing: { label: 'Preparing', bg: Palette.jgold, text: Palette.ink },
-  flavoring: { label: 'Flavoring', bg: Palette.jbrown, text: Palette.cream },
-  ready: { label: 'Ready', bg: Palette.green, text: Palette.cream },
-};
-
-// ─── Action buttons per status ────────────────────────────────────────────────
-// MOCK — buttons are inert. They do NOT call any API or mutate any state.
-// Replace with real dispatch calls in STAFF-002.
-function OrderActions({ status, mode }: { status: DbOrderStatus; mode: ThemeMode }) {
-  const noop = () => {
-    // MOCK: no-op — STAFF-002 will wire real mutations here
-  };
-
-  if (status === 'pending') {
-    return (
-      <View style={actionStyles.row}>
-        <Button
-          label="Accept"
-          variant="primary"
-          mode={mode}
-          onPress={noop}
-          style={actionStyles.flex}
-        />
-        <Button
-          label="Reject"
-          variant="accent"
-          mode={mode}
-          onPress={noop}
-          style={actionStyles.flex}
-        />
-      </View>
-    );
-  }
-  if (status === 'accepted' || status === 'preparing') {
-    return <Button label="Mark Flavoring" variant="ink" mode={mode} onPress={noop} />;
-  }
-  if (status === 'flavoring') {
-    return <Button label="Mark Ready" variant="primary" mode={mode} onPress={noop} />;
-  }
-  if (status === 'ready') {
-    return <Button label="Mark Picked Up" variant="primary" mode={mode} onPress={noop} />;
-  }
-  return null;
-}
-
-const actionStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  flex: {
-    flex: 1,
-  },
-});
 
 // ─── Single order card ────────────────────────────────────────────────────────
-function OrderCard({ order, mode }: { order: MockOrder; mode: ThemeMode }) {
+function OrderCard({
+  order,
+  mode,
+  onPress,
+}: {
+  order: StaffOrderSummary;
+  mode: ThemeMode;
+  onPress: () => void;
+}) {
   const theme = useTheme();
-  const cfg = STATUS_CONFIG[order.status];
+  const cfg = isStaffStatus(order.status) ? STAFF_STATUS_CONFIG[order.status] : null;
 
   return (
-    <Card mode={mode} style={styles.card}>
-      {/* Header: order number + status pill */}
-      <View style={styles.cardHeader}>
-        <Text style={[styles.orderNumber, { color: theme.text }]}>{order.orderNumber}</Text>
-        <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
-          <Text style={[styles.statusText, { color: cfg.text }]}>{cfg.label}</Text>
+    <Pressable onPress={onPress} accessibilityRole="button">
+      <Card mode={mode} style={styles.card}>
+        {/* Header: order number + status pill */}
+        <View style={styles.cardHeader}>
+          <Text style={[styles.orderNumber, { color: theme.text }]}>{order.orderNumber}</Text>
+          {cfg ? (
+            <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
+              <Text style={[styles.statusText, { color: cfg.text }]}>{cfg.label}</Text>
+            </View>
+          ) : null}
         </View>
-      </View>
 
-      {/* Meta: placed-ago + total */}
-      <View style={styles.metaRow}>
-        <Text style={[styles.metaText, { color: theme.textSecondary }]}>{order.placedAgo}</Text>
-        <Text style={[styles.totalText, { color: theme.text }]}>
-          {formatCurrency(order.totalCents)}
-        </Text>
-      </View>
-
-      {/* Line items */}
-      <View style={styles.itemList}>
-        {order.items.map((item, idx) => (
-          <Text key={idx} style={[styles.itemText, { color: theme.textSecondary }]}>
-            {`${item.qty}× ${item.name} · ${item.option}`}
+        {/* Meta: placed-ago + total */}
+        <View style={styles.metaRow}>
+          <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+            {formatPlacedAgo(order.placedAt)}
           </Text>
-        ))}
-      </View>
+          <Text style={[styles.totalText, { color: theme.text }]}>
+            {formatCurrency(order.totalCents)}
+          </Text>
+        </View>
 
-      {/* Action buttons — INERT MOCK */}
-      <OrderActions status={order.status} mode={mode} />
-    </Card>
+        {/* Server-computed item summary */}
+        <Text style={[styles.itemText, { color: theme.textSecondary }]}>{order.itemSummary}</Text>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -204,15 +90,20 @@ export default function ActiveOrdersScreen() {
   const scheme = useColorScheme();
   const router = useRouter();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
-  const { data, isLoading, error } = useStaffMe();
+  const { data: staffMe, isLoading: staffLoading, error: staffError } = useStaffMe();
+  const { data: orders = [], isLoading: ordersLoading, error: ordersError } = useStaffOrders();
 
-  const branchName = isLoading
+  const branchName = staffLoading
     ? null
-    : error || !data
+    : staffError || !staffMe
       ? 'Branch unavailable'
-      : data.assignedBranch
-        ? data.assignedBranch.name
+      : staffMe.assignedBranch
+        ? staffMe.assignedBranch.name
         : 'No branch assigned';
+
+  const showInitialSpinner = ordersLoading && orders.length === 0;
+  const showError = Boolean(ordersError) && orders.length === 0;
+  const showEmpty = !ordersLoading && !ordersError && orders.length === 0;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -232,25 +123,40 @@ export default function ActiveOrdersScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           {/* Branch context */}
           <View style={styles.branchRow}>
-            {isLoading ? (
+            {staffLoading ? (
               <ActivityIndicator size="small" color={theme.text} />
             ) : (
               <Text style={[styles.branchName, { color: theme.textSecondary }]}>{branchName}</Text>
             )}
-            <Badge label={`${MOCK_ORDERS.length} active`} mode={mode} />
+            <Badge label={`${orders.length} active`} mode={mode} />
           </View>
 
-          {/* Mock notice */}
-          <View style={[styles.mockBanner, { borderColor: theme.border }]}>
-            <Text style={[styles.mockText, { color: theme.textSecondary }]}>
-              MOCK PREVIEW — sample data only. STAFF-002 will replace this.
-            </Text>
-          </View>
-
-          {/* Order list — newest/most-urgent first (already sorted in MOCK_ORDERS) */}
-          {MOCK_ORDERS.map((order) => (
-            <OrderCard key={order.id} order={order} mode={mode} />
-          ))}
+          {showInitialSpinner ? (
+            <View style={styles.stateBlock}>
+              <ActivityIndicator size="large" color={theme.text} />
+            </View>
+          ) : showError ? (
+            <View style={styles.stateBlock}>
+              <Text style={[styles.stateText, { color: theme.textSecondary }]}>
+                Could not load orders. Pull back and retry.
+              </Text>
+            </View>
+          ) : showEmpty ? (
+            <View style={styles.stateBlock}>
+              <Text style={[styles.stateText, { color: theme.textSecondary }]}>
+                No active orders right now
+              </Text>
+            </View>
+          ) : (
+            orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                mode={mode}
+                onPress={() => router.push(`/(staff)/order-detail/${order.id}`)}
+              />
+            ))
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -291,15 +197,13 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.caption,
   },
-  mockBanner: {
-    borderWidth: 1,
-    borderRadius: Radii.sm,
-    padding: Spacing.two,
-    borderStyle: 'dashed',
+  stateBlock: {
+    paddingVertical: Spacing.six,
+    alignItems: 'center',
   },
-  mockText: {
+  stateText: {
     fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.caption,
+    fontSize: TypeScale.body,
     textAlign: 'center',
   },
   card: {
@@ -335,9 +239,6 @@ const styles = StyleSheet.create({
   totalText: {
     fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.body,
-  },
-  itemList: {
-    gap: Spacing.half,
   },
   itemText: {
     fontFamily: FontFamily.body.regular,
