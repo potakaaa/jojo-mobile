@@ -8,7 +8,7 @@ feature: rewards-notifications
 # STAR-001 — Jojo Stars Earning Service
 
 Date: 14-07-26
-Status: PLANNED (not started)
+Status: COMPLETE (STAR-001 — archived 14-07-26)
 Complexity: COMPLEX
 Feature: rewards-notifications
 

@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 14-07-26, incl. STAR-001 star-earning service)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -152,6 +152,27 @@ top of it later without re-plumbing the project.
   Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx` is a
   **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
   plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
+- **Jojo Stars earning service (STAR-001, delivered 14-07-26):** idempotent star-earning backend
+  service, **decoupled and unwired** — the standalone unit that STAFF-003 will call from staff
+  endpoints. `packages/api/src/lib/star-earning.ts` exports `creditStarForCompletedOrder(orderId)`
+  and `reverseStarForRefundedOrder(orderId)`. Idempotency is DB-enforced: migration `0005`
+  (`0005_nosy_genesis.sql`) adds a partial unique index on `star_transactions (order_id, type) WHERE
+  order_id IS NOT NULL`; `onConflictDoNothing` with the matching partial predicate means a
+  double-fire (sequential or concurrent) never double-credits. Each earn/reverse runs in a
+  `db.transaction`: insert the ledger row first, bump `user_stars` only when a row was actually
+  inserted (counter mutation is strictly gated on `inserted.length > 0`). Refund decrements
+  `current_stars` only — `lifetime_stars` stays monotonic (product-default, locked by EDGE tests;
+  pending PRD §6.10 owner confirmation). `packages/api/src/lib/star-earning-config.ts` isolates
+  `STAR_EARNING_MINIMUM_CENTS = 0` behind `getStarEarningMinimumCents()` (the ADM-005 seam — swap
+  the constant for a config-table read when the admin config feature is built). `packages/types/src/rewards.ts`
+  was overhauled from a placeholder to the real star model: `StarTransactionType` (`earned |
+  redeemed | adjusted | expired`), `UserStars` (`currentStars`, `lifetimeStars`), `StarTransaction`.
+  10 hermetic vitest integration tests cover AC1–AC5 + 3 idempotency edge cases; all Fully-Automated
+  against the per-run `_test` DB (suite now 77 tests total). No live trigger or endpoint yet —
+  STAFF-003 must call `creditStarForCompletedOrder` / `reverseStarForRefundedOrder` from the
+  staff order-complete / refund endpoints (TODO seams left in the module header). See
+  `process/features/rewards-notifications/completed/star-001-star-earning_14-07-26/` and
+  `process/features/rewards-notifications/_GUIDE.md` for wiring contract and open work.
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
@@ -161,9 +182,11 @@ top of it later without re-plumbing the project.
   `estimated_prep_minutes` at placement time, each `POST /orders` is a fully independent
   transaction. `packages/types`'s `OrderStatus` enum was rewritten from a 6-value placeholder to
   the real 7-value DB enum (breaking rename, all consumers reconciled). Deferred/out of scope this
-  pass: staff-side order-status transitions, star-earning/rewards accrual, coupon redemption
-  (`discount_total` stays `0`), live `online_payment` processing (visibly disabled, no processor
-  chosen — see §Open Questions), polling/websocket live status updates (fetch-on-focus only). See
+  pass: staff-side order-status transitions, live star-earning trigger (earning service delivered by
+  STAR-001 — see below — but the live staff PATCH-status endpoint that CALLS it is STAFF-003),
+  coupon redemption (`discount_total` stays `0`), live `online_payment` processing (visibly
+  disabled, no processor chosen — see §Open Questions), polling/websocket live status updates
+  (fetch-on-focus only). See
   `process/features/ordering-cart/_GUIDE.md` and `process/features/pickup-branches/_GUIDE.md` for
   the per-feature breakdown, and
   `process/general-plans/completed/pickup-order-flow_10-07-26/` for the full plan, validate
@@ -237,10 +260,11 @@ top of it later without re-plumbing the project.
   reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
   the same reason.
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
-  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
-  cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
-  branches, and customer order placement. `app` is exported from `packages/api/src/index.ts` (port
-  binding guarded so tests never bind a port).
+  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). 77 tests
+  total. Suites cover auth, staff authz (`require-staff.integration.test.ts` — hermetic,
+  self-seeding fixtures), branches, customer order placement, and star earning
+  (`star-earning.integration.test.ts` — AC1–AC5 + 3 idempotency edges, 10 tests, added STAR-001).
+  `app` is exported from `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
@@ -250,7 +274,9 @@ top of it later without re-plumbing the project.
   `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
   + react-query reconciliation), and
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
-  layer + role-gated staff shell — STAFF-001).
+  layer + role-gated staff shell — STAFF-001), and
+  `process/features/rewards-notifications/completed/star-001-star-earning_14-07-26/` (idempotent
+  star-earning + refund-reversal services, migration 0005, real rewards types — STAR-001).
 
 ## Quick Start
 
@@ -415,7 +441,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
       src/middleware/require-session.ts -- better-auth session-check Express middleware
       src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); staff.ts (StaffMe, StaffRole, STAFF_ROLES, StaffBranch) is live; notifications/rewards still placeholders
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); staff.ts (StaffMe, StaffRole, STAFF_ROLES, StaffBranch) is live; rewards.ts is real star model (promoted 14-07-26 -- see STAR-001); notifications still placeholder
     ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26) -- brand tokens are placeholder
     utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts, product-options.ts -- adopted 13-07-26, unit-agnostic option-selection helpers)
   docs/
@@ -462,7 +488,7 @@ Metro/Expo resolves them like any other dependency.
 
 **Env var access pattern:** client-bundle config is read through a typed wrapper, not `process.env` directly inline — see `apps/mobile/src/config/env.ts` (`env.appEnv`, `env.apiUrl`), which falls back to sane defaults if the `EXPO_PUBLIC_*` var is unset.
 
-**Types-first placeholders:** `packages/types/src/{auth,notifications,rewards}.ts` still stub out the shared domain types for their planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, and `menu` are no longer placeholders — all four are real, cents-native types reconciled to the actual ordering-flow API contract (`menu.ts` was promoted from placeholder to real content by `merge-menu-api-reconciliation`, 13-07-26).
+**Types-first placeholders:** `packages/types/src/{auth,notifications}.ts` still stub out the shared domain types for their planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, `menu`, and `rewards` are no longer placeholders — all five are real types reconciled to actual API contracts: `menu.ts` was promoted by `merge-menu-api-reconciliation` (13-07-26); `rewards.ts` was overhauled by STAR-001 (14-07-26) to carry `StarTransactionType`, `UserStars`, and `StarTransaction` (the old `RewardsTier`/`RewardsAccount`/`RewardsTierProgress` stubs are deleted).
 
 **Platform-specific hooks:** `use-color-scheme.ts` has a `.web.ts` sibling variant (`apps/mobile/src/hooks/use-color-scheme.web.ts`) — this is the RN/Expo convention for platform-specific implementations picked up automatically by the bundler. Follow this `.web.ts` / default split for any new platform-diverging hook or util, per the "iOS-first, Android-ready" principle in `README.md`.
 
@@ -536,6 +562,6 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
-- HEAD at last delta: `a153ec5` (process artifacts, branch `feat/staff-001-login-branch-scope`)
+- Last delta: 2026-07-14 (STAR-001 UPDATE PROCESS — star-earning service, migration 0005, real rewards types, 10 integration tests; api suite now 77 tests)
+- HEAD at last delta: `fd9df3f` (feat(rewards): STAR-001, branch `dev/brn`)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)
