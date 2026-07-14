@@ -57,8 +57,7 @@ export default function DealDetailsScreen() {
     // Real per-user usage gating: `usage` is derived from order history's
     // `deal_id` and filtered to the signed-in user; `user.id` drives the
     // per-user usage-limit check (`orders.deal_id`, mirrors the server count).
-    () =>
-      deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, usage, user?.id) : null,
+    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, usage, user?.id) : null),
     [deal, cart, usage, user?.id],
   );
 
