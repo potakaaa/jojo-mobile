@@ -12,7 +12,8 @@ export default function OrderStackLayout() {
       <Stack.Screen name="product/[productId]" options={{ title: 'Product Details' }} />
       <Stack.Screen name="cart" options={{ title: 'Cart' }} />
       <Stack.Screen name="checkout" options={{ title: 'Checkout' }} />
-      <Stack.Screen name="confirmation/[orderId]" options={{ title: 'Order Confirmed' }} />
+      <Stack.Screen name="payment-method" options={{ title: 'Payment Method' }} />
+      <Stack.Screen name="confirmation/[orderId]" options={{ headerShown: false }} />
       <Stack.Screen name="tracking/[orderId]" options={{ title: 'Order Tracking' }} />
       <Stack.Screen name="history" options={{ title: 'Order History' }} />
     </Stack>
