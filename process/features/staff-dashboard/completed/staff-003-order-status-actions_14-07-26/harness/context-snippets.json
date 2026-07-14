@@ -1,0 +1,34 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "1-50 (stubs + schema)",
+      "description": "Named side-effect stubs creditStarsForOrder/notifyCustomer (STAR-001/PUSH-002 TODO) and zod patchOrderBodySchema",
+      "content": "function creditStarsForOrder(_order) { /* TODO(STAR-001) */ }\nfunction notifyCustomer(_order, _event) { /* TODO(PUSH-002) */ }\nconst patchOrderBodySchema = z.object({ status: z.enum(ORDER_STATUS_VALUES), etaMinutes: z.number().optional() })"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "PATCH /orders/:orderId handler",
+      "description": "Branch isolation enforcement: resolveBranchScope → null → 403; order.branch_id !== branchId → 403. Server never trusts client-supplied branch_id.",
+      "content": "const branchId = await resolveBranchScope(db, req.staffSession!.userId);\nif (!branchId) { res.status(403).json({ error: 'No branch assigned' }); return; }\n...\nif (order.branch_id !== branchId) { res.status(403).json({ error: 'Forbidden' }); return; }"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "GET /orders/completed handler",
+      "description": "GET /orders/completed registered BEFORE GET /orders/:orderId — prevents Express route-ordering trap where 'completed' would be captured as an orderId param",
+      "content": "staffRouter.get('/orders/completed', ...)\n// registered immediately before:\nstaffRouter.get('/orders/:orderId', ...)"
+    },
+    {
+      "file": "packages/api/src/routes/lib/order-state-machine.ts",
+      "lines": "1-45 (full file)",
+      "description": "Pure lookup-table state machine: TRANSITIONS Record + canTransition + isTerminal. No DB dependency, no client input trusted for transition legality.",
+      "content": "const TRANSITIONS: Record<OrderStatus, ReadonlySet<OrderStatus>> = {\n  pending: new Set(['accepted', 'rejected', 'cancelled']),\n  accepted: new Set(['preparing', 'cancelled']),\n  ...\n  completed: new Set(), cancelled: new Set(), rejected: new Set()\n};\nexport function canTransition(from, to): boolean { return TRANSITIONS[from].has(to); }\nexport function isTerminal(status): boolean { return TERMINAL_STATUSES.has(status); }"
+    },
+    {
+      "file": "packages/api/src/routes/__tests__/staff-order-status.integration.test.ts",
+      "lines": "AC-3 branch isolation test",
+      "description": "Hermetic integration test proving cross-branch 403: branch-1 staff cannot PATCH a branch-2 order. Also verifies order was NOT mutated in DB.",
+      "content": "it('branch-1 staff PATCHing a branch-2 order → 403', async () => {\n  const branch2OrderId = await insertOrder({ branchId: branch2Id, status: 'pending' });\n  const res = await request(app).patch(...).set('Cookie', staff1Cookies.join('; ')).send({ status: 'accepted' });\n  expect(res.status).toBe(403);\n  // Verify order was NOT mutated\n  expect(unchanged?.status).toBe('pending');\n});"
+    }
+  ]
+}

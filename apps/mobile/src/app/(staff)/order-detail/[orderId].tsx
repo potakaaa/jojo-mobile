@@ -1,26 +1,31 @@
 /**
- * Order Detail screen (staff) — STAFF-002. READ-ONLY.
+ * Order Detail screen (staff) — STAFF-002 + STAFF-003.
  *
  * Shows a single order's items + selected options from `GET /api/staff/orders/:id`
- * (via `useStaffOrderDetail`). The action buttons are INERT placeholders for the
- * STAFF-003 status-mutation work — every `onPress` is a no-op. No write endpoint
- * exists yet.
+ * (via `useStaffOrderDetail`). Replaces the STAFF-002 inert action placeholders
+ * with `LiveOrderActions` — a real mutation-backed button matrix (STAFF-003).
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, type ThemeMode } from '@jojopotato/ui';
-import type { StaffOrderDetail, StaffOrderItem } from '@jojopotato/types';
+import type { OrderStatus, StaffOrderDetail, StaffOrderItem } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useStaffOrderDetail } from '@/features/staff/hooks/use-staff-order-detail';
-import {
-  STAFF_STATUS_CONFIG,
-  type StaffOrderStatus,
-} from '@/features/staff/lib/staff-status-config';
+import { useUpdateOrderStatus } from '@/features/staff/hooks/use-update-order-status';
+import { STAFF_STATUS_CONFIG } from '@/features/staff/lib/staff-status-config';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -30,54 +35,147 @@ function formatPlacedAt(placedAt: string): string {
   return date.toLocaleString();
 }
 
-function isStaffStatus(status: string): status is StaffOrderStatus {
-  return status in STAFF_STATUS_CONFIG;
-}
-
 const OPTION_TYPE_LABEL: Record<StaffOrderItem['selectedOptions'][number]['optionType'], string> = {
   size: 'Size',
   flavor: 'Flavor',
   add_on: 'Add-on',
 };
 
-// ─── Inert action buttons (STAFF-003 surface — all disabled) ─────────────────
-function InertOrderActions({ status, mode }: { status: string; mode: ThemeMode }) {
-  // STAFF-003: wire real mutations here. Disabled so staff can't tap and
-  // believe the order changed before the write endpoint exists.
-  if (status === 'pending') {
-    return (
-      <View style={styles.actionRow}>
+// ─── Live action buttons (STAFF-003) ─────────────────────────────────────────
+
+interface LiveOrderActionsProps {
+  order: Pick<StaffOrderDetail, 'id' | 'status'>;
+  mode: ThemeMode;
+}
+
+/**
+ * Status-appropriate action buttons per SPEC button matrix.
+ *
+ * Button set by status:
+ *   pending     → Accept + Reject (with confirm alert)
+ *   accepted    → Start Preparing
+ *   preparing   → Mark Flavoring
+ *   flavoring   → Mark Ready
+ *   ready       → Mark Picked Up + Cancel (with confirm alert)
+ *   terminal    → nothing (completed / cancelled / rejected)
+ *
+ * While a mutation is pending: the tapped button shows loading and all buttons
+ * are disabled. On 409 or other error: inline message rendered; no navigation.
+ *
+ * AC-8 KNOWN-GAP-AC-8-LIST-REFRESH: the Active Orders back-list cache is correctly
+ * invalidated (`['staff','orders']`), but the visual refresh is only verifiable once
+ * the STAFF-002 mock `active-orders.tsx` screen is replaced with live data.
+ */
+function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
+  const { mutate, isPending, isError, error } = useUpdateOrderStatus();
+  const status = order.status as OrderStatus;
+
+  function handleTransition(targetStatus: OrderStatus) {
+    mutate({ orderId: order.id, status: targetStatus });
+  }
+
+  function confirmThenTransition(targetStatus: OrderStatus, actionLabel: string) {
+    Alert.alert(
+      `${actionLabel} order?`,
+      `Are you sure you want to ${actionLabel.toLowerCase()} this order?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: actionLabel,
+          style: 'destructive',
+          onPress: () => handleTransition(targetStatus),
+        },
+      ],
+    );
+  }
+
+  // Detect 409 specifically for the inline message copy.
+  const errorStatus = (error as (Error & { status?: number }) | null)?.status;
+  const is409 = isError && errorStatus === 409;
+
+  return (
+    <View style={styles.actionsWrap}>
+      {isError ? (
+        <Text style={styles.errorText}>
+          {is409
+            ? 'Order status has changed — pull down to refresh'
+            : 'Something went wrong. Please try again.'}
+        </Text>
+      ) : null}
+
+      {status === 'pending' && (
+        <View style={styles.actionRow}>
+          <Button
+            label={isPending ? 'Saving…' : 'Accept'}
+            variant="primary"
+            mode={mode}
+            disabled={isPending}
+            onPress={() => handleTransition('accepted')}
+            style={styles.flex}
+          />
+          <Button
+            label="Reject"
+            variant="accent"
+            mode={mode}
+            disabled={isPending}
+            onPress={() => confirmThenTransition('rejected', 'Reject')}
+            style={styles.flex}
+          />
+        </View>
+      )}
+
+      {status === 'accepted' && (
         <Button
-          label="Accept"
+          label={isPending ? 'Saving…' : 'Start Preparing'}
+          variant="ink"
+          mode={mode}
+          disabled={isPending}
+          onPress={() => handleTransition('preparing')}
+        />
+      )}
+
+      {status === 'preparing' && (
+        <Button
+          label={isPending ? 'Saving…' : 'Mark Flavoring'}
+          variant="ink"
+          mode={mode}
+          disabled={isPending}
+          onPress={() => handleTransition('flavoring')}
+        />
+      )}
+
+      {status === 'flavoring' && (
+        <Button
+          label={isPending ? 'Saving…' : 'Mark Ready'}
           variant="primary"
           mode={mode}
-          disabled
-          onPress={() => {}}
-          style={styles.flex}
+          disabled={isPending}
+          onPress={() => handleTransition('ready')}
         />
-        <Button
-          label="Reject"
-          variant="accent"
-          mode={mode}
-          disabled
-          onPress={() => {}}
-          style={styles.flex}
-        />
-      </View>
-    );
-  }
-  if (status === 'accepted' || status === 'preparing') {
-    return <Button label="Mark Flavoring" variant="ink" mode={mode} disabled onPress={() => {}} />;
-  }
-  if (status === 'flavoring') {
-    return <Button label="Mark Ready" variant="primary" mode={mode} disabled onPress={() => {}} />;
-  }
-  if (status === 'ready') {
-    return (
-      <Button label="Mark Picked Up" variant="primary" mode={mode} disabled onPress={() => {}} />
-    );
-  }
-  return null;
+      )}
+
+      {status === 'ready' && (
+        <View style={styles.actionColumn}>
+          <Button
+            label={isPending ? 'Saving…' : 'Mark Picked Up'}
+            variant="primary"
+            mode={mode}
+            disabled={isPending}
+            onPress={() => handleTransition('completed')}
+          />
+          <Button
+            label="Cancel"
+            variant="outline"
+            mode={mode}
+            disabled={isPending}
+            onPress={() => confirmThenTransition('cancelled', 'Cancel')}
+          />
+        </View>
+      )}
+
+      {/* Terminal statuses (completed / cancelled / rejected): no actions */}
+    </View>
+  );
 }
 
 function OrderItemRow({ item, mode }: { item: StaffOrderItem; mode: ThemeMode }) {
@@ -156,7 +254,7 @@ export default function OrderDetailScreen() {
 
 function OrderDetailBody({ order, mode }: { order: StaffOrderDetail; mode: ThemeMode }) {
   const theme = useTheme();
-  const cfg = isStaffStatus(order.status) ? STAFF_STATUS_CONFIG[order.status] : null;
+  const cfg = STAFF_STATUS_CONFIG[order.status as OrderStatus] ?? null;
 
   return (
     <>
@@ -187,10 +285,8 @@ function OrderDetailBody({ order, mode }: { order: StaffOrderDetail; mode: Theme
         <OrderItemRow key={`${item.productId}-${item.productName}`} item={item} mode={mode} />
       ))}
 
-      {/* Inert STAFF-003 action buttons */}
-      <View style={styles.actionsBlock}>
-        <InertOrderActions status={order.status} mode={mode} />
-      </View>
+      {/* Live STAFF-003 action buttons */}
+      <LiveOrderActions order={order} mode={mode} />
     </>
   );
 }
@@ -292,14 +388,24 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
   },
-  actionsBlock: {
+  actionsWrap: {
     marginTop: Spacing.two,
+    gap: Spacing.two,
   },
   actionRow: {
     flexDirection: 'row',
     gap: Spacing.two,
   },
+  actionColumn: {
+    gap: Spacing.two,
+  },
   flex: {
     flex: 1,
+  },
+  errorText: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    color: '#E81E26',
+    textAlign: 'center',
   },
 });

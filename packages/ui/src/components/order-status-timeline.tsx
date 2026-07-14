@@ -26,6 +26,7 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   ready: 'Ready for pickup',
   completed: 'Picked up',
   cancelled: 'Cancelled',
+  rejected: 'Rejected',
 };
 
 /**
@@ -40,14 +41,14 @@ export function OrderStatusTimeline({
 }: OrderStatusTimelineProps) {
   const theme = Colors[mode];
 
-  if (currentStatus === 'cancelled') {
+  if (currentStatus === 'cancelled' || currentStatus === 'rejected') {
     return (
       <View style={[styles.wrap, style]}>
         <View style={styles.step}>
           <View
             style={[styles.dot, { backgroundColor: Palette.jred, borderColor: theme.border }]}
           />
-          <Text style={[styles.label, { color: theme.text }]}>Cancelled</Text>
+          <Text style={[styles.label, { color: theme.text }]}>{STATUS_LABEL[currentStatus]}</Text>
         </View>
       </View>
     );

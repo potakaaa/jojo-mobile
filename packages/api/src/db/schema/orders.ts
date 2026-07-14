@@ -10,6 +10,7 @@ export const orderStatusEnum = pgEnum('order_status', [
   'ready',
   'completed',
   'cancelled',
+  'rejected',
 ]);
 
 export const paymentMethodEnum = pgEnum('payment_method', ['pay_at_branch', 'online_payment']);
