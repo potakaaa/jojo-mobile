@@ -18,8 +18,10 @@ import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useReorderConflicts } from '@/features/cart/hooks/use-reorder-conflicts';
+import { useAuth } from '@/features/auth/hooks/use-auth';
+import { useDeal } from '@/features/deals/hooks/use-deal';
+import { useDealUsage } from '@/features/deals/hooks/use-deal-usage';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
-import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -59,9 +61,9 @@ function productForLine(
 /**
  * Cart screen. Renders the selected branch (real branch data), line items with
  * quantity steppers + remove, an estimated pickup time, coupon/deal apply-remove
- * (mock deal catalog + client-side eligibility engine), and the subtotal/total
- * summary — all driven by the in-memory `useCart()` seam wired to the real
- * branch backend.
+ * (real deal data via `useDeal` + client-side eligibility engine), and the
+ * subtotal/total summary — all driven by the in-memory `useCart()` seam wired to
+ * the real branch backend.
  */
 export default function CartScreen() {
   const theme = useTheme();
@@ -85,6 +87,9 @@ export default function CartScreen() {
   const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
 
+  const { user } = useAuth();
+  const usage = useDealUsage();
+
   const { conflicts, clearConflicts } = useReorderConflicts();
 
   const isEmpty = cart.items.length === 0;
@@ -94,33 +99,26 @@ export default function CartScreen() {
     [branch?.estimatedPrepMinutes],
   );
 
-  // Re-lookup the applied deal from the mock catalog so richer display data
-  // (title, discountLabel) is sourced from the catalog, not just the stored
-  // label (deals-screens plan Decision #3). Falls back to stored fields on miss.
-  const appliedDeal = useMemo(
-    () =>
-      cart.appliedDiscount
-        ? MOCK_DEALS.find((d) => d.id === cart.appliedDiscount?.refId)
-        : undefined,
-    [cart.appliedDiscount],
-  );
+  // Re-fetch the applied deal from the real deals API so richer display data
+  // (title, discountLabel) is sourced from the backend, not just the stored
+  // label (deals-screens plan Decision #3). `useDeal` no-ops on a falsy id and
+  // returns `undefined` on miss; downstream reads fall back to stored fields.
+  const { data: appliedDeal } = useDeal(cart.appliedDiscount?.refId ?? '');
 
   // Expiry/ineligibility-at-checkout: if the applied deal has become ineligible
   // (e.g. expired window, or subtotal dropped below its minimum after removing
   // items), auto-clear it with a one-time notice. Home for this recheck is
   // cart.tsx — checkout.tsx is a bare ComingSoon placeholder with no mount-time
-  // state to hook into (deals-screens plan step 9/12).
+  // state to hook into (deals-screens plan step 9/12). Uses the real deal +
+  // real per-user usage (order history's `deal_id`) + signed-in user id.
   useEffect(() => {
-    const applied = cart.appliedDiscount;
-    if (!applied) return;
-    const deal = MOCK_DEALS.find((d) => d.id === applied.refId);
-    if (!deal) return;
-    const result = checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+    if (!cart.appliedDiscount || !appliedDeal) return;
+    const result = checkDealEligibility(appliedDeal, cart, cart.pickupBranchId, usage, user?.id);
     if (!result.eligible) {
       clearDiscount();
       Alert.alert('Deal removed', result.message);
     }
-  }, [cart, clearDiscount]);
+  }, [cart, appliedDeal, usage, user?.id, clearDiscount]);
 
   // Switch pickup to the next real branch (cyclic). If the cart has items,
   // switching clears it first (branches can't be mixed — single-branch per order).
