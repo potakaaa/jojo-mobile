@@ -25,7 +25,10 @@ import {
   shouldPromptPermission,
 } from './notification-permission';
 
-const ALL_TYPES: NotificationType[] = [...ORDER_NOTIFICATION_TYPES, ...MARKETING_NOTIFICATION_TYPES];
+const ALL_TYPES: NotificationType[] = [
+  ...ORDER_NOTIFICATION_TYPES,
+  ...MARKETING_NOTIFICATION_TYPES,
+];
 
 function item(id: string, createdAt: string, type: NotificationType = 'new_deal'): AppNotification {
   return {
@@ -51,7 +54,11 @@ test('should order a shuffled notification list newest-first by createdAt', () =
   expect(sorted.map((n) => n.id)).toEqual(['d', 'c', 'b', 'a']);
   // shape assertion
   const first = sorted[0]!;
-  expect(first).toMatchObject({ title: expect.any(String), body: expect.any(String), createdAt: expect.any(String) });
+  expect(first).toMatchObject({
+    title: expect.any(String),
+    body: expect.any(String),
+    createdAt: expect.any(String),
+  });
   expect(first.readAt).toBeUndefined();
   // does not mutate input
   expect(shuffled[0]!.id).toBe('b');
@@ -73,7 +80,10 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
   // deal → deal details with dealId params
   const deal = item('deal:x', '2026-07-14T10:00:00.000Z', 'new_deal');
   deal.targetParams = { dealId: 'x' };
-  expect(resolveRoute(deal)).toEqual({ pathname: '/(tabs)/deals/deal/[dealId]', params: { dealId: 'x' } });
+  expect(resolveRoute(deal)).toEqual({
+    pathname: '/(tabs)/deals/deal/[dealId]',
+    params: { dealId: 'x' },
+  });
   // coupon → coupon wallet (no params by design)
   expect(resolveRoute(item('c', '2026-07-14T10:00:00.000Z', 'coupon_expiring'))).toEqual({
     pathname: '/(tabs)/rewards/coupons',
@@ -152,7 +162,9 @@ test('should fire coupon-expiring only inside the lead window', () => {
   expect(shouldNotifyCouponExpiring(coupon, expiresAtMs, lead)).toBe(false); // at expiry
   expect(shouldNotifyCouponExpiring(coupon, expiresAtMs + 1, lead)).toBe(false); // after expiry
   // no expiresAt → never
-  expect(shouldNotifyCouponExpiring({ ...coupon, expiresAt: undefined }, expiresAtMs - 1, lead)).toBe(false);
+  expect(
+    shouldNotifyCouponExpiring({ ...coupon, expiresAt: undefined }, expiresAtMs - 1, lead),
+  ).toBe(false);
 });
 
 // AC#8 — reward-unlocked idempotency.

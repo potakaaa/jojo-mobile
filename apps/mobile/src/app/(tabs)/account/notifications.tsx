@@ -59,9 +59,7 @@ export default function NotificationsScreen() {
   const onPressItem = (n: AppNotification) => {
     markRead(n.id);
     const r = resolveRoute(n);
-    router.push(
-      (r.params ? { pathname: r.pathname, params: r.params } : r.pathname) as Href,
-    );
+    router.push((r.params ? { pathname: r.pathname, params: r.params } : r.pathname) as Href);
   };
 
   return (

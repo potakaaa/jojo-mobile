@@ -37,7 +37,9 @@ export function useNotifications(): UseNotifications {
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id && n.readAt == null ? { ...n, readAt: new Date().toISOString() } : n)),
+      prev.map((n) =>
+        n.id === id && n.readAt == null ? { ...n, readAt: new Date().toISOString() } : n,
+      ),
     );
   }, []);
 

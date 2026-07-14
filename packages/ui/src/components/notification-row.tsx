@@ -52,16 +52,17 @@ export function NotificationRow({
       ]}
     >
       <View
-        style={[styles.iconCircle, { backgroundColor: theme.background, borderColor: theme.border }]}
+        style={[
+          styles.iconCircle,
+          { backgroundColor: theme.background, borderColor: theme.border },
+        ]}
       >
         <Ionicons name={iconName} size={20} color={theme.textSecondary} />
       </View>
 
       <View style={styles.content}>
         <View style={styles.titleRow}>
-          {unread ? (
-            <View style={[styles.unreadDot, { backgroundColor: theme.accent }]} />
-          ) : null}
+          {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.accent }]} /> : null}
           <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
             {title}
           </Text>

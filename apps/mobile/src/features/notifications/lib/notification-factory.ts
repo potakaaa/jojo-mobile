@@ -47,7 +47,10 @@ export function targetForType(type: NotificationType): NotificationTargetScreen 
 const ORDER_COPY: Record<OrderNotificationType, { title: string; body: string }> = {
   order_accepted: { title: 'Order accepted', body: 'Your order has been accepted and is queued.' },
   order_preparing: { title: 'Order being prepared', body: 'The kitchen is preparing your order.' },
-  order_ready: { title: 'Order ready for pickup', body: 'Your order is ready — head to the branch!' },
+  order_ready: {
+    title: 'Order ready for pickup',
+    body: 'Your order is ready — head to the branch!',
+  },
   order_cancelled: { title: 'Order cancelled', body: 'Your order was cancelled.' },
 };
 
@@ -73,9 +76,7 @@ export function resolveRoute(n: AppNotification): ResolvedRoute {
 
 /** Descending by `createdAt` (newest first). Does not mutate the input. */
 export function sortNewestFirst(items: AppNotification[]): AppNotification[] {
-  return [...items].sort(
-    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-  );
+  return [...items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
 
 /**
@@ -186,7 +187,16 @@ export function buildMarketingNotifications(
   const out: AppNotification[] = [];
 
   for (const d of inputs.newDeals ?? []) {
-    out.push(build(`deal:${d.dealId}`, 'new_deal', d.title, d.body, { dealId: d.dealId }, d.createdAt ?? nowIso));
+    out.push(
+      build(
+        `deal:${d.dealId}`,
+        'new_deal',
+        d.title,
+        d.body,
+        { dealId: d.dealId },
+        d.createdAt ?? nowIso,
+      ),
+    );
   }
   for (const c of inputs.coupons ?? []) {
     if (shouldNotifyCouponExpiring(c.coupon, c.now, c.leadWindowMs)) {
@@ -218,10 +228,28 @@ export function buildMarketingNotifications(
     }
   }
   for (const e of inputs.rewardUnlockEvents ?? []) {
-    out.push(build(`reward:${e.eventId}`, 'reward_unlocked', e.title, e.body, undefined, e.createdAt ?? nowIso));
+    out.push(
+      build(
+        `reward:${e.eventId}`,
+        'reward_unlocked',
+        e.title,
+        e.body,
+        undefined,
+        e.createdAt ?? nowIso,
+      ),
+    );
   }
   for (const p of inputs.promos ?? []) {
-    out.push(build(`promo:${p.promoId}`, 'branch_promo', p.title, p.body, { promoId: p.promoId }, p.createdAt ?? nowIso));
+    out.push(
+      build(
+        `promo:${p.promoId}`,
+        'branch_promo',
+        p.title,
+        p.body,
+        { promoId: p.promoId },
+        p.createdAt ?? nowIso,
+      ),
+    );
   }
 
   return out;

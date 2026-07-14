@@ -11,27 +11,17 @@
 
 /** The 4 transactional (order-status) notification kinds. Always delivered — never gated by marketing opt-in. */
 export type OrderNotificationType =
-  | 'order_accepted'
-  | 'order_preparing'
-  | 'order_ready'
-  | 'order_cancelled';
+  'order_accepted' | 'order_preparing' | 'order_ready' | 'order_cancelled';
 
 /** The 5 marketing notification kinds. Only surfaced when the marketing opt-in is on. */
 export type MarketingNotificationType =
-  | 'new_deal'
-  | 'coupon_expiring'
-  | 'one_more_order'
-  | 'reward_unlocked'
-  | 'branch_promo';
+  'new_deal' | 'coupon_expiring' | 'one_more_order' | 'reward_unlocked' | 'branch_promo';
 
 export type NotificationType = OrderNotificationType | MarketingNotificationType;
 
 /** The 4 in-app destinations a notification can deep-link to on tap. */
 export type NotificationTargetScreen =
-  | 'order_tracking'
-  | 'deal_details'
-  | 'coupon_wallet'
-  | 'rewards';
+  'order_tracking' | 'deal_details' | 'coupon_wallet' | 'rewards';
 
 export interface AppNotification {
   id: string;
