@@ -65,6 +65,12 @@ See skill: invoke `vc-risk-evidence-pack` for the full 6-class definitions, 5-ar
   when the user asks for a commit. Do NOT create a feature branch first — this overrides the generic
   "if on the default branch, branch first" harness default. Only branch when the user explicitly asks
   for a feature branch or PR.
+- **Pre-commit format check.** Before proposing a commit message or creating a commit, run
+  `pnpm format:check` (the exact command CI's "Format Check" job runs — `prettier --check . --ignore-unknown`).
+  If it fails, run `pnpm format` (`prettier --write .`) and include the reformatted files in the
+  commit — this is what keeps the CI "Format Check" job green on push. Caveat: generated files
+  (e.g. `**/routeTree.gen.ts`, the TanStack Router route tree) are regenerated unformatted and can't
+  be satisfied by hand-formatting — they belong in `.prettierignore`, not the commit fix.
 
 ## Agent Frontmatter Conventions
 
