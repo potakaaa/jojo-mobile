@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-14
+Last updated: 2026-07-14 (Phase 1 delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,72 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. STAFF-001 + STAFF-002 + STAFF-003 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + Phase 1 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard auth/RBAC (`apps/admin` + `packages/api`, Phase 1 — Auth/RBAC ADM-001,
+  delivered 14-07-26, ✅ VERIFIED):** the FIRST protected `/api/admin/*` surface in the repo.
+  `packages/api/src/lib/require-admin.ts` exports `requireAdmin(auth)` (mirrors `requireStaff`,
+  admits `role ∈ {admin, super_admin}` only — never plain `staff`), mounted once at
+  `app.use('/api/admin', cors({origin: ADMIN_WEB_ORIGIN, credentials: true}), requireAdmin(auth),
+  adminRouter)` in `packages/api/src/index.ts` — later phases add sibling route files to
+  `adminRouter` and inherit the guard automatically. `ADMIN_WEB_ORIGIN` defaults to
+  `http://localhost:3100` (the `apps/admin` dev port) and is appended to better-auth's
+  `trustedOrigins` (`auth.ts`), never wildcarded. This is also the FIRST **browser-cookie session**
+  flow in this repo — contrast with `apps/mobile`'s Expo bearer-token flow
+  (`@better-auth/expo`/`expo-secure-store`): `apps/admin/src/features/auth/lib/auth-client.ts` is a
+  plain `createAuthClient({baseURL})` from `better-auth/react`, ZERO plugins — a Step 0 feasibility
+  probe proved better-auth's default cookie session (`better-auth.session_token`, `HttpOnly`,
+  `SameSite=Lax`, 30-day `Max-Age`) works end-to-end with no `nextCookies`/cookie-cache tweak
+  needed. `packages/types/src/admin.ts` (new) carries `ADMIN_ROLES`, `AdminRole`, `AdminMe`,
+  `AdminUserSummary` — `AdminMe` also carries an additive `mfaPending?: boolean` field, a
+  structural-only MFA/TOTP gateway seam (no `twoFactor` plugin, no migration, no enrollment
+  routes — deferred to a future unassigned ADM-0xx phase; `login.tsx` has a matching no-op
+  comment marking the insertion point). `POST /api/admin/users/:id/role` is the super_admin-only
+  role-management route: an inline `req.adminSession.role !== 'super_admin'` check (not a
+  `requireSuperAdmin` middleware — promote only when a second consumer appears) runs FIRST, then a
+  self-escalation guard (`req.params.id === req.adminSession.userId` → 400), then Zod validation,
+  then the Drizzle `UPDATE ... RETURNING` — this exact order is locked and automated-tested
+  (AC2/AC3). This route resolves the `TODO(STAFF-ADM)` seam left by STAFF-001:
+  `assertBranchScope(assignedBranchId, requestedBranchId, role?)` gained an additive optional
+  trailing `role` param that bypasses branch-scope checks when `role ∈ {admin, super_admin}`,
+  backward-compatible with every existing 2-arg call site. `apps/admin` gained a real login screen
+  (`routes/login.tsx`, unguarded) and a `(dashboard)` pathless route-group shell
+  (`routes/(dashboard)/route.tsx`) with a server-verified `beforeLoad` guard — it calls
+  `GET /api/admin/me` against the real session, never trusts a client-cached role flag; P2-P7 add
+  sibling child routes to this same group and must never restructure it. New integration suite
+  `packages/api/src/lib/__tests__/require-admin.integration.test.ts` mirrors
+  `require-staff.integration.test.ts`'s hermetic self-seeding pattern (78/78 API suite green,
+  independently EVL-confirmed — see CORS fix below). **CORS surface (durable API-shape fact,
+  post-AC8 fix):** a browser SPA talking to better-auth cross-origin needs credentialed CORS on
+  BOTH `/api/auth/*` (the better-auth handler itself) AND the app's own protected routes
+  (`/api/admin`) — `trustedOrigins` is a separate CSRF/redirect allowlist and does NOT emit HTTP
+  CORS response headers on its own. A single shared `adminCors` middleware
+  (`cors({origin:[ADMIN_WEB_ORIGIN], credentials:true})`) is now mounted on both prefixes in
+  `packages/api/src/index.ts`. The first real-browser AC8 walkthrough caught this gap (login hung,
+  browser blocked the uncovered `/api/auth/*` responses); the fix added 3 regression tests
+  (preflight OPTIONS + real sign-in + no-Origin mobile-path guard), taking the suite from 75→78.
+  **Known gap (non-blocking, unrelated to CORS):** a malformed `:id` on the role-management route
+  surfaces as a 500 rather than 404 (guard-order side effect, non-exploitable, reachable only by an
+  already-authenticated super_admin). AC8 (browser login + dashboard walkthrough) is now
+  browser-verified (all 3 roles: super_admin reaches the shell, customer/staff rejected) — no
+  longer an open Agent-Probe gap. Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-01-auth-rbac_PLAN_14-07-26.md`
+  (+ co-located REPORT/FEASIBILITY files in the same task folder).
+
+- **Admin dashboard web app (`apps/admin`, Phase 0 — Scaffold, delivered 14-07-26, ✅ VERIFIED):**
+  new workspace app `@jojopotato/admin` scaffolded from empty — TanStack Start (Vite 8) + Tailwind
+  v4 + shadcn/ui + a SEPARATE react-query client instance. Brand tokens ported from
+  `packages/ui/src/theme.ts` into Tailwind's `@theme` block plus a two-layer shadcn semantic mapping
+  (`:root` raw slots + `@theme inline` remap), light-mode only — a stock, unmodified shadcn
+  `Button`/`Card` renders on-brand by default (cream bg/ink text/jyellow primary/brand radius/4px
+  hard shadow). `apps/mobile`/`packages/ui` are untouched — `packages/ui` (React Native) is
+  explicitly NOT reused in `apps/admin` (cannot render in a web app). `turbo.json` was NOT modified —
+  the build output (`dist/`) matched the existing glob. First web-app Vitest + `@testing-library/react`
+  (jsdom) test runner precedent in the repo. This phase has NO business screens and NO auth yet —
+  Phase 1 (ADM-001) adds `requireAdmin` + a browser-cookie session flow (new to this repo — Expo
+  only has bearer-token auth today) + admin login. Full 8-phase program plan:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` (umbrella plan +
+  phase-00 through phase-07 plan files).
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -377,14 +442,14 @@ For most substantial tasks:
 |---|---|
 | `process/context/all-context.md` | any substantial planning, research, review, or implementation task |
 | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
+| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui |
 
 ## Current Context Groups
 
 | Group | Entry point | Scope |
 |---|---|---|
 | `planning/` | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
+| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui |
 <!-- /GENERATED:routing -->
 
 No other context groups exist beyond the baseline `tests`/`planning` groups every repo gets
@@ -399,13 +464,25 @@ Scanned against the canonical Context Group Detection Table
   `db:migrate` scripts, seed, vitest integration tests). `database/` group threshold is likely met
   (full schema + seed + migration pattern established). Not yet created — run `vc-generate-context`
   (delta mode) to create it when ready.
-- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. Also
-  the new staff authz layer (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types)
-  adds a second durable narrative. `auth/` group threshold is now plausibly met — two narratives
-  (auth provider setup + staff authz pattern). Not yet created; re-evaluate at next
-  UPDATE PROCESS pass or when a role/permissions design doc is written.
+- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. The
+  `auth/` group threshold now plausibly has THREE durable narratives: (1) auth provider setup
+  (better-auth config, Expo bearer-token client, magic-link caveat), (2) staff authz pattern
+  (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types), and (3) admin browser-cookie
+  authz (`require-admin.ts`, `requireAdmin`, the first browser-cookie session flow, super_admin-only
+  role management, the resolved `TODO(STAFF-ADM)` bypass — Phase 1, delivered 14-07-26).
+  **Recommendation:** this is a strong candidate to formally create the `auth/` context group now —
+  three narratives across two apps (mobile + admin) and two session models (bearer-token vs
+  browser-cookie) is exactly the "stable operational domain" signal in §Context Group Lifecycle.
+  Not created in this pass (deferred per UPDATE PROCESS scope discipline — recommend only, don't
+  create speculatively mid-phase); run `vc-generate-context` (delta mode) or raise it explicitly at
+  the next UPDATE PROCESS pass to create it.
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
+- `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
+  delivered 14-07-26, ✅ VERIFIED). `process/features/admin-dashboard/` exists with `active/`,
+  `completed/`, `backlog/` subdirs. This is an 8-phase program (P0 scaffold through P7 analytics,
+  ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current phase
+  (Phase 2 — Branches CRUD, ADM-002, next).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -422,8 +499,9 @@ crossed — it will create the matching group automatically.
 | general repo research | `all-context.md` | this file's Repository Structure / Technology Stack sections |
 | implementation planning | `all-context.md`, `planning/all-planning.md` | the relevant feature's `_GUIDE.md` under `process/features/{feature}/` |
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
-| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`) if it exists, else `process/general-plans/active/` |
+| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
+| admin dashboard work (Phase 1-7, ADM-001..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file |
 
 ## Context Group Lifecycle
 
@@ -511,6 +589,17 @@ jojo-mobile/                           (package.json name: jojo-potato)
       assets/                          -- icons, splash, favicon (placeholder branding)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
+    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 1: browser-cookie auth + admin login + guarded (dashboard) shell -- see process/features/admin-dashboard/)
+      src/
+        routes/                       -- TanStack Start file-based routes: __root.tsx (shell + QueryClientProvider), index.tsx (placeholder)
+        components/
+          ui/                         -- shadcn/ui primitives (button.tsx, card.tsx) -- canonical registry source, NOT packages/ui (RN-only, not reused here)
+          admin-home.tsx              -- placeholder proving boot + brand tokens + stock primitives render on-brand
+        styles/globals.css            -- Tailwind v4 @theme brand-token port + two-block shadcn semantic mapping (light-mode only)
+        lib/{query-client,utils}.ts   -- separate react-query client instance (own runtime, not shared with apps/mobile) + shadcn cn() helper
+        router.tsx                    -- TanStack Start router-instance factory
+      vite.config.ts                  -- tailwindcss() + tanstackStart() + viteReact() plugin chain
+      vitest.config.ts                -- jsdom + @testing-library/react, separate from vite.config.ts
   packages/
     api/
       src/routes/                      -- branches.ts, orders.ts (session-gated), routes/lib/{order-number,serializers}.ts, __tests__/
@@ -525,7 +614,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
   process/
     context/                          -- this context system
     general-plans/                    -- plans, reports, references (task-folder convention)
-    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications, staff-dashboard)
+    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications, staff-dashboard, admin-dashboard)
     development-protocols/            -- RIPER-5 methodology docs
   package.json                        -- root scripts (turbo pipelines)
   pnpm-workspace.yaml                 -- workspaces: apps/*, packages/*
@@ -545,14 +634,15 @@ Metro/Expo resolves them like any other dependency.
 - **Package manager:** pnpm 10.33.0 (`packageManager` field pinned in root `package.json`)
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
-- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
+- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing. `apps/admin` (added 14-07-26) also depends on react-query v5 but instantiates its OWN separate `QueryClient` — not shared with `apps/mobile`'s instance (different app/runtime).
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
-- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
-- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
+- **Admin web app (`apps/admin`, `@jojopotato/admin`, added 14-07-26):** TanStack Start (file-based routing, Vite 8-based build/dev) + Tailwind CSS v4 (`@theme` token block) + shadcn/ui primitives (installed as source, not a runtime dep) + `@tanstack/react-query` (own client instance). This is a NEW web app, distinct from the Expo/RN `apps/mobile` — `packages/ui` (React Native) is NOT reused here; brand tokens are ported from `packages/ui/src/theme.ts` into Tailwind's `@theme` CSS block instead. Currently Phase 0 scaffold only (no auth, no business screens) — see `process/features/admin-dashboard/`.
+- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `vitest` + `@testing-library/react` (jsdom) in `apps/admin` (added 14-07-26 — the FIRST web-app component-test runner precedent in the repo, run `pnpm --filter @jojopotato/admin test`); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
+- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`). `apps/admin`'s deploy pipeline is explicitly out of scope for the admin-dashboard program (builds the app, not its deploy story).
 
 ## Key Patterns and Conventions
 
-**Monorepo package naming:** all workspace packages are scoped `@jojopotato/*` (`config`, `types`, `ui`, `utils`, `mobile`). New packages should follow the same scope and the "Adding a new package" recipe in `README.md`.
+**Monorepo package naming:** all workspace packages are scoped `@jojopotato/*` (`config`, `types`, `ui`, `utils`, `mobile`, `admin`). New packages should follow the same scope and the "Adding a new package" recipe in `README.md`.
 
 **No build step for internal packages:** `packages/{types,ui,utils}` have `"main": "./src/index.ts"` — they are consumed as raw TypeScript source via pnpm workspace links, not compiled. Do not add a build step to these packages without a clear reason.
 
@@ -638,14 +728,8 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (merge of `origin/development` — STAFF-003 UPDATE PROCESS: order
-  state-machine PATCH endpoint, Completed Orders screen, `rejected` enum migration
-  `0005_add_rejected_order_status.sql` — reconciled with the Deals API Integration program below,
-  incl. renumbering the deal_id migration to `0006_legal_daredevil.sql`)
-- Previous delta: 2026-07-14 (Deals API Integration PROGRAM CLOSEOUT — Phase 3/DEAL-003/#24
-  EVL-confirmed clean; all 3 phases VERIFIED; program archived active/ → completed/)
-- Earlier delta: 2026-07-14 (Deals API Integration Phase 2 UPDATE PROCESS — GET /deals/:id route,
-  useDeal() hook, Deal Details screen real-data wiring, deferred Apply CTA)
-- Earlier delta: 2026-07-13 (STAFF-001 UPDATE PROCESS — staff authz layer, staff-dashboard feature, API schema, vitest, seed)
-- HEAD at last delta: merge commit on `feat/order-history-and-deals-api-integration` — see git log for the current commit
+- Last delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
+- Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
+- Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
+- HEAD at last delta: branch `dev/admin` (admin-dashboard Phase 1 auth/RBAC + CORS fix, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status` before assuming committed)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

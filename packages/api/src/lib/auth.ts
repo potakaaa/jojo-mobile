@@ -10,6 +10,17 @@ import { storeDevLoginToken } from './dev-auto-login';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+// Browser origin of the admin web app (apps/admin, dev port 3100). Single source
+// of truth — index.ts imports this for its credentialed CORS mount so the two
+// surfaces (the better-auth handler + /api/admin) and this trustedOrigins entry
+// can never drift. NEVER a wildcard (credentialed CORS forbids it). Fail fast in
+// production if unset rather than silently serving a localhost origin no real
+// browser will match.
+if (!isDev && !process.env.ADMIN_WEB_ORIGIN) {
+  throw new Error('ADMIN_WEB_ORIGIN must be set in production (admin CORS origin).');
+}
+export const ADMIN_WEB_ORIGIN = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100';
+
 // Real magic-link delivery via Resend when configured; otherwise fall back to a
 // server-side log so local dev / tests work without a Resend account (the link
 // still round-trips, it just isn't emailed). RESEND_API_KEY is server-only.
@@ -76,7 +87,13 @@ export const auth = betterAuth({
       onboardedAt: { type: 'date', required: false, input: true },
     },
   },
-  trustedOrigins: ['jojopotato://', ...(isDev ? ['exp://'] : [])],
+  trustedOrigins: [
+    'jojopotato://',
+    // Admin web app origin (ADM-001). Appended, not replacing the existing Expo
+    // scheme entries. Same single source of truth as the /api/admin CORS mount.
+    ADMIN_WEB_ORIGIN,
+    ...(isDev ? ['exp://'] : []),
+  ],
   plugins: [
     expo(),
     phoneNumber({

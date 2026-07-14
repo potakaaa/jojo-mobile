@@ -1,0 +1,76 @@
+{
+  "steps": [
+    {
+      "step": "AC1 — requireAdmin role matrix (unauth/customer/staff -> 403; admin/super_admin -> 200 + req.adminSession populated)",
+      "command": "pnpm --filter @jojopotato/api test (require-admin.integration.test.ts)",
+      "result": "PASS",
+      "notes": "GET /api/admin/me: unauth 403, customer 403, staff 403, admin 200 {role:'admin'}, super_admin 200 {role:'super_admin'}. Direct middleware call confirms req.adminSession = {role:'admin', userId} populated."
+    },
+    {
+      "step": "AC2 — self-escalation rejected (boundary case). Under LOCKED guard order (5.1 super_admin FIRST), the 400 self-escalation is reachable only by super_admin (a plain admin self-call hits 403 at 5.1).",
+      "command": "pnpm --filter @jojopotato/api test (require-admin.integration.test.ts self-escalation case)",
+      "result": "PASS",
+      "notes": "super_admin POST /api/admin/users/:ownId/role {role:'customer'} -> 400 {error:'Cannot modify own role'}; DB row re-read still 'super_admin' (unchanged)."
+    },
+    {
+      "step": "AC3 — plain admin forbidden from role route (failure/authorization boundary)",
+      "command": "pnpm --filter @jojopotato/api test (require-admin.integration.test.ts admin-forbidden case)",
+      "result": "PASS",
+      "notes": "admin POST /api/admin/users/:otherId/role {role:'staff'} -> 403 {error:'Forbidden'}; target DB row re-read still 'customer' (unchanged)."
+    },
+    {
+      "step": "AC4 — super_admin promotes another user (happy path)",
+      "command": "pnpm --filter @jojopotato/api test (require-admin.integration.test.ts super_admin-success case)",
+      "result": "PASS",
+      "notes": "super_admin POST /api/admin/users/:otherId/role {role:'admin'} -> 200 {resource:{id,email,role:'admin'}}; target DB row re-read = 'admin' (persisted)."
+    },
+    {
+      "step": "AC5 — role stays server-owned (regression, no new code). Existing auth.integration.test.ts role-write-rejection re-run.",
+      "command": "pnpm --filter @jojopotato/api test (auth.integration.test.ts)",
+      "result": "PASS",
+      "notes": "6/6 auth tests green incl. 'never lets a client self-assign a privileged role' and the updateUser role-write-ignored case. role input:false unchanged by this phase."
+    },
+    {
+      "step": "AC6 — cross-origin cookie round-trip + credentialed CORS (Hybrid, supertest-with-Origin-header variant, NOT headless browser)",
+      "command": "pnpm --filter @jojopotato/api test (require-admin.integration.test.ts CORS block)",
+      "result": "PASS",
+      "notes": "OPTIONS preflight for Origin http://localhost:3100 -> 204 + Access-Control-Allow-Origin: http://localhost:3100 + Access-Control-Allow-Credentials: true (echoed origin, never wildcard). Cross-origin GET /api/admin/me with Origin + sign-in cookie -> 200 {role:'admin'} + same CORS headers. Proves server CORS correctness + cookie round-trip; does NOT prove real browser SameSite enforcement (no browser runner)."
+    },
+    {
+      "step": "AC7 — assertBranchScope admin/super_admin bypass",
+      "command": "pnpm --filter @jojopotato/api test (require-staff.integration.test.ts)",
+      "result": "PASS",
+      "notes": "assertBranchScope('any-branch','other-branch','admin') === true and assertBranchScope(null,'branch-x','super_admin') === true; the 4 existing 2-arg pure-function cases still pass unchanged (additive signature)."
+    },
+    {
+      "step": "MFA-SEAM (structural typecheck-only) — AdminMe.mfaPending? optional field compiles; login.tsx no-op comment is a comment only",
+      "command": "pnpm --filter @jojopotato/api typecheck && pnpm --filter @jojopotato/admin typecheck",
+      "result": "PASS",
+      "notes": "Both typecheck clean. No twoFactor plugin, no migration, no enrollment/verify routes, no env flag. Only the optional field + no-op comment shipped."
+    },
+    {
+      "step": "Full API suite (all suites, no regressions)",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "11 test files / 75 tests passed. Includes admin(6), staff(10), auth(6), orders(11), branches(7), staff-orders(6), plus schema/seed/dev-login."
+    },
+    {
+      "step": "Typecheck (packages/types, packages/api, apps/admin)",
+      "command": "pnpm --filter @jojopotato/{types,api,admin} typecheck",
+      "result": "PASS",
+      "notes": "All three clean."
+    },
+    {
+      "step": "Lint (packages/api, packages/types, apps/admin) + apps/admin build",
+      "command": "pnpm --filter @jojopotato/{api,types,admin} lint && pnpm --filter @jojopotato/admin build",
+      "result": "PASS",
+      "notes": "Lint clean (pre-existing MODULE_TYPELESS warning unrelated). Build produced client + SSR bundles for login, (dashboard), route chunks — all routes compile."
+    },
+    {
+      "step": "AC8 — admin login + role-gated dashboard shell (Agent-Probe)",
+      "command": "manual/agent browser walkthrough (deferred)",
+      "result": "SKIP",
+      "notes": "No automated browser E2E runner exists for apps/admin (project-wide gap, tracked). Left for the manual Agent-Probe walkthrough per the validate-contract AC8 strategy. Server-side enforcement (AC1) is already automated-proven."
+    }
+  ]
+}
