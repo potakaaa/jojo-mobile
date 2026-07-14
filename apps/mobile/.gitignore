@@ -7,3 +7,9 @@ expo-env.d.ts
 
 # local EAS build output
 builds/
+
+# local env with secrets (also covered by root .gitignore .env.* rule; explicit here
+# so the Google Maps API key in .env.local is never committed)
+.env.local
+.env.*.local
+app.json.bak

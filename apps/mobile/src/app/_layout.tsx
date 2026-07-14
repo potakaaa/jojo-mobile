@@ -14,6 +14,7 @@ import * as SystemUI from 'expo-system-ui';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
 import { OrderSessionProvider } from '@/features/order/hooks/use-order';
@@ -121,13 +122,15 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <AuthedTree />
-        </AuthProvider>
-      </QueryClientProvider>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <AuthedTree />
+          </AuthProvider>
+        </QueryClientProvider>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
