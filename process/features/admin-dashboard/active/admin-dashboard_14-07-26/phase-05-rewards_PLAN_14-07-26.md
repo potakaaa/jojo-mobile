@@ -83,6 +83,11 @@ Phase 5 has no ordering dependency on Phase 3's products UI existing yet in a HY
    `packages/api/src/index.ts:51`) — never a per-handler inline role check. All request bodies
    validated server-side with Zod; a client-side rejection is never trusted as the only gate.
 
+5. **UI component modularity & reusability** — `features/rewards/` reuses the P2 composites; no
+   re-implementation. Reward-specific UI is limited to the `reward_type` select (Zod allow-list) and
+   the `required_stars` numeric input. Token-driven styling only. Any reusable piece a later domain
+   would copy gets promoted to `components/` under the second-consumer rule.
+
 ---
 
 ## Touchpoints

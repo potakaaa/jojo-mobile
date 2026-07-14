@@ -102,6 +102,12 @@ decision is locked.
    per-handler re-check); all inputs (including `deal_type` enum membership, numeric ranges,
    date ordering) are validated server-side with Zod, never trusting client-side validation alone.
 
+5. **UI component modularity & reusability** — `features/deals/` reuses the P2 composites; no
+   re-implementation. Deal-specific UI is limited to the genuinely new pieces: the `deal_type` select,
+   the date-range inputs, and the product/branch multi-select association editors. If a multi-select
+   association editor is needed again by another domain, promote it to `components/` (second-consumer
+   rule). Token-driven styling only.
+
 ---
 
 ## Touchpoints

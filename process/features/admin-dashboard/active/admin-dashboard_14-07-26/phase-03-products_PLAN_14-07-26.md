@@ -89,6 +89,13 @@ Per the umbrella plan's 4 mandatory per-phase gates (`admin-dashboard_UMBRELLA_P
    per-handler re-check). All request bodies validated server-side with Zod; a rejected client-side
    validation is never the only gate.
 
+5. **UI component modularity & reusability** — `features/products/` reuses the P2 composites
+   (`data-table`, `form-dialog`, `confirm-dialog`, `page-header`, `query-states`) — re-implementing any
+   of them is a PLAN failure. Product-specific UI is limited to what's genuinely new: the
+   category picker and the product-options / branch-availability sub-editors. If any product-specific
+   component would be copy-pasted by a later domain (P4/P5), promote it to `components/` under the
+   "second consumer" rule instead of duplicating. Styling stays token-driven (no hardcoded hex/px).
+
 ---
 
 ## Touchpoints

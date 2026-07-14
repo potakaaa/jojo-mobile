@@ -82,6 +82,13 @@ the admin web dev origin (e.g. `http://localhost:3001` — confirm the actual de
 RESEARCH/P0 scaffold) — never a wildcard. All admin route inputs (role-change body) are Zod-validated
 server-side.
 
+**UI component modularity & reusability:** the login screen and dashboard shell are composed from the
+P0-scaffolded shadcn/ui primitives (Button, Input, Card) — no hand-rolled form controls. This phase
+does not yet extract cross-domain CRUD composites (branches in P2 is the first extractor); it only
+consumes primitives and the ported Tailwind design tokens. The super_admin role-management screen
+reuses the same primitives, and its table/form should be built so the P2 `data-table`/`form-dialog`
+composites can later replace any bespoke markup here (flag as a follow-up rather than duplicating).
+
 ---
 
 ## Touchpoints

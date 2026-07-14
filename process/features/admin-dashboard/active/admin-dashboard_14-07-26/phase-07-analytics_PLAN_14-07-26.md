@@ -92,6 +92,13 @@ exist as executed code at PLAN time), this plan is intentionally kept **HIGH-LEV
    to expose any customer-identifying row, treat it as a scope change requiring the same design note
    pattern as Phase 6, not a silent addition.
 
+5. **UI component modularity & reusability** — `features/analytics/` reuses the P2 `page-header`,
+   `query-states`, and (where a shared filter-bar was promoted in P6) the branch/time-range filter
+   controls. Analytics-specific UI is limited to genuinely new pieces: stat/metric cards and any chart
+   component. If more than one metric needs the same card/chart shape, build it ONCE as a shared
+   `metric-card`/`chart` composite in `components/`, not per-metric. Token-driven styling only; charts
+   consume the ported Tailwind color tokens rather than a separate palette.
+
 ---
 
 ## Metric Definitions Requiring Explicit Sign-Off

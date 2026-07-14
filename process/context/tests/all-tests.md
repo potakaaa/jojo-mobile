@@ -1,14 +1,14 @@
 ---
 name: context:all-tests
-description: "Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout
+description: "Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui"
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout, admin, tanstack, jsdom, testing-library
 related: []
-date: 13-07-26
+date: 14-07-26
 ---
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -37,7 +37,7 @@ As the project grows, add deeper docs to this group (e.g., `e2e-tests.md`, `debu
 
 ## What This Covers
 
-- test runner selection (vitest in `packages/api` + `apps/mobile`; jest-expo in `packages/ui`; still none in `packages/{types,utils}`)
+- test runner selection (vitest in `packages/api` + `apps/mobile` + `apps/admin`; jest-expo in `packages/ui`; still none in `packages/{types,utils}`)
 - quick commands by package
 - fast debugging procedures
 - current testing gaps worth remembering
@@ -57,7 +57,7 @@ Use this file when you need to:
 
 ## Quick Decision Guide
 
-### Three runners now exist: Vitest (`packages/api`, `apps/mobile`), Jest/jest-expo (`packages/ui`)
+### Four runners now exist: Vitest (`packages/api`, `apps/mobile`, `apps/admin`), Jest/jest-expo (`packages/ui`)
 
 `packages/api` declares `vitest` (`"test": "vitest run"`) and has real coverage:
 `src/db/schema/__tests__/smoke.test.ts`, `src/lib/__tests__/auth.integration.test.ts` (5
@@ -80,6 +80,16 @@ RN component/E2E test runner" gap below — it only covers plain-TypeScript pure
 `packages/ui` has `jest`/`jest-expo` (`"test": "jest"`, `packages/ui/jest.config.js`) with component
 tests for `OrderStatusBadge`/`OrderStatusTimeline` and others (from the shared-ui-component-library
 work). `packages/{types,utils}` still declare no runner.
+
+`apps/admin` (added 14-07-26, admin-dashboard Phase 0 — Scaffold) is the FIRST WEB-APP test runner
+precedent in the repo: `vitest` (`"test": "vitest run --passWithNoTests"`) + `@testing-library/react`
++ `jsdom` (`apps/admin/vitest.config.ts` — deliberately SEPARATE from `apps/admin/vite.config.ts` so
+the TanStack Start SSR plugin isn't loaded during tests). Currently one trivial passing test
+(`src/routes/index.test.tsx` — renders the placeholder index route, asserts the brand wordmark
+text is present) proving the runner precedent end-to-end. Unlike `apps/mobile`'s vitest (pure-TS
+logic only, no rendering), `apps/admin`'s vitest DOES render components via `@testing-library/react`
+— it is a real component-test runner, not just a pure-function runner. As Phase 1+ build real admin
+screens, this is the runner to extend.
 
 Until a mobile-side (RN component) E2E runner is chosen, "verification" for RN-rendered UI still
 means:
@@ -115,17 +125,22 @@ Unless the task clearly needs a different path:
 | `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
 | `apps/mobile` (pure-TS logic) | vitest | `pnpm --filter @jojopotato/mobile test` | `environment: 'node'`, scoped to `src/**/__tests__/**/*.test.ts` — no RN rendering |
 | `packages/ui` (component) | jest / jest-expo | `pnpm --filter @jojopotato/ui test` | `packages/ui/jest.config.js` |
+| `apps/admin` (component) | vitest + @testing-library/react | `pnpm --filter @jojopotato/admin test` | jsdom env, `apps/admin/vitest.config.ts` (separate from `vite.config.ts`) — first web-app component-test runner in the repo |
+| `apps/admin` | tsc | `pnpm --filter @jojopotato/admin typecheck` | single-package typecheck |
+| `apps/admin` | eslint | `pnpm --filter @jojopotato/admin lint` | single-package lint |
+| `apps/admin` | vite | `pnpm --filter @jojopotato/admin build` | outputs to `dist/` — matches existing `turbo.json` glob, no config change needed |
 | `apps/mobile` (RN component/E2E) | (no test runner configured) | -- | see Known Gaps |
 
 ## Debugging Quick Reference
 
-- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only), `packages/ui/jest.config.js`. `packages/{types,utils}` still have none.
+- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only), `apps/admin/vitest.config.ts` (jsdom env, component rendering, separate from `vite.config.ts` to avoid loading the TanStack Start SSR plugin), `packages/ui/jest.config.js`. `packages/{types,utils}` still have none.
 - Typecheck failures are the fastest signal in this repo today — packages are TS-source-only (no build step), so `tsc --noEmit` catches cross-package type breakage immediately via workspace links.
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
 - Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).
 
 ## Known Gaps
 
+- **Root `pnpm typecheck` is RED on `dev/admin` as of 14-07-26 — pre-existing, not caused by `apps/admin`.** `@jojopotato/mobile` has pre-existing typed-route errors (staff order-detail, deals routes; commit `6e160fe`) unrelated to the admin-dashboard program — `apps/admin`'s own `pnpm --filter @jojopotato/admin typecheck` is clean, and `apps/mobile` had zero file changes in the admin-dashboard Phase 0 diff. Do not attempt to fix this from within the admin-dashboard program; it belongs to a separate mobile-app fix.
 - **No RN component/E2E test runner for `apps/mobile`** — `apps/mobile` now has `vitest` for pure-TS logic (see above, added by checkout-flow CART-002) but no `jest-expo`/Detox/Maestro for RN component rendering or E2E flows. `packages/types`/`packages/utils` still have no runner at all. Flag in any plan that adds real business logic without also proposing a runner for that surface. **Still open as of `pickup-order-flow` (13-07-26):** that plan added a non-trivial amount of new mobile business logic with zero automated coverage — screens and mobile API-client mapping functions are verified only by typecheck/lint + a manual Agent-Probe QA script. This is also the surface where an EVL confirmation run caught a real bug (`tsc` cannot validate a `fetch` response shape against a bare `as T` cast) that a runtime-validated fixture or a component test would likely have caught earlier — see `process/general-plans/completed/pickup-order-flow_10-07-26/` closeout report.
 - **No automated coverage for `apps/mobile`'s `useAuth()` hook** — the better-auth server integration is tested (5 vitest cases in `packages/api`), but the mobile consumption side (`src/features/auth/hooks/use-auth.ts`, `src/features/auth/lib/auth-client.ts`) has no automated test, consistent with the mobile-side runner gap above. Manual/simulator verification (sign-up/login, phone OTP, Google button, magic-link deep link, session persistence across restart, logout) is still required — see backlog note `process/features/auth-accounts/backlog/wire-better-auth-hook-test-coverage_NOTE_09-07-26.md`.
 - ~~No CI pipeline~~ **RESOLVED:** GitHub Actions CI exists (`.github/workflows/ci.yml` — format/lint/typecheck/test/build with a Postgres service).

@@ -118,7 +118,7 @@ Hard safety constraints (non-negotiable, per phase):
 ## Cross-Cutting Principles (per-phase hard gates)
 
 Every phase plan (P0-P7) MUST include an explicit subsection — e.g. `## Cross-Cutting Compliance` —
-showing how that phase satisfies all four of these. A phase plan without this subsection is
+showing how that phase satisfies all five of these. A phase plan without this subsection is
 incomplete and must be sent back to PLAN.
 
 1. **Modularity** — one independent module per admin domain.
@@ -180,6 +180,45 @@ incomplete and must be sent back to PLAN.
    - CORS/`trustedOrigins` in better-auth must be extended deliberately for the new admin web origin
      (Phase 1) — never wildcarded.
 
+5. **UI component modularity & reusability** — admin screens are composed from a shared component
+   kit, never one-off per-screen markup.
+   - `packages/ui` is React Native (mobile) only and is NOT reused here (locked decision) — the admin
+     UI kit is **shadcn/ui primitives** (Button, Input, Dialog, Table, Select, etc.) generated into
+     `apps/admin/src/components/ui/` in Phase 0, plus a thin set of admin-specific composites built on
+     top of them. Do not hand-roll a Button/Input/Dialog when shadcn already provides it.
+   - Every admin domain (branches, products, deals, rewards, orders, analytics, users) reuses the SAME
+     cross-domain composites instead of re-implementing them per feature. The recurring CRUD shapes —
+     a resource list/table, a create/edit form dialog, a delete/deactivate confirmation, empty/loading/
+     error states, a page header with primary action — are written ONCE as shared composites (e.g.
+     `components/data-table.tsx`, `components/form-dialog.tsx`, `components/confirm-dialog.tsx`,
+     `components/page-header.tsx`, `components/query-states.tsx`) and consumed by every
+     `features/{domain}/` screen. Phase 2 (branches, the full vertical slice) is the phase that FIRST
+     extracts these composites; P3-P7 reuse them and only add genuinely domain-specific pieces.
+   - Reuse test (the "second consumer" rule): a component earns a place in the shared kit when a second
+     domain needs it. Phase 2 builds branches concretely; when Phase 3 (products) would copy-paste a
+     branches component, that component is promoted to `components/` instead of duplicated. A phase
+     plan that re-implements an existing shared composite instead of importing it is incomplete and
+     goes back to PLAN.
+   - Design tokens (colors/spacing/radii ported from `theme.ts` into Tailwind `@theme` in Phase 0) are
+     the single source of styling truth — components consume tokens, never hardcode hex/px that
+     duplicates a token (mirrors the mobile-side "never hardcode colors/spacing that duplicate
+     theme.ts" rule in `process/context/all-context.md`).
+   - **Brand/visual-identity fidelity (integrate, don't reinvent):** the admin dashboard must look like
+     it belongs to Jojo Potato, not like a stock shadcn/zinc template. The existing mobile app's visual
+     identity — the brand palette (`theme.ts` `Palette`: cream/ink/jyellow/jred/jorange/jgold/jbrown),
+     the brand radii, the comic hard-shadow look, and the Fredoka/Jakarta type family — is the source
+     of truth. Concretely: Phase 0 maps the ported brand tokens onto shadcn/ui's SEMANTIC token slots
+     (`--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--accent`, `--border`,
+     `--radius`, etc.) so every shadcn primitive renders on-brand by default, rather than each screen
+     re-skinning components ad hoc. A screen that overrides a primitive's color inline to "fix" its look
+     is a signal the semantic mapping is wrong — fix the mapping in P0's token layer, not per-screen.
+     Where the admin's information density genuinely differs from the mobile app (dense data tables vs.
+     touch-first cards), adapt spacing/scale for web — but stay within the same palette and token
+     vocabulary; do not introduce a parallel color set.
+   - `ponytail:` discipline still applies — don't build a composite before its second consumer exists.
+     The kit grows by extraction when duplication actually appears, not speculatively up front. P0 only
+     scaffolds the shadcn primitives; the cross-domain composites are extracted starting in P2.
+
 ---
 
 ## Locked Architecture Decisions
@@ -226,7 +265,7 @@ incomplete and must be sent back to PLAN.
 
 | Phase | Issue | Priority | Scope one-liner | Blast radius (packages/files) | Depends on | Biggest risk |
 |---|---|---|---|---|---|---|
-| P0 — Scaffold | — (infra) | P0 | Create `apps/admin` (TanStack Start + Tailwind + shadcn), port theme tokens, wire tsconfig/eslint extends from `@jojopotato/config`, confirm turborepo build pipeline output dir, choose test runner (default: Vitest + `@testing-library/react`) | `apps/admin/**` (new), `turbo.json`, `pnpm-workspace.yaml` (already covers `apps/*`), root configs | — | Build tooling drift vs. Expo app's tooling; turbo pipeline miscabling could silently exclude admin from `pnpm build`/CI |
+| P0 — Scaffold ✅ VERIFIED | — (infra) | P0 | Create `apps/admin` (TanStack Start + Tailwind + shadcn), port theme tokens, wire tsconfig/eslint extends from `@jojopotato/config`, confirm turborepo build pipeline output dir, choose test runner (default: Vitest + `@testing-library/react`) | `apps/admin/**` (new), `turbo.json` (unchanged — dist/ matched existing glob), `pnpm-workspace.yaml` (already covers `apps/*`) | — | Build tooling drift vs. Expo app's tooling; turbo pipeline miscabling could silently exclude admin from `pnpm build`/CI — RESOLVED, no drift found |
 | P1 — Auth/RBAC (ADM-001, #39) | #39 | P0 | `requireAdmin` middleware (sibling to `require-staff.ts:55-80`), mount `/api/admin`, extend better-auth `trustedOrigins` for admin web origin, add a **browser cookie session** flow (new to this repo — Expo only has bearer-token flow today), admin login + dashboard-landing screens, `packages/types/src/admin.ts`, resolve `TODO(STAFF-ADM)` seam, role-management route+UI (super_admin only; self-escalation guard) | `packages/api/src/lib/require-admin.ts` (new), `packages/api/src/lib/auth.ts` (trustedOrigins), `packages/api/src/index.ts` (mount), `packages/api/src/routes/admin/**` (new: users/roles), `packages/types/src/admin.ts` (new), `apps/admin/src/features/auth/**` (new) | P0 | Cookie-session-for-web is UNPROVEN in this repo — **Phase 1's first step is a feasibility probe** of better-auth cookie sessions against a browser client before committing to the design; getting this wrong reshapes every later phase's auth plumbing |
 | P2 — Branches CRUD (ADM-002, #40) | #40 | P0 | Full vertical slice: branch list/detail/create/edit/(soft-)delete via real `/api/admin/branches` + real `apps/admin` screens + real Postgres rows; slug uniqueness enforced | `packages/api/src/routes/admin/branches.ts` (new), `apps/admin/src/features/branches/**` (new) | P1 | `is_accepting_pickup` is shared mutable state with the mobile staff shell (STAFF-004, not yet built) — must establish single-source-of-truth semantics now, or admin and staff writes could race/conflict later |
 | P3 — Products/Categories CRUD (ADM-003, #41) | #41 | P0 | CRUD for products, categories, product_options, branch_product_availability; money boundary conversion (decimal PHP in DB ↔ cents in API/UI) | `packages/api/src/routes/admin/products.ts`, `admin/categories.ts` (new), `apps/admin/src/features/products/**`, `features/categories/**` (new) | P2 (reuses branch-scoping patterns) | Snapshot-integrity regression is a HARD invariant — editing `base_price` must be proven NOT to mutate historical `order_items.unit_price`; this is the highest-stakes correctness bar in the whole program |
@@ -241,7 +280,7 @@ incomplete and must be sent back to PLAN.
 
 | Order | Phase | Depends on | Status |
 |---|---|---|---|
-| 0 | P0 — Scaffold | — | ⏳ PLANNED |
+| 0 | P0 — Scaffold | — | ✅ VERIFIED |
 | 1 | P1 — Auth/RBAC (ADM-001) | P0 | ⏳ PLANNED |
 | 2 | P2 — Branches CRUD (ADM-002) | P1 | ⏳ PLANNED |
 | 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ⏳ PLANNED |
@@ -259,7 +298,7 @@ fan-in but still only depend on strictly earlier phases).
 
 | Phase | Status |
 |---|---|
-| P0 — Scaffold | ⏳ PLANNED |
+| P0 — Scaffold | ✅ VERIFIED |
 | P1 — Auth/RBAC (ADM-001) | ⏳ PLANNED |
 | P2 — Branches CRUD (ADM-002) | ⏳ PLANNED |
 | P3 — Products/Categories CRUD (ADM-003) | ⏳ PLANNED |
@@ -316,18 +355,35 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 ## Current Execution State
 
 Last updated: 14-07-26
-Completed phases: none — this umbrella plan is the Phase 0 planning artifact
-Current phase: Phase 0 — Scaffold (not yet started; per-phase plan files not yet created)
-Current phase of total: 0 of 8
-Current loop step: PRE-PROGRAM (per-phase plan files pending — separate pass)
-Validate-contract status: pending (no per-phase plans exist yet)
-Program Net Gate: PENDING
-Latest validator run: none yet
+Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26)
+Current phase N of total: 1 of 8 (Phase 1 — Auth/RBAC, ADM-001)
+Phase N name: Phase 1 — Auth/RBAC (ADM-001, #39)
+Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-01-auth-rbac_PLAN_14-07-26.md` —
+  but Phase Loop Progress Step 1 RESEARCH has not started)
+Phase N EVL: not applicable yet (no EXECUTE has run)
+Phase N report: not written yet
+Next phase: Phase 1 — Auth/RBAC, Step 0 (RESEARCH). First RESEARCH action MUST be the
+  VC-FEASIBILITY-PROBE-NEEDED feasibility probe on better-auth browser cookie sessions before
+  INNOVATE/PLAN lock the auth design (per umbrella Phase Map risk note + Stable Program Goal).
 
-Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any
-subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE, PLAN-SUPPLEMENT, or PVL.
-This umbrella plan alone does not license spawning vc-execute-agent for any phase — per-phase plan
-files with their own validate-contracts must exist first.
+Phase 0 closeout summary: `apps/admin` (`@jojopotato/admin`) scaffolded from empty — TanStack Start
+(Vite) + Tailwind v4 (`@theme`) + shadcn/ui + react-query v5. Brand tokens ported from
+`packages/ui/src/theme.ts` (two-layer `:root` + `@theme inline` shadcn semantic mapping,
+light-mode only). EVL independently re-ran all 6 automated gates → PASS. `turbo.json` UNTOUCHED
+(build outputs `dist/`, matches existing glob). Root `pnpm typecheck` red is PRE-EXISTING
+`apps/mobile` typed-route debt (commit 6e160fe) — zero apps/mobile diff this session, not an
+admin issue. AC7-9 (visual/on-brand) = user-accepted this session (Agent-Probe tier, no automated
+visual runner exists — by design, project-wide gap). Report:
+`process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-00-scaffold_REPORT_14-07-26.md`.
+
+Program Net Gate: 1/8 phases VERIFIED — PENDING overall
+Latest validator run: 14-07-26 — `validate-agent-parity`, `validate-context-discovery` PASS (see
+this session's Tier-1 audit results in the phase report / closeout packet)
+
+Orchestrator rule: read "Phase N status" and the named phase plan's `## Phase Loop Progress`
+before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE,
+PLAN-SUPPLEMENT, or PVL. Phase 1's plan file already exists (FULL depth) but has NOT started its
+inner loop — spawn vc-research-agent next, not vc-execute-agent.
 
 Note: this section is the only part of the umbrella plan expected to change over the program's
 life — update-process-agent rewrites it after every phase closeout (overwrite, not append — git
@@ -416,7 +472,7 @@ do not exist yet -- create them in a separate PLAN pass before spawning any RESE
 ## Phase Plan Index
 
 All 8 per-phase plan files are written (flat in this task folder). Each carries its own
-`## Cross-Cutting Compliance` subsection (per the 4 hard gates), Touchpoints, Public Contracts,
+`## Cross-Cutting Compliance` subsection (per the 5 hard gates), Touchpoints, Public Contracts,
 Blast Radius, Acceptance Criteria, Verification Evidence, Test Infra Improvement Notes, 7-step
 `## Phase Loop Progress`, Resume and Execution Handoff, and a placeholder `## Validate Contract`.
 Depth: P0–P2 are FULL (executable-ready); P3–P7 are FULL-PICTURE-BUT-FLEXIBLE (scope, contracts

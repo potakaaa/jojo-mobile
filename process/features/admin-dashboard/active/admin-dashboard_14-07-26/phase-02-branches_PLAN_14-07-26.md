@@ -79,6 +79,17 @@ Phases 3–7 will reference or deliberately diverge from during their own RESEAR
    mount; no route re-checks role inline. All writes are Zod-validated server-side; client
    validation is never trusted alone.
 
+5. **UI component modularity & reusability** — this is the vertical slice that FIRST extracts the
+   cross-domain admin UI composites every later phase reuses. Build branches concretely, then lift the
+   recurring CRUD shapes into shared composites under `apps/admin/src/components/`: `data-table.tsx`
+   (resource list/table), `form-dialog.tsx` (create/edit form modal), `confirm-dialog.tsx`
+   (deactivate/delete confirmation), `page-header.tsx` (title + primary action), `query-states.tsx`
+   (loading/empty/error). Each is built ONCE on shadcn primitives and consumed by
+   `features/branches/`; P3-P7 import them rather than re-implementing. Keep genuinely
+   branch-specific pieces inside `features/branches/`. `ponytail:` extract a composite only where a
+   real second consumer is imminent (all five above are known-recurring across every CRUD domain, so
+   they qualify now); do not pre-build speculative variants.
+
 ---
 
 ## Touchpoints

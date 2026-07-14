@@ -78,6 +78,12 @@ before proceeding.
    server-side (branch/status/date are never trusted un-validated, even though this is a read path —
    malformed filters must 400, not silently ignore or crash).
 
+5. **UI component modularity & reusability** — read-only, so `features/orders/` reuses the P2
+   `data-table`, `page-header`, and `query-states` composites plus shared filter controls (branch/
+   status/date) built on shadcn `Select`/date primitives; NO new mutation composites (`form-dialog`/
+   `confirm-dialog` are not used here — there are no writes). If the filter-bar is reused by analytics
+   (P7) it gets promoted to `components/` under the second-consumer rule. Token-driven styling only.
+
 ### PII / Customer-Data Exposure Design Note (REQUIRED)
 
 PRD §19 (`docs/jojo-potato-mobile-prd.md:1680-1707`) draws an explicit distinction:
