@@ -32,7 +32,7 @@ Rule: if the current shell CWD differs from the real work context, pass the work
 Agent frontmatter fields (`effort`, `skills`, `disallowedTools`, `hooks`, `background`) are
 documented in `process/development-protocols/implementation-standards.md`
 §Agent Frontmatter Conventions. The `effort:` value aligns with the model selection policy
-(max for opus agents, high for sonnet planners/validators, medium/low for lighter roles).
+(high for opus agents, high for sonnet planners/validators, medium/low for lighter roles).
 The per-agent `skills:` list preloads context window context for that agent's phase.
 The `disallowedTools:` list is enforced by the harness and must be reconciled against the
 agent's tool grant before applying. The `hooks:` PreToolUse(Write) block is advisory only
