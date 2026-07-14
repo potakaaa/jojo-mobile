@@ -7,6 +7,25 @@ feature: rewards-notifications
 
 # Deals Screens (Mock Data) — Plan
 
+## SUPERSEDED (14-07-26) — executed, then superseded by real-API wiring
+
+**This plan WAS executed** (EVL-confirmed clean, see `deals-screens-evl-iteration-001_REPORT_13-07-26.md`
+and `results.tsv` — cycle 2 `HALTED_SUCCESS`, `tsc+lint` pass, deals blast radius clean). It shipped
+the screens-only, mock-data Deals feature (list #22, details #23, cart-apply #24, PR #68).
+
+That mock-data implementation was then **entirely superseded** by
+`process/features/rewards-notifications/completed/deals-api-integration_13-07-26/`, a 3-phase
+program that replaced the mock deal source with real backend wiring end-to-end (DEAL-001/002/003,
+#22/#23/#24) — see that program's umbrella plan, which explicitly names this plan as its
+predecessor. The current, real Deals implementation is described in
+`process/context/all-context.md` under "Deals feature (backend wiring COMPLETE, 14-07-26)"; do not
+use this file as a description of the current Deals architecture.
+
+Archived as **Superseded** (code shipped, then fully replaced by later real-API work), not left
+active — its own scope is complete and no further action is expected against this plan.
+
+---
+
 **Date**: 13-07-26  
 **Complexity**: Complex  
 **Status**: ⏳ PLANNED

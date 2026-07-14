@@ -58,6 +58,14 @@ now derived inside the hook itself, `cart-totals.ts` deleted), checkout with `pa
 placement (`POST /orders`, DB-unique `order_number`, correct `estimated_ready_at`),
 confirmation/tracking/history screens.
 
+**Order History + Reorder, real-API (HIST-001/HIST-002, delivered 13-07-26, merged PR #73):**
+Order History (`order/history.tsx`) shows branch name + item-summary line (stars omitted — no
+server-side accrual yet, backlog note below); Reorder re-checks each past line against today's
+menu/pricing for the order's branch and surfaces now-unavailable items as inline conflict rows in
+the cart screen (never silently dropped). See `completed/order-history-reorder-api_13-07-26/` for
+the plan, and `completed/order-history-reorder_13-07-26/` for the earlier mock-data plan this one
+superseded (never executed).
+
 **Deferred / not yet done (future work, not a gap in what shipped):**
 - Live `online_payment` processing — visibly disabled this pass, no processor chosen yet.
 - Coupon redemption — a coupon-apply UI exists in the merged cart screen but is disabled/hidden
