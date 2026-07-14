@@ -1,51 +1,44 @@
 ---
 name: note:checkout-real-order-api
-description: "Deferred follow-up — real POST /api/orders endpoint + Drizzle persistence + mobile HTTP client to replace the CART-002 contract-shaped mock seam"
+description: "DELIVERED (14-07-26) — checkout + confirmation screens wired to the real POST /orders + GET /orders/:id API; only online-payment gateway remains deferred"
 date: 13-07-26
 feature: ordering-cart
 ---
 
-# Backlog: Real `POST /api/orders` endpoint (CART-002 follow-up)
+# DELIVERED: Real order API wiring (CART-002 follow-up)
 
-CART-002 shipped a **contract-shaped in-memory mock** for order placement
-(`apps/mobile/src/features/order/`). The request/response TypeScript shapes
-(`PlaceOrderRequest` / `PlaceOrderResult` / `Order` in `packages/types/src/order.ts`)
-already mirror the real Drizzle `orders` / `order_items` schema field-for-field,
-so the backend swap is isolated. This note tracks the deferred real work.
+**Status: delivered 14-07-26** on branch `feat/checkout-flow` (PR #69 scope).
 
-## Deferred scope
+The real `POST /orders` + `GET /orders/:orderId` endpoints landed earlier via the
+`development` merge (`packages/api/src/routes/orders.ts`, session-gated, transactional,
+server-assigned `order_number`/`estimated_ready_at`, server-side availability checks). This
+follow-up completed the **mobile-client swap**: the checkout and confirmation screens now
+call the real API instead of the CART-002 in-memory mock seam.
 
-1. **Express route — `POST /api/orders`** (in `packages/api/src/index.ts` / a new
-   router module). Auth-gated (uses the better-auth session to resolve `user_id`).
-   Writes `orders` + `order_items` in a single Drizzle transaction. Assigns the
-   server-authoritative `order_number` (do not trust a client-generated one),
-   `status = 'pending'`, `payment_status = 'unpaid'`, and `placed_at`.
-   Returns the persisted `Order` in the same shape the mock returns today.
+## What was delivered
 
-2. **Server-side availability check.** Move `validatePlaceOrderRequest`'s logic
-   server-side: verify the branch is open and each product is available at
-   commit time, returning the same `branch_unavailable` / `item_unavailable`
-   discriminated failures the mock returns.
+1. **`checkout.tsx`** now places orders via `useCheckout()` → `createOrder()`
+   (`POST /orders`), mapping cart lines → `{ productId, quantity, selectedOptions: [{ optionId }] }`.
+   The 5-second confirm-drawer countdown/cancel UX is unchanged — only the fire action swapped.
+   On success it clears the cart and navigates to `confirmation/[orderId]` with the real
+   server `order.id`; failures preserve the cart and surface `useCheckout().error`. Branch
+   display resolves from the live `useBranch()` list.
+2. **`confirmation/[orderId].tsx`** now renders the real order fetched via
+   `useOrder(orderId)` → `fetchOrder()` (`GET /orders/:orderId`), with loading and error
+   (retry) states. Works for both fresh-placement navigation and cold direct links. Branch
+   name resolves from the live branch list.
+3. **`features/order/hooks/use-order.ts`** seam was trimmed to payment-method selection state
+   only (`paymentMethod` / `setPaymentMethod`), still consumed by `order/payment-method.tsx`.
+   The in-memory placement logic (`mock-order.ts` + its vitest tests) was deleted as dead code.
+   `OrderSessionProvider` remains mounted in `_layout.tsx` for the payment-method state.
 
-3. **Mobile HTTP client swap-in point.** The ONLY file that changes on the app
-   side is `apps/mobile/src/features/order/hooks/use-order.ts` — replace the
-   in-memory `validatePlaceOrderRequest` + `buildOrderFromRequest` calls with a
-   `fetch('{apiUrl}/api/orders', ...)` call. `PlaceOrderRequest` /
-   `PlaceOrderResult` / `Order` need no change (already backend-shaped). Screen
-   consumers (`checkout.tsx`, `confirmation/[orderId].tsx`) need no change.
-   The confirmation screen's `lastOrder` fallback should become a real
-   `GET /api/orders/:orderNumber` fetch for direct-link / cold-start resilience.
+## Still deferred (separate backlog)
 
-4. **Payment-gateway integration for `online_payment`.** Currently flag-gated
-   off by default (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED=false`) and a UI-only
-   stub when enabled. Wire a real payment processor (provider undecided — see
-   `process/context/all-context.md` Open Questions) before enabling the flag in
-   any shipped environment.
-
-## Out of scope for this note (separate backlog items)
-
-- Order tracking screen (`tracking/[orderId].tsx`) — still a placeholder.
-- Push notifications on order status change.
-- Real coupon/discount pricing engine (CART-001's `AppliedDiscount` stub).
-- Project-wide RN E2E/navigation regression harness
-  (`process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`).
+- **Payment-gateway integration for `online_payment`.** Still flag-gated off by default
+  (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED=false`), UI-only. Wire a real processor (undecided —
+  see `process/context/all-context.md` Open Questions) before enabling in any shipped env.
+- App-side `PaymentMethod` widening (`pay_at_branch|app_wallet|gcash|maya|card`) vs the DB
+  enum (`pay_at_branch|online_payment`) — documented divergence, tracked in
+  `payment-method-enum-divergence_NOTE_13-07-26.md`. Only `pay_at_branch` is enabled today.
+- Order tracking screen, push notifications, real coupon/discount engine, RN E2E harness —
+  all unchanged, separate backlog items.

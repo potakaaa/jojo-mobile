@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { MenuItem, PickupBranch, PlaceOrderResult } from '@jojopotato/types';
+import type { MenuItem } from '@jojopotato/types';
 import {
   BranchCard,
   Button,
@@ -12,7 +12,7 @@ import {
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -27,24 +27,16 @@ import Animated, {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import {
-  MOCK_BRANCH_PREP_MINUTES,
-  MOCK_CART_BRANCH,
-  MOCK_OTHER_BRANCH,
-} from '@/features/cart/mock-cart';
-import { MOCK_PRODUCTS } from '@/features/home/mock-home';
-import { orderDevControls, useOrder } from '@/features/order/hooks/use-order';
-import { devFlags } from '@/features/order/mock-order';
+import { useCheckout } from '@/features/orders/hooks/use-checkout';
+import { useOrder } from '@/features/order/hooks/use-order';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Known branches, keyed by id, for resolving `cart.pickupBranchId` to a card. */
-const BRANCHES: Record<string, PickupBranch> = {
-  [MOCK_CART_BRANCH.id]: MOCK_CART_BRANCH,
-  [MOCK_OTHER_BRANCH.id]: MOCK_OTHER_BRANCH,
-};
+/** Fallback prep estimate (minutes) when the branch's own value is unavailable. */
+const FALLBACK_PREP_MINUTES = 20;
 
 /** Build the display-only estimated pickup label (D-E): now + branch prep minutes. */
 function estimatedPickupLabel(prepMinutes: number): string {
@@ -59,13 +51,11 @@ function productForLine(
   nameSnapshot: string,
   unitPriceCents: number,
 ): MenuItem {
-  const catalog = MOCK_PRODUCTS.find((p) => p.id === menuItemId);
   return {
     id: menuItemId,
     name: nameSnapshot,
     priceCents: unitPriceCents,
-    categoryId: catalog?.categoryId ?? '',
-    imageUrl: catalog?.imageUrl,
+    categoryId: '',
     isAvailable: true,
   };
 }
@@ -74,9 +64,11 @@ function productForLine(
  * Checkout screen (CART-002). Confirms the selected branch, line items,
  * discount, total, and estimated pickup time; lets the user pick a payment
  * method (online payment gated behind `env.onlinePaymentEnabled`); and places
- * the order via the in-memory `useOrder()` seam. Success clears the cart and
- * navigates to the confirmation screen; every failure preserves the cart and
- * surfaces a recoverable error.
+ * the order via the real `POST /orders` endpoint through `useCheckout()`.
+ * Success clears the cart and navigates to the confirmation screen with the
+ * server-assigned order id; every failure preserves the cart and surfaces a
+ * recoverable error. The selected payment method still comes from the in-memory
+ * `useOrder()` seam (payment-method selection state only).
  */
 export default function CheckoutScreen() {
   const theme = useTheme();
@@ -84,48 +76,35 @@ export default function CheckoutScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
 
-  const { cart, subtotalCents, discountTotalCents, totalCents } = useCart();
-  const { placeOrder, isPlacingOrder, paymentMethod } = useOrder();
+  const { cart, subtotalCents, discountTotalCents, totalCents, clearCart } = useCart();
+  const { branches } = useBranch();
+  const { placeOrder, submitting, error } = useCheckout();
+  const { paymentMethod } = useOrder();
 
-  const branch = BRANCHES[cart.pickupBranchId] ?? MOCK_CART_BRANCH;
-  const pickupLabel = useMemo(() => estimatedPickupLabel(MOCK_BRANCH_PREP_MINUTES), []);
+  const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
+  const prepMinutes = branch?.estimatedPrepMinutes ?? FALLBACK_PREP_MINUTES;
+  const pickupLabel = useMemo(() => estimatedPickupLabel(prepMinutes), [prepMinutes]);
   const isEmpty = cart.items.length === 0;
 
-  const handleFailure = (result: Exclude<PlaceOrderResult, { ok: true }>) => {
-    if (result.reason === 'branch_unavailable') {
-      Alert.alert(
-        'Branch unavailable',
-        `${branch.name} isn't accepting orders right now. Your cart is saved — try again shortly or pick another branch.`,
-      );
-      return;
-    }
-    if (result.reason === 'item_unavailable') {
-      const names = result.unavailableLineIds
-        .map((id) => cart.items.find((line) => line.menuItemId === id)?.productNameSnapshot ?? id)
-        .join(', ');
-      Alert.alert(
-        'Item unavailable',
-        `Some items just went out of stock: ${names}. Your cart is saved — remove them and try again.`,
-      );
-      return;
-    }
-    // network
-    Alert.alert(
-      "Couldn't place your order",
-      'We had trouble reaching the server. Your cart is saved — please try again.',
-    );
-  };
-
   const submitOrder = async () => {
-    const result = await placeOrder(paymentMethod);
-    if (result.ok) {
+    const order = await placeOrder({
+      branchId: cart.pickupBranchId,
+      paymentMethod,
+      items: cart.items.map((line) => ({
+        productId: line.menuItemId,
+        quantity: line.quantity,
+        selectedOptions: line.selectedOptions.map((opt) => ({ optionId: opt.id })),
+      })),
+    });
+    if (order) {
+      clearCart();
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',
-        params: { orderId: result.order.orderNumber },
+        params: { orderId: order.id },
       });
-      return;
     }
-    handleFailure(result);
+    // On failure, `error` is set by useCheckout() and surfaced below; the cart
+    // is intentionally preserved so the user can retry.
   };
 
   // 5-second cancelable grace window before the order actually submits, so the
@@ -207,18 +186,20 @@ export default function CheckoutScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <BranchCard
-            branch={branch}
-            mode={mode}
-            footer={
-              <View style={styles.pickupRow}>
-                <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
-                  Estimated pickup
-                </Text>
-                <Text style={[styles.pickupValue, { color: theme.text }]}>{pickupLabel}</Text>
-              </View>
-            }
-          />
+          {branch ? (
+            <BranchCard
+              branch={branch}
+              mode={mode}
+              footer={
+                <View style={styles.pickupRow}>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>
+                    Estimated pickup
+                  </Text>
+                  <Text style={[styles.pickupValue, { color: theme.text }]}>{pickupLabel}</Text>
+                </View>
+              }
+            />
+          ) : null}
 
           <View
             style={[
@@ -269,7 +250,7 @@ export default function CheckoutScreen() {
             </View>
           </Card>
 
-          {__DEV__ ? <DevEdgeCaseControls mode={mode} /> : null}
+          {error ? <Text style={[styles.errorText, { color: theme.accent }]}>{error}</Text> : null}
         </ScrollView>
 
         <View
@@ -286,7 +267,7 @@ export default function CheckoutScreen() {
               currency: 'PHP',
             })}`}
             onPress={openConfirm}
-            loading={isPlacingOrder}
+            loading={submitting}
             disabled={isEmpty}
             mode={mode}
           />
@@ -316,7 +297,9 @@ export default function CheckoutScreen() {
 
             <View style={styles.sheetRow}>
               <Text style={[styles.sheetLabel, { color: theme.textSecondary }]}>Pickup branch</Text>
-              <Text style={[styles.sheetValue, { color: theme.text }]}>{branch.name}</Text>
+              <Text style={[styles.sheetValue, { color: theme.text }]}>
+                {branch?.name ?? 'Selected branch'}
+              </Text>
             </View>
             <View style={styles.sheetRow}>
               <Text style={[styles.sheetLabel, { color: theme.textSecondary }]}>
@@ -358,59 +341,6 @@ export default function CheckoutScreen() {
   );
 }
 
-/**
- * `__DEV__`-only affordances to exercise the 3 failure paths live on-device,
- * mirroring CART-001's dev-link convention. They flip the same in-memory
- * controls the seam reads; use the reset button to clear all toggles.
- */
-function DevEdgeCaseControls({ mode }: { mode: 'light' | 'dark' }) {
-  const { cart } = useCart();
-
-  return (
-    <View style={styles.section}>
-      <Button
-        label="Dev: force branch unavailable"
-        variant="outline"
-        mode={mode}
-        onPress={() => {
-          orderDevControls.branchAvailable = false;
-          Alert.alert('Dev', 'Next order attempt will fail with branch_unavailable.');
-        }}
-      />
-      <Button
-        label="Dev: force first item unavailable"
-        variant="outline"
-        mode={mode}
-        onPress={() => {
-          const first = cart.items[0]?.menuItemId;
-          orderDevControls.unavailableProductIds = first ? [first] : [];
-          Alert.alert('Dev', `Next order attempt will flag: ${first ?? '(cart empty)'}.`);
-        }}
-      />
-      <Button
-        label="Dev: force network failure"
-        variant="outline"
-        mode={mode}
-        onPress={() => {
-          devFlags.simulateNetworkFailure = true;
-          Alert.alert('Dev', 'Next order attempt will fail with a network error.');
-        }}
-      />
-      <Button
-        label="Dev: reset failure toggles"
-        variant="outline"
-        mode={mode}
-        onPress={() => {
-          orderDevControls.branchAvailable = true;
-          orderDevControls.unavailableProductIds = [];
-          devFlags.simulateNetworkFailure = false;
-          Alert.alert('Dev', 'All failure toggles reset — orders will succeed.');
-        }}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -429,9 +359,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.four,
     gap: Spacing.three,
-  },
-  section: {
-    gap: Spacing.two,
   },
   itemsCard: {
     gap: Spacing.two,
@@ -475,6 +402,10 @@ const styles = StyleSheet.create({
   paymentValue: {
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.body,
+  },
+  errorText: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
   },
   metaLabel: {
     fontFamily: FontFamily.body.medium,

@@ -1,19 +1,14 @@
 import { formatCurrency } from '@jojopotato/utils';
 import { Button, CartSummary, EmptyState, PAYMENT_METHOD_LABELS } from '@jojopotato/ui';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { MOCK_CART_BRANCH, MOCK_OTHER_BRANCH } from '@/features/cart/mock-cart';
-import { useOrder } from '@/features/order/hooks/use-order';
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useOrder } from '@/features/orders/hooks/use-order';
+import { FontFamily, MaxContentWidth, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
-
-const BRANCH_NAMES: Record<string, string> = {
-  [MOCK_CART_BRANCH.id]: MOCK_CART_BRANCH.name,
-  [MOCK_OTHER_BRANCH.id]: MOCK_OTHER_BRANCH.name,
-};
 
 function pickupLabel(iso: string): string {
   const ready = new Date(iso);
@@ -22,30 +17,41 @@ function pickupLabel(iso: string): string {
 }
 
 /**
- * Order Confirmation screen (CART-002). Renders the just-placed order held in
- * the in-memory `useOrder().lastOrder` seam; the `orderId` route param is used
- * only as a display/direct-link fallback when no live order is available (e.g.
- * a cold deep-link), since there is no order backend to re-fetch from yet.
+ * Order Confirmation screen (CART-002). Fetches the just-placed order from the
+ * real `GET /orders/:orderId` endpoint via `useOrder(orderId)`, keyed off the
+ * `orderId` route param (the server-assigned order id passed by Checkout). This
+ * works both for the fresh-placement navigation and for a cold direct link,
+ * with loading and error states in between. The pickup-branch name is resolved
+ * from the live branch list.
  */
 export default function OrderConfirmationScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const { lastOrder } = useOrder();
+  const { data: order, loading, error, refetch } = useOrder(orderId);
+  const { branches } = useBranch();
 
-  const order = lastOrder;
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={[styles.safeArea, styles.center]} edges={['bottom']}>
+          <ActivityIndicator color={Palette.jorange} />
+        </SafeAreaView>
+      </View>
+    );
+  }
 
-  if (!order) {
+  if (error || !order) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <SafeAreaView style={styles.safeArea} edges={['bottom']}>
           <EmptyState
             iconName="receipt-outline"
             title={`Order ${orderId}`}
-            description="We don't have the details for this order in this session. Order history is coming soon."
-            actionLabel="Back to menu"
-            onAction={() => router.replace('/(tabs)/order')}
+            description={error ?? "We couldn't load the details for this order."}
+            actionLabel={error ? 'Retry' : 'Back to menu'}
+            onAction={error ? refetch : () => router.replace('/(tabs)/order')}
             mode={mode}
           />
         </SafeAreaView>
@@ -53,7 +59,7 @@ export default function OrderConfirmationScreen() {
     );
   }
 
-  const branchName = BRANCH_NAMES[order.branchId] ?? order.branchId;
+  const branchName = branches.find((b) => b.id === order.branchId)?.name ?? order.branchId;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -148,6 +154,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scroll: {
     flex: 1,
