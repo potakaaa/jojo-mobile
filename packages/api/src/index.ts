@@ -4,18 +4,31 @@
 import 'dotenv/config';
 
 import { toNodeHandler } from 'better-auth/node';
+import cors from 'cors';
 import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
 import express, { type Express } from 'express';
 
 import { db } from './db/client';
 import { branches, dealBranches, deals } from './db/schema/index';
-import { auth } from './lib/auth';
+import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
+import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
 import staffRouter from './routes/staff';
+
+// ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
+// below and the /api/admin router further down). Single definition so the origin
+// and credentials policy can never drift between the two surfaces. Only requests
+// carrying an `Origin` header (browsers) get the ACAO/credentials headers; the
+// Expo mobile app sends no Origin and passes through untouched (no ACAO added,
+// never blocked). cors() only sets headers / short-circuits OPTIONS — it does NOT
+// consume the request body, so it is safe to run before the raw-body better-auth
+// handler.
+const adminCors = cors({ origin: [ADMIN_WEB_ORIGIN], credentials: true });
 
 // Exported so supertest can attach to the Express app without binding a port.
 export const app: Express = express();
@@ -31,6 +44,14 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// CORS for the auth routes MUST run before the better-auth handler so it (a)
+// answers the browser preflight OPTIONS (better-auth 404s OPTIONS) and (b) adds
+// the ACAO header to the actual sign-in/get-session/sign-out responses. The
+// admin browser client calls /api/auth/* cross-origin (admin dev port → API
+// port); without this the browser blocks those responses. Same `adminCors` used
+// by /api/admin — one origin policy, two mounts.
+app.use('/api/auth', adminCors);
 
 // Mount the better-auth handler BEFORE any body-parsing middleware — better-auth
 // reads the raw request body itself, so `express.json()` must not consume it
@@ -183,6 +204,12 @@ app.use('/orders', ordersRouter);
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.
 app.use('/api/staff', requireStaff(auth), staffRouter);
+
+// Admin routes (ADM-001) — the FIRST browser-cookie-session surface. Guarded
+// ONCE at mount: CORS (scoped here, credentialed, admin web origin only — never
+// a wildcard) → requireAdmin (admits admin/super_admin only) → adminRouter.
+// Later admin phases add sub-routers to adminRouter and inherit both guards.
+app.use('/api/admin', adminCors, requireAdmin(auth), adminRouter);
 
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An

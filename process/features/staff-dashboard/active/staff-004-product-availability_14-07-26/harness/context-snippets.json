@@ -1,0 +1,40 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "1-15",
+      "description": "Import additions for STAFF-004: branchProductAvailability, products from schema; no new middleware — all 4 routes inherit requireStaff from mount point in index.ts",
+      "content": "import { branchProductAvailability, branches, orderItems, orderStatusEnum, orders, products } from '../db/schema/index';"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "GET /products handler",
+      "description": "LEFT JOIN branch_product_availability with COALESCE: absent row → isAvailable true. Staff-only view. Customer menu uses INNER JOIN (is_available=true only).",
+      "content": "db.select().from(products).leftJoin(branchProductAvailability, and(eq(bpa.branch_id, branchId), eq(bpa.product_id, products.id))).where(eq(products.is_active, true)); isAvailable = row.isAvailable ?? true"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "PATCH /products/:productId/availability handler",
+      "description": "UPSERT via onConflictDoUpdate targeting composite unique index (branch_id, product_id). Branch always session-derived — cross-branch writes impossible.",
+      "content": "db.insert(branchProductAvailability).values({...}).onConflictDoUpdate({ target: [bpa.branch_id, bpa.product_id], set: { is_available, updated_at } })"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "PATCH /branch handler",
+      "description": "Zod .refine() enforces at least one field; branch always session-derived; re-selects after update for response.",
+      "content": "patchBranchSettingsSchema = z.object({ isAcceptingPickup: z.boolean().optional(), estimatedPrepMinutes: z.number().int().min(1).max(120).optional() }).refine(data => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined)"
+    },
+    {
+      "file": "packages/api/src/routes/branches.ts",
+      "lines": "customer menu INNER JOIN",
+      "description": "Customer-facing menu uses INNER JOIN with is_available=true. An absent bpa row means product is NOT visible to customers — distinct from staff LEFT JOIN default.",
+      "content": "INNER JOIN branch_product_availability WHERE bpa.is_available = true AND bpa.branch_id = branchId"
+    },
+    {
+      "file": "packages/types/src/staff.ts",
+      "lines": "StaffProduct, StaffBranchSettings",
+      "description": "New exported types for STAFF-004. basePrice typed as string (numeric(10,2) decimal — not number) per E4.",
+      "content": "export type StaffProduct = { id: string; name: string; categoryId: string; basePrice: string; isAvailable: boolean }; export type StaffBranchSettings = { isAcceptingPickup: boolean; estimatedPrepMinutes: number };"
+    }
+  ]
+}

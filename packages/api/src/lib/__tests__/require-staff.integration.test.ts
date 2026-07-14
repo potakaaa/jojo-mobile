@@ -87,6 +87,16 @@ describe('assertBranchScope (pure)', () => {
   it('returns true when no branch requested (own-branch data)', () => {
     expect(assertBranchScope('branch-uuid-A', null)).toBe(true);
   });
+
+  // AC7 (ADM-001) — admin/super_admin bypass: role arg short-circuits to true
+  // even when the branch args would otherwise fail (mismatched or unassigned).
+  it('returns true for admin regardless of branch mismatch (AC7)', () => {
+    expect(assertBranchScope('any-branch', 'other-branch', 'admin')).toBe(true);
+  });
+
+  it('returns true for super_admin even when unassigned (AC7)', () => {
+    expect(assertBranchScope(null, 'branch-x', 'super_admin')).toBe(true);
+  });
 });
 
 describe('requireStaff middleware', () => {
