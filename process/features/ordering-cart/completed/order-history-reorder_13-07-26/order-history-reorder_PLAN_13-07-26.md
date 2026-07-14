@@ -1,5 +1,27 @@
 # Order History + Reorder (HIST-001 / HIST-002) — Implementation Plan
 
+## SUPERSEDED (14-07-26) — archived without ever being executed
+
+**This plan was never executed.** It validated (Gate: PASS, 13-07-26) and sat EXECUTE-ready, but
+before "ENTER EXECUTE MODE" was given, a separate, later piece of work wired the real Order History
+screen straight to the real backend (`GET /orders`), skipping this plan's mock-data approach
+entirely. This plan's `MOCK_CURRENT_USER_ID`/`mock-order-history.ts` dataset, its
+`packages/types` `Order` extension (`branchId`/`starsEarned`/`placedAt` as designed here), and its
+`reorder/[orderId].tsx` Reorder Review screen were never built — the codebase instead already had a
+different, real `Order` type and a working data layer by the time anyone returned to this plan.
+
+**Net effect:** HIST-001/HIST-002's product requirements (real order history + a working reorder
+flow with availability/price re-check) ARE satisfied in the codebase today — via
+`process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/`, a follow-up plan
+built directly against the real API and shipped in PR #73 (merged `399e415`). Do not use this file
+as a description of the current Order History/Reorder architecture — see that plan and
+`process/context/all-context.md` instead.
+
+Archived as **Obsolete** (superseded by a later real-API plan), not Completed — no code in this
+plan's Implementation Checklist was ever written.
+
+---
+
 **Feature:** ordering-cart
 **Issues:** [HIST-001] [P1] Order history list (#20), [HIST-002] [P1] Reorder flow with availability and price re-check (#21)
 **Milestone:** Phase 1: Customer App Core

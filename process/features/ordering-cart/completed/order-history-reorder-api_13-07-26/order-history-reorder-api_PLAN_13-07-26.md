@@ -7,8 +7,17 @@ feature: ordering-cart
 
 # PLAN — Order History + Reorder, Real API Integration (HIST-001 / HIST-002)
 
+## Archived via UPDATE PROCESS (14-07-26)
+
+EXECUTE complete (see `order-history-reorder-api_REPORT_13-07-26.md`, status `COMPLETE_WITH_GAPS`):
+all 19 checklist steps applied, all automated gates green, Gate: CONDITIONAL accepted (2
+pre-documented known-gaps — AC7 stars accrual, RN-runner screen coverage — both backlogged; see
+`process/features/ordering-cart/backlog/stars-accrual-and-history-display_NOTE_13-07-26.md`). Code
+merged to `main` via PR #73 (`399e415`). This folder was left in `active/` past EXECUTE; archived
+now as part of GitHub issue #72 housekeeping — no further code changes made.
+
 **Date**: 13-07-26
-**Status**: ACTIVE — PLAN written, VALIDATE pending
+**Status**: COMPLETE_WITH_GAPS — EXECUTE done, merged (PR #73); Gate: CONDITIONAL, accepted known-gaps only
 **Complexity**: COMPLEX
 **Feature:** ordering-cart
 
