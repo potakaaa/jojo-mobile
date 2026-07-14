@@ -264,8 +264,18 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
-  // 7. Apply the update.
-  await db.update(orders).set(patch).where(eq(orders.id, orderId));
+  // 7. Apply the update — compare-and-swap: also guard on current status so a
+  //    concurrent PATCH that already advanced the order results in 0 rows matched → 409.
+  const [updatedRow] = await db
+    .update(orders)
+    .set(patch)
+    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+    .returning({ id: orders.id });
+
+  if (!updatedRow) {
+    res.status(409).json({ error: 'Concurrent modification detected; please retry' });
+    return;
+  }
 
   // 8. Call side-effect stubs at the correct transition sites.
   const updatedOrder = { ...order, ...patch } as typeof order;
