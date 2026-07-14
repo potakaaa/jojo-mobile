@@ -44,7 +44,9 @@ export default function LoginRoute() {
   const mascotSize = compact ? MASCOT_SIZE_COMPACT : MASCOT_SIZE;
 
   const [email, setEmail] = useState('');
-  const [pending, setPending] = useState<'magic-link' | 'google' | 'dev-temp-login' | null>(null);
+  const [pending, setPending] = useState<
+    'magic-link' | 'google' | 'dev-temp-login' | 'dev-temp-staff-login' | null
+  >(null);
   const [error, setError] = useState<string>();
   const [emailError, setEmailError] = useState<string>();
   const [magicSent, setMagicSent] = useState(false);
@@ -52,7 +54,7 @@ export default function LoginRoute() {
   const busy = pending !== null;
 
   const run = async (
-    action: 'magic-link' | 'google' | 'dev-temp-login',
+    action: 'magic-link' | 'google' | 'dev-temp-login' | 'dev-temp-staff-login',
     input: Parameters<typeof signIn>[0],
   ) => {
     setPending(action);
@@ -190,6 +192,23 @@ export default function LoginRoute() {
                   }
                   disabled={busy}
                   loading={pending === 'dev-temp-login'}
+                />
+              ) : null}
+
+              {__DEV__ ? (
+                <Button
+                  mode={mode}
+                  variant="outline"
+                  label="[DEV] Temp Staff Login"
+                  onPress={() =>
+                    run('dev-temp-staff-login', {
+                      method: 'email-password',
+                      email: 'staff-branch1@jojopotato.local',
+                      password: 'staff-dev-password',
+                    })
+                  }
+                  disabled={busy}
+                  loading={pending === 'dev-temp-staff-login'}
                 />
               ) : null}
 

@@ -1,0 +1,44 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Cross-branch order mutation: branch-1 staff sends PATCH to a branch-2 order ID",
+      "ruled_out": true,
+      "rationale": "resolveBranchScope(db, userId) always reads the branch from the DB via the session userId — never from the request body or URL. After loading the order, order.branch_id !== branchId returns 403 before any mutation. AC-3 integration test proves this: branch-1 staff PATCHes a branch-2 order → 403, and the DB order is verified unchanged."
+    },
+    {
+      "scenario": "Unassigned staff performing any order mutation",
+      "ruled_out": true,
+      "rationale": "resolveBranchScope returns null for staff with no assigned branch. The handler checks if (!branchId) → 403 immediately, before loading any order or calling the state machine. Proven by AC-3 unassigned-staff test."
+    },
+    {
+      "scenario": "Client-supplied branch_id override: attacker sends a body field to spoof the branch",
+      "ruled_out": true,
+      "rationale": "The PATCH body schema only parses { status, etaMinutes? }. There is no branch_id field in the schema or the handler. Branch scope is always resolved server-side from the authenticated session. A client-supplied branch_id would be silently discarded by zod parsing."
+    },
+    {
+      "scenario": "State machine bypass: client sends a target status that skips intermediate states",
+      "ruled_out": true,
+      "rationale": "canTransition(from, to) checks a server-side lookup table (TRANSITIONS Record). The client cannot influence the 'from' value — it is always loaded fresh from the DB. Any illegal transition (e.g. pending → ready, or any mutation of a terminal order) returns 409 before the UPDATE runs. Proven by AC-2 tests."
+    },
+    {
+      "scenario": "Re-mutation of a terminal order (completed / cancelled / rejected)",
+      "ruled_out": true,
+      "rationale": "Terminal statuses map to an empty Set in TRANSITIONS. canTransition(terminal, anything) always returns false → 409. Proven by AC-2 (completed/cancelled terminal-source) and AC-4 (rejected terminal source) tests."
+    },
+    {
+      "scenario": "Privilege escalation: customer-role user calling a staff PATCH endpoint",
+      "ruled_out": true,
+      "rationale": "The entire staffRouter is mounted under app.use('/api/staff', requireStaff(auth), staffRouter) in index.ts. requireStaff rejects roles other than staff/admin/super_admin with 403 before the handler is reached. This guard is inherited by every route in staffRouter without needing to be re-applied per-handler."
+    },
+    {
+      "scenario": "Unauthenticated request to PATCH endpoint",
+      "ruled_out": true,
+      "rationale": "requireStaff(auth) calls auth.api.getSession() — a missing or invalid session cookie returns null, which requireStaff treats as a 401. The handler is never reached without a valid authenticated session."
+    },
+    {
+      "scenario": "etaMinutes body field used to override server-computed ETA",
+      "ruled_out": true,
+      "rationale": "The zod schema accepts etaMinutes as an optional number but the PATCH handler reads parseResult.data.etaMinutes and intentionally ignores it (comment: 'etaMinutes is parsed but intentionally ignored per SPEC Constraint #4'). ETA is always derived from branch.estimated_prep_minutes loaded fresh from the DB. Proven by AC-6: sending etaMinutes=999 does not affect the resulting estimated_ready_at."
+    }
+  ]
+}

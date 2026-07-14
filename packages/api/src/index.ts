@@ -16,6 +16,7 @@ import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
+import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
 import staffRouter from './routes/staff';
 
@@ -201,6 +202,7 @@ app.get('/api/branches/:id', async (req, res) => {
 // App order-flow routes (public branch reads + session-gated orders), mounted
 // after express.json() so they get parsed JSON bodies.
 app.use('/branches', branchesRouter);
+app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004

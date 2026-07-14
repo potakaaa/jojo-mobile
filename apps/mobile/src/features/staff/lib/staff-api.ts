@@ -1,10 +1,10 @@
-import type { StaffMe, StaffOrderDetail, StaffOrderSummary } from '@jojopotato/types';
+import type { OrderStatus, StaffMe, StaffOrderDetail, StaffOrderSummary } from '@jojopotato/types';
 
 import { env } from '@/config/env';
 import { authClient } from '@/features/auth/lib/auth-client';
 
 /**
- * Staff API access layer (STAFF-001/002).
+ * Staff API access layer (STAFF-001/002/003).
  *
  * These endpoints (`/api/staff/*`) are OUR OWN Express routes, NOT better-auth
  * routes. We therefore CANNOT use `authClient.$fetch('/api/staff/...')`: its
@@ -19,9 +19,14 @@ import { authClient } from '@/features/auth/lib/auth-client';
  * from `authClient.getCookie()` (the expoClient plugin reads it out of
  * SecureStore). No auth headers to wire by hand, no data-fetching library.
  */
-async function staffFetch(path: string): Promise<Response> {
+async function staffFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const { headers: callerHeaders, ...restInit } = init;
   return fetch(`${env.apiUrl}${path}`, {
-    headers: { Cookie: authClient.getCookie() },
+    ...restInit,
+    headers: {
+      Cookie: authClient.getCookie(),
+      ...(callerHeaders as Record<string, string>),
+    },
   });
 }
 
@@ -69,4 +74,42 @@ export async function fetchStaffOrderDetail(orderId: string): Promise<StaffOrder
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Failed to fetch order detail');
   return (await res.json()) as StaffOrderDetail;
+}
+
+/**
+ * Transition an order to the given status (`PATCH /api/staff/orders/:orderId`, STAFF-003).
+ *
+ * Throws an Error on non-OK responses. The error message carries the HTTP status
+ * code so the calling hook can distinguish 409 (invalid transition) from other
+ * errors and render an appropriate inline message.
+ */
+export async function patchStaffOrderStatus(
+  orderId: string,
+  status: OrderStatus,
+): Promise<StaffOrderDetail> {
+  const res = await staffFetch(`/api/staff/orders/${orderId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    throw Object.assign(new Error(`Failed to update order status: ${res.status}`), {
+      status: res.status,
+    });
+  }
+  const data = (await res.json()) as { order: StaffOrderDetail };
+  return data.order;
+}
+
+/**
+ * Fetch the branch-scoped completed/terminal orders list
+ * (`GET /api/staff/orders/completed`, STAFF-003).
+ *
+ * Throws on error so react-query surfaces `isError`.
+ */
+export async function fetchCompletedStaffOrders(): Promise<StaffOrderSummary[]> {
+  const res = await staffFetch('/api/staff/orders/completed');
+  if (!res.ok) throw new Error('Failed to fetch completed orders');
+  const data = (await res.json()) as { orders: StaffOrderSummary[] };
+  return data.orders ?? [];
 }

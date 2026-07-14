@@ -18,7 +18,11 @@ const NAV_CARDS = [
     subtitle: 'View orders',
     navigateTo: '/(staff)/active-orders' as const,
   },
-  { title: 'Completed Orders', subtitle: 'Coming soon', navigateTo: null },
+  {
+    title: 'Completed Orders',
+    subtitle: 'View history',
+    navigateTo: '/(staff)/completed-orders' as const,
+  },
   { title: 'Product Availability', subtitle: 'Coming soon', navigateTo: null },
   { title: 'Branch Pickup Settings', subtitle: 'Coming soon', navigateTo: null },
 ] as const;

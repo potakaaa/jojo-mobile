@@ -1,0 +1,5 @@
+cycle	date	gate_verdict	gaps_found	gaps_resolved	loop_status	notes
+0	2026-07-14	CONDITIONAL	3	1	BASELINE	First-pass: 1 FAIL (enum-widening, fixed in-place P1), 2 CONCERNS (E1 AC-6 ETA base, E2 AC-8 list-refresh). Mobile ACs known-gaps.
+1	2026-07-14	CONDITIONAL	2	2	HALTED_SUCCESS	Re-validation confirmed: enum-widening FAIL (P1) + AC-6 CONCERN (E1) resolved and re-verified vs live source. Remaining CONCERNs are session-accepted mobile known-gaps (AC-7..AC-10 no RN runner; AC-8 forward-compatible). Gate CONDITIONAL terminal — proceed to EXECUTE.
+1	2026-07-14	CONDITIONAL	0	0	HALTED_SUCCESS	PVL cycle 1 re-validation: all FAILs resolved; 2 session-accepted CONCERNs (mobile known-gaps). Gate: CONDITIONAL — legal for EXECUTE.
+EVL-1	2026-07-14	PASS	0	0	HALTED_SUCCESS	All 5 gates green. 84/84 tests pass. Mobile typecheck errors are pre-existing BRN-001/002/003 (0 diff from STAFF-003).
