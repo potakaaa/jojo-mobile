@@ -1,0 +1,9 @@
+# TanStack Start / Vite build + codegen output (dist is also ignored repo-wide)
+dist/
+.tanstack/
+.output/
+.nitro/
+node_modules/
+.env
+.env.*
+!.env.example
