@@ -12,7 +12,9 @@ interface ToggleProductAvailabilityVars {
  * Mutation hook for toggling a product's availability for the branch (STAFF-004).
  *
  * Uses optimistic updates so the Switch reflects the new value immediately,
- * with rollback on error. Invalidates the products cache on settle.
+ * with rollback on error. onSettled is intentionally omitted — a background
+ * refetch after every toggle caused the server to return products in a
+ * different order, visually reordering the list mid-toggle.
  */
 export function useToggleProductAvailability(): UseMutationResult<
   void,

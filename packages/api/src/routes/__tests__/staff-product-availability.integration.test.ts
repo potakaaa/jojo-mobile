@@ -58,6 +58,7 @@ let customerId: string;
 let staff1Cookies: string[];
 let staff2Cookies: string[];
 let unassignedStaffCookies: string[];
+let customerCookies: string[];
 
 const createdBpaIds: string[] = [];
 
@@ -140,11 +141,13 @@ beforeAll(async () => {
     .returning({ id: schema.products.id });
   product2Id = p2!.id;
 
-  // Customer (for customer-side menu/order assertions).
+  // Customer (for customer-side menu/order assertions and AC-5 order placement).
+  const customerEmail = `cust-pa-${suffix}@example.com`;
+  customerCookies = await signUpAndGetCookie(customerEmail, 'sup3r-secret-pw');
   const [customer] = await db
-    .insert(schema.users)
-    .values({ name: 'Customer PA', email: `cust-pa-${suffix}@example.com` })
-    .returning({ id: schema.users.id });
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.email, customerEmail));
   customerId = customer!.id;
 
   // Staff-1 → branch-1.
@@ -344,16 +347,14 @@ describe('PATCH /api/staff/branch — AC-5 pickup toggle off', () => {
     // Use a minimal valid order body (product1 is available for ordering).
     const orderRes = await request(app)
       .post('/orders')
-      .set('Cookie', [])
+      .set('Cookie', customerCookies.join('; '))
       .send({
         branchId: branch1Id,
         items: [{ productId: product1Id, quantity: 1, selectedOptions: [] }],
         paymentMethod: 'pay_at_branch',
       });
 
-    // 400 because branch is not accepting pickup. 401 is also acceptable if auth
-    // gate fires before pickup check — either way the order was not created.
-    expect([400, 401]).toContain(orderRes.status);
+    expect(orderRes.status).toBe(400);
   });
 });
 

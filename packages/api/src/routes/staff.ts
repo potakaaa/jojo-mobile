@@ -402,6 +402,17 @@ staffRouter.patch('/products/:productId/availability', async (req, res) => {
   }
   const { isAvailable } = parseResult.data;
 
+  // Guard: verify the branch still exists before the UPSERT to avoid a FK-
+  // violation 500 if the branch was removed after resolveBranchScope returned.
+  const [branchRow] = await db
+    .select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.id, branchId));
+  if (!branchRow) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
   // Verify the product exists and is globally active.
   const [product] = await db
     .select({ id: products.id })
@@ -502,9 +513,14 @@ staffRouter.patch('/branch', async (req, res) => {
     .from(branches)
     .where(eq(branches.id, branchId));
 
+  if (!updated) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
   res.json({
-    isAcceptingPickup: updated!.isAcceptingPickup,
-    estimatedPrepMinutes: updated!.estimatedPrepMinutes,
+    isAcceptingPickup: updated.isAcceptingPickup,
+    estimatedPrepMinutes: updated.estimatedPrepMinutes,
   });
 });
 
