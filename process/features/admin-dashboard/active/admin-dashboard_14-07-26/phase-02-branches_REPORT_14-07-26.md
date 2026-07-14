@@ -2,6 +2,7 @@
 phase: phase-02-branches
 date: 2026-07-14
 status: COMPLETE_WITH_GAPS
+evl_status: PASS (6/6 gates, 0 fix cycles)
 feature: admin-dashboard
 plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-branches_PLAN_14-07-26.md
 ---
@@ -86,6 +87,49 @@ plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-
 - `is_accepting_pickup` shared-state race (admin-write vs future STAFF-004 mobile-write) has no
   optimistic-concurrency guard anywhere on `branches` writes; last-write-wins accepted. No automated
   test possible until STAFF-004 exists — tracked Known-Gap, not silently dropped.
+
+## EVL Confirmation (UPDATE PROCESS pass, 14-07-26)
+
+Independent vc-tester re-run of all 6 gates from the validate-contract — execute-agent's internal
+green claim does not substitute for this confirmation:
+
+| Gate | Command | Result |
+|---|---|---|
+| AC1-AC6 (Fully-Automated) | `pnpm --filter @jojopotato/api test -- admin-branches` | PASS — 12/12; 134/134 whole API suite (0 regressions) |
+| API typecheck | `pnpm --filter @jojopotato/api typecheck` | PASS |
+| API lint | `pnpm --filter @jojopotato/api lint` | PASS |
+| Admin typecheck | `pnpm --filter @jojopotato/admin typecheck` | PASS |
+| Admin lint | `pnpm --filter @jojopotato/admin lint` | PASS |
+| Admin test | `pnpm --filter @jojopotato/admin test` | PASS — 1/1 |
+| Prettier (Phase 2 files) | `prettier --check` | PASS |
+
+All 6 gates green, 0 cycles needed. `results.tsv`/iteration-report bookkeeping not required (no
+fix cycle occurred — first EVL confirmation pass was clean).
+
+**Known gaps carried forward (not silently dropped):**
+- AC7 (Agent-Probe manual walkthrough) — owed, backlog note:
+  `process/features/admin-dashboard/backlog/adm-002-ac7-manual-walkthrough-owed_NOTE_14-07-26.md`
+- `is_accepting_pickup` shared-state race — accepted Known-Gap, blocked on STAFF-004, backlog note:
+  `process/features/admin-dashboard/backlog/adm-002-is-accepting-pickup-race-condition_NOTE_14-07-26.md`
+- §5 shared UI composite extraction — deliberately deferred, backlog note:
+  `process/features/admin-dashboard/backlog/adm-shared-ui-composite-extraction-deferred_NOTE_14-07-26.md`
+
+**Closeout classification:** code-complete, automated-verified. Phase status advances to
+✅ VERIFIED in the umbrella plan's Program Status Table (same pattern used for Phase 1's initial
+close, which also carried an owed Agent-Probe item at the time).
+
+## SPEC Achievement
+
+This phase runs under the phase-program inner loop (`R → I → P → PVL → E → EVL → UP`), which skips
+a per-phase SPEC — the umbrella plan's Program Goal Charter governs. No per-phase `*_SPEC_*.md`
+exists for Phase 2; acceptance criteria AC1-AC7 (defined directly in the phase plan) are the
+scoring surface instead:
+
+| Criterion | Status | Note |
+|---|---|---|
+| AC1-AC6 | met | Fully-Automated, independently EVL-confirmed |
+| AC7 | unmet | Agent-Probe walkthrough not yet run — backlog note filed |
+| Shared-state (is_accepting_pickup) | N/A (Known-Gap, not a criterion) | documented residual, backlog note filed |
 
 ## Closeout Packet
 

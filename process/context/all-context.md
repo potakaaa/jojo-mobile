@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-14 (Phase 1 delta)
+Last updated: 2026-07-14 (Phase 2 delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,47 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + Phase 1 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard Branches CRUD (`apps/admin` + `packages/api`, Phase 2 — Branches CRUD ADM-002,
+  delivered 14-07-26, ✅ VERIFIED — code-complete, automated-verified, AC7 owed):** the program's
+  proof-of-pattern phase — the first full real vertical slice (API + `apps/admin` screen + Postgres)
+  in the admin dashboard, establishing the reusable admin-CRUD shape Phases 3-7 will reference.
+  `packages/api/src/routes/admin/branches.ts` (new) — full CRUD (list incl. inactive / get / create /
+  update / soft-deactivate via `PATCH .../deactivate`), appended to the existing `/api/admin`
+  aggregator (`routes/admin/index.ts`, append-only per its own doc comment) — the SECOND confirmed
+  consumer of Phase 1's append-only-aggregator pattern (no `packages/api/src/index.ts` edit needed;
+  the top-level `/api/admin` mount already applies `adminCors` + `requireAdmin` to every sub-router).
+  Reuses the existing `AdminApiError` (no new error class) and `numericToCents`. Never `DELETE FROM
+  branches` — soft-delete only. `serializers.ts` gained an additive `AdminBranch`/
+  `serializeAdminBranch` (local-declaration convention matching `ApiBranch`/`ApiOrder`/`ApiDeal`,
+  `packages/types` untouched — extend there only when a second consumer outside `packages/api`
+  needs the type). **Durable gotcha (Postgres unique-violation catch under drizzle-orm):** drizzle
+  wraps the underlying `pg` driver error in a `DrizzleQueryError` — the Postgres error code (`23505`
+  for `unique_violation`) lives on `err.cause.code`, NOT the top-level `err.code`. A top-level-only
+  check silently misses the violation (returns 500 instead of the intended 409); always check both
+  `err.code` and `err.cause?.code` when catching a Postgres constraint violation through drizzle.
+  `apps/admin` gained its first fetch wrapper (`features/branches/lib/admin-branches-api.ts`,
+  `credentials:'include'` per the auth-client convention) and its first real consumer of the
+  dedicated `queryClient` (`features/branches/hooks/use-admin-branches.ts`, react-query list/detail +
+  create/update/deactivate mutations), a full list/create/edit/deactivate screen wired to a new
+  `(dashboard)/branches` route (radix-Dialog confirmation gate on deactivate — Safety requirement).
+  12 new supertest cases (`admin-branches.integration.test.ts`, reusing the `makeUser(role)`
+  self-seeding fixture from Phase 1's `require-admin.integration.test.ts`) — full API suite
+  134/134, 0 regressions, independently EVL-confirmed. **Known gaps (documented, not silently
+  dropped; each has a backlog note under `process/features/admin-dashboard/backlog/`):** (1) AC7
+  Agent-Probe manual browser walkthrough (list→create→edit→deactivate→dup-slug) is owed — no
+  `apps/admin` browser/E2E runner exists yet (project-wide gap). (2) `is_accepting_pickup` shared
+  mutable state — no separate admin-only flag; the not-yet-built mobile staff shell (STAFF-004)
+  writes the SAME column; no optimistic-concurrency guard (`updated_at`/`FOR UPDATE`) exists
+  anywhere on `branches` writes; last-write-wins accepted, revisit when STAFF-004 is planned. (3) The
+  umbrella's planned §5 shared UI composite extraction (`data-table`/`form-dialog`/`confirm-dialog`/
+  `page-header`/`query-states`) was deliberately deferred — feature-folder-local components were
+  built instead (no gate exercises the composites; a concurrent unrelated `apps/admin` component
+  workstream made speculative shared files a collision risk this phase); revisit at Phase 3
+  RESEARCH once a real second CRUD consumer exists (the umbrella's own "second consumer" rule).
+  Delivered by: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/
+  phase-02-branches_PLAN_14-07-26.md` (+ co-located REPORT in the same task folder).
 
 - **Admin dashboard auth/RBAC (`apps/admin` + `packages/api`, Phase 1 — Auth/RBAC ADM-001,
   delivered 14-07-26, ✅ VERIFIED):** the FIRST protected `/api/admin/*` surface in the repo.
@@ -479,10 +519,11 @@ Scanned against the canonical Context Group Detection Table
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
 - `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
-  delivered 14-07-26, ✅ VERIFIED). `process/features/admin-dashboard/` exists with `active/`,
-  `completed/`, `backlog/` subdirs. This is an 8-phase program (P0 scaffold through P7 analytics,
-  ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current phase
-  (Phase 2 — Branches CRUD, ADM-002, next).
+  delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED).
+  `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
+  (3 backlog notes filed post-Phase-2). This is an 8-phase program (P0 scaffold through P7
+  analytics, ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current
+  phase (Phase 3 — Products/Categories CRUD, ADM-003, next).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -501,7 +542,7 @@ crossed — it will create the matching group automatically.
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
 | new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
-| admin dashboard work (Phase 1-7, ADM-001..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file |
+| admin dashboard work (Phase 3-7, ADM-003..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the 3 Phase-2 backlog notes under `backlog/` (AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction deferred) |
 
 ## Context Group Lifecycle
 
@@ -728,8 +769,8 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
-- Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
-- Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
-- HEAD at last delta: branch `dev/admin` (admin-dashboard Phase 1 auth/RBAC + CORS fix, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status` before assuming committed)
+- Last delta: 2026-07-14 (admin-dashboard Phase 2 UPDATE PROCESS — Branches CRUD ✅ VERIFIED: full real vertical slice, second confirmed consumer of the append-only admin aggregator pattern, drizzle `err.cause.code` unique-violation gotcha, 3 backlog notes filed for AC7/is_accepting_pickup/shared-composite-deferral)
+- Previous delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
+- Prior delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
+- HEAD at last delta: branch `feat/adm-002-branches` (admin-dashboard Phase 2 branches CRUD, execution commit `db75244` already made; unrelated concurrent workstream `admin-button-refinement` has uncommitted changes in the tree — not part of this phase, do not conflate)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

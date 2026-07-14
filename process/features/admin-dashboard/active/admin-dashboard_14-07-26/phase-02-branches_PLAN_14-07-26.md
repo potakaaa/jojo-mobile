@@ -12,12 +12,13 @@ metadata:
 # Phase 2 — Branches CRUD (ADM-002, #40)
 
 Date: 14-07-26
-Status: PLANNED
+Status: ✅ VERIFIED (code-complete, automated-verified; AC7 Agent-Probe manual walkthrough tracked
+as owed backlog item — see `process/features/admin-dashboard/backlog/adm-002-ac7-manual-walkthrough-owed_NOTE_14-07-26.md`)
 Complexity: COMPLEX (full real vertical slice — HYBRID program strategy's proof-of-pattern phase)
 
 **Date:** 14-07-26
 **Complexity:** COMPLEX (full real vertical slice — HYBRID program strategy's proof-of-pattern phase)
-**Status:** ⏳ PLANNED
+**Status:** ✅ VERIFIED (AC1-AC6 Fully-Automated, independently EVL-confirmed; AC7 owed, is_accepting_pickup Known-Gap documented)
 
 ---
 
@@ -315,8 +316,8 @@ filters by filename substring, and the actual file is
 - [x] Step 3 — PLAN-SUPPLEMENT (14-07-26 — see Inner Loop Refresh Note)
 - [x] Step 4 — PVL (plan-validate loop) (14-07-26 — Gate: PASS, see Validate Contract)
 - [x] Step 5 — EXECUTE (14-07-26 — API CRUD + apps/admin screen delivered; AC1-AC6 Fully-Automated green, 12/12 in admin-branches suite / 134/134 whole API suite; AC7 Agent-Probe manual walkthrough owed. See phase-02-branches_REPORT_14-07-26.md)
-- [ ] Step 6 — EVL (execute-validate loop)
-- [ ] Step 7 — UPDATE PROCESS
+- [x] Step 6 — EVL (14-07-26 — independent vc-tester re-run confirmed all 6 gates PASS: admin-branches suite 12/12, full API suite 134/134 (0 regressions), API+admin typecheck clean, API+admin lint clean, admin vitest 1/1, prettier clean. AC7 remains owed (backlog note filed); is_accepting_pickup Known-Gap remains accepted (backlog note filed).)
+- [x] Step 7 — UPDATE PROCESS (14-07-26 — this pass: context updated, backlog notes filed, umbrella state advanced to Phase 3)
 
 ---
 
