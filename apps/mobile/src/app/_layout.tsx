@@ -13,10 +13,15 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { AppState, useColorScheme, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
+// Sourced from the app hook (not RN) so the SystemUI window bg + nav
+// ThemeProvider below resolve the persisted theme preference (default: follow
+// OS) instead of always reading the raw device scheme. See CLAUDE.md §Theming.
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { loadThemePreference } from '@/features/theme/theme-preference';
 import { OrderSessionProvider } from '@/features/order/hooks/use-order';
 import { AuthProvider, useAuth } from '@/features/auth/hooks/use-auth';
 import { BranchProvider } from '@/features/branch/hooks/use-branch';
@@ -99,6 +104,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Load the persisted theme preference once on startup. Until it resolves the
+  // default 'system' is used, so the app follows the OS on first launch.
+  useEffect(() => {
+    void loadThemePreference();
+  }, []);
 
   // Paint the window background (visible behind the transparent Android edge-to-edge
   // system nav bar) with the palette background, reacting to the color scheme.
