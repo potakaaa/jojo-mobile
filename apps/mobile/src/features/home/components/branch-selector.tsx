@@ -48,14 +48,9 @@ export function BranchSelector({ branch, isOpen, onPress }: BranchSelectorProps)
       </View>
       <View style={[styles.statusPill, { borderColor: theme.accent }]}>
         <View
-          style={[
-            styles.statusDot,
-            { backgroundColor: isOpen ? Palette.green : theme.accent },
-          ]}
+          style={[styles.statusDot, { backgroundColor: isOpen ? Palette.green : theme.accent }]}
         />
-        <Text style={[styles.status, { color: theme.accent }]}>
-          {isOpen ? 'Open' : 'Closed'}
-        </Text>
+        <Text style={[styles.status, { color: theme.accent }]}>{isOpen ? 'Open' : 'Closed'}</Text>
       </View>
     </Pressable>
   );

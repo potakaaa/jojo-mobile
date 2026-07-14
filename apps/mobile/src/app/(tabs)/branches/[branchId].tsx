@@ -1,5 +1,10 @@
 import { Badge, Button, Card, DealCard } from '@jojopotato/ui';
-import { buildDirectionsUrl, distanceKm, formatOpeningHours, getIsOpenNow } from '@jojopotato/utils';
+import {
+  buildDirectionsUrl,
+  distanceKm,
+  formatOpeningHours,
+  getIsOpenNow,
+} from '@jojopotato/utils';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -15,11 +20,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
-import {
-  BranchDetailResponse,
-  mapApiBranch,
-  mapApiBranchDeal,
-} from '@/features/branches/api';
+import { BranchDetailResponse, mapApiBranch, mapApiBranchDeal } from '@/features/branches/api';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -117,7 +118,11 @@ export default function BranchDetailsScreen() {
             ) : null}
 
             <View style={styles.statusRow}>
-              <Badge label={isOpen ? 'Open' : 'Closed'} variant={isOpen ? 'success' : 'default'} mode={mode} />
+              <Badge
+                label={isOpen ? 'Open' : 'Closed'}
+                variant={isOpen ? 'success' : 'default'}
+                mode={mode}
+              />
               <Text style={[styles.body, { color: theme.textSecondary }]}>
                 ~{branch.estimatedPrepMinutes} min
               </Text>

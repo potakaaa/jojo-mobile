@@ -65,8 +65,7 @@ export function mapApiBranchDeal(row: ApiBranchDeal): Deal {
   // discountValue is polymorphic (see VALUE-UNIT NOTE on Deal): percentage stays
   // as-is for percentage_discount; fixed_discount converts major units → cents;
   // other types are unused (0).
-  const rawDiscount =
-    row.discount_value !== null ? Number.parseFloat(row.discount_value) : NaN;
+  const rawDiscount = row.discount_value !== null ? Number.parseFloat(row.discount_value) : NaN;
   const discountValue =
     dealType === 'fixed_discount'
       ? toCents(row.discount_value)

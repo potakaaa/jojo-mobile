@@ -142,7 +142,7 @@ app.get('/api/branches/:id', async (req, res) => {
     const [explicitRows, globalRows] = await Promise.all([explicitPromise, globalPromise]);
 
     // Merge (explicit rows are wrapped under `deal`) + dedupe by id.
-    const byId = new Map<string, typeof globalRows[number]>();
+    const byId = new Map<string, (typeof globalRows)[number]>();
     for (const r of explicitRows) byId.set(r.deal.id, r.deal);
     for (const r of globalRows) byId.set(r.id, r);
 

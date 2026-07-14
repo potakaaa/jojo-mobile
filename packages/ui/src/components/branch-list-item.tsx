@@ -47,14 +47,16 @@ export function BranchListItem({
 }: BranchListItemProps) {
   const infoRegion = (
     <>
-      {isNearest ? (
-        <Badge label="Nearest to you" variant="danger" mode={mode} />
-      ) : null}
+      {isNearest ? <Badge label="Nearest to you" variant="danger" mode={mode} /> : null}
       <View style={styles.headerRow}>
         <Text style={styles.name} numberOfLines={1}>
           {branch.name}
         </Text>
-        <Badge label={isOpen ? 'Open' : 'Closed'} variant={isOpen ? 'success' : 'danger'} mode={mode} />
+        <Badge
+          label={isOpen ? 'Open' : 'Closed'}
+          variant={isOpen ? 'success' : 'danger'}
+          mode={mode}
+        />
       </View>
 
       <Text style={styles.address} numberOfLines={2}>

@@ -25,8 +25,16 @@ const MAP_STYLE_ARRAY = [
   { elementType: 'labels.icon', stylers: [{ saturation: -60 }, { lightness: 10 }] },
 
   // Administrative borders in a faint brand brown.
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#C1440E' }, { lightness: 40 }] },
-  { featureType: 'administrative.land_parcel', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  {
+    featureType: 'administrative',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#C1440E' }, { lightness: 40 }],
+  },
+  {
+    featureType: 'administrative.land_parcel',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }],
+  },
 
   // Landscape: man-made surfaces slightly deeper cream.
   { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#EFE7D2' }] },
@@ -52,8 +60,16 @@ const MAP_STYLE_ARRAY = [
 
   // Transit lines in a faint brand brown.
   { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#E0D2B8' }] },
-  { featureType: 'transit.line', elementType: 'geometry', stylers: [{ color: '#C1440E' }, { lightness: 55 }] },
-  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#5F3A22' }] },
+  {
+    featureType: 'transit.line',
+    elementType: 'geometry',
+    stylers: [{ color: '#C1440E' }, { lightness: 55 }],
+  },
+  {
+    featureType: 'transit.station',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#5F3A22' }],
+  },
 
   // Water: toned-down warm blue-grey, low saturation.
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#CFE0DA' }] },
