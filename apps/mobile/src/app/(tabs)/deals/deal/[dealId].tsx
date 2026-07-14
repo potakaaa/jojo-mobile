@@ -15,9 +15,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { applyDealById, isComplexDealType } from '@/features/deals/lib/apply-deal';
 import { useDeal } from '@/features/deals/hooks/use-deal';
+import { useDealUsage } from '@/features/deals/hooks/use-deal-usage';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -32,12 +34,12 @@ function shortDate(iso: string): string {
 }
 
 /**
- * Deal details (#23, Phase 2). Fetches the real deal from `GET /deals/:id` via
- * `useDeal`, runs the real 6-step eligibility engine against the live cart with
- * `usage: []` (Phase 2 interim — real usage gating lands in Phase 3), and shows a
- * derived terms block. The Apply CTA is DEFERRED this phase: it does not perform a
- * real apply (server-authoritative apply is Phase 3) — tapping it always gives
- * explicit feedback pointing the user to the cart.
+ * Deal details (#23). Fetches the real deal from `GET /deals/:id` via `useDeal`,
+ * runs the real 6-step eligibility engine against the live cart with REAL
+ * per-user usage from `useDealUsage()` (derived from order history's `deal_id`,
+ * mirroring the server's usage-limit count) plus the signed-in user id, and shows
+ * a derived terms block. The Apply CTA performs a real server-authoritative apply
+ * via `applyDealById`, storing the discount in the cart on success.
  */
 export default function DealDetailsScreen() {
   const theme = useTheme();
@@ -46,14 +48,17 @@ export default function DealDetailsScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { dealId } = useLocalSearchParams<{ dealId: string }>();
   const { cart, applyDiscount } = useCart();
+  const { user } = useAuth();
+  const usage = useDealUsage();
 
   const { data: deal, isLoading, isError } = useDeal(dealId);
 
   const eligibility = useMemo(
-    // Phase 2: interim `usage: []` — steps 5/6 always pass (0 prior uses); real
-    // per-user/total usage gating is Phase 3 (`orders.deal_id`).
-    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, []) : null),
-    [deal, cart],
+    // Real per-user usage gating: `usage` is derived from order history's
+    // `deal_id` and filtered to the signed-in user; `user.id` drives the
+    // per-user usage-limit check (`orders.deal_id`, mirrors the server count).
+    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, usage, user?.id) : null),
+    [deal, cart, usage, user?.id],
   );
 
   if (isLoading) {
@@ -86,7 +91,7 @@ export default function DealDetailsScreen() {
   // Real apply (Phase 3): fetch + eligibility + complex-type guard live in
   // `applyDealById`; on success store the discount in the cart and navigate there.
   const handleApply = async () => {
-    const result = await applyDealById(deal.id, cart, cart.pickupBranchId, []);
+    const result = await applyDealById(deal.id, cart, cart.pickupBranchId, usage);
     if (!result.ok) {
       Alert.alert('Cannot apply deal', result.message);
       return;

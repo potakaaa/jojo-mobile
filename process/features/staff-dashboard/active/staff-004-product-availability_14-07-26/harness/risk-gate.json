@@ -1,0 +1,6 @@
+{
+  "riskClass": "public API or external contract changes",
+  "workDescription": "STAFF-004 Phase 1 — adds 4 new staff-gated API routes (GET/PATCH /api/staff/products, GET/PATCH /api/staff/branch) behind the existing requireStaff middleware. Trust boundary: staff may toggle product availability for their assigned branch and change branch operational settings. New types added to @jojopotato/types: StaffProduct, StaffBranchSettings.",
+  "approver": "vc-execute-agent (STAFF-004 Phase 1 implementation)",
+  "mustStopBeforeFinalize": true
+}

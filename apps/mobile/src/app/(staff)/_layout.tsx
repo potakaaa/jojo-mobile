@@ -13,6 +13,8 @@ export default function StaffLayout() {
       <Stack.Screen name="active-orders" options={{ headerShown: false }} />
       <Stack.Screen name="order-detail/[orderId]" options={{ headerShown: false }} />
       <Stack.Screen name="completed-orders" options={{ headerShown: false }} />
+      <Stack.Screen name="product-availability" options={{ headerShown: false }} />
+      <Stack.Screen name="branch-pickup-settings" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -1,0 +1,39 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Staff member manipulates request body to include a branchId and toggle availability for another branch's products",
+      "ruled_out": true,
+      "rationale": "Branch is always resolved via resolveBranchScope(db, req.staffSession!.userId) — a DB read of users.assigned_branch_id. The request body is never consulted for branch identity. Even if a client sends a branchId field, it is silently ignored. Cross-branch writes are structurally impossible."
+    },
+    {
+      "scenario": "Staff member sends a productId belonging to an inactive product (is_active=false) to toggle availability",
+      "ruled_out": true,
+      "rationale": "PATCH /products/:productId/availability queries products WHERE id=productId AND is_active=true. An inactive product returns 404. No bpa row is created for inactive products."
+    },
+    {
+      "scenario": "Concurrent PATCH /products/:productId/availability calls from two staff members at the same branch create duplicate bpa rows",
+      "ruled_out": true,
+      "rationale": "UPSERT uses onConflictDoUpdate targeting the uniqueIndex('bpa_branch_product_idx') on (branch_id, product_id). Postgres enforces uniqueness atomically — concurrent inserts resolve to a single row with the last writer's value. No duplicate rows possible."
+    },
+    {
+      "scenario": "Customer role user attempts to call PATCH /api/staff/branch to disable pickup for a branch",
+      "ruled_out": true,
+      "rationale": "All /api/staff/* routes are protected by requireStaff middleware mounted in index.ts. requireStaff rejects any session where role is not in STAFF_ROLES (staff|admin|super_admin) with 403. Customer sessions are rejected before reaching any STAFF-004 handler."
+    },
+    {
+      "scenario": "Unauthenticated request to GET /api/staff/products to enumerate product catalog",
+      "ruled_out": true,
+      "rationale": "requireStaff calls better-auth session resolution first. Unauthenticated requests have no session and are rejected with 401/403 before any handler runs."
+    },
+    {
+      "scenario": "Staff member sets estimatedPrepMinutes to an extreme value (e.g. 0 or 9999) to manipulate ETA calculations for accepted orders",
+      "ruled_out": true,
+      "rationale": "PATCH /api/staff/branch validates estimatedPrepMinutes with z.number().int().min(1).max(120). Values outside 1–120 return 422. The accept-time ETA calculation in PATCH /orders/:orderId reads from branches.estimated_prep_minutes at accept time — any valid value in range produces a reasonable ETA."
+    },
+    {
+      "scenario": "Staff member from branch2 calls PATCH /api/staff/branch to disable pickup for branch1 (cross-branch operational sabotage)",
+      "ruled_out": true,
+      "rationale": "Same as branchId body injection: branch is always session-derived via resolveBranchScope. Staff2's session resolves to branch2Id. The UPDATE targets branches WHERE id = branch2Id. Branch1 is never touched. Integration test AC-8 confirms isolation."
+    }
+  ]
+}

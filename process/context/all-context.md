@@ -237,6 +237,21 @@ top of it later without re-plumbing the project.
   `env.ts` gained `onlinePaymentEnabled` (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED`, default false).
   `apps/mobile` has a pure-TS **vitest** runner (node env, `--passWithNoTests`; mock-order tests
   removed) — extended by development's HIST-002 config; still no RN component/E2E runner.
+- **Order History + Reorder, real-API (HIST-001/HIST-002, delivered 13-07-26, merged PR #73/`399e415`):**
+  the Order History list (`order/history.tsx`) shows branch name (client cross-ref via
+  `useBranch().branches`, "Unknown branch" fallback) and an item-summary line
+  (`packages/utils/src/order-display.ts`'s `summarizeOrderItems`); stars-earned is intentionally
+  omitted (no server-side accrual yet — known gap, see backlog note below). Reorder
+  (`apps/mobile/src/features/orders/hooks/use-reorder.ts` + `packages/utils/src/reorder.ts`)
+  re-checks each past line against today's menu for the order's branch, adds available items to the
+  real cart at live prices, and flags now-unavailable items as inline conflict rows in the cart
+  screen (`use-reorder-conflicts.ts`'s `ReorderConflictProvider`, mounted in `_layout.tsx`) that
+  block checkout until acknowledged — never silently dropped. Reconciliation logic
+  (`reorderEligibility`, `reconcileReorder`) is pure and covered by real `packages/utils` vitest
+  tests; screen/render behavior is Agent-Probe only (no RN runner, project-wide gap). Superseded an
+  earlier mock-data-only plan for the same issues (never executed). Known gap: stars accrual —
+  `process/features/ordering-cart/backlog/stars-accrual-and-history-display_NOTE_13-07-26.md`.
+  Delivered by: `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/`.
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -456,9 +471,11 @@ top of it later without re-plumbing the project.
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
   layer + role-gated staff shell — STAFF-001),
   `process/features/rewards-notifications/completed/deals-api-integration_13-07-26/` (3-phase Deals
-  backend wiring program — #22/#23/#24, archived plan + phase reports + high-risk evidence pack), and
+  backend wiring program — #22/#23/#24, archived plan + phase reports + high-risk evidence pack),
   `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/` (order
-  state-machine PATCH endpoint + Completed Orders screen + `rejected` enum — STAFF-003).
+  state-machine PATCH endpoint + Completed Orders screen + `rejected` enum — STAFF-003), and
+  `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/` (real-API Order
+  History display + Reorder — HIST-001/HIST-002).
 
 ## Quick Start
 

@@ -1,4 +1,11 @@
-import type { OrderStatus, StaffMe, StaffOrderDetail, StaffOrderSummary } from '@jojopotato/types';
+import type {
+  OrderStatus,
+  StaffBranchSettings,
+  StaffMe,
+  StaffOrderDetail,
+  StaffOrderSummary,
+  StaffProduct,
+} from '@jojopotato/types';
 
 import { env } from '@/config/env';
 import { authClient } from '@/features/auth/lib/auth-client';
@@ -112,4 +119,67 @@ export async function fetchCompletedStaffOrders(): Promise<StaffOrderSummary[]> 
   if (!res.ok) throw new Error('Failed to fetch completed orders');
   const data = (await res.json()) as { orders: StaffOrderSummary[] };
   return data.orders ?? [];
+}
+
+/**
+ * Fetch all products for the staff's branch (`GET /api/staff/products`, STAFF-004).
+ *
+ * Returns the branch-scoped product list with per-product availability overrides.
+ * Throws on error so react-query surfaces `isError`.
+ */
+export async function fetchStaffProducts(): Promise<StaffProduct[]> {
+  const res = await staffFetch('/api/staff/products');
+  if (!res.ok) throw new Error('Failed to fetch staff products');
+  const data = (await res.json()) as { products: StaffProduct[] };
+  return data.products ?? [];
+}
+
+/**
+ * Toggle a product's availability for the staff's branch
+ * (`PATCH /api/staff/products/:productId/availability`, STAFF-004).
+ *
+ * Throws on error so the mutation hook surfaces `isError`.
+ */
+export async function patchStaffProductAvailability(
+  productId: string,
+  isAvailable: boolean,
+): Promise<void> {
+  const res = await staffFetch(`/api/staff/products/${productId}/availability`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isAvailable }),
+  });
+  if (!res.ok) throw new Error(`Failed to update product availability: ${res.status}`);
+}
+
+/**
+ * Fetch the branch's operational settings
+ * (`GET /api/staff/branch`, STAFF-004).
+ *
+ * staleTime: 0 — pickup status is safety-critical, always fetch fresh.
+ * Throws on error so react-query surfaces `isError`.
+ */
+export async function fetchStaffBranchSettings(): Promise<StaffBranchSettings> {
+  const res = await staffFetch('/api/staff/branch');
+  if (!res.ok) throw new Error('Failed to fetch branch settings');
+  return (await res.json()) as StaffBranchSettings;
+}
+
+/**
+ * Update the branch's operational settings
+ * (`PATCH /api/staff/branch`, STAFF-004).
+ *
+ * Accepts a partial payload (at least one field required by the API).
+ * Returns the updated settings on success. Throws on error.
+ */
+export async function patchStaffBranchSettings(
+  payload: Partial<StaffBranchSettings>,
+): Promise<StaffBranchSettings> {
+  const res = await staffFetch('/api/staff/branch', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to update branch settings: ${res.status}`);
+  return (await res.json()) as StaffBranchSettings;
 }
