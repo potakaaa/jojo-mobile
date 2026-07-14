@@ -36,6 +36,13 @@
       "when": 1783930586644,
       "tag": "0004_add_branch_priority",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783996918805,
+      "tag": "0005_nosy_genesis",
+      "breakpoints": true
     }
   ]
 }
