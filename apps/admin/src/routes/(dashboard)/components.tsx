@@ -27,9 +27,7 @@ function ComponentsShowcase() {
     <div className="flex flex-col gap-8 p-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-ink">Component Showcase</h1>
-        <p className="text-muted-foreground mt-2">
-          Reference for Jojo Potato admin UI components.
-        </p>
+        <p className="text-muted-foreground mt-2">Reference for Jojo Potato admin UI components.</p>
       </div>
 
       {/* Buttons Section */}
@@ -76,14 +74,17 @@ function ComponentsShowcase() {
           <Card>
             <CardHeader>
               <CardTitle>Example Card</CardTitle>
-              <CardDescription>This is a fully composed card using all sub-components.</CardDescription>
+              <CardDescription>
+                This is a fully composed card using all sub-components.
+              </CardDescription>
               <CardAction>
                 <PrimaryButton size="sm">Action</PrimaryButton>
               </CardAction>
             </CardHeader>
             <CardContent>
               <p className="text-sm">
-                Here is some content inside the card. The card uses the Jojo Potato design language with brand radius and 4px hard shadow.
+                Here is some content inside the card. The card uses the Jojo Potato design language
+                with brand radius and 4px hard shadow.
               </p>
             </CardContent>
             <CardFooter>
