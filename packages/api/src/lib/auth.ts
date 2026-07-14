@@ -76,7 +76,13 @@ export const auth = betterAuth({
       onboardedAt: { type: 'date', required: false, input: true },
     },
   },
-  trustedOrigins: ['jojopotato://', ...(isDev ? ['exp://'] : [])],
+  trustedOrigins: [
+    'jojopotato://',
+    // Admin web app origin (apps/admin, dev port 3100 — ADM-001). Appended, not
+    // replacing the existing Expo scheme entries. Env-overridable for prod.
+    process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100',
+    ...(isDev ? ['exp://'] : []),
+  ],
   plugins: [
     expo(),
     phoneNumber({

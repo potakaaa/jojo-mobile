@@ -62,9 +62,9 @@ export function requireStaff(auth: Auth): RequestHandler {
         return;
       }
 
-      // TODO(STAFF-ADM): admin/super_admin branch bypass goes here — for now they
-      // are admitted with whatever assignedBranchId they carry (typically null),
-      // and branch scoping is enforced only for pure `staff` by assertBranchScope.
+      // admin/super_admin are admitted with whatever assignedBranchId they carry
+      // (typically null); their branch bypass is enforced downstream by passing
+      // `role` to `assertBranchScope` (see the third param there — ADM-001).
       req.staffSession = {
         userId: session.user.id,
         role,
@@ -95,18 +95,22 @@ export async function resolveBranchScope(db: Db, userId: string): Promise<string
 /**
  * Pure branch-scope guard for staff data routes (STAFF-002+).
  *
+ * - admin/super_admin (`role ∈ {admin, super_admin}`) bypass scoping entirely →
+ *   true, regardless of the branch arguments (ADM-001).
  * - Unassigned staff (`assignedBranchId === null`) can access nothing → false.
  * - No branch filter requested (`requestedBranchId === null`) → true (return own
  *   branch data).
  * - Otherwise the requested branch must exactly match the assigned branch.
  *
- * // TODO(STAFF-ADM): admin/super_admin bypass — callers check `role` before
- * calling this; admins should skip the scope check entirely once STAFF-ADM lands.
+ * `role` is an OPTIONAL, backward-compatible trailing parameter — existing
+ * two-argument callers keep the pure staff-scoping behavior unchanged.
  */
 export function assertBranchScope(
   assignedBranchId: string | null,
   requestedBranchId: string | null,
+  role?: string | null,
 ): boolean {
+  if (role === 'admin' || role === 'super_admin') return true;
   if (assignedBranchId === null) return false;
   if (requestedBranchId === null) return true;
   return assignedBranchId === requestedBranchId;
