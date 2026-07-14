@@ -27,8 +27,9 @@ export function useToggleProductAvailability(): UseMutationResult<
     onMutate: async ({ productId, isAvailable }) => {
       await queryClient.cancelQueries({ queryKey: ['staff', 'products'] });
       const previous = queryClient.getQueryData<StaffProduct[]>(['staff', 'products']);
-      queryClient.setQueryData<StaffProduct[]>(['staff', 'products'], (old) =>
-        old?.map((p) => (p.id === productId ? { ...p, isAvailable } : p)) ?? [],
+      queryClient.setQueryData<StaffProduct[]>(
+        ['staff', 'products'],
+        (old) => old?.map((p) => (p.id === productId ? { ...p, isAvailable } : p)) ?? [],
       );
       return { previous };
     },

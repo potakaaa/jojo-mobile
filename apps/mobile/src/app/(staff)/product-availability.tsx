@@ -10,16 +10,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, type ThemeMode } from '@jojopotato/ui';
 import type { StaffProduct } from '@jojopotato/types';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   View,
 } from 'react-native';
-import { Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -39,11 +39,14 @@ function ProductRow({ product, mode }: ProductRowProps) {
   const theme = useTheme();
   const { mutate: toggleAvailability } = useToggleProductAvailability();
   const [value, setValue] = useState(product.isAvailable);
+  const [prevIsAvailable, setPrevIsAvailable] = useState(product.isAvailable);
 
-  // Sync from server if an external change arrives (e.g. background refetch).
-  useEffect(() => {
+  // Sync from server on background refetch using the "previous render" pattern
+  // (React-recommended alternative to useEffect + setState for derived state).
+  if (prevIsAvailable !== product.isAvailable) {
+    setPrevIsAvailable(product.isAvailable);
     setValue(product.isAvailable);
-  }, [product.isAvailable]);
+  }
 
   function handleChange(newValue: boolean) {
     setValue(newValue);
@@ -112,13 +115,7 @@ export default function ProductAvailabilityScreen() {
               </Text>
             </View>
           ) : (
-            products.map((product) => (
-              <ProductRow
-                key={product.id}
-                product={product}
-                mode={mode}
-              />
-            ))
+            products.map((product) => <ProductRow key={product.id} product={product} mode={mode} />)
           )}
         </ScrollView>
       </SafeAreaView>

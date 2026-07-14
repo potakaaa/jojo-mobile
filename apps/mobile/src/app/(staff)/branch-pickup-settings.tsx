@@ -11,9 +11,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -21,7 +22,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pressable } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useStaffBranchSettings } from '@/features/staff/hooks/use-staff-branch-settings';
@@ -41,26 +41,24 @@ export default function BranchPickupSettingsScreen() {
   const { data: settings, isLoading, isError } = useStaffBranchSettings();
   const { mutate: patchSettings, isPending } = usePatchBranchSettings();
 
-  // Local state for the pickup toggle — updates instantly; reverts on error.
   const [pickupValue, setPickupValue] = useState<boolean | null>(null);
-  // Local state for the prep time text input — seeded from server data once loaded.
   const [prepTimeText, setPrepTimeText] = useState('');
   const [prepTimeError, setPrepTimeError] = useState<string | null>(null);
+  const [seededSettings, setSeededSettings] = useState(settings);
 
   // Seed local state when settings first arrive (or change from a refetch).
-  useEffect(() => {
+  // Uses the "previous render" pattern — React-recommended alternative to useEffect + setState.
+  if (settings !== seededSettings) {
+    setSeededSettings(settings);
     if (settings) {
       setPickupValue(settings.isAcceptingPickup);
       setPrepTimeText(String(settings.estimatedPrepMinutes));
     }
-  }, [settings]);
+  }
 
   function handlePickupToggle(newValue: boolean) {
     setPickupValue(newValue);
-    patchSettings(
-      { isAcceptingPickup: newValue },
-      { onError: () => setPickupValue(!newValue) },
-    );
+    patchSettings({ isAcceptingPickup: newValue }, { onError: () => setPickupValue(!newValue) });
   }
 
   function handleSavePrepTime() {
@@ -151,9 +149,7 @@ export default function BranchPickupSettingsScreen() {
                   />
                 </View>
                 {prepTimeError ? (
-                  <Text style={[styles.errorText, { color: theme.accent }]}>
-                    {prepTimeError}
-                  </Text>
+                  <Text style={[styles.errorText, { color: theme.accent }]}>{prepTimeError}</Text>
                 ) : null}
                 {isPending ? (
                   <Text style={[styles.savingText, { color: theme.textSecondary }]}>Saving…</Text>
