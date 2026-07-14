@@ -1,5 +1,5 @@
 import { and, eq, gte, lte, notExists, sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * Integration test for the `GET /api/branches/:id` deal-selection query logic,
@@ -47,6 +47,14 @@ beforeAll(async () => {
   } catch {
     dbAvailable = false;
   }
+});
+
+afterAll(async () => {
+  // Close the module-scoped pool opened in beforeAll so no DB connections leak
+  // past the suite. Runs regardless of dbAvailable — the pool is created by the
+  // db/client import (which succeeds even when the connectivity probe fails).
+  // `db.$client` is the underlying pg Pool.
+  await db?.$client.end();
 });
 
 /** Look up a branch UUID by its seed slug. Returns null when not found. */

@@ -17,7 +17,9 @@ export function deriveTestDatabaseUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   const dbName = url.pathname.replace(/^\//, '');
   if (!dbName) {
-    throw new Error(`deriveTestDatabaseUrl: base URL has no database name in its path: ${baseUrl}`);
+    // Do NOT interpolate baseUrl — it carries the DB credentials, which must not
+    // leak into exception messages / logs.
+    throw new Error('deriveTestDatabaseUrl: base URL has no database name in its path');
   }
   url.pathname = `/${dbName}_test`;
   return url.toString();

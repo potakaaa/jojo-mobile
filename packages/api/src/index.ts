@@ -89,6 +89,10 @@ function computeDiscountLabel(dealType: string, discountValue: string | null): s
   }
 }
 
+// RFC-4122 UUID matcher — branch ids are uuid columns; anything else is rejected
+// as a 400 before it can reach (and throw in) the query layer.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Branch detail endpoint. Returns the single active branch plus the deals that
 // apply to it: deals explicitly mapped to this branch (Query A) UNION deals with
 // no `deal_branches` rows at all — i.e. global deals (Query B). Both filtered to
@@ -97,8 +101,20 @@ function computeDiscountLabel(dealType: string, discountValue: string | null): s
 // same security posture as GET /api/branches.
 app.get('/api/branches/:id', async (req, res) => {
   const { id } = req.params;
+  // Reject malformed ids before querying: branches.id is a uuid column, so a
+  // non-uuid value would throw at the DB layer and surface as a 500. A bad id is
+  // a client error → 400.
+  if (!UUID_RE.test(id)) {
+    res.status(400).json({ error: 'Invalid branch id' });
+    return;
+  }
   try {
-    const branchRows = await db.select().from(branches).where(eq(branches.id, id));
+    // Filter is_active so inactive branches follow the same 404 path as unknown
+    // ids (mirrors the GET /api/branches list, which returns active branches only).
+    const branchRows = await db
+      .select()
+      .from(branches)
+      .where(and(eq(branches.id, id), eq(branches.is_active, true)));
     const branchRow = branchRows[0];
     if (!branchRow) {
       res.status(404).json({ error: 'Branch not found' });

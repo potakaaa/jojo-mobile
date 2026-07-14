@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { PickupBranch } from '@jojopotato/types';
-import { BranchListItem, Input, Palette, Radii, Shadows } from '@jojopotato/ui';
+import { BranchListItem, Button, Input, Palette, Radii, Shadows } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
@@ -52,6 +52,9 @@ export default function BranchLocatorScreen() {
   const mapRef = useRef<BranchMapHandle>(null);
   const sheetRef = useRef<BottomSheet>(null);
 
+  // Bumped by the Retry button to re-run the fetch effect below.
+  const [reloadToken, setReloadToken] = useState(0);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -70,7 +73,16 @@ export default function BranchLocatorScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadToken]);
+
+  // Retry from the error state: reset to the loading state, then re-run the fetch
+  // effect by bumping the token. Runs from a button press (event handler), so the
+  // synchronous setState is fine here.
+  const onRetry = () => {
+    setIsFetching(true);
+    setFetchError(false);
+    setReloadToken((t) => t + 1);
+  };
 
   const showDistance = locationStatus === 'granted' && coords !== null;
 
@@ -174,6 +186,7 @@ export default function BranchLocatorScreen() {
               <Text style={[styles.message, { color: theme.textSecondary }]}>
                 Could not load branches — please try again
               </Text>
+              <Button label="Retry" variant="outline" mode={mode} onPress={onRetry} />
             </View>
           ) : filteredBranches.length === 0 ? (
             <View style={styles.centered}>
@@ -204,7 +217,6 @@ export default function BranchLocatorScreen() {
         branches={filteredBranches}
         coords={coords}
         onBranchPress={onOrderPress}
-        mode={mode}
       />
 
       {/* z1 (search pill) sits above the map via absolute positioning; the sheet
@@ -273,6 +285,7 @@ export default function BranchLocatorScreen() {
             <Text style={[styles.message, { color: theme.textSecondary }]}>
               Could not load branches — please try again
             </Text>
+            <Button label="Retry" variant="outline" mode={mode} onPress={onRetry} />
           </View>
         ) : filteredBranches.length === 0 ? (
           <View style={styles.sheetCentered}>

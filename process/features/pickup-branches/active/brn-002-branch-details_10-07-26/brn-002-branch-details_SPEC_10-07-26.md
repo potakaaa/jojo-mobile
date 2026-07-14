@@ -66,7 +66,7 @@ Deals mapped to OTHER branches only are excluded. Each deal is shown using the `
 
 The coordinates used are the branch's stored `latitude` and `longitude` values (not geocoded from the address). This satisfies BRN-004's directions requirement. The directions behavior is implemented as a utility function (`openDirections(lat, lng, name)`) using `expo-linking`, which is already available in the project.
 
-**"Order from this branch" CTA.** A prominent button at the bottom (or a fixed position) of the screen. When the branch is open AND `is_accepting_pickup = true`, the button is active: tapping it records the branch as the selected ordering branch (via the `useSelectedBranch` hook from BRN-001) and navigates to the ordering flow (menu or similar — consistent with whatever target BRN-001 established). When the branch is closed OR `is_accepting_pickup = false`, the button is visually disabled and non-interactive — tapping it does nothing and does not navigate.
+**"Order from this branch" CTA.** A prominent button at the bottom (or a fixed position) of the screen. When the branch is open AND `is_accepting_pickup = true`, the button is active: tapping it records the branch as the selected ordering branch (via the `useBranch` hook from BRN-001) and navigates to the ordering flow (menu or similar — consistent with whatever target BRN-001 established). When the branch is closed OR `is_accepting_pickup = false`, the button is visually disabled and non-interactive — tapping it does nothing and does not navigate.
 
 **Distance display.** When user location is available (granted in BRN-001's location flow), the distance to this branch is shown. If location is unavailable, the distance field is hidden rather than showing a blank or "unknown" value.
 
@@ -206,20 +206,20 @@ Running `pnpm lint` after implementation produces no new ESLint errors across an
 - **Real-time branch status updates.** Open/closed status and pickup availability are fetched at load time. Live websocket or push-based status updates are out of scope.
 - **Admin branch management.** Creating, editing, or toggling branch data is a backend/admin concern.
 - **BRN-003 (Map view).** Explicitly deferred to a separate issue.
-- **"Order from this branch" post-selection target beyond branch selection.** The CTA sets the selected ordering branch using the same `useSelectedBranch` hook from BRN-001 and navigates to the same ordering target BRN-001 established. Defining a new or different navigation target is not in scope here.
+- **"Order from this branch" post-selection target beyond branch selection.** The CTA sets the selected ordering branch using the same `useBranch` hook from BRN-001 and navigates to the same ordering target BRN-001 established. Defining a new or different navigation target is not in scope here.
 
 ---
 
 ## Constraints
 
 1. **Navigation input — branchId only.** The screen receives only the branch's UUID via the Expo Router route parameter (`[branchId]`). It cannot rely on any data being passed inline from the list. All display data is fetched from the API using that ID.
-2. **Reuse locked-in utilities.** The following are established by BRN-001 and must be reused, not re-implemented: `apiFetch<T>` (`apps/mobile/src/lib/api-fetch.ts`), `useUserLocation` (`hooks/use-user-location.ts` and `.web.ts`), `distanceKm` (`packages/utils/src/geo.ts`), `getIsOpenNow` (`packages/utils/src/hours.ts`), `useSelectedBranch` (`features/branches/hooks`), `Button` (`@jojopotato/ui`) for the CTA, `DealCard` (`@jojopotato/ui`) for each deal row.
+2. **Reuse locked-in utilities.** The following are established by BRN-001 and must be reused, not re-implemented: `apiFetch<T>` (`apps/mobile/src/lib/api-fetch.ts`), `useUserLocation` (`hooks/use-user-location.ts` and `.web.ts`), `distanceKm` (`packages/utils/src/geo.ts`), `getIsOpenNow` (`packages/utils/src/hours.ts`), `useBranch` (`features/branches/hooks`), `Button` (`@jojopotato/ui`) for the CTA, `DealCard` (`@jojopotato/ui`) for each deal row.
 3. **Deals semantics are locked.** Applicable deals = (deals with a `deal_branches` row for this branch) UNION (deals with no `deal_branches` rows at all), filtered to `is_active = true AND start_at <= now <= end_at`. Deals with `deal_branches` rows pointing to OTHER branches are excluded. This is a fixed product decision, not an INNOVATE choice.
 4. **Directions uses stored coordinates.** The `openDirections(lat, lng, name)` utility uses `latitude` and `longitude` from the DB — never a geocoded or user-typed address. `expo-linking` is already available; no new dependency is required for directions.
 5. **No existing branch-by-id endpoint.** A new API endpoint must be added to `packages/api`. Whether it is one combined endpoint (branch + deals) or two separate endpoints is an INNOVATE decision, but at least one new route is required.
 6. **Deal type additions to `packages/types/src/deals.ts`.** The `Deal` type (or a new `ApiBranchDeal` response type) must carry `discountLabel` and a `validUntil` (or `endAt`) field for the DealCard to render. Where `discountLabel` is computed (server vs. client) is an INNOVATE decision.
 7. **`@jojopotato/ui` components only.** All rendered UI must use components from `packages/ui` and tokens from `theme.ts`. One-off inline styles that duplicate theme values are not allowed. Whether a new component is added to `packages/ui` for the hours display is an INNOVATE/design call.
-8. **CTA disabled state must not navigate.** A disabled "Order from this branch" button must not trigger Expo Router navigation or update `useSelectedBranch` state under any tap.
+8. **CTA disabled state must not navigate.** A disabled "Order from this branch" button must not trigger Expo Router navigation or update `useBranch` state under any tap.
 9. **TypeScript strict mode.** All new code must pass `pnpm typecheck` with zero errors.
 10. **No mobile-side automated test runner.** Mobile screen behavior (rendering, CTA state, directions tap) is verified via manual dev-build testing. The API surface (endpoint response, deals filtering) is verified via `pnpm --filter @jojopotato/api test` (vitest, already live). A new vitest test for the branch-details endpoint is required by AC-2 and AC-9.
 11. **BRN-004 absorbed.** This SPEC delivers the directions feature previously scoped to BRN-004. BRN-004 should be closed or linked as resolved by BRN-002.
@@ -250,7 +250,7 @@ None. All product decisions are locked (provided in the task prompt as user-appr
 - `useUserLocation` (and `.web.ts`) provides location with platform-correct degradation
 - `distanceKm` in `packages/utils/src/geo.ts` — haversine already added for BRN-001
 - `getIsOpenNow` in `packages/utils/src/hours.ts` — open/closed boolean
-- `useSelectedBranch` hook — already tracks the selected ordering branch
+- `useBranch` hook — already tracks the selected ordering branch
 - `Button` from `@jojopotato/ui` — the canonical CTA component
 - `DealCard` from `@jojopotato/ui` — confirmed existing component for deal display
 

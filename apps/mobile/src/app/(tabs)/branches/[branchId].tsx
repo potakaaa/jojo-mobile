@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -42,16 +43,40 @@ export default function BranchDetailsScreen() {
   const [data, setData] = useState<BranchDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingBranchId, setLoadingBranchId] = useState(branchId);
   const { coords, status: locationStatus } = useUserLocation();
   const { setSelectedBranch } = useBranch();
   const insets = useSafeAreaInsets();
 
+  // Reset to the loading state when the branch param changes. React's
+  // adjust-state-on-prop-change pattern (run in render, not an effect) so a stale
+  // branch's data/error never flashes and no cascading-render issue arises.
+  if (branchId !== loadingBranchId) {
+    setLoadingBranchId(branchId);
+    setData(null);
+    setError(null);
+    setLoading(true);
+  }
+
   useEffect(() => {
     if (!branchId) return;
+    // Track the active request: when branchId changes (or the screen unmounts)
+    // an in-flight response must be ignored so a stale branch can't overwrite the
+    // current one.
+    let active = true;
     apiFetch<BranchDetailResponse>(`/api/branches/${branchId}`)
-      .then(setData)
-      .catch(() => setError('Failed to load branch details'))
-      .finally(() => setLoading(false));
+      .then((res) => {
+        if (active) setData(res);
+      })
+      .catch(() => {
+        if (active) setError('Failed to load branch details');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [branchId]);
 
   const branch = data ? mapApiBranch(data.branch) : null;
@@ -87,7 +112,12 @@ export default function BranchDetailsScreen() {
     const platform: 'ios' | 'android' | 'web' =
       Platform.OS === 'web' ? 'web' : Platform.OS === 'ios' ? 'ios' : 'android';
     const url = buildDirectionsUrl(branch.latitude, branch.longitude, branch.name, platform);
-    Linking.openURL(url);
+    // openURL rejects when no handler exists for the scheme (e.g. maps app
+    // missing, or an unsupported scheme on web) — catch it so it never surfaces
+    // as an unhandled rejection, and tell the user via the app's Alert pattern.
+    Linking.openURL(url).catch(() =>
+      Alert.alert('Could not open maps', 'No maps app is available to show directions.'),
+    );
   };
 
   const onOrder = () => {

@@ -1,5 +1,5 @@
 import type { PickupBranch } from '@jojopotato/types';
-import { Palette, type ThemeMode } from '@jojopotato/ui';
+import { Palette } from '@jojopotato/ui';
 import { getIsOpenNow } from '@jojopotato/utils';
 import { useImage } from 'expo-image';
 import { AppleMaps, GoogleMaps } from 'expo-maps';
@@ -26,10 +26,11 @@ import { MAP_STYLE_JSON } from '../map-style';
  *   region-with-deltas object.
  */
 
-/** Fallback camera centred on Cebu when the user's location is unavailable. */
-const CEBU_FALLBACK = {
-  latitude: 10.323,
-  longitude: 123.9,
+/** Fallback camera centred on Cagayan de Oro (the seeded branch cluster) when
+ * the user's location is unavailable, so the map opens near the branches. */
+const CDO_FALLBACK = {
+  latitude: 8.4772,
+  longitude: 124.6459,
   // zoom ~13 shows a city-scale view (roughly the 0.05-degree delta the plan intended).
   zoom: 13,
 };
@@ -44,7 +45,6 @@ export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
   onBranchPress: (branchId: string) => void;
-  mode?: ThemeMode;
 }
 
 /**
@@ -95,10 +95,10 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
   const cameraPosition = useMemo(
     () => ({
       coordinates: {
-        latitude: coords?.latitude ?? CEBU_FALLBACK.latitude,
-        longitude: coords?.longitude ?? CEBU_FALLBACK.longitude,
+        latitude: coords?.latitude ?? CDO_FALLBACK.latitude,
+        longitude: coords?.longitude ?? CDO_FALLBACK.longitude,
       },
-      zoom: coords ? USER_LOCATION_ZOOM : CEBU_FALLBACK.zoom,
+      zoom: coords ? USER_LOCATION_ZOOM : CDO_FALLBACK.zoom,
     }),
     [coords],
   );

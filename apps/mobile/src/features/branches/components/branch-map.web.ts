@@ -1,5 +1,5 @@
 import type { PickupBranch } from '@jojopotato/types';
-import type { ThemeMode } from '@jojopotato/ui';
+import { forwardRef } from 'react';
 import type React from 'react';
 
 /**
@@ -9,17 +9,23 @@ import type React from 'react';
  * file on web builds instead of `branch-map.tsx`, so expo-maps is never imported
  * into the web bundle.
  *
- * Signature mirrors the native component exactly so the shared import in
- * index.tsx stays type-safe on every platform.
+ * Signature mirrors the native component exactly — same props AND the same
+ * `BranchMapHandle` ref API via forwardRef — so the shared import in index.tsx
+ * (which passes a ref) stays type-safe and a true drop-in on every platform.
  */
 
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
   onBranchPress: (branchId: string) => void;
-  mode?: ThemeMode;
 }
 
-export function BranchMap(_props: BranchMapProps): React.ReactElement | null {
-  return null;
+export interface BranchMapHandle {
+  focusOn: (coords: { latitude: number; longitude: number }, zoom?: number) => void;
 }
+
+export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(
+  function BranchMap(): React.ReactElement | null {
+    return null;
+  },
+);
