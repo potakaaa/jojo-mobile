@@ -1,10 +1,17 @@
 import type { OrderStatus, StaffMe } from '@jojopotato/types';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../db/client';
-import { branches, orderItems, orderStatusEnum, orders } from '../db/schema/index';
+import {
+  branchProductAvailability,
+  branches,
+  orderItems,
+  orderStatusEnum,
+  orders,
+  products,
+} from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
 import { canTransition } from './lib/order-state-machine';
 import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
@@ -292,6 +299,213 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
   const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
   res.json({ order: serializeStaffOrderDetail(refreshedOrder!, items) });
+});
+
+// ─── STAFF-004: Product availability + branch settings ───────────────────────
+
+/**
+ * Zod schemas for STAFF-004 endpoints.
+ */
+const patchProductAvailabilitySchema = z.object({
+  isAvailable: z.boolean(),
+});
+
+const patchBranchSettingsSchema = z
+  .object({
+    isAcceptingPickup: z.boolean().optional(),
+    estimatedPrepMinutes: z.number().int().min(1).max(120).optional(),
+  })
+  .refine(
+    (data) => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined,
+    { message: 'At least one field required' },
+  );
+
+/**
+ * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
+ *
+ * Returns all globally-active products with branch-level availability overlaid.
+ * Uses a LEFT JOIN on `branch_product_availability` — an absent row means the
+ * product is available at this branch (COALESCE to `true`).
+ *
+ * IMPORTANT: The customer-facing menu endpoint uses an INNER JOIN with
+ * `is_available = true`, so an absent `bpa` row makes the product INVISIBLE
+ * to customers — the LEFT JOIN default here is staff-only (for toggling).
+ */
+staffRouter.get('/products', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      categoryId: products.category_id,
+      basePrice: products.base_price,
+      isAvailable: branchProductAvailability.is_available,
+    })
+    .from(products)
+    .leftJoin(
+      branchProductAvailability,
+      and(
+        eq(branchProductAvailability.branch_id, branchId),
+        eq(branchProductAvailability.product_id, products.id),
+      ),
+    )
+    .where(eq(products.is_active, true))
+    .orderBy(asc(products.name));
+
+  const staffProducts = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    categoryId: row.categoryId,
+    basePrice: row.basePrice,
+    // COALESCE: absent bpa row (null) → available
+    isAvailable: row.isAvailable ?? true,
+  }));
+
+  res.json({ products: staffProducts });
+});
+
+/**
+ * `PATCH /api/staff/products/:productId/availability` → `{ productId, isAvailable }` (STAFF-004).
+ *
+ * Upserts a `branch_product_availability` row for the given product at the
+ * staff member's assigned branch. Only affects the CALLER's branch — cross-branch
+ * writes are structurally impossible (branch is always session-derived).
+ *
+ * Status codes:
+ *   200 — availability updated.
+ *   403 — unassigned staff.
+ *   404 — productId not a valid UUID OR product not found / not active.
+ *   422 — missing or invalid `isAvailable` in request body.
+ */
+staffRouter.patch('/products/:productId/availability', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const productId = String(req.params.productId);
+  if (!z.string().uuid().safeParse(productId).success) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
+
+  const parseResult = patchProductAvailabilitySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
+    return;
+  }
+  const { isAvailable } = parseResult.data;
+
+  // Verify the product exists and is globally active.
+  const [product] = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.is_active, true)));
+  if (!product) {
+    res.status(404).json({ error: 'Product not found' });
+    return;
+  }
+
+  // UPSERT: create or update the branch-level availability row.
+  await db
+    .insert(branchProductAvailability)
+    .values({
+      branch_id: branchId,
+      product_id: productId,
+      is_available: isAvailable,
+      updated_at: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [branchProductAvailability.branch_id, branchProductAvailability.product_id],
+      set: { is_available: isAvailable, updated_at: new Date() },
+    });
+
+  res.json({ productId, isAvailable });
+});
+
+/**
+ * `GET /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
+ *
+ * Returns the operational settings for the staff member's assigned branch.
+ * Read-only — use PATCH /api/staff/branch to update.
+ */
+staffRouter.get('/branch', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const [branch] = await db
+    .select({
+      isAcceptingPickup: branches.is_accepting_pickup,
+      estimatedPrepMinutes: branches.estimated_prep_minutes,
+    })
+    .from(branches)
+    .where(eq(branches.id, branchId));
+
+  if (!branch) {
+    res.status(404).json({ error: 'Branch not found' });
+    return;
+  }
+
+  res.json({
+    isAcceptingPickup: branch.isAcceptingPickup,
+    estimatedPrepMinutes: branch.estimatedPrepMinutes,
+  });
+});
+
+/**
+ * `PATCH /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
+ *
+ * Updates operational settings for the staff member's assigned branch.
+ * Cross-branch writes are structurally impossible — branch is always session-derived.
+ *
+ * Status codes:
+ *   200 — settings updated; returns updated values.
+ *   403 — unassigned staff.
+ *   422 — empty body or invalid field values.
+ */
+staffRouter.patch('/branch', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const parseResult = patchBranchSettingsSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
+    return;
+  }
+  const { isAcceptingPickup, estimatedPrepMinutes } = parseResult.data;
+
+  // Build update patch with only the provided fields.
+  const patch: Partial<typeof branches.$inferInsert> = { updated_at: new Date() };
+  if (isAcceptingPickup !== undefined) patch.is_accepting_pickup = isAcceptingPickup;
+  if (estimatedPrepMinutes !== undefined) patch.estimated_prep_minutes = estimatedPrepMinutes;
+
+  await db.update(branches).set(patch).where(eq(branches.id, branchId));
+
+  // Re-select after update for the response.
+  const [updated] = await db
+    .select({
+      isAcceptingPickup: branches.is_accepting_pickup,
+      estimatedPrepMinutes: branches.estimated_prep_minutes,
+    })
+    .from(branches)
+    .where(eq(branches.id, branchId));
+
+  res.json({
+    isAcceptingPickup: updated!.isAcceptingPickup,
+    estimatedPrepMinutes: updated!.estimatedPrepMinutes,
+  });
 });
 
 export default staffRouter;
