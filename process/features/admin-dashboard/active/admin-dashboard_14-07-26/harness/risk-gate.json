@@ -1,0 +1,7 @@
+{
+  "riskClass": "auth or identity",
+  "workDescription": "Admin Dashboard Phase 1 (ADM-001) — requireAdmin guard (admin/super_admin only), first browser-cookie session surface, /api/admin mount with credentialed CORS + trustedOrigins for the :3100 admin origin, super_admin-only role-management route with self-escalation guard, assertBranchScope admin bypass, admin-web login + server-verified route guard.",
+  "approver": "vc-execute-agent (EXECUTE phase, plan phase-01-auth-rbac_PLAN_14-07-26 — Gate: PASS, inner-pvl: phase-1)",
+  "mustStopBeforeFinalize": true,
+  "secondaryRiskClass": "permission, secret, or trust-boundary logic (role mutation is the only sanctioned write path for user.role, which stays input:false in better-auth)"
+}

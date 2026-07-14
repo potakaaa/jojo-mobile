@@ -237,6 +237,9 @@ first. This explicitly overrides the generic "if on the default branch, branch f
 Only branch when the user explicitly asks for a feature branch or PR. Full rule:
 `process/development-protocols/implementation-standards.md` §Commit Hygiene.
 
+Before emitting a commit message or committing, run `pnpm format:check` and include any Prettier
+fixes — see §Commit Hygiene.
+
 ---
 
 ### Technology Stack
