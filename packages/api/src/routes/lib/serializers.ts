@@ -300,9 +300,7 @@ export function serializeDeal(
     startAt: deal.start_at.toISOString(),
     endAt: deal.end_at.toISOString(),
     isActive: deal.is_active,
-    ...(deal.usage_limit_per_user === null
-      ? {}
-      : { usageLimitPerUser: deal.usage_limit_per_user }),
+    ...(deal.usage_limit_per_user === null ? {} : { usageLimitPerUser: deal.usage_limit_per_user }),
     ...(deal.total_usage_limit === null ? {} : { totalUsageLimit: deal.total_usage_limit }),
     eligibleProductIds,
     eligibleBranchIds,

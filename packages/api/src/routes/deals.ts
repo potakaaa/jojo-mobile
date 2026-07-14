@@ -16,7 +16,8 @@ export const dealsRouter: Router = Router();
 // requested branch. Absent/empty `branchId` → branch-agnostic deals only.
 dealsRouter.get('/', async (req, res) => {
   const rawBranchId = req.query.branchId;
-  const branchId = typeof rawBranchId === 'string' && rawBranchId.length > 0 ? rawBranchId : undefined;
+  const branchId =
+    typeof rawBranchId === 'string' && rawBranchId.length > 0 ? rawBranchId : undefined;
 
   if (branchId !== undefined && !uuidSchema.safeParse(branchId).success) {
     res.status(400).json({ error: 'Invalid branchId' });
@@ -70,9 +71,7 @@ dealsRouter.get('/', async (req, res) => {
   });
 
   res.json({
-    deals: kept.map((d) =>
-      serializeDeal(d, branchMap.get(d.id) ?? [], productMap.get(d.id) ?? []),
-    ),
+    deals: kept.map((d) => serializeDeal(d, branchMap.get(d.id) ?? [], productMap.get(d.id) ?? [])),
   });
 });
 
@@ -97,14 +96,8 @@ dealsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  const branchRows = await db
-    .select()
-    .from(dealBranches)
-    .where(eq(dealBranches.deal_id, id));
-  const productRows = await db
-    .select()
-    .from(dealProducts)
-    .where(eq(dealProducts.deal_id, id));
+  const branchRows = await db.select().from(dealBranches).where(eq(dealBranches.deal_id, id));
+  const productRows = await db.select().from(dealProducts).where(eq(dealProducts.deal_id, id));
 
   res.json({
     deal: serializeDeal(

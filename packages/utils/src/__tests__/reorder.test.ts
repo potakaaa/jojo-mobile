@@ -114,7 +114,9 @@ describe('reconcileReorder', () => {
 
   it('flags a product absent from the current menu tree as product_unavailable', () => {
     const currentMenu = menu([product({ id: 'p-other', name: 'Nuggets' })]);
-    const past = order([orderItem({ productId: 'p-gone', productNameSnapshot: 'Discontinued Dip' })]);
+    const past = order([
+      orderItem({ productId: 'p-gone', productNameSnapshot: 'Discontinued Dip' }),
+    ]);
 
     const { available, unavailable } = reconcileReorder(past, currentMenu);
 

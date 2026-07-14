@@ -483,7 +483,10 @@ describe('POST /orders — deal apply (DEAL-003)', () => {
 
   it('rejects (400) not_in_window (expired deal) and creates no order', async () => {
     const freshUser = (
-      await db.insert(schema.users).values({ name: 'X', email: `exp-${uid()}@e.com` }).returning()
+      await db
+        .insert(schema.users)
+        .values({ name: 'X', email: `exp-${uid()}@e.com` })
+        .returning()
     )[0]!.id;
     const { status } = await post('/orders', {
       user: freshUser,
@@ -537,10 +540,16 @@ describe('POST /orders — deal apply (DEAL-003)', () => {
 
   it('rejects (400) once the total usage limit is reached', async () => {
     const u1 = (
-      await db.insert(schema.users).values({ name: 'T1', email: `t1-${uid()}@e.com` }).returning()
+      await db
+        .insert(schema.users)
+        .values({ name: 'T1', email: `t1-${uid()}@e.com` })
+        .returning()
     )[0]!.id;
     const u2 = (
-      await db.insert(schema.users).values({ name: 'T2', email: `t2-${uid()}@e.com` }).returning()
+      await db
+        .insert(schema.users)
+        .values({ name: 'T2', email: `t2-${uid()}@e.com` })
+        .returning()
     )[0]!.id;
     const first = await post('/orders', {
       user: u1,

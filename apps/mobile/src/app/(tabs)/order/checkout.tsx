@@ -98,8 +98,7 @@ export default function CheckoutScreen() {
         selectedOptions: line.selectedOptions.map((opt) => ({ optionId: opt.id })),
       })),
       // Only a deal-sourced discount carries a real dealId the server can revalidate.
-      dealId:
-        cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
+      dealId: cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
     });
     if (order) {
       clearCart();
