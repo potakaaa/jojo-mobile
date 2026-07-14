@@ -1,29 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { RewardsAccount } from '@jojopotato/types';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
 
+/** Star-based rewards state for the teaser card (STAR-002 stars/threshold model). */
+export interface RewardProgress {
+  currentStars: number;
+  requiredStars: number;
+}
+
 export interface RewardProgressCardProps {
-  rewards: RewardsAccount;
+  rewards: RewardProgress;
   onPress?: () => void;
   mode?: ThemeMode;
 }
 
-const TIER_LABEL: Record<RewardsAccount['tier'], string> = {
-  bronze: 'Bronze',
-  silver: 'Silver',
-  gold: 'Gold',
-};
-
 /**
- * Tappable rewards teaser showing the member's current points and tier.
- * Tapping toggles a local pressed highlight — it does not navigate.
+ * Tappable rewards teaser showing the member's current star progress toward
+ * their next reward. Tapping toggles a local pressed highlight — it does not
+ * navigate.
  */
 export function RewardProgressCard({ rewards, onPress, mode = 'light' }: RewardProgressCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
+  const isUnlocked = rewards.currentStars >= rewards.requiredStars;
 
   return (
     <Pressable
@@ -45,9 +46,11 @@ export function RewardProgressCard({ rewards, onPress, mode = 'light' }: RewardP
       </View>
       <View style={styles.textColumn}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>
-          {TIER_LABEL[rewards.tier]} member
+          {isUnlocked ? 'Reward unlocked' : 'Jojo Stars'}
         </Text>
-        <Text style={[styles.points, { color: theme.text }]}>{rewards.points} points</Text>
+        <Text style={[styles.points, { color: theme.text }]}>
+          {rewards.currentStars} of {rewards.requiredStars} stars
+        </Text>
       </View>
       <View style={styles.ctaRow}>
         <Text style={[styles.cta, { color: theme.accent }]}>View rewards</Text>

@@ -6,10 +6,10 @@ import type {
   MenuItem,
   PickupBranch,
   PickupTime,
-  RewardsAccount,
-  RewardsTierProgress,
   Size,
 } from '@jojopotato/types';
+
+import type { RewardProgress, StarProgress } from '../..';
 
 /** `MenuItem`-shaped product mock (`ProductCard` renders the cents `MenuItem` shape). */
 export const MOCK_PRODUCT: MenuItem = {
@@ -55,16 +55,14 @@ export const MOCK_BRANCH: PickupBranch = {
   isOpen: true,
 };
 
-export const MOCK_REWARDS: RewardsAccount = {
-  userId: 'u1',
-  points: 120,
-  tier: 'silver',
+export const MOCK_REWARDS: RewardProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };
 
-export const MOCK_PROGRESS: RewardsTierProgress = {
-  currentPoints: 120,
-  pointsToNextTier: 80,
-  nextTier: 'gold',
+export const MOCK_PROGRESS: StarProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };
 
 export const MOCK_COUPON: Coupon = {

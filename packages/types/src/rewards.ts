@@ -25,3 +25,32 @@ export interface StarTransaction {
   description: string | null;
   createdAt: string;
 }
+
+/**
+ * A reward configuration row (mirrors the DB `rewards` table). `rewardValue` is
+ * `numericToCents`-converted (integer cents) or `null` when the reward carries no
+ * monetary value. Added by STAR-002 for the Rewards screen's reward preview /
+ * available-rewards list.
+ */
+export interface Reward {
+  id: string;
+  name: string;
+  requiredStars: number;
+  rewardType: string;
+  rewardValue: number | null;
+  isActive: boolean;
+}
+
+/**
+ * The caller's star state + the reward being progressed toward. Powers the
+ * Rewards screen's top progress tracker (STAR-002). `requiredStars` is the MIN
+ * active reward threshold; `reward` is that same reward (or `null` when none is
+ * active). `isUnlocked` = `currentStars >= requiredStars`.
+ */
+export interface RewardsSummary {
+  currentStars: number;
+  lifetimeStars: number;
+  requiredStars: number;
+  isUnlocked: boolean;
+  reward: Reward | null;
+}

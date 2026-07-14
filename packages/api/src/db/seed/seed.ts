@@ -12,6 +12,7 @@ import {
   orders,
   productOptions,
   products,
+  rewards,
   users,
 } from '../schema/index';
 import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
@@ -427,6 +428,36 @@ async function seedSampleOrders(
   }
 }
 
+// The single MVP reward (STAR-002 / PRD §6.10): 5 stars unlocks a free item.
+// `reward_value` is null — the reward is a free regular fries/lemonade, not a
+// monetary discount. Admin-configurable thresholds are ADM-005 (out of scope).
+const MVP_REWARD = {
+  name: 'Free regular fries or lemonade',
+  required_stars: 5,
+  reward_type: 'free_item',
+  reward_value: null,
+  is_active: true,
+} as const;
+
+// rewards.name has no unique constraint, so idempotency is app-level: find the
+// active reward by name, then update or insert. Re-seeding converges to exactly
+// one active 5-star reward.
+async function seedRewardsTable(): Promise<void> {
+  const [existing] = await db
+    .select({ id: rewards.id })
+    .from(rewards)
+    .where(eq(rewards.name, MVP_REWARD.name));
+
+  if (existing) {
+    await db
+      .update(rewards)
+      .set({ ...MVP_REWARD, updated_at: new Date() })
+      .where(eq(rewards.id, existing.id));
+  } else {
+    await db.insert(rewards).values(MVP_REWARD);
+  }
+}
+
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
   await seedStaffUser(branchIdBySlug);
@@ -436,6 +467,7 @@ export async function runSeed(): Promise<void> {
   await seedBranchProductAvailabilityTable(branchIdBySlug, productIdBySlug);
   const dealIdByTitle = await seedDealsTable();
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
+  await seedRewardsTable();
   await seedTestUser();
 
   // Sample orders are owned by a dedicated demo customer (NOT jojo@test.com), so
@@ -450,6 +482,7 @@ export async function runSeed(): Promise<void> {
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
+  console.log(`  rewards: 1 (${MVP_REWARD.name}, ${MVP_REWARD.required_stars} stars)`);
   console.log(`  test user: ${TEST_USER.email}`);
   console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);
