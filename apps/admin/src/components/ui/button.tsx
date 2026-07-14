@@ -80,6 +80,7 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }))}
       onClick={onClick ? handleClick : undefined}
       disabled={disabled || isLoading}
+      aria-busy={isLoading}
       {...props}
     >
       {asChild ? (
@@ -95,15 +96,15 @@ function Button({
 }
 
 function PrimaryButton(props: React.ComponentProps<typeof Button>) {
-  return <Button variant="default" {...props} />;
+  return <Button {...props} variant="default" />;
 }
 
 function SecondaryButton(props: React.ComponentProps<typeof Button>) {
-  return <Button variant="secondary" {...props} />;
+  return <Button {...props} variant="secondary" />;
 }
 
 function GhostButton(props: React.ComponentProps<typeof Button>) {
-  return <Button variant="ghost" {...props} />;
+  return <Button {...props} variant="ghost" />;
 }
 
 function DestructiveButton({
@@ -140,7 +141,7 @@ function DestructiveButton({
   };
 
   return (
-    <Button variant="destructive" onClick={handleClick} onBlur={handleBlur} {...props}>
+    <Button {...props} variant="destructive" onClick={handleClick} onBlur={handleBlur}>
       <TriangleAlert />
       {isConfirming ? 'Click to Confirm' : children}
     </Button>
