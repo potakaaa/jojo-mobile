@@ -328,11 +328,11 @@ Write `process/features/ordering-cart/backlog/checkout-real-order-api_NOTE_13-07
 
 ## Resume and Execution Handoff
 
-1. **Selected plan file path:** `process/features/ordering-cart/active/checkout-flow_13-07-26/checkout-flow_PLAN_13-07-26.md`
+1. **Selected plan file path:** `process/features/ordering-cart/completed/checkout-flow_13-07-26/checkout-flow_PLAN_13-07-26.md` (COMPLETED — archived 13-07-26)
 2. **Last completed phase or step:** VALIDATE complete — Gate: PASS (2 plan fixes applied, see Validate Contract below).
 3. **Validate-contract status:** written (13-07-26) — see `## Validate Contract` below.
 4. **Supporting context files loaded:** `process/context/all-context.md`; CART-001 plan (`cart-screen_PLAN_09-07-26.md`, pattern reference); `use-cart.ts`, `mock-cart.ts`, `cart.tsx` (seam pattern + reuse); `checkout.tsx`, `confirmation/[orderId].tsx`, `order/_layout.tsx`, `_layout.tsx` (route/mount targets, all read directly during VALIDATE); `packages/types/src/{cart,order,menu}.ts`; `packages/api/src/db/schema/{orders,order_items}.ts` (contract source of truth, read directly during VALIDATE); `packages/ui/src/index.ts`; `packages/ui/src/components/{order-status-badge,order-status-timeline}.tsx` (VALIDATE-discovered breaking-change consumers); `apps/mobile/src/config/env.ts`; `apps/mobile/package.json`, `packages/api/vitest.config.ts` (test-infra pattern source).
-5. **Next step for a fresh agent picking up mid-execution:** run `ENTER EXECUTE MODE` — the Implementation Checklist (13 steps) is ready to run top-to-bottom via `vc-execute-agent`, including the 2 VALIDATE-added steps (2, 4).
+5. **Next step:** none — EXECUTE complete and the plan is archived in `completed/`. Retained for audit/resume history only; do not re-run VALIDATE or EXECUTE.
 
 ---
 

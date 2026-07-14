@@ -10,7 +10,7 @@ feature: ordering-cart
 **Feature:** ordering-cart
 **Follow-up to:** CART-002 (checkout-flow, `process/features/ordering-cart/active/checkout-flow_13-07-26/`)
 **Date**: 2026-07-13
-**Status**: PLAN — awaiting VALIDATE
+**Status**: COMPLETE — archived 13-07-26 (VALIDATE PASS, EXECUTE complete)
 **Complexity**: SIMPLE
 **Branch:** feat/checkout-flow
 **Context:** `process/context/all-context.md`
@@ -292,9 +292,9 @@ row honest about being payment-method content, not a branch card.
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:**
-   `process/features/ordering-cart/active/payment-method-screen_13-07-26/payment-method-screen_PLAN_13-07-26.md`
-2. **Last completed phase or step:** PLAN — this plan file just written; no EXECUTE has started.
-3. **Validate-contract status:** pending — not yet run.
+   `process/features/ordering-cart/completed/payment-method-screen_13-07-26/payment-method-screen_PLAN_13-07-26.md` (COMPLETED — archived 13-07-26)
+2. **Last completed phase or step:** UPDATE PROCESS complete — EXECUTE done, plan archived.
+3. **Validate-contract status:** VALIDATE PASS (13-07-26) — see `## Validate Contract` below.
 4. **Supporting context files loaded:** `process/context/all-context.md`,
    `process/context/tests/all-tests.md`, `process/context/planning/all-planning.md`,
    `process/development-protocols/orchestration.md`,
@@ -302,13 +302,8 @@ row honest about being payment-method content, not a branch card.
    `process/features/ordering-cart/active/checkout-flow_13-07-26/checkout-flow_PLAN_13-07-26.md`
    (source of the CART-002 seam/contract pattern this plan extends); backlog note
    `process/features/ordering-cart/backlog/checkout-real-order-api_NOTE_13-07-26.md`.
-5. **Next step for a fresh agent:** run VALIDATE on this plan file (`ENTER VALIDATE MODE`); once
-   gated PASS/CONDITIONAL-accepted, run `ENTER EXECUTE MODE` against this exact plan path. EXECUTE
-   should follow the Implementation Checklist in order (types → UI component → hook → new screen →
-   layout registration → typed-routes codegen refresh (6b) → checkout/confirmation consumers →
-   tests → backlog note), running the per-section test gates from Verification Evidence as each
-   section completes, per `orchestration.md` §PVL/EVL and the per-section test-gate loop in
-   `vc-generate-phase-program`/EXECUTE conventions.
+5. **Next step:** none — VALIDATE (PASS) and EXECUTE are complete and the plan is archived in
+   `completed/`. Retained for audit/resume history only; do not re-run VALIDATE or EXECUTE.
 
 ## Validate Contract
 

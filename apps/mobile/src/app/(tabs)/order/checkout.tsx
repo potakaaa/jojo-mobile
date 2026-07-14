@@ -10,6 +10,7 @@ import {
   PAYMENT_METHOD_ICONS,
   PAYMENT_METHOD_LABELS,
 } from '@jojopotato/ui';
+import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -17,7 +18,7 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  SlideInUp,
+  SlideInDown,
   SlideOutDown,
   cancelAnimation,
   useAnimatedStyle,
@@ -253,25 +254,26 @@ export default function CheckoutScreen() {
           {error ? <Text style={[styles.errorText, { color: theme.accent }]}>{error}</Text> : null}
         </ScrollView>
 
-        <View
-          style={[
-            styles.footer,
-            Platform.OS !== 'web' && {
-              paddingBottom: getFloatingTabBarClearance(insets.bottom),
-            },
-          ]}
-        >
-          <Button
-            label={`Place order • ${(totalCents / 100).toLocaleString('en-PH', {
-              style: 'currency',
-              currency: 'PHP',
-            })}`}
-            onPress={openConfirm}
-            loading={submitting}
-            disabled={isEmpty}
-            mode={mode}
-          />
-        </View>
+        {countdown === null ? (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+            style={[
+              styles.footer,
+              Platform.OS !== 'web' && {
+                paddingBottom: getFloatingTabBarClearance(insets.bottom),
+              },
+            ]}
+          >
+            <Button
+              label={`Place order • ${formatCurrency(totalCents)}`}
+              onPress={openConfirm}
+              loading={submitting}
+              disabled={isEmpty}
+              mode={mode}
+            />
+          </Animated.View>
+        ) : null}
       </SafeAreaView>
 
       {countdown !== null ? (
@@ -282,7 +284,7 @@ export default function CheckoutScreen() {
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={dismissConfirm} />
           <Animated.View
-            entering={SlideInUp.duration(300)}
+            entering={SlideInDown.duration(300)}
             exiting={SlideOutDown.duration(200)}
             style={[
               styles.sheet,

@@ -319,7 +319,7 @@ export default function CartScreen() {
               style={[
                 styles.footer,
                 Platform.OS !== 'web' && {
-                  paddingBottom: getFloatingTabBarClearance(insets.bottom),
+                  paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.two,
                 },
               ]}
             >
