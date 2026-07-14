@@ -40,29 +40,26 @@ const OPTION_TYPE_LABEL: Record<StaffOrderItem['selectedOptions'][number]['optio
   add_on: 'Add-on',
 };
 
-// ─── Inert action buttons (STAFF-003 surface — all no-ops) ──────────────────
+// ─── Inert action buttons (STAFF-003 surface — all disabled) ─────────────────
 function InertOrderActions({ status, mode }: { status: string; mode: ThemeMode }) {
-  // STAFF-003: wire real mutations here. These buttons are intentionally inert.
-  const noop = () => {
-    // STAFF-003: no-op placeholder — no write endpoint exists yet.
-  };
-
+  // STAFF-003: wire real mutations here. Disabled so staff can't tap and
+  // believe the order changed before the write endpoint exists.
   if (status === 'pending') {
     return (
       <View style={styles.actionRow}>
-        <Button label="Accept" variant="primary" mode={mode} onPress={noop} style={styles.flex} />
-        <Button label="Reject" variant="accent" mode={mode} onPress={noop} style={styles.flex} />
+        <Button label="Accept" variant="primary" mode={mode} disabled onPress={() => {}} style={styles.flex} />
+        <Button label="Reject" variant="accent" mode={mode} disabled onPress={() => {}} style={styles.flex} />
       </View>
     );
   }
   if (status === 'accepted' || status === 'preparing') {
-    return <Button label="Mark Flavoring" variant="ink" mode={mode} onPress={noop} />;
+    return <Button label="Mark Flavoring" variant="ink" mode={mode} disabled onPress={() => {}} />;
   }
   if (status === 'flavoring') {
-    return <Button label="Mark Ready" variant="primary" mode={mode} onPress={noop} />;
+    return <Button label="Mark Ready" variant="primary" mode={mode} disabled onPress={() => {}} />;
   }
   if (status === 'ready') {
-    return <Button label="Mark Picked Up" variant="primary" mode={mode} onPress={noop} />;
+    return <Button label="Mark Picked Up" variant="primary" mode={mode} disabled onPress={() => {}} />;
   }
   return null;
 }
@@ -118,7 +115,14 @@ export default function OrderDetailScreen() {
             <View style={styles.stateBlock}>
               <ActivityIndicator size="large" color={theme.text} />
             </View>
-          ) : isError || !order ? (
+          ) : isError ? (
+            <View style={styles.stateBlock}>
+              <Text style={[styles.stateText, { color: theme.textSecondary }]}>
+                Could not load order
+              </Text>
+              <Button label="Back" variant="outline" mode={mode} onPress={() => router.back()} />
+            </View>
+          ) : !order ? (
             <View style={styles.stateBlock}>
               <Text style={[styles.stateText, { color: theme.textSecondary }]}>
                 Order not found

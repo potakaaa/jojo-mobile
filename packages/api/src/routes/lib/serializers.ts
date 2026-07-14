@@ -238,10 +238,21 @@ export function serializeStaffOrderSummary(
   };
 }
 
+function serializeStaffOrderItem(item: OrderItemRow): StaffOrderDetail['items'][number] {
+  return {
+    productId: item.product_id,
+    productName: item.product_name_snapshot,
+    quantity: item.quantity,
+    unitPriceCents: numericToCents(item.unit_price),
+    totalPriceCents: numericToCents(item.total_price),
+    selectedOptions: (item.selected_options as SelectedOption[]) ?? [],
+  };
+}
+
 /**
  * Serialize an order + its items into the full `StaffOrderDetail` shape
- * (STAFF-002 detail screen). Reuses `serializeOrderItem` for the item array so
- * the `selectedOptions` shape matches the customer order serializer exactly.
+ * (STAFF-002 detail screen). Uses a dedicated serializer so `productName`
+ * (the staff-facing field name) maps correctly from `product_name_snapshot`.
  */
 export function serializeStaffOrderDetail(
   order: OrderRow,
@@ -254,6 +265,6 @@ export function serializeStaffOrderDetail(
     placedAt: order.placed_at.toISOString(),
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     totalCents: numericToCents(order.total),
-    items: items.map(serializeOrderItem),
+    items: items.map(serializeStaffOrderItem),
   };
 }

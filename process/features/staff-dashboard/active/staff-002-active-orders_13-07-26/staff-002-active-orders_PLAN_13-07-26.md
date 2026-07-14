@@ -20,7 +20,7 @@ status: active
 
 ## Overview
 
-**Context**: Read  for project architecture. STAFF-001 (auth + staff shell) is complete and merged. The  at  is mounted at  behind the  guard in . Branch scope primitives (, ) live in . The  and  tables are fully migrated with . Real customer order placement exists ( behind ).  is already wired in  via  (from the ordering-cart feature).
+**Context**: Read `process/context/all-context.md` for project architecture. STAFF-001 (auth + staff shell) is complete and merged. The `staffRouter` at `packages/api/src/routes/staff.ts` is mounted at `/api/staff` behind the `requireStaff(auth)` guard in `packages/api/src/index.ts`. Branch scope primitives (`resolveBranchScope`, `assertBranchScope`) live in `packages/api/src/lib/require-staff.ts`. The `users` and `orders` tables are fully migrated with `0003_lean_kang.sql`. Real customer order placement exists (`POST /orders` behind `requireSession` in `packages/api/src/middleware/require-session.ts`). `CartSessionProvider` is already wired in `apps/mobile/src/app/_layout.tsx` via `useCart()` (from the ordering-cart feature).
 
 **Goal**: Wire two read-only API endpoints to the existing staff shell so branch staff can see and inspect live pickup orders without manual refresh.
 
@@ -224,7 +224,7 @@ No existing endpoints or types are modified. Existing `serializeOrder` / `serial
 - **Packages touched**: `packages/api`, `packages/types`, `apps/mobile`
 - **Files modified**: 4 (staff.ts, serializers.ts, seed.ts, _layout.tsx, index.tsx, staff-api.ts, staff.ts types, types/index.ts)
 - **Files new**: 6 (staff-orders.integration.test.ts, staff-status-config.ts, use-staff-orders.ts, use-staff-order-detail.ts, active-orders.tsx replacement, order-detail/[orderId].tsx)
-- **Risk class**: MEDIUM — new routes behind existing `requireStaff` guard; no schema changes; no auth surface changes; no billing
+- **Risk class**: HIGH (trust-boundary) — new branch-scoped endpoints must never leak cross-branch order data; `mustStopBeforeFinalize: true`; human approval required before closeout (see `harness/risk-gate.json`). No schema changes; no billing surface.
 - **Rollback**: revert `staff.ts` route additions; drop new test file; revert mobile files to mock version (tracked in git)
 
 ---
@@ -551,8 +551,8 @@ The mobile-side RN runner gap remains open (existing backlog). The polling behav
 ## Resume and Execution Handoff
 
 1. **Selected plan file path**: `process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/staff-002-active-orders_PLAN_13-07-26.md`
-2. **Last completed phase or step**: None — plan not yet executed.
-3. **Validate-contract status**: Written — see `## Validate Contract` section below.
+2. **Last completed phase or step**: All phases A–H complete (EXECUTED 13-07-26). Gates green: 62 API tests, typecheck, lint, format, idempotent seed×2. Risk pack 5/5 valid. See `staff-002-active-orders_REPORT_13-07-26.md` for full execution evidence.
+3. **Validate-contract status**: Written and PASS — see `## Validate Contract` section below.
 4. **Supporting context files loaded**:
    - `process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/staff-002-active-orders_SPEC_13-07-26.md`
    - `packages/api/src/routes/staff.ts`
@@ -563,13 +563,13 @@ The mobile-side RN runner gap remains open (existing backlog). The polling behav
    - `packages/api/src/routes/__tests__/branches.test.ts` + `require-staff.integration.test.ts`
    - `apps/mobile/src/features/staff/lib/staff-api.ts`
    - `apps/mobile/src/features/staff/hooks/use-staff-me.ts`
-   - `apps/mobile/src/app/(staff)/active-orders.tsx` (mock to replace)
+   - `apps/mobile/src/app/(staff)/active-orders.tsx`
    - `apps/mobile/src/app/(staff)/_layout.tsx`
    - `apps/mobile/src/app/(staff)/index.tsx`
    - `apps/mobile/src/lib/query-client.ts`
    - `packages/types/src/staff.ts`
    - `process/context/tests/all-tests.md`
-5. **Next step for a fresh agent picking up mid-execution**: Read this plan from the top. Check `process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/` for any REPORT file that records completed phases. Start from the first unchecked phase in the Implementation Checklist. Confirm local Postgres is running (`docker compose up -d`) and migrations are applied (`pnpm --filter @jojopotato/api db:migrate`) before Phase D.
+5. **Next step for a fresh agent picking up post-EXECUTE**: Implementation is complete — do NOT re-execute. The remaining work is closeout only: run EVL confirmation (re-run API test suite + typecheck), write the UPDATE PROCESS closeout packet, and archive this plan. See `Deviations (EXECUTE)` section for within-blast-radius deviations already recorded.
 
 ---
 
@@ -733,5 +733,5 @@ Hard stop conditions / safety constraints:
 - STOP if scope-creep into SSE/WebSocket/push notifications is detected
 Next phase: EXECUTE: process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/staff-002-active-orders_PLAN_13-07-26.md
 Validate contract: inline in plan (## Validate Contract section above)
-Execute start: pnpm typecheck | pnpm lint | docker compose up -d && pnpm --filter @jojopotato/api db:migrate && pnpm --filter @jojopotato/api test | high-risk pack: no (MEDIUM risk class — new read-only routes behind existing guard, no auth/billing/schema surface)
+Execute start: pnpm typecheck | pnpm lint | docker compose up -d && pnpm --filter @jojopotato/api db:migrate && pnpm --filter @jojopotato/api test | high-risk pack: yes (HIGH risk class — trust-boundary: branch-scoped order data; mustStopBeforeFinalize=true; see harness/risk-gate.json)
 ```
