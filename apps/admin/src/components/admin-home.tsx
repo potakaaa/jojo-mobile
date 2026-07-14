@@ -1,11 +1,5 @@
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
  * Placeholder home screen for the admin scaffold. Proves: (a) the app boots,
@@ -27,8 +21,7 @@ export function AdminHome() {
         <CardHeader>
           <CardTitle className="font-display text-h3">Scaffold ready</CardTitle>
           <CardDescription>
-            TanStack Start + Tailwind v4 + shadcn/ui, styled with the Jojo Potato
-            brand tokens.
+            TanStack Start + Tailwind v4 + shadcn/ui, styled with the Jojo Potato brand tokens.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">

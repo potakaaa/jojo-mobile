@@ -100,19 +100,25 @@ describe('requireAdmin role matrix (AC1)', () => {
 
     // Customer → 403.
     const customer = await makeUser('customer');
-    const custRes = await request(app).get('/api/admin/me').set('Cookie', customer.cookies.join('; '));
+    const custRes = await request(app)
+      .get('/api/admin/me')
+      .set('Cookie', customer.cookies.join('; '));
     expect(custRes.status).toBe(403);
     expect(custRes.body).toEqual({ error: 'Forbidden' });
 
     // Staff → 403 (staff is NOT admitted by requireAdmin).
     const staff = await makeUser('staff');
-    const staffRes = await request(app).get('/api/admin/me').set('Cookie', staff.cookies.join('; '));
+    const staffRes = await request(app)
+      .get('/api/admin/me')
+      .set('Cookie', staff.cookies.join('; '));
     expect(staffRes.status).toBe(403);
     expect(staffRes.body).toEqual({ error: 'Forbidden' });
 
     // Admin → 200 + { role: 'admin' }.
     const admin = await makeUser('admin');
-    const adminRes = await request(app).get('/api/admin/me').set('Cookie', admin.cookies.join('; '));
+    const adminRes = await request(app)
+      .get('/api/admin/me')
+      .set('Cookie', admin.cookies.join('; '));
     expect(adminRes.status).toBe(200);
     expect(adminRes.body).toEqual({ role: 'admin' });
 
@@ -246,7 +252,10 @@ describe('POST /api/admin/users/:id/role', () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Cannot modify own role' });
 
-    const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, superAdmin.id));
+    const [row] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, superAdmin.id));
     expect(row!.role).toBe('super_admin');
   });
 

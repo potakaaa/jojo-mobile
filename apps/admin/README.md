@@ -37,16 +37,16 @@ Requires Node >=20 and pnpm 10.33.0 (see root `package.json`/`.nvmrc`).
 
 Run from the repo root with `--filter`, or `cd apps/admin` and drop the filter:
 
-| Command | Purpose |
-|---|---|
-| `pnpm --filter @jojopotato/admin dev` | Start the dev server at http://localhost:3100 |
-| `pnpm --filter @jojopotato/admin build` | Production build (outputs to `dist/client` + `dist/server`) |
-| `pnpm --filter @jojopotato/admin preview` | Preview the production build locally |
-| `pnpm --filter @jojopotato/admin typecheck` | `tsc --noEmit` |
-| `pnpm --filter @jojopotato/admin lint` | ESLint (flat config) |
-| `pnpm --filter @jojopotato/admin test` | Vitest (jsdom + `@testing-library/react`) |
+| Command                                           | Purpose                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm --filter @jojopotato/admin dev`             | Start the dev server at http://localhost:3100                       |
+| `pnpm --filter @jojopotato/admin build`           | Production build (outputs to `dist/client` + `dist/server`)         |
+| `pnpm --filter @jojopotato/admin preview`         | Preview the production build locally                                |
+| `pnpm --filter @jojopotato/admin typecheck`       | `tsc --noEmit`                                                      |
+| `pnpm --filter @jojopotato/admin lint`            | ESLint (flat config)                                                |
+| `pnpm --filter @jojopotato/admin test`            | Vitest (jsdom + `@testing-library/react`)                           |
 | `pnpm --filter @jojopotato/admin generate-routes` | Regenerate `src/routeTree.gen.ts` after adding/renaming route files |
-| `pnpm --filter @jojopotato/admin clean` | Remove `dist`, `.tanstack`, `node_modules` |
+| `pnpm --filter @jojopotato/admin clean`           | Remove `dist`, `.tanstack`, `node_modules`                          |
 
 These are also wired into the root turbo pipelines (`pnpm build` / `pnpm lint` / `pnpm typecheck` /
 `pnpm test` from the repo root) — no separate CI configuration was needed.
@@ -70,7 +70,7 @@ asserts the brand wordmark is present — this proves the runner precedent works
 full coverage. This is the **first web-app component-test runner** in the repo (see
 `process/context/tests/all-tests.md`); extend it as real screens are built in Phase 1+.
 
-Visual/on-brand acceptance checks (does it actually *look* right — colors, fonts, shadows, radii)
+Visual/on-brand acceptance checks (does it actually _look_ right — colors, fonts, shadows, radii)
 are **manual** — there is no automated visual-regression runner in this repo (project-wide gap,
 not specific to this app). Load the dev server in a browser and eyeball it.
 

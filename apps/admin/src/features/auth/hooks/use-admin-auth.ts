@@ -1,6 +1,13 @@
 import { ADMIN_ROLES } from '@jojopotato/types';
 import type { UserRole } from '@jojopotato/types';
-import { createContext, createElement, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useMemo,
+  type ReactNode,
+} from 'react';
 
 import { authClient } from '@/features/auth/lib/auth-client';
 
@@ -52,8 +59,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AdminAuthContextValue>(() => {
     const sessionUser = data?.user as
-      | { id: string; name: string; email: string; role?: string | null }
-      | undefined;
+      { id: string; name: string; email: string; role?: string | null } | undefined;
     const user: AdminAuthUser | null = sessionUser
       ? {
           id: sessionUser.id,
