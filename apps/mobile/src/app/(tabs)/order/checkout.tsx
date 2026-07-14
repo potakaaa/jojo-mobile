@@ -30,6 +30,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
+import { requestNotificationPermission } from '@/features/notifications/lib/notification-permission';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -101,6 +102,10 @@ export default function CheckoutScreen() {
       dealId: cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
     });
     if (order) {
+      // First-order notification permission seam (fire-and-forget; the seam's
+      // own once-guard ensures it only prompts on the first successful order).
+      // Never awaited — it must not delay the confirmation redirect.
+      void requestNotificationPermission();
       clearCart();
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',
