@@ -74,8 +74,9 @@ export interface ApiMenu {
 }
 
 export interface ApiOrderItem {
+  id: string;
   productId: string;
-  productName: string;
+  productNameSnapshot: string;
   quantity: number;
   unitPriceCents: number;
   totalPriceCents: number;
@@ -175,8 +176,9 @@ export function serializeMenuCategory(
 
 function serializeOrderItem(item: OrderItemRow): ApiOrderItem {
   return {
+    id: item.id,
     productId: item.product_id,
-    productName: item.product_name_snapshot,
+    productNameSnapshot: item.product_name_snapshot,
     quantity: item.quantity,
     unitPriceCents: numericToCents(item.unit_price),
     totalPriceCents: numericToCents(item.total_price),

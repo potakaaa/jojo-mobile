@@ -1,7 +1,7 @@
 ---
 name: context:all-tests
-description: "Test runner selection, commands, and verification order — vitest now live in packages/api"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart
+description: "Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui"
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout
 related: []
 date: 13-07-26
 ---
@@ -37,8 +37,8 @@ As the project grows, add deeper docs to this group (e.g., `e2e-tests.md`, `debu
 
 ## What This Covers
 
-- test runner selection (currently: none configured)
-- quick commands by package (typecheck/lint only, for now)
+- test runner selection (vitest in `packages/api` + `apps/mobile`; jest-expo in `packages/ui`; still none in `packages/{types,utils}`)
+- quick commands by package
 - fast debugging procedures
 - current testing gaps worth remembering
 
@@ -57,35 +57,41 @@ Use this file when you need to:
 
 ## Quick Decision Guide
 
-### `packages/api` now has Vitest — `apps/mobile` and the other packages still do not
+### Three runners now exist: Vitest (`packages/api`, `apps/mobile`), Jest/jest-expo (`packages/ui`)
 
 `packages/api` declares `vitest` (`"test": "vitest run"`) and has real coverage:
 `src/db/schema/__tests__/smoke.test.ts`, `src/lib/__tests__/auth.integration.test.ts` (5
 integration tests covering better-auth's email/password, phone-OTP-stub, magic-link, Google-OAuth
 config, and the `role` `input:false` guard), and `src/routes/__tests__/{branches,orders}.test.ts`
-(44 tests total in the suite as of `pickup-order-flow` — covers `order_number` retry-on-collision,
-session-boundary 401/403 isolation, `estimated_ready_at` derivation, concurrent-order-number
-uniqueness, and back-to-back order independence) — run against a real local Postgres via
-`docker compose up -d` + `db:migrate`, same DB the app itself uses. No other `package.json`
-(root, `apps/mobile`, `packages/{types,ui,utils}`) declares Jest, Vitest, Detox, Playwright, or any
-other runner yet. `packages/ui` now has vitest-run component tests too
-(`order-status-badge`/`order-status-timeline`, 32 tests) even though `packages/ui` itself has no
-`test` script wired the same way as `packages/api` — check `packages/ui/package.json` before
-assuming otherwise.
+(covers `order_number` retry-on-collision, session-boundary 401/403 isolation,
+`estimated_ready_at` derivation, concurrent-order-number uniqueness, and back-to-back order
+independence) — run against a real local Postgres via `docker compose up -d` + `db:migrate`, same
+DB the app itself uses. `packages/ui` has component tests for
+`order-status-badge`/`order-status-timeline` and others — check `packages/ui/package.json` for the
+runner wiring before assuming.
 
-Until a mobile-side (RN) runner is chosen, "verification" for `apps/mobile` and the other packages
+`apps/mobile` gained its first runner — `vitest` (`"test": "vitest run"`, `apps/mobile/vitest.config.ts`,
+`environment: 'node'`, scoped to `src/**/__tests__/**/*.test.ts` — pure-TS logic only, no RN
+component rendering). Added by the checkout-flow (CART-002) plan for the `useOrder()` seam's pure
+functions: `src/features/order/__tests__/mock-order.test.ts` covers `generateOrderNumber()`,
+`validatePlaceOrderRequest()`, and `buildOrderFromRequest()`. This does NOT close the "no mobile-side
+RN component/E2E test runner" gap below — it only covers plain-TypeScript pure-function logic.
+
+`packages/ui` has `jest`/`jest-expo` (`"test": "jest"`, `packages/ui/jest.config.js`) with component
+tests for `OrderStatusBadge`/`OrderStatusTimeline` and others (from the shared-ui-component-library
+work). `packages/{types,utils}` still declare no runner.
+
+Until a mobile-side (RN component) E2E runner is chosen, "verification" for RN-rendered UI still
 means:
 
 1. `pnpm typecheck` (tsc --noEmit per package, via turbo)
 2. `pnpm lint` (ESLint flat config per package, via turbo)
-3. manual verification in the Expo app (`pnpm ios` / `pnpm android` / `pnpm web`)
+3. manual verification in the Expo app (`pnpm ios` / `pnpm android` / `pnpm web`) or Agent-Probe walkthrough
+4. `pnpm --filter @jojopotato/mobile test` (vitest, pure-TS logic) / `pnpm --filter @jojopotato/ui test` (jest-expo, component logic) / `pnpm --filter @jojopotato/api test` (vitest, integration) — whichever package was touched
 
-For `packages/api`, add `pnpm --filter @jojopotato/api test` (vitest) to the above. When a plan
-introduces real logic worth unit-testing elsewhere (e.g. cart price calculation, currency
-formatting in `packages/utils`, or a mobile-side `useAuth()` hook), the plan should explicitly
-propose adding a runner for that surface (Vitest for TS-only packages — already proven in
-`packages/api`; Jest via `jest-expo` or Detox/Maestro for RN component or e2e coverage) rather than
-assuming one already exists.
+When a plan introduces real logic worth unit-testing on a package with no runner yet
+(`packages/types`, `packages/utils`), the plan should explicitly propose adding one (Vitest for
+TS-only packages is the proven pattern in this repo) rather than assuming one already exists.
 
 ## Default Verification Order
 
@@ -107,18 +113,21 @@ Unless the task clearly needs a different path:
 | `apps/mobile` | eslint | `pnpm --filter @jojopotato/mobile lint` | single-package lint |
 | `packages/{types,ui,utils}` | tsc | `pnpm --filter @jojopotato/{types,ui,utils} typecheck` | single-package typecheck |
 | `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
-| `apps/mobile` (unit/component) | (no test runner configured) | -- | see Known Gaps |
+| `apps/mobile` (pure-TS logic) | vitest | `pnpm --filter @jojopotato/mobile test` | `environment: 'node'`, scoped to `src/**/__tests__/**/*.test.ts` — no RN rendering |
+| `packages/ui` (component) | jest / jest-expo | `pnpm --filter @jojopotato/ui test` | `packages/ui/jest.config.js` |
+| `apps/mobile` (RN component/E2E) | (no test runner configured) | -- | see Known Gaps |
 
 ## Debugging Quick Reference
 
-- No test-specific config exists yet (no `jest.config.*`, `vitest.config.*`, `.env.test`, mocks, or fixtures anywhere in the repo).
+- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only), `packages/ui/jest.config.js`. `packages/{types,utils}` still have none.
 - Typecheck failures are the fastest signal in this repo today — packages are TS-source-only (no build step), so `tsc --noEmit` catches cross-package type breakage immediately via workspace links.
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
+- Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).
 
 ## Known Gaps
 
-- **No mobile-side (RN) test runner** — `apps/mobile` and `packages/{types,utils}` still have no Jest/Vitest/Detox/Playwright. `packages/api` is the one exception (Vitest, since the `db-schema` plan; extended with auth integration tests by `wire-better-auth` and route tests by `pickup-order-flow`); `packages/ui` also runs vitest for its components. Flag in any plan that adds real business logic to the mobile app or shared packages (cart math, pricing, a `useAuth()` hook) without also proposing a runner for that surface. **Still open as of `pickup-order-flow` (13-07-26):** that plan added a non-trivial amount of new mobile business logic with zero automated coverage — `CartProvider`'s reducer, `cart-totals.ts`, all 9 new screens, and every mobile API-client mapping function are verified only by typecheck/lint + a manual Agent-Probe QA script, not by unit/component tests. This is also the surface where an EVL confirmation run caught a real bug (`tsc` cannot validate a `fetch` response shape against a bare `as T` cast) that a runtime-validated fixture or a component test would likely have caught earlier — see `process/general-plans/completed/pickup-order-flow_10-07-26/` closeout report.
+- **No RN component/E2E test runner for `apps/mobile`** — `apps/mobile` now has `vitest` for pure-TS logic (see above, added by checkout-flow CART-002) but no `jest-expo`/Detox/Maestro for RN component rendering or E2E flows. `packages/types`/`packages/utils` still have no runner at all. Flag in any plan that adds real business logic without also proposing a runner for that surface. **Still open as of `pickup-order-flow` (13-07-26):** that plan added a non-trivial amount of new mobile business logic with zero automated coverage — screens and mobile API-client mapping functions are verified only by typecheck/lint + a manual Agent-Probe QA script. This is also the surface where an EVL confirmation run caught a real bug (`tsc` cannot validate a `fetch` response shape against a bare `as T` cast) that a runtime-validated fixture or a component test would likely have caught earlier — see `process/general-plans/completed/pickup-order-flow_10-07-26/` closeout report.
 - **No automated coverage for `apps/mobile`'s `useAuth()` hook** — the better-auth server integration is tested (5 vitest cases in `packages/api`), but the mobile consumption side (`src/features/auth/hooks/use-auth.ts`, `src/features/auth/lib/auth-client.ts`) has no automated test, consistent with the mobile-side runner gap above. Manual/simulator verification (sign-up/login, phone OTP, Google button, magic-link deep link, session persistence across restart, logout) is still required — see backlog note `process/features/auth-accounts/backlog/wire-better-auth-hook-test-coverage_NOTE_09-07-26.md`.
-- **No CI pipeline** — no `.github/workflows/`, so `typecheck`/`lint`/`packages/api`'s vitest suite are not automatically enforced on PRs yet.
+- ~~No CI pipeline~~ **RESOLVED:** GitHub Actions CI exists (`.github/workflows/ci.yml` — format/lint/typecheck/test/build with a Postgres service).
 - **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app; see `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md` (navigation-focused, pre-dates auth; auth flows would be additional scenarios for the same future harness). The `pickup-order-flow` plan's full cold-open→confirmation customer journey is another concrete scenario this future harness should cover — it currently relies on a one-off Agent-Probe manual QA script for its primary happy-path gate.
 - **No live-integration check between parallel EXECUTE phases building opposite sides of a network contract** — surfaced by `pickup-order-flow`'s EVL cycle 1 (API and mobile drifted on menu response field names when built in parallel against a documented-but-not-live-tested contract; caught only by the independent EVL confirmation run, not by `tsc` or either agent's self-report). Not a fixable test-runner gap in the traditional sense, but worth remembering as a process/workflow risk: treat a live-integration checkpoint or a shared runtime-validated contract fixture (see `apps/mobile/src/lib/api-client.contract.ts` — relocated 13-07-26 by `merge-menu-api-reconciliation` from the deleted `features/menu/lib/api-client.contract.ts`, same regression-guard intent preserved) as close to mandatory whenever a plan splits a network-contract's two sides across parallel execute agents.
