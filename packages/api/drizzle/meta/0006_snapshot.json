@@ -1,6 +1,6 @@
 {
-  "id": "ab0ad779-f76c-474b-a288-869264363be7",
-  "prevId": "60e25690-70bd-4ca6-b2a2-46d3874e4893",
+  "id": "64e55a9b-dda8-438d-ad4f-eb30763f86bb",
+  "prevId": "ab0ad779-f76c-474b-a288-869264363be7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1329,6 +1329,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "deal_id": {
+          "name": "deal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "order_number": {
           "name": "order_number",
           "type": "varchar",
@@ -1496,6 +1502,15 @@
           "tableFrom": "orders",
           "tableTo": "branches",
           "columnsFrom": ["branch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_deal_id_deals_id_fk": {
+          "name": "orders_deal_id_deals_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "deals",
+          "columnsFrom": ["deal_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"

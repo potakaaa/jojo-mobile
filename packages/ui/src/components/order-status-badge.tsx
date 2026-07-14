@@ -17,6 +17,7 @@ const STATUS_META: Record<OrderStatus, { label: string; color: string }> = {
   ready: { label: 'Ready for pickup', color: Palette.green },
   completed: { label: 'Picked up', color: Palette.greenDark },
   cancelled: { label: 'Cancelled', color: Palette.jred },
+  rejected: { label: 'Rejected', color: Palette.jred },
 };
 
 /**
