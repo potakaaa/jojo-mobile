@@ -2,7 +2,7 @@
 phase: phase-02-branches
 date: 2026-07-14
 status: COMPLETE_WITH_GAPS
-evl_status: PASS (6/6 gates, 0 fix cycles)
+evl_status: PASS (7/7 gates, 0 fix cycles)
 feature: admin-dashboard
 plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-branches_PLAN_14-07-26.md
 ---
@@ -84,9 +84,13 @@ plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-
 ## Test Infra Gaps Found
 
 - No `apps/admin` browser/E2E runner — AC7 has no automated coverage (project-wide gap, pre-existing).
-- `is_accepting_pickup` shared-state race (admin-write vs future STAFF-004 mobile-write) has no
-  optimistic-concurrency guard anywhere on `branches` writes; last-write-wins accepted. No automated
-  test possible until STAFF-004 exists — tracked Known-Gap, not silently dropped.
+- `is_accepting_pickup` (and every other `branches` field) has no optimistic-concurrency guard on
+  writes, so it is already an **admin-vs-admin** last-write-wins race today: two admins PATCHing the
+  same branch concurrently silently clobber each other, loser gets no warning. STAFF-004 (mobile
+  staff shell) will add a **second, cross-role** writer on the same `is_accepting_pickup` column,
+  widening the race — but the underlying gap exists now. The admin-vs-admin case IS testable today
+  (two concurrent PATCHes); the cross-role case waits on STAFF-004. Last-write-wins accepted; tracked
+  Known-Gap, not silently dropped.
 
 ## EVL Confirmation (UPDATE PROCESS pass, 14-07-26)
 
@@ -136,11 +140,11 @@ scoring surface instead:
 - **Selected plan:** `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-branches_PLAN_14-07-26.md`
 - **Finished:** all API CRUD routes + serializer + aggregator append + 12-case supertest suite (AC1-AC6
   green); full `apps/admin` branches feature (api/hooks/components/route) typecheck+lint clean.
-- **Verified:** AC1-AC6 Fully-Automated (independent EVL re-run pending). **Unverified:** AC7 manual walkthrough.
-- **Cleanup remaining:** run AC7 walkthrough; then UPDATE PROCESS (archive + context delta for the
-  established admin-CRUD pattern + `auth/` group candidate reminder).
-- **Best next state:** Keep in active/testing — EVL confirmation (vc-tester re-run AC1-AC6) + AC7 manual
-  walkthrough owed before ✅ VERIFIED / archival.
+- **Verified:** AC1-AC6 Fully-Automated, independently EVL-confirmed (see `## EVL Confirmation`).
+  **Unverified:** AC7 manual walkthrough (Agent-Probe, owed).
+- **Cleanup remaining:** AC7 walkthrough owed (non-blocking); UPDATE PROCESS complete this pass.
+- **Best next state:** ✅ VERIFIED — EVL confirmed and UPDATE PROCESS done; AC7 remains an owed
+  Agent-Probe item (backlog note filed), non-blocking for archival per the Phase 1 precedent.
 
 ## Forward Preview
 

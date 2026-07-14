@@ -17,12 +17,18 @@ metadata:
 
 ## Problem
 
-`branches.is_accepting_pickup` has no separate admin-only flag — it is the exact same DB column the
-(not-yet-built) mobile staff shell (STAFF-004) will also write. There is ONE source of truth; admin
-(this phase) and staff (STAFF-004, future) both write it directly. RESEARCH confirmed no
-optimistic-concurrency guard (`updated_at` check, `FOR UPDATE` lock, or similar) exists anywhere on
-`branches` writes today. Last-write-wins is accepted for now — no automated test is possible until
-STAFF-004 exists.
+There is NO optimistic-concurrency guard (`updated_at` compare, `FOR UPDATE` lock, or version column)
+anywhere on `branches` writes. That makes `is_accepting_pickup` (and every other branch field) an
+**admin-vs-admin last-write-wins race today**: two admins editing the same branch concurrently via
+`PATCH /api/admin/branches/:id` silently clobber each other, and the loser gets no warning. This gap
+is real now, with only the admin dashboard as a writer — it is NOT contingent on STAFF-004.
+
+`is_accepting_pickup` additionally has no separate admin-only flag: the (not-yet-built) mobile staff
+shell (STAFF-004) will write the exact same column, adding a **second, cross-role** writer and
+widening the same race. Last-write-wins is accepted for now.
+
+The admin-vs-admin case is testable today (two concurrent PATCHes on one branch id); the cross-role
+admin-vs-staff case can only be tested once STAFF-004's write path exists.
 
 ## What To Do
 
@@ -36,4 +42,6 @@ STAFF-004 exists.
 
 - This is a deliberate, documented Known-Gap per the Phase 2 validate-contract (gap-resolution `D`
   — backlog test-building stub), not a silently dropped concern.
-- Non-blocking for Phase 2 archival — the race is theoretical until STAFF-004's write path exists.
+- Non-blocking for Phase 2 archival — the admin-vs-admin race requires two concurrent admin editors
+  on the same branch (low-likelihood, self-correcting: re-toggle fixes it, no data loss/money/authz
+  surface); the cross-role widening waits on STAFF-004.

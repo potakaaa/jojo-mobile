@@ -256,6 +256,38 @@ describe('PATCH /api/admin/branches/:id (AC4)', () => {
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(404);
   });
+
+  it('409s a PATCH that collides an existing slug', async () => {
+    const slug = `patch-dup-${unique()}`;
+    const first = await createBranch(adminCookies, { slug });
+    expect(first.status).toBe(201);
+    const second = await createBranch(adminCookies);
+    const secondId = second.body.branch.id as string;
+
+    const res = await request(app)
+      .patch(`/api/admin/branches/${secondId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ slug })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'Slug already in use' });
+  });
+});
+
+describe('GET /api/admin/branches/:id detail', () => {
+  it('404s an unknown branch id', async () => {
+    const res = await request(app)
+      .get('/api/admin/branches/00000000-0000-0000-0000-000000000000')
+      .set('Cookie', adminCookies.join('; '));
+    expect(res.status).toBe(404);
+  });
+
+  it('404s a malformed (non-uuid) branch id', async () => {
+    const res = await request(app)
+      .get('/api/admin/branches/not-a-uuid')
+      .set('Cookie', adminCookies.join('; '));
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('PATCH /api/admin/branches/:id/deactivate (AC5)', () => {

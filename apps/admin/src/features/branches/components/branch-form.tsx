@@ -54,8 +54,10 @@ export function BranchForm({ initial, submitting, error, onSubmit, onCancel }: B
       openingHours: openingHours.trim(),
       isAcceptingPickup,
     };
-    const prep = Number(prepMinutes);
-    if (prepMinutes.trim().length > 0 && Number.isFinite(prep)) {
+    // Match the backend schema (z.number().int().positive()) so a blank stays
+    // omitted and a bad value fails client-side instead of round-tripping to a 400.
+    const prep = Number(prepMinutes.trim());
+    if (prepMinutes.trim().length > 0 && Number.isInteger(prep) && prep > 0) {
       input.estimatedPrepMinutes = prep;
     }
 

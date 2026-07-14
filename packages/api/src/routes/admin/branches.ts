@@ -20,14 +20,14 @@ import { AdminApiError } from './lib/errors';
  */
 const adminBranchesRouter: ExpressRouter = Router();
 
-const uuidSchema = z.string().uuid();
+const uuidSchema = z.uuid();
 
 const createBranchSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
   address: z.string().min(1),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
   phone: z.string().min(1),
   openingHours: z.string().min(1),
   isAcceptingPickup: z.boolean().optional(),
@@ -61,6 +61,7 @@ function handleAdminError(err: unknown, res: Response, context: string): void {
  * original pg error on `.cause`, so check both the error itself and its cause.
  */
 function isUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
   const code = (err as { code?: string }).code;
   const causeCode = (err as { cause?: { code?: string } }).cause?.code;
   return code === '23505' || causeCode === '23505';

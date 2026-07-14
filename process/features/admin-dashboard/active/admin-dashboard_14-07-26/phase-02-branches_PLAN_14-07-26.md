@@ -79,16 +79,18 @@ Phases 3–7 will reference or deliberately diverge from during their own RESEAR
    mount; no route re-checks role inline. All writes are Zod-validated server-side; client
    validation is never trusted alone.
 
-5. **UI component modularity & reusability** — this is the vertical slice that FIRST extracts the
-   cross-domain admin UI composites every later phase reuses. Build branches concretely, then lift the
-   recurring CRUD shapes into shared composites under `apps/admin/src/components/`: `data-table.tsx`
-   (resource list/table), `form-dialog.tsx` (create/edit form modal), `confirm-dialog.tsx`
-   (deactivate/delete confirmation), `page-header.tsx` (title + primary action), `query-states.tsx`
-   (loading/empty/error). Each is built ONCE on shadcn primitives and consumed by
-   `features/branches/`; P3-P7 import them rather than re-implementing. Keep genuinely
-   branch-specific pieces inside `features/branches/`. `ponytail:` extract a composite only where a
-   real second consumer is imminent (all five above are known-recurring across every CRUD domain, so
-   they qualify now); do not pre-build speculative variants.
+5. **UI component modularity & reusability** — this is the vertical slice that establishes the
+   reusable admin-CRUD shape every later phase references. Build branches concretely inside
+   `features/branches/`, keeping the CRUD pieces cleanly separated so P3-P7 can lift them.
+   **DEFERRED (as executed):** the up-front extraction of five shared composites under
+   `apps/admin/src/components/` — `data-table.tsx` (resource list/table), `form-dialog.tsx`
+   (create/edit form modal), `confirm-dialog.tsx` (deactivate/delete confirmation), `page-header.tsx`
+   (title + primary action), `query-states.tsx` (loading/empty/error) — was NOT done this phase.
+   Rationale (see Inner Loop Refresh Note + Report Deviation #2): no gate exercises the composites,
+   AC7 is manual-only, and a concurrent agent editing `apps/admin` components made five speculative
+   shared files a collision risk with zero verification benefit. `ponytail:` extract each composite
+   only when a real second CRUD consumer is imminent — that bar is met at Phase 3, whose RESEARCH must
+   revisit this extraction. Do not pre-build speculative variants.
 
 ---
 
@@ -311,8 +313,8 @@ filters by filename substring, and the actual file is
 
 ## Phase Loop Progress
 
-- [ ] Step 1 — RESEARCH
-- [ ] Step 2 — INNOVATE
+- [x] Step 1 — RESEARCH (14-07-26 — confirmed Phase 1 requireAdmin/aggregator/AdminApiError live; see Inner Loop Refresh Note)
+- [~] Step 2 — INNOVATE — SKIPPED (mechanical phase: reuse the established Phase 1 admin-CRUD shape, no architectural choices to compare)
 - [x] Step 3 — PLAN-SUPPLEMENT (14-07-26 — see Inner Loop Refresh Note)
 - [x] Step 4 — PVL (plan-validate loop) (14-07-26 — Gate: PASS, see Validate Contract)
 - [x] Step 5 — EXECUTE (14-07-26 — API CRUD + apps/admin screen delivered; AC1-AC6 Fully-Automated green, 12/12 in admin-branches suite / 134/134 whole API suite; AC7 Agent-Probe manual walkthrough owed. See phase-02-branches_REPORT_14-07-26.md)
@@ -345,7 +347,7 @@ prior `admin-api.ts`) and noted the `is_accepting_pickup` Known-Gap stance is un
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-branches_PLAN_14-07-26.md`
-2. **Last completed phase or step:** Step 4 — PVL (this pass, 14-07-26) — Gate: PASS.
+2. **Last completed phase or step:** Step 7 — UPDATE PROCESS (14-07-26) — phase closed, ✅ VERIFIED. (Steps 5 EXECUTE / 6 EVL complete; see Phase Loop Progress + `## EVL Confirmation` in the REPORT.)
 3. **Validate-contract status:** written (14-07-26) — see `## Validate Contract` below. Gate: PASS.
 4. **Supporting context files loaded:** `process/context/all-context.md`,
    `process/context/tests/all-tests.md`,
@@ -357,10 +359,11 @@ prior `admin-api.ts`) and noted the `is_accepting_pickup` Known-Gap stance is un
    `packages/api/src/routes/admin/users.ts`, `packages/api/src/lib/__tests__/require-admin.integration.test.ts`,
    `packages/api/src/index.ts`, `apps/admin/src/lib/query-client.ts`,
    `apps/admin/src/features/auth/lib/auth-client.ts`, `apps/admin/src/routes/(dashboard)/route.tsx`.
-5. **Next step for a fresh agent picking up mid-execution:** proceed to Step 5 — EXECUTE. All
-   Phase 1 dependencies are confirmed live (no re-check needed). Follow the Implementation
-   Checklist in order (API first, then App); read the Validate Contract's Execute-Agent
-   Instructions below before writing the slug-uniqueness catch in Step 2.
+5. **Next step for a fresh agent:** Phase 2 is complete (all 7 loop steps done, ✅ VERIFIED). The
+   only owed item is the AC7 Agent-Probe manual walkthrough (non-blocking, backlog note filed).
+   Advance to **Phase 3 — Products/Categories CRUD (ADM-003), Step 0/RESEARCH** per the umbrella
+   plan's `## Current Execution State`; Phase 3 RESEARCH must also revisit the deferred §5 shared-UI
+   composite extraction (now that a real second CRUD consumer exists).
 
 ---
 
@@ -412,7 +415,7 @@ Legacy line form (retained so existing validate-contract consumers still parse):
 
 **Failing stubs (Fully-Automated rows only, TDD red-first starting point for EXECUTE):**
 
-```
+```text
 test("AC1 — should return all branches (active+inactive) for an admin session, 403 for unauthenticated/customer", () => {
   throw new Error("NOT IMPLEMENTED — TDD stub: AC1")
 })
@@ -438,7 +441,7 @@ alone — follow these while implementing):
 
 | # | Instruction | Trigger condition |
 |---|---|---|
-| E1 | No prior codebase precedent catches a Postgres unique-constraint violation (checked: `order-number.ts` uses `onConflictDoNothing`+retry, a different pattern; no file greps for `23505`). When implementing the `POST`/`PATCH` slug-conflict catch (Implementation Checklist Step 2), catch the driver error and check `(err as { code?: string }).code === '23505'` (node-postgres/pg's standard `unique_violation` code) before throwing `AdminApiError(409, 'Slug already in use')`. Do not guess a different shape — AC3's Fully-Automated test will catch a wrong shape immediately (red before green), so verify against it directly rather than reasoning abstractly. | Implementation Checklist Step 2, `POST /` and `PATCH /:branchId` handlers |
+| E1 | No prior codebase precedent catches a Postgres unique-constraint violation (checked: `order-number.ts` uses `onConflictDoNothing`+retry, a different pattern; no file greps for `23505`). When implementing the `POST`/`PATCH` slug-conflict catch (Implementation Checklist Step 2), catch the driver error and check for pg's `unique_violation` code `23505` on EITHER the top-level error (`(err as { code?: string }).code`) OR its nested cause (`(err as { cause?: { code?: string } }).cause?.code`) before throwing `AdminApiError(409, 'Slug already in use')` — otherwise propagate. **Confirmed at EXECUTE: drizzle-orm wraps the pg error in a `DrizzleQueryError`, so the `23505` code lives on `.cause`, NOT the top level; a top-level-only check returns 500 instead of 409 (AC3 caught this red-first).** Non-object throws must return false, never `.code` on `null`. AC3's Fully-Automated test verifies the shape directly. | Implementation Checklist Step 2, `POST /` and `PATCH /:branchId` handlers |
 | E2 | The corrected test-gate command is `pnpm --filter @jojopotato/api test -- admin-branches` (hyphen, matching the actual file `admin-branches.integration.test.ts`) — the Verification Evidence table's original command used a slash and would not match any file under vitest's substring filter. Use the corrected command from this contract, not the one in Verification Evidence (both now say the same thing after the VALIDATE correction note added there). | Running the Fully-Automated gate at EXECUTE/EVL time |
 
 Dimension findings:
