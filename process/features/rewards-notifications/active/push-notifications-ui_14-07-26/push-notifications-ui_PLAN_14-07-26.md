@@ -54,6 +54,14 @@ one-more-order events; any change to STAFF-003 order-state-machine or the real P
 building the Coupon Wallet screen itself; a tab-bar bell/badge; introducing an RN component/E2E runner.
 **No `packages/api` / DB / migration changes of any kind.**
 
+**Post-plan addition (documented after the fact, per CodeRabbit review on PR #78):**
+`apps/mobile/src/features/home/components/home-header.tsx` — a Home-header notification bell with a
+live unread-count dot, wired to `useNotifications()` and navigating to the Notifications screen. This
+was NOT part of this plan's original scope; it was added in a follow-up request within the same PR
+after EXECUTE/EVL had already completed. Added to the Touchpoints table below for an accurate record
+of what this PR actually ships. The "no tab-bar bell/badge" exclusion above refers only to the
+bottom tab bar and was never meant to (and does not) exclude this Home-header surface.
+
 ## LOCKED Decisions (from SPEC Open Questions — do not re-litigate)
 
 1. **Screen placement** — reuse the existing `account/notifications.tsx` route (already linked from
@@ -62,7 +70,8 @@ building the Coupon Wallet screen itself; a tab-bar bell/badge; introducing an R
 3. **`notifications.ts` correction is in scope** — widen the shared type (mobile-only package edit).
 4. **Transactional = locked-on** — no switch rendered for transactional; only marketing gets a `Toggle`.
 5. **Permission trigger** — fire once, right after the customer's first successful checkout (order
-   placement), not on first app launch; never re-shown once answered.
+   placement), not on first app launch; not re-shown again within the same app session once answered
+   (session-scoped stub — the "already asked" flag is in-memory and resets on reload; see A2).
 
 ## Assumptions (reasonable calls made per "go, don't ask until execute" — user may override at VALIDATE)
 
@@ -109,6 +118,7 @@ building the Coupon Wallet screen itself; a tab-bar bell/badge; introducing an R
 | 11 | `apps/mobile/src/features/notifications/lib/notification-factory.test.ts` | **New** — vitest suite (ACs 1/2-map/3-filter/4/5/6/7/8/12) |
 | 12 | `packages/ui/src/components/__tests__/toggle.test.tsx` | **New** — jest-expo render (on/off) |
 | 13 | `packages/ui/src/components/__tests__/notification-row.test.tsx` | **New** — jest-expo render (read/unread), AC#11 |
+| 14 | `apps/mobile/src/features/home/components/home-header.tsx` | **Edit (post-plan addition)** — mascot moved left, wordmark/tagline sized down, new notification bell (right) with a live `unreadCount` dot via `useNotifications()`, navigates to `account/notifications.tsx` |
 
 ## Public Contracts
 
@@ -232,9 +242,14 @@ A/B/C/D/E; G depends on B). Run the per-section test gate before moving on.
    `useState` (default documented — **default ON**, so a fresh session shows marketing items; note the
    default in a comment). `markRead(id)` sets `readAt`; `unreadCount` derives from `readAt == null`.
    `setMarketingOptIn(false)` does NOT remove existing items (A3) — it only affects future
-   `buildMarketingNotifications` calls. Keep it a thin wrapper — all rules delegate to `lib`. Expose
-   it via a `NotificationsProvider` only if screen sharing is needed; otherwise a plain hook is fine
-   (single consumer — the Notifications screen). Reasonable call: plain hook, no provider (YAGNI).
+   `buildMarketingNotifications` calls. Keep it a thin wrapper — all rules delegate to `lib`.
+
+   **Post-plan revision (per CodeRabbit review on PR #78):** once the Home-header bell (touchpoint
+   #14) became a second consumer, a plain hook meant `markRead`/`marketingOptIn` could diverge
+   between the Notifications screen and the header — a real stale-unread-badge bug, not just a
+   YAGNI tradeoff. Converted to `NotificationsProvider` + `useContext`, mirroring the existing
+   `BranchProvider`/`CartSessionProvider` pattern exactly, mounted in `_layout.tsx`'s `AuthedTree`
+   alongside them. All consumers now share one state.
 6. Create `apps/mobile/src/features/notifications/lib/notification-permission.ts`:
    `requestNotificationPermission(): Promise<'granted'|'denied'|'undetermined'>` — local STUB (A2):
    guard on a module-level/`AsyncStorage`-free in-memory "already asked" flag so it fires at most once;
@@ -435,7 +450,7 @@ Legacy line form (retained for existing consumers):
 - screen-assembly render + no-new-nav constraint: agent-probe: on-device + code review
 
 Failing stubs (Fully-Automated rows — TDD red-first for execute-agent):
-```
+```ts
 test("should order a shuffled notification list newest-first by createdAt", () => { throw new Error("NOT IMPLEMENTED — TDD stub: sortNewestFirst descending by createdAt") })
 test("should resolve a non-null targetScreen+params for every one of the 9 notification types", () => { throw new Error("NOT IMPLEMENTED — TDD stub: targetForType/resolveRoute over all 9 types") })
 test("should return the documented default for marketingOptIn and filter marketing when off", () => { throw new Error("NOT IMPLEMENTED — TDD stub: default-const + filterMarketingByOptIn on/off") })
@@ -490,7 +505,7 @@ Accepted by: session (validate-agent synthesis) — no unresolved CONCERNs requi
 
 ## Autonomous Goal Block
 
-```
+```text
 SESSION GOAL: Push Notifications — UI-only mock/local-state pass (PUSH-001/002/003, issues #36/#37/#38)
 Charter + umbrella plan: N/A — single standalone plan (not a phase program)
 Autonomy: standard RIPER-5 — EXECUTE requires explicit "ENTER EXECUTE MODE"; reversible edits auto-proceed; no live-provider/irreversible actions in scope (all client-only mock UI).

@@ -105,7 +105,9 @@ export default function CheckoutScreen() {
       // First-order notification permission seam (fire-and-forget; the seam's
       // own once-guard ensures it only prompts on the first successful order).
       // Never awaited — it must not delay the confirmation redirect.
-      void requestNotificationPermission();
+      requestNotificationPermission().catch((err) => {
+        console.error('Failed to request notification permission:', err);
+      });
       clearCart();
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',

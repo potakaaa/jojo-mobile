@@ -2,14 +2,21 @@
  * `useNotifications()` — the local-state seam #75 (PUSH-004) swaps to a real data
  * source without touching screens. Backed by `useState` seeded from
  * `MOCK_NOTIFICATIONS` (newest-first). All rules delegate to the pure `lib`
- * functions; this is a thin React wrapper. Plain hook, no provider — each
- * consumer (Notifications screen, Home header bell) gets its own local copy,
- * so `markRead` in one does not update the other until next mount (acceptable
- * for a mock-data seam; a shared provider is #75's concern if real-time sync
- * across screens is needed).
+ * functions; this is a thin React wrapper. `NotificationsProvider` + `useContext`
+ * (mirrors `BranchProvider`/`CartSessionProvider`) so all consumers (Notifications
+ * screen, Home header bell) share one state — `markRead`/opt-in changes in one
+ * place are immediately visible in the other, no stale unread badge.
  */
 import type { AppNotification } from '@jojopotato/types';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { sortNewestFirst } from '@/features/notifications/lib/notification-factory';
 import { MOCK_NOTIFICATIONS } from '@/features/notifications/mock-notifications';
@@ -29,7 +36,9 @@ export interface UseNotifications {
   setMarketingOptIn: (value: boolean) => void;
 }
 
-export function useNotifications(): UseNotifications {
+const NotificationsContext = createContext<UseNotifications | null>(null);
+
+export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     sortNewestFirst(MOCK_NOTIFICATIONS),
   );
@@ -48,5 +57,18 @@ export function useNotifications(): UseNotifications {
     [notifications],
   );
 
-  return { notifications, unreadCount, markRead, marketingOptIn, setMarketingOptIn };
+  const value = useMemo<UseNotifications>(
+    () => ({ notifications, unreadCount, markRead, marketingOptIn, setMarketingOptIn }),
+    [notifications, unreadCount, markRead, marketingOptIn],
+  );
+
+  return createElement(NotificationsContext.Provider, { value }, children);
+}
+
+export function useNotifications(): UseNotifications {
+  const ctx = useContext(NotificationsContext);
+  if (!ctx) {
+    throw new Error('useNotifications must be used within a NotificationsProvider');
+  }
+  return ctx;
 }

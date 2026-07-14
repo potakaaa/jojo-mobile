@@ -39,7 +39,7 @@ export function NotificationRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected: unread }}
+      accessibilityLabel={`${unread ? 'Unread. ' : ''}${title}. ${body}. ${timeLabel}`}
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,

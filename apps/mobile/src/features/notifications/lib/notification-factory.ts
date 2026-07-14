@@ -5,14 +5,15 @@
  * builders, opt-in filtering, threshold/window boundary evaluators, and an
  * idempotent merge. The `useNotifications()` hook is a thin wrapper over these.
  */
-import type {
-  AppNotification,
-  Coupon,
-  MarketingNotificationType,
-  NotificationTargetScreen,
-  NotificationType,
-  OrderNotificationType,
-  OrderStatus,
+import {
+  MARKETING_NOTIFICATION_TYPES,
+  type AppNotification,
+  type Coupon,
+  type MarketingNotificationType,
+  type NotificationTargetScreen,
+  type NotificationType,
+  type OrderNotificationType,
+  type OrderStatus,
 } from '@jojopotato/types';
 
 /** Only these 4 order statuses produce a transactional notification. */
@@ -113,13 +114,7 @@ export function filterMarketingByOptIn(
   items: AppNotification[],
   optIn: boolean,
 ): AppNotification[] {
-  const MARKETING = new Set<NotificationType>([
-    'new_deal',
-    'coupon_expiring',
-    'one_more_order',
-    'reward_unlocked',
-    'branch_promo',
-  ] satisfies MarketingNotificationType[]);
+  const MARKETING = new Set<NotificationType>(MARKETING_NOTIFICATION_TYPES);
   if (optIn) return items;
   return items.filter((n) => !MARKETING.has(n.type));
 }

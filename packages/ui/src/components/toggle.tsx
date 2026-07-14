@@ -33,6 +33,7 @@ export function Toggle({
       onValueChange={onValueChange}
       disabled={disabled}
       accessibilityRole="switch"
+      accessibilityLabel={label}
       trackColor={{ false: theme.border, true: Palette.jyellow }}
       thumbColor={Palette.cream}
       ios_backgroundColor={theme.border}
