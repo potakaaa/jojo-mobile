@@ -15,13 +15,13 @@ order-placement → confirmation/tracking/history flow is real and working end-t
 `general-plans/` rather than this feature folder because it spanned both `ordering-cart` and
 `pickup-branches` as one continuous flow — see that plan's Scope section).
 
-**Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — reconciliation pending):**
+**Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — reconciliation complete 14-07-26):**
 this branch reworked Checkout, Payment-method selection (`order/payment-method.tsx` + shared
 `payment-method-selector.tsx` with `PAYMENT_METHOD_LABELS`/`ICONS`), and Order Confirmation as
-richer UI backed by **in-memory seams** (`useOrder()`/`mock-order.ts`). In the development merge,
-this branch's screens were KEPT over development's backend-wired checkout/confirmation — wiring
-them to the real `POST /orders` API is the tracked follow-up
-(`backlog/checkout-real-order-api_NOTE_13-07-26.md`). App-side `PaymentMethod` intentionally
+richer UI. In the development merge, this branch's screens were KEPT over development's
+backend-wired checkout/confirmation; wiring them to the real `POST /orders`/`GET /orders/:id` API
+was completed as a follow-up (see `backlog/checkout-real-order-api_NOTE_13-07-26.md`; the
+in-memory `mock-order.ts` seam has been removed). App-side `PaymentMethod` intentionally
 widens the DB enum (`backlog/payment-method-enum-divergence_NOTE_13-07-26.md`);
 `env.onlinePaymentEnabled` gates selectable methods. Plans:
 `completed/{checkout-flow_13-07-26,payment-method-screen_13-07-26}/`.

@@ -83,6 +83,7 @@ export default function CheckoutScreen() {
   const { paymentMethod } = useOrder();
 
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
+  const isBranchUnavailable = !branch && !!cart.pickupBranchId;
   const prepMinutes = branch?.estimatedPrepMinutes ?? FALLBACK_PREP_MINUTES;
   const pickupLabel = useMemo(() => estimatedPickupLabel(prepMinutes), [prepMinutes]);
   const isEmpty = cart.items.length === 0;
@@ -166,6 +167,23 @@ export default function CheckoutScreen() {
             title="Nothing to check out"
             description="Your cart is empty. Add some items first."
             actionLabel="Browse menu"
+            onAction={() => router.replace('/(tabs)/order')}
+            mode={mode}
+          />
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (isBranchUnavailable) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+          <EmptyState
+            iconName="location-outline"
+            title="Branch unavailable"
+            description="The branch you selected is no longer accepting pickup orders. Please select another branch."
+            actionLabel="Change branch"
             onAction={() => router.replace('/(tabs)/order')}
             mode={mode}
           />

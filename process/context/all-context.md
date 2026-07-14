@@ -114,22 +114,22 @@ top of it later without re-plumbing the project.
   Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
   them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
   (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
-- **Checkout-flow UI rework (THIS branch, CART-002 #18 — mock-seam based, reconciliation pending):**
+- **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
   `feat/checkout-flow` reworked Checkout (`order/checkout.tsx`), Payment-method selection
   (`order/payment-method.tsx` + shared `packages/ui` `payment-method-selector.tsx` with
   `PAYMENT_METHOD_LABELS`/`ICONS`), and Order Confirmation (`order/confirmation/[orderId].tsx`) as
-  richer UI backed by **in-memory seams** (`useOrder()`/`mock-order.ts`, `OrderSessionProvider` in
-  `_layout.tsx`) — NOT yet wired to the real `POST /orders` backend that development shipped. In
-  the development merge, THIS branch's screens were kept (the branch owns the checkout rework);
-  wiring them to the real order API is the tracked follow-up
-  (`process/features/ordering-cart/backlog/checkout-real-order-api_NOTE_13-07-26.md`). App-side
-  `PaymentMethod` (`pay_at_branch|app_wallet|gcash|maya|card`) intentionally diverges from the DB
-  enum (`pay_at_branch|online_payment`) — UI-only widening, `payment_status` stays `unpaid`; see
+  richer UI. In the development merge, THIS branch's screens were kept; the checkout and
+  confirmation screens are now wired to the real `POST /orders`/`GET /orders/:id` API via
+  `useCheckout()` (`features/orders/hooks/use-checkout.ts`). The original in-memory
+  `mock-order.ts` seam and its vitest unit tests were deleted. `useOrder()` (`features/order/`)
+  remains but is trimmed to payment-method selection state only (consumed by
+  `order/payment-method.tsx`). App-side `PaymentMethod` (`pay_at_branch|app_wallet|gcash|maya|card`)
+  intentionally diverges from the DB enum (`pay_at_branch|online_payment`) — UI-only widening,
+  `payment_status` stays `unpaid`; see
   `process/features/ordering-cart/backlog/payment-method-enum-divergence_NOTE_13-07-26.md`.
   `env.ts` gained `onlinePaymentEnabled` (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED`, default false).
-  `apps/mobile` also gained a pure-TS **vitest** runner (node env, `mock-order` unit tests) —
-  extended by development's HIST-002 config (aliases, broader include); still no RN component/E2E
-  runner.
+  `apps/mobile` has a pure-TS **vitest** runner (node env, `--passWithNoTests`; mock-order tests
+  removed) — extended by development's HIST-002 config; still no RN component/E2E runner.
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -381,7 +381,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
-            order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx, payment-method.tsx, confirmation/[orderId].tsx (THIS branch's mock-seam rework — see "Checkout-flow UI rework" bullet)
+            order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
             branches/                   -- real: index (list), [branchId] (detail + menu)
             rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
@@ -393,7 +393,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
           cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
           cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
-          order/hooks/use-order.ts     -- OrderSessionProvider + useOrder(): in-memory placeOrder() seam (THIS branch's checkout rework — mock-order.ts pure functions; real POST /orders wiring is the tracked follow-up)
+          order/hooks/use-order.ts     -- OrderSessionProvider + useOrder(): payment-method selection state only (trimmed 14-07-26; placement logic + mock-order.ts deleted); consumed by order/payment-method.tsx
           branch/hooks/use-branch.ts   -- BranchProvider + useBranch(): react-query-backed branch list/selection (replaces deleted features/branches/, see all-context.md "Menu/branch data layer superseded")
           menu/hooks/{use-menu,use-product-details}.ts  -- react-query-backed branch menu + client-derived product detail
           menu/components/             -- add-to-cart-bar, branch-switcher, category-section, option-group-selector (adopted from development)

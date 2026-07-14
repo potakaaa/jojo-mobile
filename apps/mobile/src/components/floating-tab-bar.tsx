@@ -246,6 +246,8 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   return (
     <Animated.View
       pointerEvents={hidden ? 'none' : 'auto'}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       style={[
         styles.bar,
         {
