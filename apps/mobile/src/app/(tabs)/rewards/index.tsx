@@ -1,11 +1,21 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { Reward, StarTransaction } from '@jojopotato/types';
-import { Badge, Card, EmptyState, RewardsTerms, StarProgressBar } from '@jojopotato/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Palette,
+  RewardsTerms,
+  StarProgressBar,
+} from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useAvailableRewards } from '@/features/rewards/hooks/use-available-rewards';
 import { useRewardsHistory } from '@/features/rewards/hooks/use-rewards-history';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
@@ -54,6 +64,8 @@ export default function RewardsScreen() {
   const availableQuery = useAvailableRewards();
   const historyQuery = useRewardsHistory();
 
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
+
   // Loading: wait for the primary summary (the tracker) before rendering.
   if (summaryQuery.isLoading) return <ScreenLoader />;
 
@@ -72,6 +84,14 @@ export default function RewardsScreen() {
   const summary = summaryQuery.data;
   const availableRewards = availableQuery.data ?? [];
   const history = historyQuery.data?.transactions ?? [];
+
+  // Battle-pass roadmap: active reward tiers, ascending. Unlock keys off
+  // cumulative lifetime stars (monotonic — matches STAR-003's unlock logic).
+  const roadmap = [...availableRewards].sort((a, b) => a.requiredStars - b.requiredStars);
+  // Claimable = tiers the user's cumulative stars have reached. The actual
+  // claim/redeem ACTION is STAR-004 (redemption) + CPN-001 (coupon wallet), so
+  // this list is read-only here; the full track lives in the roadmap popup.
+  const claimable = roadmap.filter((reward) => summary.lifetimeStars >= reward.requiredStars);
 
   const rewardValueLabel = (reward: Reward): string | null =>
     reward.rewardValue === null ? null : formatCurrency(reward.rewardValue);
@@ -123,16 +143,30 @@ export default function RewardsScreen() {
                 ) : null}
               </View>
             ) : null}
+            {roadmap.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setRoadmapOpen(true)}
+                style={styles.roadmapLink}
+              >
+                <Text style={[styles.roadmapLinkText, { color: theme.accent }]}>
+                  View full roadmap
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={theme.accent} />
+              </Pressable>
+            ) : null}
           </Card>
 
-          {/* Available rewards */}
+          {/* Available rewards — only tiers the user can claim now. The Claim/
+              redeem CTA itself is STAR-004 + CPN-001, so this stays read-only
+              (a "Ready" badge) until those ship. */}
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Available rewards</Text>
-          {availableRewards.length === 0 ? (
+          {claimable.length === 0 ? (
             <Text style={[styles.emptyLine, { color: theme.textSecondary }]}>
-              No rewards available right now.
+              No rewards ready to claim yet — keep earning stars.
             </Text>
           ) : (
-            availableRewards.map((reward) => (
+            claimable.map((reward) => (
               <Card key={reward.id} style={styles.rewardRow} mode={mode}>
                 <View style={styles.rewardRowText}>
                   <Text style={[styles.rewardRowName, { color: theme.text }]}>{reward.name}</Text>
@@ -142,7 +176,7 @@ export default function RewardsScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <Badge label={`${reward.requiredStars} stars`} mode={mode} />
+                <Badge label="Ready" variant="success" mode={mode} />
               </Card>
             ))
           )}
@@ -183,6 +217,76 @@ export default function RewardsScreen() {
           </Card>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Battle-pass roadmap popup — the full tier track with unlock status. */}
+      <Modal
+        visible={roadmapOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRoadmapOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setRoadmapOpen(false)}>
+          <Pressable
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.background, borderColor: theme.border },
+            ]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Rewards roadmap</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              {summary.lifetimeStars} {summary.lifetimeStars === 1 ? 'star' : 'stars'} earned so far
+            </Text>
+
+            <View style={styles.roadmapTiers}>
+              {roadmap.map((tier) => {
+                const unlocked = summary.lifetimeStars >= tier.requiredStars;
+                const remaining = tier.requiredStars - summary.lifetimeStars;
+                return (
+                  <View key={tier.id} style={styles.tierRow}>
+                    <View
+                      style={[
+                        styles.tierDot,
+                        {
+                          backgroundColor: unlocked ? Palette.jgold : theme.backgroundElement,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={unlocked ? 'star' : 'lock-closed'}
+                        size={15}
+                        color={unlocked ? Palette.ink : theme.textSecondary}
+                      />
+                    </View>
+                    <View style={styles.tierText}>
+                      <Text style={[styles.tierName, { color: theme.text }]}>{tier.name}</Text>
+                      <Text style={[styles.tierReq, { color: theme.textSecondary }]}>
+                        {tier.requiredStars} stars
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.tierStatus,
+                        { color: unlocked ? Palette.green : theme.textSecondary },
+                      ]}
+                    >
+                      {unlocked ? 'Unlocked' : `${remaining} to go`}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            <Button
+              label="Close"
+              variant="outline"
+              mode={mode}
+              onPress={() => setRoadmapOpen(false)}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -288,5 +392,72 @@ const styles = StyleSheet.create({
   },
   termsCard: {
     marginTop: Spacing.one,
+  },
+  roadmapLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.half,
+    marginTop: Spacing.one,
+  },
+  roadmapLinkText: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.bodySmall,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: Radii.lg,
+    borderWidth: 2,
+    padding: Spacing.four,
+    gap: Spacing.two,
+  },
+  modalTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+  },
+  modalSubtitle: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  roadmapTiers: {
+    gap: Spacing.one,
+    marginVertical: Spacing.one,
+  },
+  tierRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  tierDot: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.full,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tierText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  tierName: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.body,
+  },
+  tierReq: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+  },
+  tierStatus: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.caption,
   },
 });

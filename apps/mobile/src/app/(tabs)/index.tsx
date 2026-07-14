@@ -10,12 +10,8 @@ import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
-import {
-  MOCK_BRANCH,
-  MOCK_CATEGORIES,
-  MOCK_PRODUCTS,
-  MOCK_REWARDS,
-} from '@/features/home/mock-home';
+import { MOCK_BRANCH, MOCK_CATEGORIES, MOCK_PRODUCTS } from '@/features/home/mock-home';
+import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -27,6 +23,8 @@ export default function HomeScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { setBranch } = useCart();
+  // Real star count — the teaser must agree with the Rewards tab, not the mock.
+  const { data: rewardsSummary } = useRewardsSummary();
 
   const openBranch = () => {
     setBranch(MOCK_BRANCH.id);
@@ -63,7 +61,10 @@ export default function HomeScreen() {
           <BranchCard branch={MOCK_BRANCH} onPress={openBranch} />
           <PromoBanner />
           <RewardProgressCard
-            rewards={MOCK_REWARDS}
+            rewards={{
+              currentStars: rewardsSummary?.currentStars ?? 0,
+              requiredStars: rewardsSummary?.requiredStars ?? 5,
+            }}
             onPress={() => router.push('/(tabs)/rewards')}
           />
           <Card style={styles.dealsCard}>
