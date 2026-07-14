@@ -165,6 +165,7 @@ top of it later without re-plumbing the project.
   only has bearer-token auth today) + admin login. Full 8-phase program plan:
   `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` (umbrella plan +
   phase-00 through phase-07 plan files).
+- **Admin dashboard UI foundation (`apps/admin`, delivered 14-07-26):** smart `Button` component refined with `useFormStatus` integration (auto-disables when `pending` is true, eliminating manual boilerplate), universal borders (2px solid ink on all variants to preserve hitboxes and prevent layout shift), the removal of the `outline` variant (redundant with `secondary`), and a `requiresConfirm` prop for dangerous actions (integrates `radix-ui` `AlertDialog` inline). Added a `/components` showcase route (development only) to catalog UI primitives and their variants.
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab

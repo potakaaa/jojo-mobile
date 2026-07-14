@@ -62,7 +62,7 @@ export function BranchList({
               <td className="px-4 py-2">{branch.isActive ? 'Active' : 'Inactive'}</td>
               <td className="px-4 py-2">
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => onEdit(branch)}>
+                  <Button size="sm" variant="secondary" onClick={() => onEdit(branch)}>
                     Edit
                   </Button>
                   {branch.isActive ? (
