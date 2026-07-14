@@ -9,7 +9,7 @@ import { Loader2, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border-2 border-border text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border-2 border-border text-sm font-medium whitespace-nowrap transition-all outline-hidden focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -83,14 +83,8 @@ function Button({
       aria-busy={isLoading}
       {...props}
     >
-      {asChild ? (
-        children
-      ) : (
-        <>
-          {isLoading && <Loader2 className="animate-spin" />}
-          {children}
-        </>
-      )}
+      {isLoading && <Loader2 className="animate-spin" />}
+      <Slot.Slottable>{children}</Slot.Slottable>
     </Comp>
   );
 }
@@ -113,7 +107,7 @@ function DestructiveButton({
   onBlur,
   children,
   ...props
-}: React.ComponentProps<typeof Button> & { requiresConfirm?: boolean }) {
+}: Omit<React.ComponentProps<typeof Button>, 'asChild'> & { requiresConfirm?: boolean }) {
   const [isConfirming, setIsConfirming] = React.useState(false);
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -125,11 +119,7 @@ function DestructiveButton({
 
     if (onClick) {
       const result = onClick(e) as unknown;
-      if (result instanceof Promise) {
-        result.finally(() => setIsConfirming(false));
-      } else {
-        setIsConfirming(false);
-      }
+      setIsConfirming(false);
       return result;
     }
     setIsConfirming(false);

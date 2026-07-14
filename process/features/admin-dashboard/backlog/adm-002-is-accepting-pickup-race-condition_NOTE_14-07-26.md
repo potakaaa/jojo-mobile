@@ -42,6 +42,8 @@ admin-vs-staff case can only be tested once STAFF-004's write path exists.
 
 - This is a deliberate, documented Known-Gap per the Phase 2 validate-contract (gap-resolution `D`
   — backlog test-building stub), not a silently dropped concern.
-- Non-blocking for Phase 2 archival — the admin-vs-admin race requires two concurrent admin editors
-  on the same branch (low-likelihood, self-correcting: re-toggle fixes it, no data loss/money/authz
-  surface); the cross-role widening waits on STAFF-004.
+- Non-blocking for Phase 2 archival — the admin-vs-admin race requires two admins editing the same
+  branch concurrently (low-likelihood). It is NOT harmless, though: concurrent PATCH requests
+  silently clobber each other, so an overwritten field (address, opening hours, phone, or the pickup
+  toggle) is lost with no warning, leaving stale operational state until someone notices and
+  re-enters it. No money or authz surface is affected. The cross-role widening waits on STAFF-004.
