@@ -65,7 +65,6 @@ let categoryId: string;
 let customerId: string;
 let staff1Email: string;
 let staff1Cookies: string[];
-let staff2Cookies: string[]; // branch-2 staff
 let unassignedStaffCookies: string[];
 
 const createdOrderIds: string[] = [];
@@ -173,9 +172,10 @@ beforeAll(async () => {
     .set({ role: 'staff', assignedBranchId: branch1Id })
     .where(eq(schema.users.email, staff1Email));
 
-  // Staff-2 assigned to branch-2 (for cross-branch 403 test).
+  // Staff-2 assigned to branch-2 (seeded for cross-branch isolation; cookies not needed since
+  // the AC-3 test uses staff-1 cookies attempting to access a branch-2 order).
   const staff2Email = `staff2-ss-${suffix}@example.com`;
-  staff2Cookies = await signUpAndGetCookie(staff2Email, 'sup3r-secret-pw');
+  await signUpAndGetCookie(staff2Email, 'sup3r-secret-pw');
   await db
     .update(schema.users)
     .set({ role: 'staff', assignedBranchId: branch2Id })
@@ -201,9 +201,7 @@ afterAll(async () => {
   await db
     .update(schema.users)
     .set({ assignedBranchId: null })
-    .where(
-      inArrayCleanup(schema.users.assignedBranchId, [branch1Id, branch2Id]),
-    );
+    .where(inArrayCleanup(schema.users.assignedBranchId, [branch1Id, branch2Id]));
   await db.delete(schema.users).where(eq(schema.users.id, customerId));
   await db.delete(schema.products).where(eq(schema.products.id, productId));
   await db.delete(schema.categories).where(eq(schema.categories.id, categoryId));
@@ -411,30 +409,27 @@ describe('GET /api/staff/orders/completed — AC-5', () => {
 // ─── AC-6: accept sets estimated_ready_at ≈ now()+prep (accept-time base ±5s) ─
 
 describe('PATCH /api/staff/orders/:orderId — AC-6 ETA on accept', () => {
-  it(
-    'accept sets estimated_ready_at ≈ now()+prep anchored to accept time; etaMinutes body ignored',
-    async () => {
-      const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+  it('accept sets estimated_ready_at ≈ now()+prep anchored to accept time; etaMinutes body ignored', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
 
-      // Record now BEFORE the PATCH (accept-time base per plan decision).
-      const nowBeforePatch = Date.now();
+    // Record now BEFORE the PATCH (accept-time base per plan decision).
+    const nowBeforePatch = Date.now();
 
-      const res = await request(app)
-        .patch(`/api/staff/orders/${orderId}`)
-        .set('Cookie', staff1Cookies.join('; '))
-        // etaMinutes should be accepted but IGNORED by the server.
-        .send({ status: 'accepted', etaMinutes: 999 });
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      // etaMinutes should be accepted but IGNORED by the server.
+      .send({ status: 'accepted', etaMinutes: 999 });
 
-      expect(res.status).toBe(200);
-      expect(res.body.order.status).toBe('accepted');
+    expect(res.status).toBe(200);
+    expect(res.body.order.status).toBe('accepted');
 
-      const eta = new Date(res.body.order.estimatedReadyAt).getTime();
-      const expectedEta = nowBeforePatch + BRANCH1_PREP_MINUTES * 60 * 1000;
+    const eta = new Date(res.body.order.estimatedReadyAt).getTime();
+    const expectedEta = nowBeforePatch + BRANCH1_PREP_MINUTES * 60 * 1000;
 
-      // Allow ±5 seconds tolerance for request round-trip + DB write latency.
-      const TOLERANCE_MS = 5_000;
-      expect(eta).toBeGreaterThanOrEqual(expectedEta - TOLERANCE_MS);
-      expect(eta).toBeLessThanOrEqual(expectedEta + TOLERANCE_MS);
-    },
-  );
+    // Allow ±5 seconds tolerance for request round-trip + DB write latency.
+    const TOLERANCE_MS = 5_000;
+    expect(eta).toBeGreaterThanOrEqual(expectedEta - TOLERANCE_MS);
+    expect(eta).toBeLessThanOrEqual(expectedEta + TOLERANCE_MS);
+  });
 });

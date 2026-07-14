@@ -31,21 +31,20 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
  * TODO(STAR-001): credit stars when an order is completed.
  * Replace with real star-crediting logic once the rewards system is built.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
-  // no-op stub
+  void _order; // TODO(STAR-001): replace with real star-crediting logic
 }
 
 /**
  * TODO(PUSH-002): dispatch a push notification for the given order event.
  * Replace with real push dispatch once the notifications system is built.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function notifyCustomer(
   _order: typeof orders.$inferSelect,
   _event: 'completed' | 'rejected' | 'cancelled',
 ): void {
-  // no-op stub
+  void _order;
+  void _event; // TODO(PUSH-002): replace with real push dispatch
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
