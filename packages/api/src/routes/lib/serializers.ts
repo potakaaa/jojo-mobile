@@ -49,6 +49,28 @@ export interface ApiBranch {
   distanceKm?: number;
 }
 
+/**
+ * Admin-facing branch shape (ADM-002). Mirrors `ApiBranch` (minus the query-only
+ * `distanceKm`) plus `slug` and `isActive`, both of which the PUBLIC `ApiBranch`
+ * omits — the admin dashboard must see every branch's slug and active state,
+ * including deactivated (soft-deleted) rows. Declared locally here, matching the
+ * existing `ApiBranch`/`ApiOrder`/`ApiDeal` local-declaration convention (no
+ * cross-dependency on `packages/types` just for a boundary shape).
+ */
+export interface AdminBranch {
+  id: string;
+  name: string;
+  slug: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  phone: string;
+  openingHours: string;
+  estimatedPrepMinutes: number;
+  isAcceptingPickup: boolean;
+  isActive: boolean;
+}
+
 export interface ApiMenuOption {
   optionId: string;
   optionType: ProductOptionType;
@@ -127,6 +149,27 @@ export function serializeBranch(branch: BranchRow, distanceKm?: number): ApiBran
     estimatedPrepMinutes: branch.estimated_prep_minutes,
     isAcceptingPickup: branch.is_accepting_pickup,
     ...(distanceKm === undefined ? {} : { distanceKm }),
+  };
+}
+
+/**
+ * Serialize a `branches` row for the ADMIN surface (ADM-002). Unlike
+ * `serializeBranch`, this includes `slug` and `isActive` and never carries a
+ * distance (admin views are not geo-sorted).
+ */
+export function serializeAdminBranch(branch: BranchRow): AdminBranch {
+  return {
+    id: branch.id,
+    name: branch.name,
+    slug: branch.slug,
+    address: branch.address,
+    latitude: Number(branch.latitude),
+    longitude: Number(branch.longitude),
+    phone: branch.phone,
+    openingHours: branch.opening_hours,
+    estimatedPrepMinutes: branch.estimated_prep_minutes,
+    isAcceptingPickup: branch.is_accepting_pickup,
+    isActive: branch.is_active,
   };
 }
 
