@@ -13,7 +13,7 @@ import type { OrderItem } from '@jojopotato/types';
 export function summarizeOrderItems(items: OrderItem[]): string {
   if (items.length === 0) return '';
   const first = items[0]!;
-  const head = `${first.quantity}× ${first.productName}`;
+  const head = `${first.quantity}× ${first.productNameSnapshot}`;
   if (items.length === 1) return head;
   return `${head} + ${items.length - 1} more`;
 }

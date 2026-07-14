@@ -2,9 +2,9 @@ import type {
   MenuResponse,
   Order,
   OrderItem,
+  OrderItemOption,
   OrderStatus,
   Product,
-  SelectedOption,
 } from '@jojopotato/types';
 import { describe, expect, it } from 'vitest';
 
@@ -25,9 +25,10 @@ function menu(products: Product[]): MenuResponse {
 }
 
 function orderItem(
-  overrides: Partial<OrderItem> & Pick<OrderItem, 'productId' | 'productName'>,
+  overrides: Partial<OrderItem> & Pick<OrderItem, 'productId' | 'productNameSnapshot'>,
 ): OrderItem {
   return {
+    id: `oi-${overrides.productId}`,
     quantity: 1,
     unitPriceCents: 999,
     totalPriceCents: 999,
@@ -49,6 +50,7 @@ function order(items: OrderItem[], status: OrderStatus = 'completed'): Order {
     paymentStatus: 'unpaid',
     estimatedReadyAt: '2026-07-13T00:00:00Z',
     placedAt: '2026-07-13T00:00:00Z',
+    dealId: null,
     items,
   };
 }
@@ -90,11 +92,11 @@ describe('reconcileReorder', () => {
     const past = order([
       orderItem({
         productId: 'p1',
-        productName: 'Fries',
+        productNameSnapshot: 'Fries',
         unitPriceCents: 999, // stale snapshot — must NOT be used
         quantity: 2,
         selectedOptions: [
-          { optionId: 's-lg', optionType: 'size', name: 'Large', priceDeltaCents: 100 }, // stale delta
+          { id: 's-lg', optionType: 'size', name: 'Large', priceDeltaCents: 100 }, // stale delta
         ],
       }),
     ]);
@@ -112,7 +114,7 @@ describe('reconcileReorder', () => {
 
   it('flags a product absent from the current menu tree as product_unavailable', () => {
     const currentMenu = menu([product({ id: 'p-other', name: 'Nuggets' })]);
-    const past = order([orderItem({ productId: 'p-gone', productName: 'Discontinued Dip' })]);
+    const past = order([orderItem({ productId: 'p-gone', productNameSnapshot: 'Discontinued Dip' })]);
 
     const { available, unavailable } = reconcileReorder(past, currentMenu);
 
@@ -134,11 +136,13 @@ describe('reconcileReorder', () => {
         },
       }),
     ]);
-    const selectedOptions: SelectedOption[] = [
-      { optionId: 's-sm', optionType: 'size', name: 'Small', priceDeltaCents: 0 },
-      { optionId: 'f-cheese', optionType: 'flavor', name: 'Cheese', priceDeltaCents: 0 }, // gone
+    const selectedOptions: OrderItemOption[] = [
+      { id: 's-sm', optionType: 'size', name: 'Small', priceDeltaCents: 0 },
+      { id: 'f-cheese', optionType: 'flavor', name: 'Cheese', priceDeltaCents: 0 }, // gone
     ];
-    const past = order([orderItem({ productId: 'p1', productName: 'Fries', selectedOptions })]);
+    const past = order([
+      orderItem({ productId: 'p1', productNameSnapshot: 'Fries', selectedOptions }),
+    ]);
 
     const { available, unavailable } = reconcileReorder(past, currentMenu);
 
@@ -161,13 +165,18 @@ describe('reconcileReorder', () => {
         },
       }),
     ]);
-    const selectedOptions: SelectedOption[] = [
-      { optionId: 's-lg', optionType: 'size', name: 'Large', priceDeltaCents: 400 },
-      { optionId: 'f-bbq', optionType: 'flavor', name: 'BBQ', priceDeltaCents: 0 },
-      { optionId: 'a-bacon', optionType: 'add_on', name: 'Bacon', priceDeltaCents: 600 },
+    const selectedOptions: OrderItemOption[] = [
+      { id: 's-lg', optionType: 'size', name: 'Large', priceDeltaCents: 400 },
+      { id: 'f-bbq', optionType: 'flavor', name: 'BBQ', priceDeltaCents: 0 },
+      { id: 'a-bacon', optionType: 'add_on', name: 'Bacon', priceDeltaCents: 600 },
     ];
     const past = order([
-      orderItem({ productId: 'p1', productName: 'Loaded Fries', quantity: 3, selectedOptions }),
+      orderItem({
+        productId: 'p1',
+        productNameSnapshot: 'Loaded Fries',
+        quantity: 3,
+        selectedOptions,
+      }),
     ]);
 
     const { available, unavailable } = reconcileReorder(past, currentMenu);
@@ -186,8 +195,8 @@ describe('reconcileReorder', () => {
   it('partitions a mixed order into available and unavailable lines', () => {
     const currentMenu = menu([product({ id: 'p1', name: 'Fries' })]);
     const past = order([
-      orderItem({ productId: 'p1', productName: 'Fries' }),
-      orderItem({ productId: 'p-gone', productName: 'Gone Item' }),
+      orderItem({ productId: 'p1', productNameSnapshot: 'Fries' }),
+      orderItem({ productId: 'p-gone', productNameSnapshot: 'Gone Item' }),
     ]);
 
     const { available, unavailable } = reconcileReorder(past, currentMenu);

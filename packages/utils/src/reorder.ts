@@ -71,14 +71,14 @@ export function reconcileReorder(order: Order, menu: MenuResponse): ReorderRecon
   for (const line of order.items) {
     const product = currentProducts.get(line.productId);
     if (!product) {
-      unavailable.push({ productName: line.productName, reason: 'product_unavailable' });
+      unavailable.push({ productName: line.productNameSnapshot, reason: 'product_unavailable' });
       continue;
     }
 
     const optionsForCart: CartItemOption[] = [];
     let optionMissing = false;
     for (const selected of line.selectedOptions) {
-      const current = findCurrentOption(product, selected.optionId);
+      const current = findCurrentOption(product, selected.id);
       if (!current) {
         optionMissing = true;
         break;
@@ -92,7 +92,7 @@ export function reconcileReorder(order: Order, menu: MenuResponse): ReorderRecon
     }
 
     if (optionMissing) {
-      unavailable.push({ productName: line.productName, reason: 'option_unavailable' });
+      unavailable.push({ productName: line.productNameSnapshot, reason: 'option_unavailable' });
       continue;
     }
 

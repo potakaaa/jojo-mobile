@@ -18,13 +18,16 @@ export interface DealCardProps {
   onPress?: () => void;
   mode?: ThemeMode;
   style?: ViewStyle;
+  validUntil?: string;
 }
 
 /**
  * Promotional deal card: optional hero image, title, description, and a
- * discount badge. Tapping is optional and visual-only by default.
+ * discount badge. Tapping is optional and visual-only by default. When
+ * `validUntil` is provided, a caption "Valid until: …" row renders below the
+ * description; omitting it leaves existing call sites unaffected.
  */
-export function DealCard({ deal, onPress, mode = 'light', style }: DealCardProps) {
+export function DealCard({ deal, onPress, mode = 'light', style, validUntil }: DealCardProps) {
   const theme = Colors[mode];
 
   return (
@@ -53,6 +56,11 @@ export function DealCard({ deal, onPress, mode = 'light', style }: DealCardProps
         {deal.description ? (
           <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
             {deal.description}
+          </Text>
+        ) : null}
+        {validUntil ? (
+          <Text style={[styles.validUntil, { color: theme.textSecondary }]}>
+            Valid until: {validUntil}
           </Text>
         ) : null}
       </View>
@@ -96,5 +104,9 @@ const styles = StyleSheet.create({
   description: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
+  },
+  validUntil: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
   },
 });

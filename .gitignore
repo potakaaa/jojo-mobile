@@ -63,3 +63,7 @@ DESIGN.md
 /graphify-out
 
 reports
+
+# Expo prebuild native output. NOTE: apps/mobile/android IS committed (tracked on
+# `development`, adopted here on merge); only ios stays generated/ignored.
+/apps/mobile/ios

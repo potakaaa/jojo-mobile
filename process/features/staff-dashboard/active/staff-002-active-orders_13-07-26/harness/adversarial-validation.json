@@ -1,0 +1,45 @@
+{
+  "task": "STAFF-002 staff order endpoints — adversarial validation (STRIDE-informed)",
+  "scenarios": [
+    {
+      "scenario": "Cross-branch data leak: branch-1 staff requests a branch-2 order's detail by guessing/knowing its UUID (Information Disclosure / privilege escalation across the branch trust boundary).",
+      "ruled_out": true,
+      "rationale": "GET /api/staff/orders/:orderId fetches the order, then rejects with 403 when order.branch_id !== resolveBranchScope(userId) BEFORE fetching any items. Proven by D5 test (cross-branch id → exactly 403). No item/PII data is returned on the rejection path."
+    },
+    {
+      "scenario": "Branch spoofing: a caller supplies a branch_id via query/body/param to widen scope to another branch (Tampering / Elevation of Privilege).",
+      "ruled_out": true,
+      "rationale": "Neither endpoint reads a branch id from the request. branchId comes only from resolveBranchScope(db, session.userId). There is no code path that accepts a client-provided branch id, so spoofing has no attack surface. Verified by grep of staff.ts."
+    },
+    {
+      "scenario": "Stale-session escalation: staff was re-assigned to a smaller branch but their session still carries the old (larger-scope) assignedBranchId (Elevation of Privilege via stale claim).",
+      "ruled_out": true,
+      "rationale": "Both handlers call resolveBranchScope which reads users.assignedBranchId FRESH from the DB — the session-carried assignedBranchId (documented as possibly stale) is never used for scoping. A re-assignment takes effect immediately on the next request."
+    },
+    {
+      "scenario": "Unassigned/unauthorized access: a staff account with no branch (assignedBranchId null) attempts to read the order list or a detail (Elevation of Privilege / broken access control).",
+      "ruled_out": true,
+      "rationale": "resolveBranchScope returns null for unassigned staff → both endpoints return 403 with no data. Proven by the unassigned-staff → 403 list test (D6). Non-staff roles are rejected earlier by the requireStaff mount guard (403)."
+    },
+    {
+      "scenario": "Terminal-status leak: completed/cancelled orders (which may include historical/refunded data) surface on the live dashboard (Information Disclosure / scope creep).",
+      "ruled_out": true,
+      "rationale": "List query filters inArray(orders.status, ['pending','accepted','preparing','flavoring','ready']); terminal statuses are excluded server-side. Proven by D3 non-terminal-filter test."
+    },
+    {
+      "scenario": "Denial of Service / crash via malformed order id (bad UUID) causing an unhandled Postgres error → 500 leak or process instability.",
+      "ruled_out": true,
+      "rationale": "Detail route validates the param with z.string().uuid().safeParse and returns 404 for a malformed id before touching the DB — matching the existing orders.ts convention. No 500 path from a bad id."
+    },
+    {
+      "scenario": "PII exfiltration: staff order responses expose customer identity (user_id, name, email, phone) beyond what pickup fulfillment needs (Information Disclosure).",
+      "ruled_out": true,
+      "rationale": "StaffOrderSummary and StaffOrderDetail carry no customer identity fields — only order id/number/status/timing/total and item names/qty/options. Minimal disclosure by construction; confirmed in serializers.ts."
+    },
+    {
+      "scenario": "Unauthorized state mutation: an attacker uses the new surface to change order status or trigger a side effect (Tampering).",
+      "ruled_out": true,
+      "rationale": "Both endpoints are GET and perform only SELECT queries. No write endpoint was added (STAFF-003 boundary). Mobile action buttons are inert no-ops. No mutation path exists on this surface."
+    }
+  ]
+}

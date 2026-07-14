@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation)
+## Current Implementation State (as of 13-07-26, incl. STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -114,6 +114,22 @@ top of it later without re-plumbing the project.
   Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
   them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
   (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
+- **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
+  `feat/checkout-flow` reworked Checkout (`order/checkout.tsx`), Payment-method selection
+  (`order/payment-method.tsx` + shared `packages/ui` `payment-method-selector.tsx` with
+  `PAYMENT_METHOD_LABELS`/`ICONS`), and Order Confirmation (`order/confirmation/[orderId].tsx`) as
+  richer UI. In the development merge, THIS branch's screens were kept; the checkout and
+  confirmation screens are now wired to the real `POST /orders`/`GET /orders/:id` API via
+  `useCheckout()` (`features/orders/hooks/use-checkout.ts`). The original in-memory
+  `mock-order.ts` seam and its vitest unit tests were deleted. `useOrder()` (`features/order/`)
+  remains but is trimmed to payment-method selection state only (consumed by
+  `order/payment-method.tsx`). App-side `PaymentMethod` (`pay_at_branch|app_wallet|gcash|maya|card`)
+  intentionally diverges from the DB enum (`pay_at_branch|online_payment`) — UI-only widening,
+  `payment_status` stays `unpaid`; see
+  `process/features/ordering-cart/backlog/payment-method-enum-divergence_NOTE_13-07-26.md`.
+  `env.ts` gained `onlinePaymentEnabled` (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED`, default false).
+  `apps/mobile` has a pure-TS **vitest** runner (node env, `--passWithNoTests`; mock-order tests
+  removed) — extended by development's HIST-002 config; still no RN component/E2E runner.
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -303,14 +319,14 @@ For most substantial tasks:
 |---|---|
 | `process/context/all-context.md` | any substantial planning, research, review, or implementation task |
 | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
+| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
 
 ## Current Context Groups
 
 | Group | Entry point | Scope |
 |---|---|---|
 | `planning/` | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest now live in packages/api |
+| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
 <!-- /GENERATED:routing -->
 
 No other context groups exist beyond the baseline `tests`/`planning` groups every repo gets
@@ -409,7 +425,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
-            order/                      -- real: index, product/[productId], cart, checkout, confirmation/[orderId], tracking/[orderId], history
+            order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
             branches/                   -- real: index (list), [branchId] (detail + menu)
             rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
@@ -421,6 +437,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           auth/lib/auth-client.ts      -- better-auth mobile client (expoClient + secure-store persistence, phone/magic-link plugins)
           cart/hooks/use-cart.ts       -- CartSessionProvider + useCart(): Cart/CartItem-shaped state (canonical model from development's PR #62, real backend wiring ported on -- superseded the original CartProvider/CartLine seam, see all-context.md "Cart architecture (superseded)")
           cart/mock-cart.ts            -- dev/demo-only seed data (component-showcase.tsx), not used as use-cart.ts's production default
+          order/hooks/use-order.ts     -- OrderSessionProvider + useOrder(): payment-method selection state only (trimmed 14-07-26; placement logic + mock-order.ts deleted); consumed by order/payment-method.tsx
           branch/hooks/use-branch.ts   -- BranchProvider + useBranch(): react-query-backed branch list/selection (replaces deleted features/branches/, see all-context.md "Menu/branch data layer superseded")
           menu/hooks/{use-menu,use-product-details}.ts  -- react-query-backed branch menu + client-derived product detail
           menu/components/             -- add-to-cart-bar, branch-switcher, category-section, option-group-selector (adopted from development)
@@ -429,7 +446,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           staff/lib/staff-api.ts       -- fetchStaffMe(): authClient.$fetch wrapper for GET /api/staff/me → StaffMe | null
           staff/hooks/use-staff-me.ts  -- useStaffMe(): useState/useEffect hook returning { data, isLoading, error }
         lib/{api-client,query-client}.ts  -- global react-query client + getBranches()/getMenu() (menu/branch data layer, added by merge-menu-api-reconciliation)
-        config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars
+        config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars (incl. onlinePaymentEnabled, added by the checkout-flow rework)
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
         hooks/                         -- use-color-scheme.ts (+.web.ts variant), use-theme.ts
         components/                    -- floating-tab-bar.tsx (ICONS map keyed by route name), coming-soon.tsx (isNestedScreen? prop)
@@ -472,7 +489,7 @@ Metro/Expo resolves them like any other dependency.
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
 - **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
-- **Testing:** `packages/api` uses **vitest** + **supertest** (added STAFF-001). Run `pnpm --filter @jojopotato/api test` (requires `docker compose up -d` + `db:migrate` first). 34 tests covering auth and staff authz. No test runner exists for `apps/mobile` (no Jest/Vitest/Detox) — mobile verification is typecheck + lint + Agent-Probe only. See `process/context/tests/all-tests.md`.
+- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
 - **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
 
 ## Key Patterns and Conventions

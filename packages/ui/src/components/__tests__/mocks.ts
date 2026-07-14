@@ -42,11 +42,16 @@ export const MOCK_DEAL: Deal = {
 export const MOCK_BRANCH: PickupBranch = {
   id: 'b1',
   name: 'Jojo Potato SM',
+  slug: 'jojo-sm',
   address: '123 Main St',
   latitude: 0,
   longitude: 0,
-  estimatedPrepMinutes: 20,
+  phone: '+63 2 8888 0000',
+  openingHours: JSON.stringify({ mon: { open: '09:00', close: '21:00' } }),
+  isActive: true,
   isAcceptingPickup: true,
+  estimatedPrepMinutes: 15,
+  priority: 1,
   isOpen: true,
 };
 

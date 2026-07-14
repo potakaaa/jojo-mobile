@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -7,11 +7,40 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+// Cross-tree signal: lets a screen hide the floating tab bar while a full-screen
+// overlay (e.g. the checkout confirm drawer) is open, so the bar doesn't paint over
+// it. ponytail: tiny external store, not a context provider — one flag, one consumer.
+let tabBarHidden = false;
+const tabBarListeners = new Set<() => void>();
+const getTabBarHidden = () => tabBarHidden;
+
+function setTabBarHidden(next: boolean) {
+  if (tabBarHidden === next) return;
+  tabBarHidden = next;
+  tabBarListeners.forEach((listener) => listener());
+}
+
+function subscribeTabBar(listener: () => void) {
+  tabBarListeners.add(listener);
+  return () => {
+    tabBarListeners.delete(listener);
+  };
+}
+
+/** Hide the floating tab bar while `active` is true; auto-restores on unmount. */
+export function useHideTabBarWhile(active: boolean) {
+  useEffect(() => {
+    setTabBarHidden(active);
+    return () => setTabBarHidden(false);
+  }, [active]);
+}
 
 /**
  * Minimal, locally-declared shape of React Navigation's `BottomTabBarProps`,
@@ -124,6 +153,7 @@ interface TabItemProps {
   iconActive?: keyof typeof Ionicons.glyphMap;
   iconInactive?: keyof typeof Ionicons.glyphMap;
   activeColor: string;
+  labelActiveColor: string;
   inactiveColor: string;
   accessibilityLabel?: string;
   onPress: () => void;
@@ -140,6 +170,7 @@ function TabItem({
   iconActive,
   iconInactive,
   activeColor,
+  labelActiveColor,
   inactiveColor,
   accessibilityLabel,
   onPress,
@@ -166,7 +197,7 @@ function TabItem({
   }));
 
   const labelColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
+    color: interpolateColor(progress.value, [0, 1], [inactiveColor, labelActiveColor]),
   }));
 
   // Glyph swap (outline ↔ filled) is discrete; color cross-fades over it.
@@ -204,9 +235,21 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[mode];
+  const hidden = useSyncExternalStore(subscribeTabBar, getTabBarHidden);
+
+  // Fade the bar out/in when a full-screen overlay (e.g. the checkout confirm
+  // drawer) toggles it, instead of popping. pointerEvents blocks taps while hidden.
+  const barOpacity = useSharedValue(1);
+  useEffect(() => {
+    barOpacity.value = withTiming(hidden ? 0 : 1, { duration: 200 });
+  }, [hidden, barOpacity]);
+  const barFadeStyle = useAnimatedStyle(() => ({ opacity: barOpacity.value }));
 
   return (
-    <View
+    <Animated.View
+      pointerEvents={hidden ? 'none' : 'auto'}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       style={[
         styles.bar,
         {
@@ -215,6 +258,7 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
           borderColor: colors.border,
         },
         Shadows.offsetMd,
+        barFadeStyle,
       ]}
     >
       {/*
@@ -252,13 +296,14 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             iconActive={iconPair?.active}
             iconInactive={iconPair?.inactive}
             activeColor={Palette.ink}
+            labelActiveColor={colors.text}
             inactiveColor={colors.textSecondary}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             onPress={onPress}
           />
         );
       })}
-    </View>
+    </Animated.View>
   );
 }
 

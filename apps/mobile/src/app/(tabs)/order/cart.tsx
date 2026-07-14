@@ -217,7 +217,13 @@ export default function CartScreen() {
           <>
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={styles.content}
+              contentContainerStyle={[
+                styles.content,
+                Platform.OS !== 'web' && {
+                  paddingBottom:
+                    getFloatingTabBarClearance(insets.bottom) + Spacing.six + Spacing.two,
+                },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               <BranchCard
@@ -264,7 +270,12 @@ export default function CartScreen() {
               </View>
 
               {cart.appliedDiscount ? (
-                <View style={styles.couponSlot}>
+                <View
+                  style={[
+                    styles.couponSlot,
+                    { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                  ]}
+                >
                   <Text style={[styles.sectionLabel, { color: theme.text }]}>Applied deal</Text>
                   <CouponCard
                     coupon={{
@@ -276,12 +287,14 @@ export default function CartScreen() {
                       isRedeemed: false,
                     }}
                     mode={mode}
+                    style={styles.couponFlat}
                   />
                   <Button
                     label="Remove discount"
-                    variant="outline"
+                    variant="accent"
                     onPress={clearDiscount}
                     mode={mode}
+                    style={styles.removeDiscountButton}
                   />
                 </View>
               ) : null}
@@ -299,7 +312,7 @@ export default function CartScreen() {
               style={[
                 styles.footer,
                 Platform.OS !== 'web' && {
-                  paddingBottom: getFloatingTabBarClearance(insets.bottom),
+                  paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.two,
                 },
               ]}
             >
@@ -362,14 +375,34 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     paddingHorizontal: 0,
   },
+  couponFlat: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  removeDiscountButton: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   couponSlot: {
     gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 2,
+    borderRadius: Radii.md,
   },
   sectionLabel: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
   footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,

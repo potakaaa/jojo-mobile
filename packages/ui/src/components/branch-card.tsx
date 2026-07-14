@@ -8,6 +8,7 @@ import { Button } from './button';
 
 export interface BranchCardProps {
   branch: PickupBranch;
+  isOpen?: boolean; // optional; falls back to branch.isOpen
   onPress?: () => void;
   mode?: ThemeMode;
   footer?: ReactNode;
@@ -20,10 +21,18 @@ export interface BranchCardProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchCard({ branch, onPress, mode = 'light', footer, onChange }: BranchCardProps) {
+export function BranchCard({
+  branch,
+  isOpen,
+  onPress,
+  mode = 'light',
+  footer,
+  onChange,
+}: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
   const interactive = onChange === undefined;
+  const open = isOpen ?? branch.isOpen ?? false;
 
   const content = (
     <>
@@ -49,14 +58,9 @@ export function BranchCard({ branch, onPress, mode = 'light', footer, onChange }
         ) : (
           <View style={[styles.statusPill, { borderColor: theme.accent }]}>
             <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
-              ]}
+              style={[styles.statusDot, { backgroundColor: open ? Palette.green : theme.accent }]}
             />
-            <Text style={[styles.status, { color: theme.accent }]}>
-              {branch.isOpen ? 'Open' : 'Closed'}
-            </Text>
+            <Text style={[styles.status, { color: theme.accent }]}>{open ? 'Open' : 'Closed'}</Text>
           </View>
         )}
       </View>

@@ -17,16 +17,23 @@ export type SeedBranch = {
   is_active: boolean;
   is_accepting_pickup: boolean;
   estimated_prep_minutes: number;
+  priority: number;
 };
 
+// Cagayan de Oro (CDO) demo branches, ordered by proximity to the dev user's
+// location (~8.4765, 124.6449). Coordinates are real, address-verified CDO
+// landmarks. The four rows deliberately cover every branch-state combination so
+// the locator + "nearest branch" UI can be exercised: fully open (Cogon,
+// Centrio), open-but-pickup-paused (SM Downtown), and closed (Limketkai).
 export const seedBranches: SeedBranch[] = [
   {
-    slug: 'jojo-poblacion',
-    name: 'Jojo Potato - Poblacion',
-    address: 'J. Panganiban St, Poblacion, Cebu City, Cebu',
-    latitude: '10.315700',
-    longitude: '123.891500',
-    phone: '+63 32 234 5601',
+    // Nearest to the dev user — priority 1.
+    slug: 'jojo-cogon',
+    name: 'Jojo Potato - Cogon',
+    address: 'C.M. Recto Ave, Cogon, Cagayan de Oro, Misamis Oriental',
+    latitude: '8.477600',
+    longitude: '124.647300',
+    phone: '+63 88 856 1001',
     opening_hours: JSON.stringify({
       mon: { open: '09:00', close: '21:00' },
       tue: { open: '09:00', close: '21:00' },
@@ -39,48 +46,72 @@ export const seedBranches: SeedBranch[] = [
     is_active: true,
     is_accepting_pickup: true,
     estimated_prep_minutes: 15,
+    priority: 1,
   },
   {
-    // Closed branch — whole branch offline.
-    slug: 'jojo-mabolo',
-    name: 'Jojo Potato - Mabolo',
-    address: 'Gorordo Ave, Mabolo, Cebu City, Cebu',
-    latitude: '10.323400',
-    longitude: '123.904200',
-    phone: '+63 32 234 5602',
+    slug: 'jojo-centrio',
+    name: 'Jojo Potato - Centrio',
+    address: 'Ayala Centrio Mall, Corrales cor. Claro M. Recto Ave, Cagayan de Oro',
+    latitude: '8.484800',
+    longitude: '124.650600',
+    phone: '+63 88 856 1002',
     opening_hours: JSON.stringify({
-      mon: { open: '09:00', close: '21:00' },
-      tue: { open: '09:00', close: '21:00' },
-      wed: { open: '09:00', close: '21:00' },
-      thu: { open: '09:00', close: '21:00' },
-      fri: { open: '09:00', close: '21:00' },
-      sat: { open: '09:00', close: '21:00' },
-      sun: { open: '09:00', close: '21:00' },
+      mon: { open: '10:00', close: '21:00' },
+      tue: { open: '10:00', close: '21:00' },
+      wed: { open: '10:00', close: '21:00' },
+      thu: { open: '10:00', close: '21:00' },
+      fri: { open: '10:00', close: '22:00' },
+      sat: { open: '10:00', close: '22:00' },
+      sun: { open: '10:00', close: '21:00' },
     }),
-    is_active: false,
+    is_active: true,
     is_accepting_pickup: true,
     estimated_prep_minutes: 15,
+    priority: 2,
   },
   {
-    // Open branch, but pickup paused (e.g. kitchen backlog) — orthogonal to is_active.
-    slug: 'jojo-it-park',
-    name: 'Jojo Potato - IT Park',
-    address: 'Asiatown IT Park, Lahug, Cebu City, Cebu',
-    latitude: '10.330500',
-    longitude: '123.905800',
-    phone: '+63 32 234 5603',
+    // Open branch, but pickup paused (demo) — orthogonal to is_active.
+    slug: 'jojo-sm-downtown',
+    name: 'Jojo Potato - SM Downtown',
+    address: 'SM CDO Downtown Premier, Claro M. Recto Ave cor. Osmeña St, Cagayan de Oro',
+    latitude: '8.485040',
+    longitude: '124.653960',
+    phone: '+63 88 856 1003',
     opening_hours: JSON.stringify({
-      mon: { open: '10:00', close: '23:00' },
-      tue: { open: '10:00', close: '23:00' },
-      wed: { open: '10:00', close: '23:00' },
-      thu: { open: '10:00', close: '23:00' },
-      fri: { open: '10:00', close: '00:00' },
-      sat: { open: '10:00', close: '00:00' },
-      sun: { open: '10:00', close: '23:00' },
+      mon: { open: '10:00', close: '22:00' },
+      tue: { open: '10:00', close: '22:00' },
+      wed: { open: '10:00', close: '22:00' },
+      thu: { open: '10:00', close: '22:00' },
+      fri: { open: '10:00', close: '22:00' },
+      sat: { open: '10:00', close: '22:00' },
+      sun: { open: '10:00', close: '22:00' },
     }),
     is_active: true,
     is_accepting_pickup: false,
     estimated_prep_minutes: 20,
+    priority: 3,
+  },
+  {
+    // Closed branch (demo) — whole branch offline; excluded from GET /api/branches.
+    slug: 'jojo-limketkai',
+    name: 'Jojo Potato - Limketkai',
+    address: 'Limketkai Center, Lapasan, Cagayan de Oro, Misamis Oriental',
+    latitude: '8.481970',
+    longitude: '124.656570',
+    phone: '+63 88 856 1004',
+    opening_hours: JSON.stringify({
+      mon: { open: '10:00', close: '21:00' },
+      tue: { open: '10:00', close: '21:00' },
+      wed: { open: '10:00', close: '21:00' },
+      thu: { open: '10:00', close: '21:00' },
+      fri: { open: '10:00', close: '21:00' },
+      sat: { open: '10:00', close: '21:00' },
+      sun: { open: '10:00', close: '21:00' },
+    }),
+    is_active: false,
+    is_accepting_pickup: true,
+    estimated_prep_minutes: 15,
+    priority: 4,
   },
 ];
 
@@ -273,7 +304,7 @@ export const seedDeals: SeedDeal[] = [
   },
   {
     title: 'Branch-exclusive opening promo',
-    description: '20% off your whole order at the IT Park branch, for a limited time.',
+    description: '20% off your whole order at the Centrio branch, for a limited time.',
     deal_type: 'percentage_discount',
     discount_value: '20.00',
     minimum_order_amount: '0',
@@ -281,7 +312,7 @@ export const seedDeals: SeedDeal[] = [
     usage_limit_per_user: null,
     total_usage_limit: null,
     productSlugs: [],
-    branchSlugs: ['jojo-it-park'],
+    branchSlugs: ['jojo-centrio'],
   },
   {
     title: 'Weekend combo deal',

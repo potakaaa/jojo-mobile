@@ -24,6 +24,7 @@ export const branches = pgTable(
     is_active: boolean('is_active').default(true).notNull(),
     is_accepting_pickup: boolean('is_accepting_pickup').default(true).notNull(),
     estimated_prep_minutes: integer('estimated_prep_minutes').default(15).notNull(),
+    priority: integer('priority').notNull().default(0),
     created_at: timestamp('created_at').defaultNow().notNull(),
     updated_at: timestamp('updated_at').defaultNow().notNull(),
   },

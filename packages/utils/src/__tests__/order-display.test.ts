@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import { summarizeOrderItems } from '../order-display';
 
-function item(productName: string, quantity: number): OrderItem {
+function item(productNameSnapshot: string, quantity: number): OrderItem {
   return {
-    productId: `p-${productName}`,
-    productName,
+    id: `oi-${productNameSnapshot}`,
+    productId: `p-${productNameSnapshot}`,
+    productNameSnapshot,
     quantity,
     unitPriceCents: 500,
     totalPriceCents: 500 * quantity,
