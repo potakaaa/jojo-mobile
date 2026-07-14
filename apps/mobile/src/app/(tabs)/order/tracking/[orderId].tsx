@@ -24,7 +24,7 @@ function EtaCard({ iso }: { iso: string }) {
       <View style={eta.body}>
         <Text style={eta.eyebrow}>ESTIMATED PICKUP</Text>
         <Text style={eta.time}>{time}</Text>
-        <Text style={eta.sub}>Head over when it's ready — we'll keep updating this page.</Text>
+        <Text style={eta.sub}>{"Head over when it's ready — we'll keep updating this page."}</Text>
       </View>
     </View>
   );
