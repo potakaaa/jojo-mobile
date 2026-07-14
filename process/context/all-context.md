@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. STAR-001 star-earning service)
+## Current Implementation State (as of 14-07-26, incl. STAR-002 rewards screen + STAR-003 reward unlock)
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -111,9 +111,10 @@ top of it later without re-plumbing the project.
 - **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
   full customer pickup-order journey (branch select → menu → product customize → cart → checkout
   → confirmation → tracking → order history) is implemented and working, not just placeholder.
-  Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
-  them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
-  (STAFF-001, see below); its real data screens (STAFF-002/003/004) are not yet built.
+  **Rewards tab** now has a real screen (STAR-002 — see below). Account tab (`account/index.tsx`)
+  is still `<ComingSoon>` but now hosts the theme toggle (see Theming note below). The
+  role-gated `(staff)` shell exists (STAFF-001, see below); its real data screens
+  (STAFF-002/003/004) are not yet built.
 - **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
   `feat/checkout-flow` reworked Checkout (`order/checkout.tsx`), Payment-method selection
   (`order/payment-method.tsx` + shared `packages/ui` `payment-method-selector.tsx` with
@@ -153,26 +154,66 @@ top of it later without re-plumbing the project.
   **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
   plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
 - **Jojo Stars earning service (STAR-001, delivered 14-07-26):** idempotent star-earning backend
-  service, **decoupled and unwired** — the standalone unit that STAFF-003 will call from staff
-  endpoints. `packages/api/src/lib/star-earning.ts` exports `creditStarForCompletedOrder(orderId)`
+  service. `packages/api/src/lib/star-earning.ts` exports `creditStarForCompletedOrder(orderId)`
   and `reverseStarForRefundedOrder(orderId)`. Idempotency is DB-enforced: migration `0005`
   (`0005_nosy_genesis.sql`) adds a partial unique index on `star_transactions (order_id, type) WHERE
-  order_id IS NOT NULL`; `onConflictDoNothing` with the matching partial predicate means a
-  double-fire (sequential or concurrent) never double-credits. Each earn/reverse runs in a
-  `db.transaction`: insert the ledger row first, bump `user_stars` only when a row was actually
-  inserted (counter mutation is strictly gated on `inserted.length > 0`). Refund decrements
-  `current_stars` only — `lifetime_stars` stays monotonic (product-default, locked by EDGE tests;
-  pending PRD §6.10 owner confirmation). `packages/api/src/lib/star-earning-config.ts` isolates
-  `STAR_EARNING_MINIMUM_CENTS = 0` behind `getStarEarningMinimumCents()` (the ADM-005 seam — swap
-  the constant for a config-table read when the admin config feature is built). `packages/types/src/rewards.ts`
-  was overhauled from a placeholder to the real star model: `StarTransactionType` (`earned |
-  redeemed | adjusted | expired`), `UserStars` (`currentStars`, `lifetimeStars`), `StarTransaction`.
-  10 hermetic vitest integration tests cover AC1–AC5 + 3 idempotency edge cases; all Fully-Automated
-  against the per-run `_test` DB (suite now 77 tests total). No live trigger or endpoint yet —
-  STAFF-003 must call `creditStarForCompletedOrder` / `reverseStarForRefundedOrder` from the
-  staff order-complete / refund endpoints (TODO seams left in the module header). See
+  order_id IS NOT NULL`. Refund decrements `current_stars` only — `lifetime_stars` stays monotonic
+  (product-default, locked by EDGE tests). `packages/api/src/lib/star-earning-config.ts` isolates
+  `STAR_EARNING_MINIMUM_CENTS = 0` behind `getStarEarningMinimumCents()` (the ADM-005 seam).
+  `packages/types/src/rewards.ts` carries the real star model: `StarTransactionType`, `UserStars`
+  (`currentStars`, `lifetimeStars`), `StarTransaction`, `Reward`, `RewardsSummary`. See
   `process/features/rewards-notifications/completed/star-001-star-earning_14-07-26/` and
-  `process/features/rewards-notifications/_GUIDE.md` for wiring contract and open work.
+  `process/features/rewards-notifications/_GUIDE.md` for wiring contract.
+- **Rewards read API + mobile screen (STAR-002, delivered 14-07-26, committed 392b355):** real
+  Rewards screen replacing `<ComingSoon>`. New session-gated read API in
+  `packages/api/src/routes/rewards.ts` — 3 GET endpoints mounted at `app.use('/rewards',
+  requireSession, rewardsRouter)` (top-level, not under `/api/staff`); all scoped to
+  `req.user!.id`: `GET /rewards/summary` (currentStars/lifetimeStars/requiredStars/isUnlocked/reward),
+  `GET /rewards/available` (active rewards asc by required_stars), `GET /rewards/history`
+  (star_transactions desc by created_at, cursor-paginated). Data layer: react-query hooks in
+  `apps/mobile/src/features/rewards/hooks/` over cookie-fetch functions in
+  `features/rewards/lib/rewards-api.ts` (mirrors `staff-api.ts` — absolute `env.apiUrl` + Cookie,
+  NOT `authClient.$fetch`). Screen: `apps/mobile/src/app/(tabs)/rewards/index.tsx` — `StarProgressBar`
+  tracker, stars-needed label, reward preview, available rewards list, reverse-chron history,
+  `<RewardsTerms>`. Also fixed the STAR-001 type regression (8 points/tier consumers reconciled to
+  the stars model; `rewards-teaser-card.tsx` dead code deleted). Seed: one idempotent 5-star active
+  reward in `seedRewardsTable()`. **No new migration** (seed-only). Also added `Reward` + `RewardsSummary`
+  to `packages/types/src/rewards.ts`. Tests: 89/89 API, 51/51 UI jest-expo. See
+  `process/features/rewards-notifications/completed/star-002-rewards-screen_14-07-26/`.
+- **Reward unlock + coupon generation (STAR-003, delivered 14-07-26, committed a999e46):** battle-pass
+  cumulative unlock model. When `creditStarForCompletedOrder` credits a star and the user's
+  `lifetime_stars` crosses one or more active reward thresholds, exactly ONE `coupons` row is minted
+  per newly-crossed tier — inside the credit transaction on the credited path only (`inserted.length
+  > 0` gate). Idempotency: migration `0006` (`0006_windy_dexter_bennett.sql`) adds a partial unique
+  index `coupons_user_reward_unique` on `(user_id, reward_id) WHERE reward_id IS NOT NULL`; inserts
+  use `onConflictDoNothing` with the matching `where` partial predicate (the STAR-001 E1 lesson: bare
+  `target`-only form throws against partial indexes). Threshold read LIVE (ADM-005-ready). A bounded
+  savepoint-based retry handles `coupons.code` UNIQUE collisions (≤5 attempts; SAVEPOINT isolates
+  the retry within the transaction). Post-commit: `notifyRewardUnlocked(userId, rewardIds)` in
+  `packages/api/src/lib/reward-unlock-notify.ts` writes a `notifications` row per unlock
+  (`type='reward_unlocked'`, `target_screen='/(tabs)/rewards'`), failure-swallowed, with
+  `TODO(PUSH-002/003)` seam. `packages/api/src/lib/reward-coupon-code.ts` generates `JP-RWD-XXXX`
+  codes (spyable `rewardCouponCodeGenerator`). `packages/types/src/coupons.ts` now exports
+  `CouponStatus` (`available|used|expired`) and `DbCoupon` (DB-facing; existing UI `Coupon` shape
+  unchanged). Seed updated to a 4-tier roadmap (5/10/15/20 stars, `REWARD_ROADMAP` constant,
+  `seedRewardsTable` generalized to N tiers idempotently). Refund does NOT revoke an unlocked tier
+  (lifetime is monotonic). `StarCreditResult` extended additively: `unlockedRewardIds?: string[]`.
+  Tests: 99/99 API (10 new STAR-003 + STAR-001 regression still green, plus the 12 STAR-002 API
+  tests). **No mobile changes** — STAFF-003 must call the service from live staff endpoints (TODO
+  seams in `star-earning.ts` module header). See
+  `process/features/rewards-notifications/completed/star-003-reward-unlock_14-07-26/` and
+  `process/features/rewards-notifications/_GUIDE.md`.
+- **Universal theme system (mobile, delivered 14-07-26, committed 32bc0bf):** persisted theme
+  preference `system|light|dark` (default `system` → follows OS) via
+  `apps/mobile/src/features/theme/theme-preference.ts` (expo-secure-store module store, NOT a React
+  context — so the root layout can read it before any provider). `use-color-scheme.ts` and its
+  `.web.ts` sibling now resolve through the preference; they are no longer simple re-exports of RN's
+  `useColorScheme`. The toggle lives in `(tabs)/account/index.tsx` as a `ThemeToggle` segmented
+  control (System / Light / Dark). `_layout.tsx` calls `loadThemePreference()` on mount. See
+  CLAUDE.md §Theming for the authoritative usage rules.
+- **Expo Go native-module guard (delivered 14-07-26, committed 8c18a60):** `branch-map.tsx` now
+  loads `expo-maps` via a guarded `require` + fallback so Expo Go degrades instead of crashing. See
+  §Key Patterns below for the reusable pattern note.
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
@@ -248,11 +289,10 @@ top of it later without re-plumbing the project.
     and remains canonical. The merge is EVL-verified but was staged, not yet committed, as of this
     pass — check `git log`/`git status` before assuming it landed.
 - **Known tech debt:** un-gated "Dev: ..." nav links (added to manually exercise nested stacks
-  before real UI existed) are resolved for `order/`, `branches/`, and
-  `order/confirmation/[orderId].tsx` — the `pickup-order-flow` plan removed them once real
-  navigation entry points superseded them. One instance remains: `rewards/index.tsx`'s
-  `Dev: View Coupons` link, since the Rewards tab is still a placeholder — see
-  `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md` (narrowed scope).
+  before real UI existed) are resolved for `order/`, `branches/`, `order/confirmation/[orderId].tsx`,
+  and `rewards/index.tsx` (STAR-002 replaced the Rewards `<ComingSoon>` and removed the
+  `Dev: View Coupons` link). The `process/general-plans/backlog/mobile-dev-nav-links-gating_NOTE_09-07-26.md`
+  backlog entry is now fully resolved — no remaining dev-nav-link debt.
 - **Known gap:** no automated E2E/regression harness exists for any navigation flow (project-wide
   test-runner gap, see `tests/all-tests.md`) — see
   `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md`. The
@@ -260,10 +300,11 @@ top of it later without re-plumbing the project.
   reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
   the same reason.
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
-  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). 77 tests
-  total. Suites cover auth, staff authz (`require-staff.integration.test.ts` — hermetic,
-  self-seeding fixtures), branches, customer order placement, and star earning
-  (`star-earning.integration.test.ts` — AC1–AC5 + 3 idempotency edges, 10 tests, added STAR-001).
+  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). **99 tests
+  total** (was 77 after STAR-001; +12 rewards read-API tests in STAR-002; +10 STAR-003 unlock/battle-pass
+  tests). Suites cover auth, staff authz, branches, customer order placement, star earning
+  (`star-earning.integration.test.ts` — 10 STAR-001 + 10 STAR-003 cases; all hermetic
+  self-seeding), and rewards read API (`rewards.integration.test.ts` — 12 tests, added STAR-002).
   `app` is exported from `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
@@ -276,7 +317,11 @@ top of it later without re-plumbing the project.
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
   layer + role-gated staff shell — STAFF-001), and
   `process/features/rewards-notifications/completed/star-001-star-earning_14-07-26/` (idempotent
-  star-earning + refund-reversal services, migration 0005, real rewards types — STAR-001).
+  star-earning + refund-reversal services, migration 0005, real rewards types — STAR-001),
+  `process/features/rewards-notifications/completed/star-002-rewards-screen_14-07-26/` (rewards
+  read API + mobile screen + type-regression fix + T&C component + seed 5-star reward — STAR-002),
+  and `process/features/rewards-notifications/completed/star-003-reward-unlock_14-07-26/` (battle-pass
+  unlock + coupon gen + migration 0006 + 4-tier roadmap seed + coupon/notification helpers — STAR-003).
 
 ## Quick Start
 
@@ -409,7 +454,8 @@ jojo-mobile/                           (package.json name: jojo-potato)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
             order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
             branches/                   -- real: index (list), [branchId] (detail + menu)
-            rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
+            rewards/index.tsx           -- real Rewards screen (STAR-002): StarProgressBar, available rewards, reverse-chron history, RewardsTerms; react-query backed
+            account/index.tsx           -- ComingSoon placeholder + ThemeToggle (System/Light/Dark segmented control, STAR-002 session)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
             _layout.tsx                -- Stack navigator (headerShown:false for root; STAFF-002+ screens add their own headers)
             index.tsx                  -- staff dashboard shell: BrandWordmark+Staff badge, branch name from /api/staff/me, 4 inert nav cards, sign-out
@@ -427,6 +473,9 @@ jojo-mobile/                           (package.json name: jojo-potato)
           shared/                      -- api-request.ts fetch wrapper, use-async-data.ts, screen-message.tsx (extracted during pickup-order-flow EXECUTE; both api-request.ts/use-async-data.ts explicitly carved out of the menu/branch data-layer merge since orders/ still depends on them)
           staff/lib/staff-api.ts       -- fetchStaffMe(): authClient.$fetch wrapper for GET /api/staff/me → StaffMe | null
           staff/hooks/use-staff-me.ts  -- useStaffMe(): useState/useEffect hook returning { data, isLoading, error }
+          rewards/lib/rewards-api.ts   -- cookie-fetch functions for /rewards/* (mirrors staff-api.ts — NOT authClient.$fetch); fetchRewardsSummary/fetchAvailableRewards/fetchRewardsHistory
+          rewards/hooks/               -- use-rewards-summary, use-rewards-history, use-available-rewards (react-query hooks)
+          theme/theme-preference.ts    -- expo-secure-store module store for persisted theme preference ('system'|'light'|'dark'); loadThemePreference() + getThemePreference() + setThemePreference()
         lib/{api-client,query-client}.ts  -- global react-query client + getBranches()/getMenu() (menu/branch data layer, added by merge-menu-api-reconciliation)
         config/                        -- env.ts: typed access to EXPO_PUBLIC_* vars (incl. onlinePaymentEnabled, added by the checkout-flow rework)
         constants/                     -- app-level theme (re-exports brand tokens from @jojopotato/ui)
@@ -437,12 +486,15 @@ jojo-mobile/                           (package.json name: jojo-potato)
       .env.example
   packages/
     api/
-      src/routes/                      -- branches.ts, orders.ts (session-gated), routes/lib/{order-number,serializers}.ts, __tests__/
+      src/routes/                      -- branches.ts, orders.ts (session-gated), rewards.ts (session-gated, STAR-002: /summary|available|history), routes/lib/{order-number,serializers}.ts, __tests__/
+      src/lib/star-earning.ts          -- creditStarForCompletedOrder + reverseStarForRefundedOrder + unlock logic (STAR-001+003); returns {credited, unlockedRewardIds}
+      src/lib/reward-coupon-code.ts    -- JP-RWD-XXXX generator + spyable rewardCouponCodeGenerator (STAR-003)
+      src/lib/reward-unlock-notify.ts  -- notifyRewardUnlocked(userId, rewardIds): post-commit best-effort notifications row, failure-swallowed (STAR-003)
       src/middleware/require-session.ts -- better-auth session-check Express middleware
       src/types/express.d.ts           -- Request augmentation (user/session)
     config/                            -- @jojopotato/config: shared ESLint (flat config), Prettier, TypeScript base configs
-    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff) -- order/cart/pickup/menu now reconciled to the real ordering-flow API contract (menu.ts is cents-native, promoted 13-07-26 -- see "Menu/branch data layer superseded"); staff.ts (StaffMe, StaffRole, STAFF_ROLES, StaffBranch) is live; rewards.ts is real star model (promoted 14-07-26 -- see STAR-001); notifications still placeholder
-    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26) -- brand tokens are placeholder
+    types/                             -- @jojopotato/types: shared domain types (auth, cart, menu, notifications, order, pickup, rewards, product-option, staff, coupons) -- rewards.ts is real star model (STAR-001) + Reward/RewardsSummary (STAR-002); coupons.ts now exports CouponStatus + DbCoupon (STAR-003, distinct from UI Coupon shape); notifications still placeholder
+    ui/                                -- @jojopotato/ui: shared UI incl. order-status-badge.tsx/order-status-timeline.tsx (real 7-value OrderStatus enum), addon-selector.tsx (adopted 13-07-26), rewards-terms.tsx (STAR-002 T&C text block), star-progress-bar.tsx / reward-progress-card.tsx (now stars-shaped: {currentStars, requiredStars}) -- brand tokens are placeholder
     utils/                             -- @jojopotato/utils: shared helpers (currency.ts, number.ts, async.ts, product-options.ts -- adopted 13-07-26, unit-agnostic option-selection helpers)
   docs/
     jojo-potato-mobile-prd.md         -- product PRD (navigation §7, auth §6.1) — source of truth for scope
@@ -469,7 +521,7 @@ Metro/Expo resolves them like any other dependency.
 - **Package manager:** pnpm 10.33.0 (`packageManager` field pinned in root `package.json`)
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
-- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing.
+- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`. Now used for menu/branch/product data AND rewards data (`features/rewards/hooks/`). NOT an app-wide mandate — `features/orders/*` intentionally still uses `use-async-data.ts`/`api-request.ts` plumbing. `lib/query-client.ts` configures `refetchOnWindowFocus: true` globally (rewards screen uses this for AC5 refetch-on-focus).
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
 - **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
 - **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
@@ -488,9 +540,11 @@ Metro/Expo resolves them like any other dependency.
 
 **Env var access pattern:** client-bundle config is read through a typed wrapper, not `process.env` directly inline — see `apps/mobile/src/config/env.ts` (`env.appEnv`, `env.apiUrl`), which falls back to sane defaults if the `EXPO_PUBLIC_*` var is unset.
 
-**Types-first placeholders:** `packages/types/src/{auth,notifications}.ts` still stub out the shared domain types for their planned feature areas (see §Current Context Groups / feature folders) even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, `menu`, and `rewards` are no longer placeholders — all five are real types reconciled to actual API contracts: `menu.ts` was promoted by `merge-menu-api-reconciliation` (13-07-26); `rewards.ts` was overhauled by STAR-001 (14-07-26) to carry `StarTransactionType`, `UserStars`, and `StarTransaction` (the old `RewardsTier`/`RewardsAccount`/`RewardsTierProgress` stubs are deleted).
+**Types-first placeholders:** `packages/types/src/{auth,notifications}.ts` still stub out the shared domain types for their planned feature areas even though no implementation consumes them yet — check these files before defining new domain types for a feature. `cart`, `order`, `pickup`, `menu`, `rewards`, and `coupons` are no longer placeholders — all are real types reconciled to actual API contracts: `menu.ts` promoted 13-07-26; `rewards.ts` carries `StarTransactionType`/`UserStars`/`StarTransaction`/`Reward`/`RewardsSummary` (STAR-001+002, old `RewardsTier`/`RewardsAccount`/`RewardsTierProgress` stubs deleted); `coupons.ts` now exports `CouponStatus` + `DbCoupon` alongside the existing UI `Coupon` (STAR-003 — name as `DbCoupon` to avoid collision with the UI shape).
 
-**Platform-specific hooks:** `use-color-scheme.ts` has a `.web.ts` sibling variant (`apps/mobile/src/hooks/use-color-scheme.web.ts`) — this is the RN/Expo convention for platform-specific implementations picked up automatically by the bundler. Follow this `.web.ts` / default split for any new platform-diverging hook or util, per the "iOS-first, Android-ready" principle in `README.md`.
+**Platform-specific hooks:** `use-color-scheme.ts` and its `.web.ts` sibling (`apps/mobile/src/hooks/use-color-scheme.web.ts`) are the theme resolver pair — they resolve the user's persisted **theme preference** (`apps/mobile/src/features/theme/theme-preference.ts`: `'system'|'light'|'dark'`, expo-secure-store backed) rather than being simple re-exports of RN's `useColorScheme`. `'system'` (the default) follows the device OS scheme; `'light'`/`'dark'` override it. Do not call RN's `useColorScheme` directly in any screen; do not hardcode light/dark colors — use `Colors[mode]` from `@jojopotato/ui`. See CLAUDE.md §Theming for the full usage contract.
+
+**Native-module-optional components (Expo Go guard pattern):** when a component depends on a native module unavailable in Expo Go (e.g. `expo-maps`), guard the `require` and provide a fallback. Example from `branch-map.tsx`: `require` the real impl in a try/catch or conditional, fall back to a placeholder view when the module throws. This lets the app run in Expo Go during development while the production build uses the real native module. Apply this pattern to any new component that imports a non-Expo-Go-compatible native module.
 
 **Naming:** kebab-case files (`use-color-scheme.ts`, `brand-wordmark.tsx`), camelCase functions/variables, PascalCase React components/exports.
 
@@ -562,6 +616,6 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (STAR-001 UPDATE PROCESS — star-earning service, migration 0005, real rewards types, 10 integration tests; api suite now 77 tests)
-- HEAD at last delta: `fd9df3f` (feat(rewards): STAR-001, branch `dev/brn`)
+- Last delta: 2026-07-14 (STAR-002+003 UPDATE PROCESS — rewards screen + read API, battle-pass unlock + coupon gen, migration 0006, universal theme system, Expo Go map fallback; api suite now 99 tests)
+- HEAD at last delta: `8c18a60` (feat(rewards): Expo Go map fallback, branch `dev/star`)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)
