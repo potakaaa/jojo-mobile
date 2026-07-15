@@ -57,7 +57,6 @@ let customerId: string;
 let staff1Cookies: string[];
 let staff2Cookies: string[];
 let unassignedStaffCookies: string[];
-let customerCookies: string[];
 
 const createdBpaIds: string[] = [];
 
@@ -142,7 +141,7 @@ beforeAll(async () => {
 
   // Customer (for customer-side menu/order assertions and AC-5 order placement).
   const customerEmail = `cust-pa-${suffix}@example.com`;
-  customerCookies = await signUpAndGetCookie(customerEmail, 'sup3r-secret-pw');
+  await signUpAndGetCookie(customerEmail, 'sup3r-secret-pw');
   const [customer] = await db
     .select({ id: schema.users.id })
     .from(schema.users)
@@ -397,7 +396,7 @@ describe('Edge cases', () => {
     const res = await request(app)
       .patch('/api/staff/branch')
       .set('Cookie', staff1Cookies.join('; '))
-      .send({ isAcceptingPickup: false });
+      .send({ estimatedPrepMinutes: 30, isAcceptingPickup: false });
     expect(res.status).toBe(422);
   });
 

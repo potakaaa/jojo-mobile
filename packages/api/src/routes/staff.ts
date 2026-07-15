@@ -310,9 +310,11 @@ const patchProductAvailabilitySchema = z.object({
   isAvailable: z.boolean(),
 });
 
-const patchBranchSettingsSchema = z.object({
-  estimatedPrepMinutes: z.number().int().min(1).max(120),
-});
+const patchBranchSettingsSchema = z
+  .object({
+    estimatedPrepMinutes: z.number().int().min(1).max(120),
+  })
+  .strict();
 
 /**
  * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
