@@ -1,5 +1,12 @@
 export type OrderStatus =
-  'pending' | 'accepted' | 'preparing' | 'flavoring' | 'ready' | 'completed' | 'cancelled';
+  | 'pending'
+  | 'accepted'
+  | 'preparing'
+  | 'flavoring'
+  | 'ready'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected';
 export type PaymentMethod = 'pay_at_branch' | 'app_wallet' | 'gcash' | 'maya' | 'card';
 export type PaymentStatus = 'unpaid' | 'paid' | 'failed' | 'refunded';
 
@@ -31,8 +38,9 @@ export interface Order {
   totalCents: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  estimatedReadyAt: string; // ISO — mirrors orders.estimated_ready_at
+  estimatedReadyAt: string | null; // ISO — mirrors orders.estimated_ready_at (null when not yet set)
   placedAt: string; // ISO — mirrors orders.placed_at
+  dealId: string | null; // mirrors orders.deal_id — the applied deal, if any (DEAL-003)
 }
 
 export interface PlaceOrderRequest {

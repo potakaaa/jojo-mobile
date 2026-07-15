@@ -2,16 +2,26 @@ import { Button, EmptyState } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { applyDealById } from '@/features/deals/lib/apply-deal';
+import { applyDealById, isComplexDealType } from '@/features/deals/lib/apply-deal';
+import { useDeal } from '@/features/deals/hooks/use-deal';
+import { useDealUsage } from '@/features/deals/hooks/use-deal-usage';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
-import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -25,9 +35,12 @@ function shortDate(iso: string): string {
 }
 
 /**
- * Deal details (#23). Resolves the deal by id, runs real eligibility against the
- * mock cart, shows a derived terms block, and renders Apply (works via the
- * shared apply path) + a stubbed Add to Wallet CTA.
+ * Deal details (#23). Fetches the real deal from `GET /deals/:id` via `useDeal`,
+ * runs the real 6-step eligibility engine against the live cart with REAL
+ * per-user usage from `useDealUsage()` (derived from order history's `deal_id`,
+ * mirroring the server's usage-limit count) plus the signed-in user id, and shows
+ * a derived terms block. The Apply CTA performs a real server-authoritative apply
+ * via `applyDealById`, storing the discount in the cart on success.
  */
 export default function DealDetailsScreen() {
   const theme = useTheme();
@@ -36,15 +49,28 @@ export default function DealDetailsScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { dealId } = useLocalSearchParams<{ dealId: string }>();
   const { cart, applyDiscount } = useCart();
+  const { user } = useAuth();
+  const usage = useDealUsage();
 
-  const deal = useMemo(() => MOCK_DEALS.find((d) => d.id === dealId), [dealId]);
+  const { data: deal, isLoading, isError } = useDeal(dealId);
 
   const eligibility = useMemo(
-    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE) : null),
-    [deal, cart],
+    // Real per-user usage gating: `usage` is derived from order history's
+    // `deal_id` and filtered to the signed-in user; `user.id` drives the
+    // per-user usage-limit check (`orders.deal_id`, mirrors the server count).
+    () => (deal ? checkDealEligibility(deal, cart, cart.pickupBranchId, usage, user?.id) : null),
+    [deal, cart, usage, user?.id],
   );
 
-  if (!deal || !eligibility) {
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.tint} />
+      </View>
+    );
+  }
+
+  if (isError || !deal || !eligibility) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <EmptyState
@@ -58,10 +84,16 @@ export default function DealDetailsScreen() {
   }
 
   const isEligible = eligibility.eligible;
+  // Complex deal types (BOGO/free-item/free-upgrade/bundle) have no real
+  // server-side discount — gate the CTA so the user gets clear feedback here
+  // instead of an apply-then-checkout-400 dead-end (PVL C1).
+  const isComplex = isComplexDealType(deal.dealType);
 
+  // Real apply: fetch + complex-type guard live in `applyDealById`, which resolves
+  // the deal's code and validates it through POST /coupons/apply (STAR-004 —
+  // deal + reward codes unified). On success store the discount in the cart,
+  // record the applied code for checkout threading, and navigate to the cart.
   const handleApply = async () => {
-    // Server round-trip (STAR-004): apply-by-id resolves the deal's code and
-    // validates it through POST /coupons/apply (deal + reward codes unified).
     const result = await applyDealById(deal.id, cart, cart.pickupBranchId);
     if (!result.ok) {
       Alert.alert('Cannot apply deal', result.message);
@@ -134,13 +166,29 @@ export default function DealDetailsScreen() {
           ) : null}
         </View>
 
-        {!isEligible ? (
+        {isComplex ? (
+          <Text style={[styles.ineligibleMessage, { color: Palette.jred }]}>
+            This deal can&apos;t be applied at checkout yet.
+          </Text>
+        ) : !isEligible ? (
           <Text style={[styles.ineligibleMessage, { color: Palette.jred }]}>
             {eligibility.message}
           </Text>
         ) : null}
 
-        <Button label="Apply deal" onPress={handleApply} disabled={!isEligible} mode={mode} />
+        <Button
+          label="Apply deal"
+          onPress={handleApply}
+          disabled={!isEligible || isComplex}
+          mode={mode}
+        />
+        <Text style={[styles.deferredNote, { color: theme.textSecondary }]}>
+          {isComplex
+            ? 'This deal type isn’t available to apply at checkout yet.'
+            : isEligible
+              ? 'Applying adds this deal to your cart for checkout.'
+              : 'Once this deal is eligible, you can apply it to your cart.'}
+        </Text>
         <Button label="Add to Wallet" variant="outline" onPress={handleAddToWallet} mode={mode} />
       </ScrollView>
     </View>
@@ -150,6 +198,10 @@ export default function DealDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scroll: {
     flex: 1,
@@ -208,5 +260,10 @@ const styles = StyleSheet.create({
   ineligibleMessage: {
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.bodySmall,
+  },
+  deferredNote: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+    textAlign: 'center',
   },
 });

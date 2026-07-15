@@ -1,5 +1,5 @@
 import type { Cart, CartItem } from '@jojopotato/types';
-import { and, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -8,6 +8,9 @@ import {
   branchProductAvailability,
   branches,
   coupons,
+  dealBranches,
+  dealProducts,
+  deals,
   orderItems,
   orders,
   productOptions,
@@ -17,7 +20,12 @@ import {
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
 import { orderNumberGenerator } from './lib/order-number';
-import { serializeOrder, type SelectedOption } from './lib/serializers';
+import {
+  centsToNumeric,
+  numericToCents,
+  serializeOrder,
+  type SelectedOption,
+} from './lib/serializers';
 
 export const ordersRouter: Router = Router();
 
@@ -41,6 +49,9 @@ const createOrderSchema = z.object({
   // re-validated + atomically consumed inside the placement transaction; omitting
   // it leaves the non-coupon path a pure no-op (discount_total stays 0.00).
   couponCode: z.string().optional(),
+  // Optional applied deal. The server NEVER accepts a discount amount — only a
+  // deal id — and recomputes the real discount from the DB row (server authority).
+  dealId: z.string().uuid().optional(),
 });
 
 /** Carries an HTTP status through a thrown-inside-transaction rollback path. */
@@ -54,8 +65,23 @@ class OrderError extends Error {
   }
 }
 
-function centsToNumeric(cents: number): string {
-  return (cents / 100).toFixed(2);
+/**
+ * Real server-side discount in cents, computed from the RAW `deals.discount_value`
+ * decimal string (never a client-sent amount, never `serializeDeal`'s converted
+ * value). Both clamps are MANDATORY: `Math.min(computed, subtotalCents)` caps the
+ * discount at the subtotal; `Math.max(0, …)` floors it at zero so a negative/garbage
+ * raw value can never produce a negative discount (which would make total > subtotal).
+ */
+function computeDealDiscountCents(
+  dealType: 'percentage_discount' | 'fixed_discount',
+  discountValue: string,
+  subtotalCents: number,
+): number {
+  const computed =
+    dealType === 'fixed_discount'
+      ? Math.round(Number(discountValue) * 100)
+      : Math.round((subtotalCents * Number(discountValue)) / 100);
+  return Math.max(0, Math.min(computed, subtotalCents));
 }
 
 // POST /orders — create a pickup order. Fully isolated transaction: server-side
@@ -179,11 +205,105 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         });
       }
 
+      // Server-authoritative deal apply. Runs AFTER the subtotal is known and
+      // BEFORE the order insert, inside this same transaction, so any rejection
+      // throws and rolls back the whole placement (atomic — no partial order).
+      let discountCents = 0;
+      if (body.dealId) {
+        // Lock the deal row FIRST (SELECT … FOR UPDATE) so concurrent placements
+        // of the SAME deal serialize against the usage-limit checks below — two
+        // simultaneous orders cannot both pass a limit only one should.
+        const [deal] = await tx
+          .select()
+          .from(deals)
+          .where(and(eq(deals.id, body.dealId), eq(deals.is_active, true)))
+          .for('update');
+        if (!deal) {
+          throw new OrderError(400, 'Deal not found or inactive');
+        }
+
+        // Complex deal types cannot compute a real discount — reject BEFORE any
+        // math so a guessed/zero discount is never persisted with a deal_id.
+        if (deal.deal_type !== 'percentage_discount' && deal.deal_type !== 'fixed_discount') {
+          throw new OrderError(400, 'This deal cannot be applied at checkout yet');
+        }
+
+        // 6-step eligibility, 1:1 with the client engine's order/reasons. First
+        // failure throws (400) and aborts the transaction.
+        const now = new Date();
+
+        // 1. window (is_active already guaranteed by the FOR UPDATE filter).
+        if (deal.start_at > now || deal.end_at < now) {
+          throw new OrderError(400, 'This deal is not currently available');
+        }
+
+        // 2. branch scope — empty deal_branches = branch-agnostic.
+        const dealBranchRows = await tx
+          .select()
+          .from(dealBranches)
+          .where(eq(dealBranches.deal_id, deal.id));
+        if (
+          dealBranchRows.length > 0 &&
+          !dealBranchRows.some((r) => r.branch_id === body.branchId)
+        ) {
+          throw new OrderError(400, 'This deal is not available at your selected branch');
+        }
+
+        // 3. product-in-cart — empty deal_products = all products.
+        const dealProductRows = await tx
+          .select()
+          .from(dealProducts)
+          .where(eq(dealProducts.deal_id, deal.id));
+        if (
+          dealProductRows.length > 0 &&
+          !dealProductRows.some((r) => productIds.includes(r.product_id))
+        ) {
+          throw new OrderError(400, 'Your cart has no item eligible for this deal');
+        }
+
+        // 4. minimum order amount (vs the actual server-computed subtotal).
+        if (subtotalCents < numericToCents(deal.minimum_order_amount)) {
+          throw new OrderError(400, "Order subtotal is below this deal's minimum");
+        }
+
+        // 5. per-user usage limit — counted AFTER the FOR UPDATE lock so concurrent
+        // same-deal placements serialize (decision 1).
+        if (deal.usage_limit_per_user !== null) {
+          const [row] = await tx
+            .select({ n: count() })
+            .from(orders)
+            .where(and(eq(orders.deal_id, deal.id), eq(orders.user_id, userId)));
+          if ((row?.n ?? 0) >= deal.usage_limit_per_user) {
+            throw new OrderError(400, 'You have reached the usage limit for this deal');
+          }
+        }
+
+        // 6. total usage limit.
+        if (deal.total_usage_limit !== null) {
+          const [row] = await tx
+            .select({ n: count() })
+            .from(orders)
+            .where(eq(orders.deal_id, deal.id));
+          if ((row?.n ?? 0) >= deal.total_usage_limit) {
+            throw new OrderError(400, 'This deal has reached its total usage limit');
+          }
+        }
+
+        // Real discount, computed from the raw DB value and clamped to [0, subtotal].
+        discountCents = computeDealDiscountCents(
+          deal.deal_type,
+          deal.discount_value ?? '0',
+          subtotalCents,
+        );
+      }
+
       // Coupon recompute (STAR-004). Re-resolve + re-validate the code server-side
       // against the freshly-priced cart (defense in depth — LD5). On any failure
       // (unknown code, ineligible, or the eligible item was removed since apply)
       // the WHOLE placement is rejected: we never silently place at full price.
-      let discountTotalCents = 0;
+      // A reward coupon and a deal are independent discount sources; when both are
+      // present their amounts sum, clamped to the subtotal below.
+      let couponDiscountCents = 0;
       let rewardCouponIdToConsume: string | null = null;
       let rewardLabel = '';
       if (body.couponCode !== undefined) {
@@ -199,10 +319,13 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         if (!resolution.ok) {
           throw new OrderError(resolution.status, resolution.message);
         }
-        discountTotalCents = Math.min(resolution.discount.amountCents, subtotalCents);
+        couponDiscountCents = resolution.discount.amountCents;
         rewardCouponIdToConsume = resolution.rewardCouponId;
         rewardLabel = resolution.discount.label;
       }
+
+      // Unified discount: deal + reward-coupon amounts, clamped to [0, subtotal].
+      const discountTotalCents = Math.min(discountCents + couponDiscountCents, subtotalCents);
       const orderTotalCents = subtotalCents - discountTotalCents;
 
       const placedAt = new Date();
@@ -221,6 +344,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           .values({
             user_id: userId,
             branch_id: body.branchId,
+            deal_id: body.dealId ?? null,
             order_number: orderNumber,
             subtotal: centsToNumeric(subtotalCents),
             discount_total: centsToNumeric(discountTotalCents),

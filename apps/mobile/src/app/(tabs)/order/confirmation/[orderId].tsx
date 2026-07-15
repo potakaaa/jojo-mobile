@@ -97,11 +97,13 @@ export default function OrderConfirmationScreen() {
             ]}
           >
             <Row label="Pickup branch" value={branchName} theme={theme} />
-            <Row
-              label="Estimated pickup"
-              value={pickupLabel(order.estimatedReadyAt)}
-              theme={theme}
-            />
+            {order.estimatedReadyAt != null && (
+              <Row
+                label="Estimated pickup"
+                value={pickupLabel(order.estimatedReadyAt)}
+                theme={theme}
+              />
+            )}
             <Row label="Payment" value={PAYMENT_METHOD_LABELS[order.paymentMethod]} theme={theme} />
           </View>
 
@@ -129,8 +131,19 @@ export default function OrderConfirmationScreen() {
 
         <View style={styles.footer}>
           <Button
+            label="Track your order"
+            onPress={() =>
+              router.push({
+                pathname: '/(tabs)/order/tracking/[orderId]',
+                params: { orderId: order.id },
+              })
+            }
+            mode={mode}
+          />
+          <Button
             label="Back to menu"
             onPress={() => router.replace('/(tabs)/order')}
+            variant="outline"
             mode={mode}
           />
         </View>
@@ -259,5 +272,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
+    gap: Spacing.two,
   },
 });

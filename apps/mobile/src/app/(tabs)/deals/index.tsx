@@ -1,33 +1,38 @@
 import { DealCard, EmptyState } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
-import { useCart } from '@/features/cart/hooks/use-cart';
-import { filterActiveBranchDeals } from '@/features/deals/lib/eligibility';
-import { MOCK_DEALS } from '@/features/deals/mock-deals';
+import { useDeals } from '@/features/deals/hooks/use-deals';
+import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Deals list (#22). Shows only active, in-window, branch-scoped deals for the
- * cart's current pickup branch. Expired / out-of-window / other-branch deals are
- * filtered out here (proven absent). Reached via `router.push('/(tabs)/deals')`.
+ * Deals list (#22). Renders active, in-window, branch-scoped deals from the real
+ * `GET /deals` endpoint (the server does all active/window/branch filtering; the
+ * client trusts the response). Reached via `router.push('/(tabs)/deals')`.
  */
 export default function DealsListScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
-  const { cart } = useCart();
+  const { data: deals = [], isLoading, isError, refetch } = useDeals();
 
-  const deals = useMemo(
-    () => filterActiveBranchDeals(MOCK_DEALS, cart.pickupBranchId),
-    [cart.pickupBranchId],
-  );
+  if (isLoading) return <ScreenLoader />;
+  if (isError) {
+    return (
+      <ScreenMessage
+        title="Couldn't load deals"
+        subtitle="Please try again."
+        actionLabel="Retry"
+        onAction={refetch}
+      />
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>

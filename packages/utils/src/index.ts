@@ -6,4 +6,6 @@ export * from './geo';
 export * from './hours';
 export * from './maps';
 export * from './number';
+export * from './order-display';
 export * from './product-options';
+export * from './reorder';

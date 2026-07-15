@@ -1,7 +1,9 @@
 import type { MenuItem, PickupTime } from '@jojopotato/types';
 import {
+  Badge,
   BranchCard,
   Button,
+  Card,
   CartItem,
   CartSummary,
   CouponCard,
@@ -17,9 +19,12 @@ import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
+import { useReorderConflicts } from '@/features/cart/hooks/use-reorder-conflicts';
+import { useAuth } from '@/features/auth/hooks/use-auth';
+import { useDeal } from '@/features/deals/hooks/use-deal';
+import { useDealUsage } from '@/features/deals/hooks/use-deal-usage';
 import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
-import { MOCK_DEAL_USAGE, MOCK_DEALS } from '@/features/deals/mock-deals';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -59,9 +64,9 @@ function productForLine(
 /**
  * Cart screen. Renders the selected branch (real branch data), line items with
  * quantity steppers + remove, an estimated pickup time, coupon/deal apply-remove
- * (mock deal catalog + client-side eligibility engine), and the subtotal/total
- * summary — all driven by the in-memory `useCart()` seam wired to the real
- * branch backend.
+ * (real deal data via `useDeal` + client-side eligibility engine), and the
+ * subtotal/total summary — all driven by the in-memory `useCart()` seam wired to
+ * the real branch backend.
  */
 export default function CartScreen() {
   const theme = useTheme();
@@ -79,8 +84,8 @@ export default function CartScreen() {
     removeItem,
     clearCart,
     setBranch,
-    applyDiscount,
     clearDiscount,
+    applyDiscount,
   } = useCart();
 
   const { branches, isLoading: branchesLoading, isError: branchesError, refetch } = useBranch();
@@ -89,46 +94,46 @@ export default function CartScreen() {
   const [couponCode, setCouponCode] = useState('');
   const [applying, setApplying] = useState(false);
 
+  const { user } = useAuth();
+  const usage = useDealUsage();
+
+  const { conflicts, clearConflicts } = useReorderConflicts();
+
   const isEmpty = cart.items.length === 0;
+  const hasConflicts = conflicts.length > 0;
   const pickupTime = useMemo(
     () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
     [branch?.estimatedPrepMinutes],
   );
 
+  // Signature of the cart's line items — drives the reward-clear guard below.
   const itemsSignature = useMemo(
     () => cart.items.map((it) => `${it.lineId}x${it.quantity}`).join('|'),
     [cart.items],
   );
   const rewardBaselineSigRef = useRef<string | null>(null);
 
-  // Re-lookup the applied deal from the mock catalog so richer display data
-  // (title, discountLabel) is sourced from the catalog, not just the stored
-  // label (deals-screens plan Decision #3). Falls back to stored fields on miss.
-  const appliedDeal = useMemo(
-    () =>
-      cart.appliedDiscount
-        ? MOCK_DEALS.find((d) => d.id === cart.appliedDiscount?.refId)
-        : undefined,
-    [cart.appliedDiscount],
-  );
+  // Re-fetch the applied deal from the real deals API so richer display data
+  // (title, discountLabel) is sourced from the backend, not just the stored
+  // label (deals-screens plan Decision #3). `useDeal` no-ops on a falsy id and
+  // returns `undefined` on miss; downstream reads fall back to stored fields.
+  const { data: appliedDeal } = useDeal(cart.appliedDiscount?.refId ?? '');
 
   // Expiry/ineligibility-at-checkout: if the applied deal has become ineligible
   // (e.g. expired window, or subtotal dropped below its minimum after removing
   // items), auto-clear it with a one-time notice. Home for this recheck is
   // cart.tsx — checkout.tsx is a bare ComingSoon placeholder with no mount-time
-  // state to hook into (deals-screens plan step 9/12).
+  // state to hook into (deals-screens plan step 9/12). Uses the real deal +
+  // real per-user usage (order history's `deal_id`) + signed-in user id.
   useEffect(() => {
-    const applied = cart.appliedDiscount;
-    if (!applied) return;
-    const deal = MOCK_DEALS.find((d) => d.id === applied.refId);
-    if (!deal) return;
-    const result = checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+    if (!cart.appliedDiscount || !appliedDeal) return;
+    const result = checkDealEligibility(appliedDeal, cart, cart.pickupBranchId, usage, user?.id);
     if (!result.eligible) {
       clearDiscount();
       setAppliedCouponCode(null);
       Alert.alert('Deal removed', result.message);
     }
-  }, [cart, clearDiscount]);
+  }, [cart, appliedDeal, usage, user?.id, clearDiscount]);
 
   // Reward coupons: eligibility (eligible_product_id) is server-side only, so we
   // can't re-validate locally. Any cart-item change after a reward is applied
@@ -177,8 +182,7 @@ export default function CartScreen() {
         }
         applyDiscount(result.discount);
         setAppliedCouponCode(code);
-        rewardBaselineSigRef.current =
-          result.discount.source === 'reward' ? itemsSignature : null;
+        rewardBaselineSigRef.current = result.discount.source === 'reward' ? itemsSignature : null;
         setCouponCode('');
       } finally {
         setApplying(false);
@@ -221,6 +225,7 @@ export default function CartScreen() {
           text: 'Change & clear',
           style: 'destructive',
           onPress: () => {
+            clearConflicts();
             clearCart();
             setBranch(nextBranch.id);
           },
@@ -231,18 +236,57 @@ export default function CartScreen() {
 
   const canChangeBranch = branches.length > 1;
 
+  // DECISION 5 / E1 (VALIDATE P1): the reorder conflict notice renders whenever
+  // there are conflicts, REGARDLESS of empty/loading/error — so an all-unavailable
+  // reorder (0 available → empty cart) still surfaces the explanation instead of a
+  // bare "Your cart is empty" (AC13: never silently dropped). Conflicts are held
+  // out-of-band (they never enter cart.items), so totals/checkout stay clean.
+  const conflictNotice = hasConflicts ? (
+    <Card style={styles.conflictCard}>
+      <Text style={[styles.conflictTitle, { color: theme.text }]}>Some items are unavailable</Text>
+      <Text style={[styles.conflictBody, { color: theme.textSecondary }]}>
+        These items from your past order can&apos;t be added at this branch today, so they were left
+        out. Everything else is in your cart.
+      </Text>
+      {conflicts.map((conflict, index) => (
+        <View key={`${conflict.productName}-${index}`} style={styles.conflictRow}>
+          <Text style={[styles.conflictName, { color: theme.text }]} numberOfLines={1}>
+            {conflict.productName}
+          </Text>
+          <Badge
+            label={conflict.reason === 'product_unavailable' ? 'Unavailable' : 'Option unavailable'}
+            variant="danger"
+            mode={mode}
+          />
+        </View>
+      ))}
+      <Button
+        label="Remove unavailable & continue"
+        variant="outline"
+        onPress={clearConflicts}
+        mode={mode}
+      />
+    </Card>
+  ) : null;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
+        {conflictNotice}
         {isEmpty ? (
-          <EmptyState
-            iconName="cart-outline"
-            title="Your cart is empty"
-            description="Add some fries and snacks to get started."
-            actionLabel="Browse menu"
-            onAction={() => router.push('/(tabs)/order')}
-            mode={mode}
-          />
+          // When the cart is empty AND there are conflicts (all-unavailable reorder),
+          // the notice above already explains the situation — suppress the bare empty
+          // state to avoid a confusing "Your cart is empty" with no context.
+          hasConflicts ? null : (
+            <EmptyState
+              iconName="cart-outline"
+              title="Your cart is empty"
+              description="Add some fries and snacks to get started."
+              actionLabel="Browse menu"
+              onAction={() => router.push('/(tabs)/order')}
+              mode={mode}
+            />
+          )
         ) : branchesLoading ? (
           <ScreenLoader />
         ) : branchesError || !branch ? (
@@ -380,7 +424,7 @@ export default function CartScreen() {
               <Button
                 label={`Checkout • ${itemCount} item${itemCount === 1 ? '' : 's'}`}
                 onPress={() => router.push('/(tabs)/order/checkout')}
-                disabled={isEmpty}
+                disabled={isEmpty || hasConflicts}
                 mode={mode}
               />
             </View>
@@ -444,6 +488,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
+  couponEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  couponInput: {
+    flex: 1,
+  },
   removeDiscountButton: {
     shadowOpacity: 0,
     elevation: 0,
@@ -458,14 +510,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
-  couponEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  couponInput: {
-    flex: 1,
-  },
   footer: {
     position: 'absolute',
     left: 0,
@@ -475,5 +519,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
+  },
+  conflictCard: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    gap: Spacing.two,
+  },
+  conflictTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  conflictBody: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  conflictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  conflictName: {
+    flex: 1,
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.body,
   },
 });

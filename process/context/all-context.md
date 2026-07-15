@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15 (development→dev/star merge — admin dashboard + deals Phase 3 + STAFF-002/003 merged with STAR-002/003/004 rewards work; star/coupon migrations renumbered 0005/0006 → 0007/0008)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,179 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. STAR-002 rewards screen + STAR-003 reward unlock)
+## Current Implementation State (as of 15-07-26, incl. admin-dashboard Phase 0-3 + Sidebar Nav + STAFF-001/002/003 + deals Phase 3 + checkout-flow UI + STAR-001/002/003/004 rewards + universal theme)
+
+- **Admin dashboard Products/Categories CRUD (`apps/admin` + `packages/api`, Phase 3 — Products/
+  Categories CRUD ADM-003, delivered 15-07-26, ✅ VERIFIED — code-complete, automated-verified, AND
+  Agent-Probe-verified):** the program's HIGHEST-STAKES correctness phase, and the third confirmed
+  consumer of the append-only `/api/admin` aggregator pattern (after P1's `users.ts` and P2's
+  `branches.ts`). `packages/api/src/routes/admin/{products,categories}.ts` (new) — full CRUD for
+  products, categories, product_options (`size|flavor|add_on`), and branch_product_availability
+  (upsert via Drizzle `.onConflictDoUpdate()` on the composite unique index
+  `bpa_branch_product_idx` — no manual select-then-insert-or-update). `handleAdminError`/
+  `isUniqueViolation` were relocated from `branches.ts` into `routes/admin/lib/errors.ts` and
+  exported, now shared by all three admin route files. `centsToNumeric` was exported from
+  `routes/lib/serializers.ts` (previously module-private inside `orders.ts`); `orders.ts`'s 3 real
+  call sites were updated to import it, with `orders.test.ts` re-run as a regression guard (31/31
+  green, 0 regressions). **AC1 — the program's single hardest correctness bar — is proven by a
+  real, passing automated regression test, not Known-Gap:** editing a product's `base_price` via
+  the new admin route does not mutate any existing `order_items.unit_price`/`total_price` row for
+  orders already placed (the invariant is safe by construction — `order_items` snapshot columns
+  are populated once, at order-placement time, from a live read of `product.base_price`; there is
+  no later read-path recompute — the test locks this against future regression, not a currently-
+  false fact). `apps/admin` gained its FIRST shared-composite extraction (Decision 1, partial):
+  `components/{query-states,confirm-dialog,page-header}.tsx` — `confirm-dialog` generalizes P2's
+  `deactivate-branch-dialog.tsx`; the Categories feature consumes all 3 as a hard constraint
+  (verified no local duplicates built); Products consumes them where they fit and stays
+  feature-local for its option/availability sub-editors. `data-table`/`form-dialog` were
+  deliberately NOT extracted — the re-eval trigger is now Phase 4's `deal_products`/
+  `deal_branches` junction-table UI. 31 new supertest cases (19 `admin-products.integration.
+  test.ts` + 12 `admin-categories.integration.test.ts`), reusing the `makeUser(role)` self-seeding
+  fixture a third time — full API suite 183/183, 0 regressions, independently EVL-confirmed. Both
+  typechecks green. **AC8 (Agent-Probe manual walkthrough) was actually performed this session —
+  not left owed like P2's AC7.** The walkthrough found and same-session fixed a real bug —
+  **TanStack Start nested-detail-route gotcha (durable, affects P4-P7):** a `foo.$id.tsx` detail
+  route file is auto-nested under `foo.tsx` (shared filename prefix); the parent MUST render
+  `<Outlet/>` or the child route mounts nowhere (URL changes, screen never paints). The `products`
+  "Manage" button hit exactly this — `products.tsx` rendered the list directly with no `<Outlet/>`.
+  Fix (commit `79df222`): split `products.tsx` into a thin `<Outlet/>` layout plus a new
+  `products.index.tsx` holding the list UI. This layout+index split is now the reference pattern
+  for any future admin list→detail screen. **Known gap (documented, not new debt):** Decision 3's
+  realtime-sync residual on `branch_product_availability` writes — refetch-on-focus only, no
+  optimistic-concurrency guard, consistent with the app's existing 30s `staleTime` staleness model;
+  no external mobile-write consumer exists yet (unlike P2's `is_accepting_pickup`, not blocked on
+  any future phase). Delivered by: `process/features/admin-dashboard/active/
+  admin-dashboard_14-07-26/phase-03-products_PLAN_14-07-26.md` (+ co-located REPORT in the same
+  task folder).
+
+- **Admin dashboard Sidebar Navigation (`apps/admin`, cross-cutting — delivered 15-07-26, ✅ COMPLETE):**
+  replaced the bare `<Outlet />` dashboard shell with a collapsible, config-driven sidebar using the
+  shadcn/ui sidebar primitive, themed to "Tactile Comic Brutalism" (2px ink borders, jyellow active
+  state, 3px hard offset shadow on active items, Fredoka group labels). New files:
+  - `apps/admin/src/config/nav-config.ts` — `navConfig` array (groups: Main, Management, Dev) driving
+    the entire sidebar; adding a route = adding one `NavItem` object. Routes not yet built are marked
+    `disabled: true` (grayed, unclickable).
+  - `apps/admin/src/components/app-sidebar.tsx` — `AppSidebar` iterating `navConfig`, exact-match
+    active-state check (`location.pathname.startsWith(item.to)` with `exact` for root), fully
+    brutalist-themed, integrated via `SidebarProvider` wrapper in `(dashboard)/route.tsx`.
+  - `apps/admin/src/components/nav-user.tsx` — `NavUser` footer: user initial avatar, email, role
+    badge, sign-out button; reads from `useAdminAuth()` — does NOT bypass `beforeLoad` auth guard.
+  - shadcn primitives added: `sidebar.tsx`, `sheet.tsx`, `tooltip.tsx`, `separator.tsx`, `skeleton.tsx`
+    (installed via `npx shadcn@latest add sidebar separator`; `button.tsx`/`input.tsx` were skipped to
+    preserve the existing brutalist theming).
+  - `(dashboard)/route.tsx` updated: `<Outlet />` now wrapped in `<SidebarProvider><AppSidebar />`.
+  - `(dashboard)/index.tsx` updated: old centered-card navigational shell stripped; pure content view.
+  Build verified: `pnpm --filter @jojopotato/admin build` succeeds (regenerates TanStack route tree);
+  no TS errors. Minor deviation: `import type { LucideIcon }` used in `nav-config.ts` (verbatim module
+  syntax rule); `@ts-expect-error` removed from `AppSidebar` after route-tree regeneration.
+  Archived: `process/features/admin-dashboard/completed/admin-dashboard_14-07-26/admin-sidebar-nav_PLAN_15-07-26.md`
+  (+ co-located REPORT in the same completed folder).
+
+- **Admin dashboard Branches CRUD (`apps/admin` + `packages/api`, Phase 2 — Branches CRUD ADM-002,
+  delivered 14-07-26, ✅ VERIFIED — code-complete, automated-verified, AC7 owed):** the program's
+  proof-of-pattern phase — the first full real vertical slice (API + `apps/admin` screen + Postgres)
+  in the admin dashboard, establishing the reusable admin-CRUD shape Phases 3-7 will reference.
+  `packages/api/src/routes/admin/branches.ts` (new) — full CRUD (list incl. inactive / get / create /
+  update / soft-deactivate via `PATCH .../deactivate`), appended to the existing `/api/admin`
+  aggregator (`routes/admin/index.ts`, append-only per its own doc comment) — the SECOND confirmed
+  consumer of Phase 1's append-only-aggregator pattern (no `packages/api/src/index.ts` edit needed;
+  the top-level `/api/admin` mount already applies `adminCors` + `requireAdmin` to every sub-router).
+  Reuses the existing `AdminApiError` (no new error class) and `numericToCents`. Never `DELETE FROM
+  branches` — soft-delete only. `serializers.ts` gained an additive `AdminBranch`/
+  `serializeAdminBranch` (local-declaration convention matching `ApiBranch`/`ApiOrder`/`ApiDeal`,
+  `packages/types` untouched — extend there only when a second consumer outside `packages/api`
+  needs the type). **Durable gotcha (Postgres unique-violation catch under drizzle-orm):** drizzle
+  wraps the underlying `pg` driver error in a `DrizzleQueryError` — the Postgres error code (`23505`
+  for `unique_violation`) lives on `err.cause.code`, NOT the top-level `err.code`. A top-level-only
+  check silently misses the violation (returns 500 instead of the intended 409); always check both
+  `err.code` and `err.cause?.code` when catching a Postgres constraint violation through drizzle.
+  `apps/admin` gained its first fetch wrapper (`features/branches/lib/admin-branches-api.ts`,
+  `credentials:'include'` per the auth-client convention) and its first real consumer of the
+  dedicated `queryClient` (`features/branches/hooks/use-admin-branches.ts`, react-query list/detail +
+  create/update/deactivate mutations), a full list/create/edit/deactivate screen wired to a new
+  `(dashboard)/branches` route (radix-Dialog confirmation gate on deactivate — Safety requirement).
+  12 new supertest cases (`admin-branches.integration.test.ts`, reusing the `makeUser(role)`
+  self-seeding fixture from Phase 1's `require-admin.integration.test.ts`) — full API suite
+  134/134, 0 regressions, independently EVL-confirmed. **Known gaps (documented, not silently
+  dropped; each has a backlog note under `process/features/admin-dashboard/backlog/`):** (1) AC7
+  Agent-Probe manual browser walkthrough (list→create→edit→deactivate→dup-slug) is owed — no
+  `apps/admin` browser/E2E runner exists yet (project-wide gap). (2) `is_accepting_pickup` shared
+  mutable state — no separate admin-only flag; the not-yet-built mobile staff shell (STAFF-004)
+  writes the SAME column; no optimistic-concurrency guard (`updated_at`/`FOR UPDATE`) exists
+  anywhere on `branches` writes; last-write-wins accepted, revisit when STAFF-004 is planned. (3) The
+  umbrella's planned §5 shared UI composite extraction (`data-table`/`form-dialog`/`confirm-dialog`/
+  `page-header`/`query-states`) was deliberately deferred — feature-folder-local components were
+  built instead (no gate exercises the composites; a concurrent unrelated `apps/admin` component
+  workstream made speculative shared files a collision risk this phase); revisit at Phase 3
+  RESEARCH once a real second CRUD consumer exists (the umbrella's own "second consumer" rule).
+  Delivered by: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/
+  phase-02-branches_PLAN_14-07-26.md` (+ co-located REPORT in the same task folder).
+
+- **Admin dashboard auth/RBAC (`apps/admin` + `packages/api`, Phase 1 — Auth/RBAC ADM-001,
+  delivered 14-07-26, ✅ VERIFIED):** the FIRST protected `/api/admin/*` surface in the repo.
+  `packages/api/src/lib/require-admin.ts` exports `requireAdmin(auth)` (mirrors `requireStaff`,
+  admits `role ∈ {admin, super_admin}` only — never plain `staff`), mounted once at
+  `app.use('/api/admin', cors({origin: ADMIN_WEB_ORIGIN, credentials: true}), requireAdmin(auth),
+  adminRouter)` in `packages/api/src/index.ts` — later phases add sibling route files to
+  `adminRouter` and inherit the guard automatically. `ADMIN_WEB_ORIGIN` defaults to
+  `http://localhost:3100` (the `apps/admin` dev port) and is appended to better-auth's
+  `trustedOrigins` (`auth.ts`), never wildcarded. This is also the FIRST **browser-cookie session**
+  flow in this repo — contrast with `apps/mobile`'s Expo bearer-token flow
+  (`@better-auth/expo`/`expo-secure-store`): `apps/admin/src/features/auth/lib/auth-client.ts` is a
+  plain `createAuthClient({baseURL})` from `better-auth/react`, ZERO plugins — a Step 0 feasibility
+  probe proved better-auth's default cookie session (`better-auth.session_token`, `HttpOnly`,
+  `SameSite=Lax`, 30-day `Max-Age`) works end-to-end with no `nextCookies`/cookie-cache tweak
+  needed. `packages/types/src/admin.ts` (new) carries `ADMIN_ROLES`, `AdminRole`, `AdminMe`,
+  `AdminUserSummary` — `AdminMe` also carries an additive `mfaPending?: boolean` field, a
+  structural-only MFA/TOTP gateway seam (no `twoFactor` plugin, no migration, no enrollment
+  routes — deferred to a future unassigned ADM-0xx phase; `login.tsx` has a matching no-op
+  comment marking the insertion point). `POST /api/admin/users/:id/role` is the super_admin-only
+  role-management route: an inline `req.adminSession.role !== 'super_admin'` check (not a
+  `requireSuperAdmin` middleware — promote only when a second consumer appears) runs FIRST, then a
+  self-escalation guard (`req.params.id === req.adminSession.userId` → 400), then Zod validation,
+  then the Drizzle `UPDATE ... RETURNING` — this exact order is locked and automated-tested
+  (AC2/AC3). This route resolves the `TODO(STAFF-ADM)` seam left by STAFF-001:
+  `assertBranchScope(assignedBranchId, requestedBranchId, role?)` gained an additive optional
+  trailing `role` param that bypasses branch-scope checks when `role ∈ {admin, super_admin}`,
+  backward-compatible with every existing 2-arg call site. `apps/admin` gained a real login screen
+  (`routes/login.tsx`, unguarded) and a `(dashboard)` pathless route-group shell
+  (`routes/(dashboard)/route.tsx`) with a server-verified `beforeLoad` guard — it calls
+  `GET /api/admin/me` against the real session, never trusts a client-cached role flag; P2-P7 add
+  sibling child routes to this same group and must never restructure it. New integration suite
+  `packages/api/src/lib/__tests__/require-admin.integration.test.ts` mirrors
+  `require-staff.integration.test.ts`'s hermetic self-seeding pattern (78/78 API suite green,
+  independently EVL-confirmed — see CORS fix below). **CORS surface (durable API-shape fact,
+  post-AC8 fix):** a browser SPA talking to better-auth cross-origin needs credentialed CORS on
+  BOTH `/api/auth/*` (the better-auth handler itself) AND the app's own protected routes
+  (`/api/admin`) — `trustedOrigins` is a separate CSRF/redirect allowlist and does NOT emit HTTP
+  CORS response headers on its own. A single shared `adminCors` middleware
+  (`cors({origin:[ADMIN_WEB_ORIGIN], credentials:true})`) is now mounted on both prefixes in
+  `packages/api/src/index.ts`. The first real-browser AC8 walkthrough caught this gap (login hung,
+  browser blocked the uncovered `/api/auth/*` responses); the fix added 3 regression tests
+  (preflight OPTIONS + real sign-in + no-Origin mobile-path guard), taking the suite from 75→78.
+  **Known gap (non-blocking, unrelated to CORS):** a malformed `:id` on the role-management route
+  surfaces as a 500 rather than 404 (guard-order side effect, non-exploitable, reachable only by an
+  already-authenticated super_admin). AC8 (browser login + dashboard walkthrough) is now
+  browser-verified (all 3 roles: super_admin reaches the shell, customer/staff rejected) — no
+  longer an open Agent-Probe gap. Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-01-auth-rbac_PLAN_14-07-26.md`
+  (+ co-located REPORT/FEASIBILITY files in the same task folder).
+
+- **Admin dashboard web app (`apps/admin`, Phase 0 — Scaffold, delivered 14-07-26, ✅ VERIFIED):**
+  new workspace app `@jojopotato/admin` scaffolded from empty — TanStack Start (Vite 8) + Tailwind
+  v4 + shadcn/ui + a SEPARATE react-query client instance. Brand tokens ported from
+  `packages/ui/src/theme.ts` into Tailwind's `@theme` block plus a two-layer shadcn semantic mapping
+  (`:root` raw slots + `@theme inline` remap), light-mode only — a stock, unmodified shadcn
+  `Button`/`Card` renders on-brand by default (cream bg/ink text/jyellow primary/brand radius/4px
+  hard shadow). `apps/mobile`/`packages/ui` are untouched — `packages/ui` (React Native) is
+  explicitly NOT reused in `apps/admin` (cannot render in a web app). `turbo.json` was NOT modified —
+  the build output (`dist/`) matched the existing glob. First web-app Vitest + `@testing-library/react`
+  (jsdom) test runner precedent in the repo. This phase has NO business screens and NO auth yet —
+  Phase 1 (ADM-001) adds `requireAdmin` + a browser-cookie session flow (new to this repo — Expo
+  only has bearer-token auth today) + admin login. Full 8-phase program plan:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` (umbrella plan +
+  phase-00 through phase-07 plan files).
+- **Admin dashboard UI foundation (`apps/admin`, delivered 14-07-26):** smart `Button` component refined with `useFormStatus` integration (auto-disables when `pending` is true, eliminating manual boilerplate), universal borders (2px solid ink on all variants to preserve hitboxes and prevent layout shift), the removal of the `outline` variant (redundant with `secondary`), and a `requiresConfirm` prop for dangerous actions (integrates `radix-ui` `AlertDialog` inline). Added a `/components` showcase route (development only) to catalog UI primitives and their variants.
 
 - **Navigation shell:** complete. Full 5-tab bottom nav (Home, Order, Rewards, Branches, Account —
   PRD order), a public `(auth)` stack (Splash → Onboarding → Login/Signup → Terms), and per-tab
@@ -111,10 +283,11 @@ top of it later without re-plumbing the project.
 - **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
   full customer pickup-order journey (branch select → menu → product customize → cart → checkout
   → confirmation → tracking → order history) is implemented and working, not just placeholder.
-  **Rewards tab** now has a real screen (STAR-002 — see below). Account tab (`account/index.tsx`)
-  is still `<ComingSoon>` but now hosts the theme toggle (see Theming note below). The
-  role-gated `(staff)` shell exists (STAFF-001, see below); its real data screens
-  (STAFF-002/003/004) are not yet built.
+  **Rewards tab** now has a real screen (STAR-002 — see below), plus an in-cart reward-redemption
+  flow (STAR-004 — see below). Account tab (`account/index.tsx`) is still `<ComingSoon>` but now
+  hosts the theme toggle (see Theming note below). The role-gated `(staff)` shell exists (STAFF-001,
+  see below); STAFF-002 (Active Orders real data) and STAFF-003 (order status actions + Completed
+  Orders) are delivered (see dedicated bullets below). STAFF-004 (product availability) is next.
 - **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
   `feat/checkout-flow` reworked Checkout (`order/checkout.tsx`), Payment-method selection
   (`order/payment-method.tsx` + shared `packages/ui` `payment-method-selector.tsx` with
@@ -131,6 +304,21 @@ top of it later without re-plumbing the project.
   `env.ts` gained `onlinePaymentEnabled` (`EXPO_PUBLIC_ONLINE_PAYMENT_ENABLED`, default false).
   `apps/mobile` has a pure-TS **vitest** runner (node env, `--passWithNoTests`; mock-order tests
   removed) — extended by development's HIST-002 config; still no RN component/E2E runner.
+- **Order History + Reorder, real-API (HIST-001/HIST-002, delivered 13-07-26, merged PR #73/`399e415`):**
+  the Order History list (`order/history.tsx`) shows branch name (client cross-ref via
+  `useBranch().branches`, "Unknown branch" fallback) and an item-summary line
+  (`packages/utils/src/order-display.ts`'s `summarizeOrderItems`); stars-earned is intentionally
+  omitted (no server-side accrual yet — known gap, see backlog note below). Reorder
+  (`apps/mobile/src/features/orders/hooks/use-reorder.ts` + `packages/utils/src/reorder.ts`)
+  re-checks each past line against today's menu for the order's branch, adds available items to the
+  real cart at live prices, and flags now-unavailable items as inline conflict rows in the cart
+  screen (`use-reorder-conflicts.ts`'s `ReorderConflictProvider`, mounted in `_layout.tsx`) that
+  block checkout until acknowledged — never silently dropped. Reconciliation logic
+  (`reorderEligibility`, `reconcileReorder`) is pure and covered by real `packages/utils` vitest
+  tests; screen/render behavior is Agent-Probe only (no RN runner, project-wide gap). Superseded an
+  earlier mock-data-only plan for the same issues (never executed). Known gap: stars accrual —
+  `process/features/ordering-cart/backlog/stars-accrual-and-history-display_NOTE_13-07-26.md`.
+  Delivered by: `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/`.
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -150,13 +338,13 @@ top of it later without re-plumbing the project.
   name fetched from `GET /api/staff/me` via `useStaffMe()` hook
   (`features/staff/hooks/use-staff-me.ts` → `features/staff/lib/staff-api.ts` using
   `authClient.$fetch`); four PRD §6.13 nav cards (Active Orders / Completed Orders / Product
-  Availability / Branch Pickup Settings); sign-out Button. `(staff)/active-orders.tsx` is a
-  **hardcoded mock preview scaffold** — NOT a real data screen; STAFF-002 will replace it. Full
+  Availability / Branch Pickup Settings); sign-out Button. Full
   plan: `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/`.
-- **Jojo Stars earning service (STAR-001, delivered 14-07-26):** idempotent star-earning backend
+- **Jojo Stars earning service (STAR-001, delivered 14-07-26; migration renumbered 0005→0007 in the
+  15-07-26 development merge):** idempotent star-earning backend
   service. `packages/api/src/lib/star-earning.ts` exports `creditStarForCompletedOrder(orderId)`
-  and `reverseStarForRefundedOrder(orderId)`. Idempotency is DB-enforced: migration `0005`
-  (`0005_nosy_genesis.sql`) adds a partial unique index on `star_transactions (order_id, type) WHERE
+  and `reverseStarForRefundedOrder(orderId)`. Idempotency is DB-enforced: migration `0007`
+  (`0007_nosy_genesis.sql`) adds a partial unique index on `star_transactions (order_id, type) WHERE
   order_id IS NOT NULL`. Refund decrements `current_stars` only — `lifetime_stars` stays monotonic
   (product-default, locked by EDGE tests). `packages/api/src/lib/star-earning-config.ts` isolates
   `STAR_EARNING_MINIMUM_CENTS = 0` behind `getStarEarningMinimumCents()` (the ADM-005 seam).
@@ -184,7 +372,8 @@ top of it later without re-plumbing the project.
   cumulative unlock model. When `creditStarForCompletedOrder` credits a star and the user's
   `lifetime_stars` crosses one or more active reward thresholds, exactly ONE `coupons` row is minted
   per newly-crossed tier — inside the credit transaction on the credited path only (`inserted.length
-  > 0` gate). Idempotency: migration `0006` (`0006_windy_dexter_bennett.sql`) adds a partial unique
+  > 0` gate). Idempotency: migration `0008` (`0008_windy_dexter_bennett.sql`, renumbered from 0006 in
+  the 15-07-26 development merge) adds a partial unique
   index `coupons_user_reward_unique` on `(user_id, reward_id) WHERE reward_id IS NOT NULL`; inserts
   use `onConflictDoNothing` with the matching `where` partial predicate (the STAR-001 E1 lesson: bare
   `target`-only form throws against partial indexes). Threshold read LIVE (ADM-005-ready). A bounded
@@ -214,6 +403,70 @@ top of it later without re-plumbing the project.
 - **Expo Go native-module guard (delivered 14-07-26, committed 8c18a60):** `branch-map.tsx` now
   loads `expo-maps` via a guarded `require` + fallback so Expo Go degrades instead of crashing. See
   §Key Patterns below for the reusable pattern note.
+- **In-app reward redemption at checkout (STAR-004, delivered on `dev/star`):** the customer-facing
+  coupon/reward redemption flow. New session-gated `POST /coupons/apply`
+  (`packages/api/src/routes/coupons.ts` + `routes/lib/coupon-apply.ts` `resolveCouponDiscount`) —
+  zero-mutation preview that validates a reward/deal `code` against the passed cart and returns the
+  computed `AppliedDiscount`. Actual consumption happens ONLY at `POST /orders`: the placement
+  transaction re-resolves the code, `UPDATE coupons SET status='used', used_at=now() WHERE id=? AND
+  status='available'` (0 rows → 409, the double-spend guard), and writes one `redeemed`
+  `star_transactions` row; `discount_total` is server-recomputed (a reward-coupon discount and a
+  deal discount are independent sources and sum, clamped to subtotal). Mobile: `couponCode` is
+  threaded from an out-of-band applied-code store (`features/cart/applied-coupon-code.ts`) through
+  `checkout.tsx`; the cart "Enter coupon code" input calls `resolveAndApplyDeal` →
+  `POST /coupons/apply` (`features/deals/lib/coupon-api.ts`); a cart-edit guard clears an applied
+  reward (server-side eligibility can't be re-checked locally) with a "Cart updated" notice; on
+  place-order success the `['coupons']`/`['rewards']` query caches are invalidated. New
+  `use-my-coupons.ts` hook + coupon seed test. `packages/utils` gained `discount.ts` +
+  `deals-catalog.ts`. No new migration (uses the STAR-003 `coupons` table). See
+  `process/features/rewards-notifications/active/star-004-reward-redemption_15-07-26/`.
+- **Staff order status actions + Completed Orders (STAFF-003, delivered 14-07-26):** server-side
+  order-state-machine and completed orders history. Key deliverables:
+  - **DB migration `0005_add_rejected_order_status.sql`** — `ALTER TYPE order_status ADD VALUE
+    'rejected'` (standalone, not in a transaction; Postgres constraint). `OrderStatus` union in
+    `packages/types/src/order.ts` now has 8 values (adds `'rejected'`). Two exhaustive
+    `Record<OrderStatus,...>` literals in `packages/ui` (`STATUS_META` in `order-status-badge.tsx`,
+    `STATUS_LABEL` in `order-status-timeline.tsx`) updated for `rejected`. `staff-status-config.ts`
+    was `Extract`-narrowed and safe, but widened to full `Record<OrderStatus,...>` this pass to cover
+    all 8 statuses in the staff display layer.
+  - **State machine** (`packages/api/src/routes/lib/order-state-machine.ts`): pure lookup table,
+    no DB import. Exports `canTransition(from, to)` and `isTerminal(status)`. Valid transition map:
+    `pending→{accepted,rejected,cancelled}`, `accepted→{preparing,cancelled}`,
+    `preparing→{flavoring,cancelled}`, `flavoring→{ready,cancelled}`, `ready→{completed,cancelled}`,
+    `completed/cancelled/rejected→{}` (terminal).
+  - **`PATCH /api/staff/orders/:orderId`** — session-gated (inherited `requireStaff`), per-request
+    `resolveBranchScope`; zod-validated body (`status` required → 422 on failure, `etaMinutes` present
+    but IGNORED); state machine guard (409 on illegal/terminal-source transition); per-transition
+    timestamps (`accepted_at`, `ready_at`, `completed_at`, `cancelled_at`); ETA derived from branch's
+    `estimated_prep_minutes` at accept-time (NOT placed_at-based; see AC-6 note); STAR-001 /
+    PUSH-002 are **named no-op stubs** (`creditStarsForOrder`, `notifyCustomer`) — real
+    implementations are future work; 200 returns full `StaffOrderDetail`.
+  - **`GET /api/staff/orders/completed`** — returns terminal orders (`completed`/`cancelled`/`rejected`)
+    for the assigned branch, newest-first. Registered BEFORE `GET /api/staff/orders/:orderId` in
+    `staff.ts` (Express route-ordering — `completed` would otherwise be captured as `:orderId`).
+  - **Mobile:** `patchStaffOrderStatus` + `fetchCompletedStaffOrders` in `staff-api.ts`; `staffFetch`
+    extended to accept `init?: RequestInit` (backward-compatible). `use-update-order-status.ts`
+    (`useMutation` with triple cache invalidation: `['staff','orders']`, `['staff','order',orderId]`,
+    `['staff','completed']`). `use-completed-orders.ts` (`useQuery`, no polling — historical view).
+  - **Screens:** `order-detail/[orderId].tsx` — `InertOrderActions` replaced by `LiveOrderActions`
+    (SPEC button matrix per status, confirm alerts for reject/cancel, 409 inline error, loading states).
+    `completed-orders.tsx` — new screen, driven by `useCompletedOrders()`, empty state, row → detail.
+    `(staff)/index.tsx` "Completed Orders" card wired (`navigateTo: '/(staff)/completed-orders'`).
+    `(staff)/_layout.tsx` registers `completed-orders` Stack.Screen.
+  - **Integration tests:** 17 new tests in `staff-order-status.integration.test.ts` covering AC-1..AC-6
+    (valid transitions + timestamps, illegal/terminal → 409, branch isolation → 403, `rejected`
+    terminal, completed-list filtering, ETA derivation). Total API suite: 84 tests, 0 failures.
+  - **Known gaps:** AC-7..AC-10 mobile behavior (button rendering, tap→mutation, 409 inline error,
+    Completed Orders nav) are Agent-Probe only — no RN runner exists (project-wide gap; backlog:
+    `process/features/staff-dashboard/backlog/staff-mobile-rn-test-runner-gap_NOTE_13-07-26.md`).
+    AC-8 Active Orders back-list refresh is forward-compatible pending STAFF-002 mock replacement
+    with live data. `mustStopBeforeFinalize: true` — HIGH-risk trust-boundary; human review of the
+    5-artifact risk evidence pack (`harness/`) required before production deploy.
+  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions):** `apps/mobile` has 3
+    pre-existing typecheck errors in BRN-001/002/003 files tied to missing type stubs for
+    `@gorhom/bottom-sheet`, `expo-maps`, and `expo-location`. These existed before STAFF-003 and
+    are zero-diff from this plan's blast radius. Do not treat them as STAFF-003 regressions.
+  - Full plan: `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
   `middleware/require-session.ts`; new mobile state/data layer in
@@ -300,12 +553,66 @@ top of it later without re-plumbing the project.
   reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
   the same reason.
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
-  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). **99 tests
-  total** (was 77 after STAR-001; +12 rewards read-API tests in STAR-002; +10 STAR-003 unlock/battle-pass
-  tests). Suites cover auth, staff authz, branches, customer order placement, star earning
-  (`star-earning.integration.test.ts` — 10 STAR-001 + 10 STAR-003 cases; all hermetic
-  self-seeding), and rewards read API (`rewards.integration.test.ts` — 12 tests, added STAR-002).
-  `app` is exported from `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
+  (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). After the
+  15-07-26 development merge the suites cover auth, staff authz
+  (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures), admin authz/CRUD,
+  branches, customer order placement, deals (`deals.test.ts`), staff order status actions
+  (`staff-order-status.integration.test.ts` — 17 tests, AC-1..AC-6: valid transitions + timestamps,
+  illegal/terminal → 409, branch isolation → 403, ETA derivation, completed-list filtering), star
+  earning (`star-earning.integration.test.ts` — 10 STAR-001 + 10 STAR-003 cases, hermetic
+  self-seeding), rewards read API (`rewards.integration.test.ts` — 12 tests, STAR-002), and
+  reward-coupon apply/redeem (STAR-004 `coupons.integration.test.ts` + `seed-rewards-coupon.test.ts`).
+  The merged total is re-verified by the EVL gate (see the merge report). `app` is exported from
+  `packages/api/src/index.ts` (port binding guarded so tests never bind a port).
+- **Deals feature (backend wiring COMPLETE, 14-07-26):** the Deals feature
+  (`(tabs)/deals/index.tsx` list + `deals/deal/[dealId].tsx` details, reachable from the Home tab —
+  NOT a bottom-nav tab itself) is now fully backend-wired end-to-end, real data through real cart
+  apply through real server-authoritative order placement. The `deals-api-integration` program
+  (all 3 phases, `process/features/rewards-notifications/completed/
+  deals-api-integration_13-07-26/` — archived) delivered:
+  **Phase 1 (DEAL-001 / #22):** public `GET /deals?branchId=` route
+  (`packages/api/src/routes/deals.ts`) + `serializeDeal`/`ApiDeal` boundary serializer
+  (`routes/lib/serializers.ts` — cents at the boundary, EXCEPT `percentage_discount` values are NOT
+  ×100, per `packages/types/src/deals.ts`'s VALUE-UNIT NOTE) + a react-query `useDeals()` hook
+  (`apps/mobile/src/features/deals/hooks/use-deals.ts`, reading branch from `useCart()`); the deals
+  list screen renders from the API, not `MOCK_DEALS`.
+  **Phase 2 (DEAL-002 / #23):** public `GET /deals/:id` route (additive to `deals.ts`, reuses
+  `serializeDeal` verbatim; no branch/window filter by design so the client eligibility engine can
+  render `branch_ineligible`/`not_in_window` reasons) + a react-query `useDeal(dealId)` hook
+  (`apps/mobile/src/features/deals/hooks/use-deal.ts`) + the Deal Details screen
+  (`deal/[dealId].tsx`) feeding the existing 6-step `checkDealEligibility` engine with real data.
+  **Phase 3 (DEAL-003 / #24 — the write surface):** migration `0006_legal_daredevil.sql` (renumbered
+  twice during merges with `development`'s own `0004_add_branch_priority`/`0005_add_rejected_order_status`
+  migrations — same content throughout, only the slot number changed) adds a
+  nullable `orders.deal_id uuid` FK (additive, NO ACTION); `POST /orders` was rewritten so that,
+  inside the existing placement transaction, it `SELECT ... FOR UPDATE`-locks the deal row, rejects
+  the 4 complex deal types (`buy_one_take_one`/`free_item`/`free_upgrade`/`bundle`) with 400 before
+  any write, re-runs the 6-step eligibility server-side (window/branch/product/minimum/per-user
+  usage/total usage — usage derives from `orders.deal_id`, no separate `deal_usages` table), and
+  computes a REAL discount for `percentage_discount`/`fixed_discount` ONLY from the raw
+  `deals.discount_value` (never a client-sent amount, always dual-clamped
+  `Math.max(0, Math.min(computed, subtotalCents))`), writing `total = subtotal − discount` and
+  `deal_id` atomically. `apps/mobile`'s cart dead coupon-code-input UI (the `deals` table has no
+  `code` column, so it could never resolve a real deal) was deleted; the real
+  browse→Deal-Details→**Apply**→cart flow is wired (`applyDealById` now performs a real `getDeal()`
+  fetch and client-side-rejects the 4 complex types before applying — `apply-deal.ts` +
+  `deal/[dealId].tsx`); checkout's Total-display bug (was showing subtotal) is fixed
+  (`checkout.tsx`, subtotal/discount/total breakdown). `cart.tsx`'s `useReorderConflicts()` import
+  and render path (unrelated `ordering-cart` feature) were explicitly preserved untouched.
+  **Test-tier split (standing, unchanged by this program):** `packages/api` vitest+supertest IS the
+  automated hard gate for all placement/discount/eligibility/atomicity/complex-reject logic
+  (`orders.test.ts` grew to 25 cases incl. 15 deal-apply; `deals.test.ts` covers the read routes).
+  `apps/mobile` has NO RN test runner (project-wide gap, see `tests/all-tests.md`) — all client-side
+  Deals UX (list render, details render, cart-apply-through-checkout flow) is Agent-Probe only,
+  never claimed as automated coverage; 3 manual walkthroughs remain owed (non-blocking backlog).
+  **Deferred/out of scope (by design, unchanged):** coupons entirely (no `/coupons`, no `code`
+  column, no Coupon Wallet); real pricing for the 4 complex deal types (shown/evaluated, not
+  cart-applicable); star/rewards accrual; live payment processing.
+- **Staff order status actions (STAFF-003, 14-07-26):** a `PATCH` state-machine endpoint for staff
+  to transition order status (valid transitions only, illegal/terminal → 409, branch-isolated → 403,
+  atomic compare-and-swap to avoid a race on concurrent transitions) plus a Completed Orders screen
+  and a new `rejected` order-status enum value (migration `0005_add_rejected_order_status.sql`).
+  Delivered by `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`.
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
@@ -313,15 +620,26 @@ top of it later without re-plumbing the project.
   bug catch-and-fix, closeout report), `process/general-plans/completed/merge-cart-reconciliation_13-07-26/`
   (cart architecture reconciliation),
   `process/general-plans/completed/merge-menu-api-reconciliation_13-07-26/` (menu/branch data-layer
-  + react-query reconciliation), and
+  + react-query reconciliation),
   `process/features/staff-dashboard/completed/staff-001-login-branch-scope_13-07-26/` (staff authz
-  layer + role-gated staff shell — STAFF-001), and
+  layer + role-gated staff shell — STAFF-001),
   `process/features/rewards-notifications/completed/star-001-star-earning_14-07-26/` (idempotent
-  star-earning + refund-reversal services, migration 0005, real rewards types — STAR-001),
+  star-earning + refund-reversal services, migration 0007 (renumbered from 0005), real rewards
+  types — STAR-001),
   `process/features/rewards-notifications/completed/star-002-rewards-screen_14-07-26/` (rewards
   read API + mobile screen + type-regression fix + T&C component + seed 5-star reward — STAR-002),
-  and `process/features/rewards-notifications/completed/star-003-reward-unlock_14-07-26/` (battle-pass
-  unlock + coupon gen + migration 0006 + 4-tier roadmap seed + coupon/notification helpers — STAR-003).
+  `process/features/rewards-notifications/completed/star-003-reward-unlock_14-07-26/` (battle-pass
+  unlock + coupon gen + migration 0008 (renumbered from 0006) + 4-tier roadmap seed +
+  coupon/notification helpers — STAR-003),
+  `process/features/rewards-notifications/active/star-004-reward-redemption_15-07-26/` (in-app
+  reward redemption: `POST /coupons/apply` + order-placement coupon consume + cart/checkout wiring —
+  STAR-004),
+  `process/features/rewards-notifications/completed/deals-api-integration_13-07-26/` (3-phase Deals
+  backend wiring program — #22/#23/#24, archived plan + phase reports + high-risk evidence pack),
+  `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/` (order
+  state-machine PATCH endpoint + Completed Orders screen + `rejected` enum — STAFF-003), and
+  `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/` (real-API Order
+  History display + Reorder — HIST-001/HIST-002).
 
 ## Quick Start
 
@@ -346,14 +664,14 @@ For most substantial tasks:
 |---|---|
 | `process/context/all-context.md` | any substantial planning, research, review, or implementation task |
 | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
+| `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui |
 
 ## Current Context Groups
 
 | Group | Entry point | Scope |
 |---|---|---|
 | `planning/` | `process/context/planning/all-planning.md` | SIMPLE vs COMPLEX plan calibration and example PRD references |
-| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api and apps/mobile, jest-expo in packages/ui |
+| `tests/` | `process/context/tests/all-tests.md` | Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui |
 <!-- /GENERATED:routing -->
 
 No other context groups exist beyond the baseline `tests`/`planning` groups every repo gets
@@ -368,13 +686,30 @@ Scanned against the canonical Context Group Detection Table
   `db:migrate` scripts, seed, vitest integration tests). `database/` group threshold is likely met
   (full schema + seed + migration pattern established). Not yet created — run `vc-generate-context`
   (delta mode) to create it when ready.
-- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. Also
-  the new staff authz layer (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types)
-  adds a second durable narrative. `auth/` group threshold is now plausibly met — two narratives
-  (auth provider setup + staff authz pattern). Not yet created; re-evaluate at next
-  UPDATE PROCESS pass or when a role/permissions design doc is written.
+- Auth dependency present — **better-auth** in `packages/api` + consumed by `apps/mobile`. The
+  `auth/` group threshold now plausibly has THREE durable narratives: (1) auth provider setup
+  (better-auth config, Expo bearer-token client, magic-link caveat), (2) staff authz pattern
+  (`require-staff.ts`, role-gated routes, `StaffRole`/`StaffMe` types), and (3) admin browser-cookie
+  authz (`require-admin.ts`, `requireAdmin`, the first browser-cookie session flow, super_admin-only
+  role management, the resolved `TODO(STAFF-ADM)` bypass — Phase 1, delivered 14-07-26).
+  **Recommendation:** this is a strong candidate to formally create the `auth/` context group now —
+  three narratives across two apps (mobile + admin) and two session models (bearer-token vs
+  browser-cookie) is exactly the "stable operational domain" signal in §Context Group Lifecycle.
+  Not created in this pass (deferred per UPDATE PROCESS scope discipline — recommend only, don't
+  create speculatively mid-phase); run `vc-generate-context` (delta mode) or raise it explicitly at
+  the next UPDATE PROCESS pass to create it.
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
+- `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
+  delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED;
+  Sidebar Navigation cross-cutting task delivered 15-07-26, ✅ COMPLETE; Phase 3 — Products/
+  Categories CRUD delivered 15-07-26, ✅ VERIFIED).
+  `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
+  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; 3 backlog notes
+  filed post-Phase-2 remain, no new backlog note was needed for Phase 3 — AC8 was actually
+  performed, not left owed). This is an 8-phase program (P0 scaffold through P7 analytics,
+  ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current phase
+  (Phase 4 — Deals CRUD, ADM-004, next).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -391,8 +726,9 @@ crossed — it will create the matching group automatically.
 | general repo research | `all-context.md` | this file's Repository Structure / Technology Stack sections |
 | implementation planning | `all-context.md`, `planning/all-planning.md` | the relevant feature's `_GUIDE.md` under `process/features/{feature}/` |
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
-| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`) if it exists, else `process/general-plans/active/` |
+| new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
+| admin dashboard work (Phase 4-7, ADM-004..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the 3 Phase-2 backlog notes under `backlog/` (AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction deferred — the extraction re-eval trigger is now live: Phase 3 built the first 3 composites, Phase 4's deal junction-table UI is the next `data-table`/`form-dialog` re-eval point) |
 
 ## Context Group Lifecycle
 
@@ -484,6 +820,21 @@ jojo-mobile/                           (package.json name: jojo-potato)
       assets/                          -- icons, splash, favicon (placeholder branding)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
+    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 1: browser-cookie auth + admin login + guarded (dashboard) shell; sidebar nav 15-07-26 -- see process/features/admin-dashboard/)
+      src/
+        routes/                       -- TanStack Start file-based routes: __root.tsx (shell + QueryClientProvider), (dashboard)/route.tsx (SidebarProvider + AppSidebar wrapper), (dashboard)/index.tsx (pure content view), login.tsx
+        components/
+          ui/                         -- shadcn/ui primitives (button.tsx, card.tsx, sidebar.tsx, sheet.tsx, tooltip.tsx, separator.tsx, skeleton.tsx) -- canonical registry source, NOT packages/ui (RN-only, not reused here)
+          app-sidebar.tsx             -- config-driven brutalist sidebar; iterates navConfig; active-state via startsWith + exact-for-root
+          nav-user.tsx                -- sidebar footer: user initial, email, role badge, sign-out; reads useAdminAuth()
+          admin-home.tsx              -- placeholder proving boot + brand tokens + stock primitives render on-brand
+        config/
+          nav-config.ts               -- navConfig array (Main/Management/Dev groups); single source of truth for sidebar route metadata; disabled flag for unbuilt routes
+        styles/globals.css            -- Tailwind v4 @theme brand-token port + two-block shadcn semantic mapping (light-mode only)
+        lib/{query-client,utils}.ts   -- separate react-query client instance (own runtime, not shared with apps/mobile) + shadcn cn() helper
+        router.tsx                    -- TanStack Start router-instance factory
+      vite.config.ts                  -- tailwindcss() + tanstackStart() + viteReact() plugin chain
+      vitest.config.ts                -- jsdom + @testing-library/react, separate from vite.config.ts
   packages/
     api/
       src/routes/                      -- branches.ts, orders.ts (session-gated), rewards.ts (session-gated, STAR-002: /summary|available|history), routes/lib/{order-number,serializers}.ts, __tests__/
@@ -501,7 +852,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
   process/
     context/                          -- this context system
     general-plans/                    -- plans, reports, references (task-folder convention)
-    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications, staff-dashboard)
+    features/                         -- feature-scoped storage (ordering-cart, pickup-branches, auth-accounts, rewards-notifications, staff-dashboard, admin-dashboard)
     development-protocols/            -- RIPER-5 methodology docs
   package.json                        -- root scripts (turbo pipelines)
   pnpm-workspace.yaml                 -- workspaces: apps/*, packages/*
@@ -521,14 +872,15 @@ Metro/Expo resolves them like any other dependency.
 - **Package manager:** pnpm 10.33.0 (`packageManager` field pinned in root `package.json`)
 - **Monorepo:** Turborepo ~2.10.4 for task orchestration/caching (`turbo.json`)
 - **Navigation/UI libs:** expo-router, react-native-screens, react-native-safe-area-context, react-native-gesture-handler, react-native-reanimated 4.5.0 + react-native-worklets, expo-image, expo-status-bar, expo-system-ui, expo-splash-screen, expo-linking, expo-constants
-- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`. Now used for menu/branch/product data AND rewards data (`features/rewards/hooks/`). NOT an app-wide mandate — `features/orders/*` intentionally still uses `use-async-data.ts`/`api-request.ts` plumbing. `lib/query-client.ts` configures `refetchOnWindowFocus: true` globally (rewards screen uses this for AC5 refetch-on-focus).
+- **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile`) — added 13-07-26 via `merge-menu-api-reconciliation`. Used for menu/branch/product data (`features/{branch,menu}/hooks/`), rewards data (`features/rewards/hooks/`), and STAR-004 coupon data (`features/rewards/hooks/use-my-coupons.ts`). NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing. `lib/query-client.ts` configures `refetchOnWindowFocus: true` globally (rewards screen uses this for AC5 refetch-on-focus). `apps/admin` (added 14-07-26) also depends on react-query v5 but instantiates its OWN separate `QueryClient` — not shared with `apps/mobile`'s instance (different app/runtime).
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
-- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
-- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`).
+- **Admin web app (`apps/admin`, `@jojopotato/admin`, added 14-07-26):** TanStack Start (file-based routing, Vite 8-based build/dev) + Tailwind CSS v4 (`@theme` token block) + shadcn/ui primitives (installed as source, not a runtime dep) + `@tanstack/react-query` (own client instance). This is a NEW web app, distinct from the Expo/RN `apps/mobile` — `packages/ui` (React Native) is NOT reused here; brand tokens are ported from `packages/ui/src/theme.ts` into Tailwind's `@theme` CSS block instead. Currently Phase 0 scaffold only (no auth, no business screens) — see `process/features/admin-dashboard/`.
+- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `vitest` + `@testing-library/react` (jsdom) in `apps/admin` (added 14-07-26 — the FIRST web-app component-test runner precedent in the repo, run `pnpm --filter @jojopotato/admin test`); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
+- **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`). `apps/admin`'s deploy pipeline is explicitly out of scope for the admin-dashboard program (builds the app, not its deploy story).
 
 ## Key Patterns and Conventions
 
-**Monorepo package naming:** all workspace packages are scoped `@jojopotato/*` (`config`, `types`, `ui`, `utils`, `mobile`). New packages should follow the same scope and the "Adding a new package" recipe in `README.md`.
+**Monorepo package naming:** all workspace packages are scoped `@jojopotato/*` (`config`, `types`, `ui`, `utils`, `mobile`, `admin`). New packages should follow the same scope and the "Adding a new package" recipe in `README.md`.
 
 **No build step for internal packages:** `packages/{types,ui,utils}` have `"main": "./src/index.ts"` — they are consumed as raw TypeScript source via pnpm workspace links, not compiled. Do not add a build step to these packages without a clear reason.
 
@@ -616,6 +968,17 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (STAR-002+003 UPDATE PROCESS — rewards screen + read API, battle-pass unlock + coupon gen, migration 0006, universal theme system, Expo Go map fallback; api suite now 99 tests)
-- HEAD at last delta: `8c18a60` (feat(rewards): Expo Go map fallback, branch `dev/star`)
+- Last delta: 2026-07-15 (development→dev/star merge — admin dashboard Phase 0-3 + Sidebar Nav +
+  STAFF-002/003 + deals Phase 3 merged with STAR-002/003/004 rewards + universal theme; star/coupon
+  migrations renumbered 0005/0006 → 0007/0008 to run after development's 0005_add_rejected_order_status
+  / 0006_legal_daredevil)
+- Merge base deltas (development side): admin-dashboard Phase 3 UPDATE PROCESS (Products/Categories
+  CRUD ✅ VERIFIED — third consumer of the append-only admin aggregator, AC1 snapshot-integrity real
+  passing regression test, AC8 Agent-Probe found+fixed a TanStack Start nested-detail `<Outlet/>`
+  gotcha), Sidebar Nav (✅ COMPLETE), Phase 2 Branches CRUD (✅ VERIFIED, drizzle `err.cause.code`
+  unique-violation gotcha)
+- Merge base deltas (dev/star side): STAR-002+003 UPDATE PROCESS (rewards screen + read API,
+  battle-pass unlock + coupon gen, universal theme system, Expo Go map fallback), STAR-004 (in-app
+  reward redemption — `POST /coupons/apply` + order-placement coupon consume)
+- HEAD at merge: development `bfdc7b6` merged into dev/star `3c9d3ac`
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

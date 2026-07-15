@@ -1,0 +1,44 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Privilege escalation: a plain admin promotes themselves or another user to super_admin via POST /api/admin/users/:id/role",
+      "ruled_out": true,
+      "rationale": "Guard 5.1 (inline super_admin check) runs FIRST and rejects any non-super_admin caller with 403 before validation or DB write. Proven by AC3 (admin -> 403, target row unchanged)."
+    },
+    {
+      "scenario": "Self-escalation: a super_admin changes their OWN role (e.g. to lock themselves in, or a coerced downgrade)",
+      "ruled_out": true,
+      "rationale": "Guard 5.2 rejects req.params.id === req.adminSession.userId with 400 before any DB read/write. Proven by AC2 (super_admin self-call -> 400, DB row unchanged)."
+    },
+    {
+      "scenario": "Client self-assigns a privileged role via the self-service better-auth updateUser / signup path",
+      "ruled_out": true,
+      "rationale": "role stays input:false in auth.ts (unchanged this phase). better-auth rejects/strips the field. Proven by AC5 regression (auth.integration.test.ts role-write-rejection still green)."
+    },
+    {
+      "scenario": "Staff role reaches the admin surface (staff mistaken for admin)",
+      "ruled_out": true,
+      "rationale": "requireAdmin's isAdminRole admits only {admin, super_admin} — ADMIN_ROLES excludes 'staff'. Proven by AC1 (staff session -> 403)."
+    },
+    {
+      "scenario": "Cross-origin credential theft via permissive CORS (wildcard origin with credentials)",
+      "ruled_out": true,
+      "rationale": "CORS is scoped to /api/admin with an explicit origin allowlist ([ADMIN_WEB_ORIGIN]) and credentials:true — never a wildcard (credentialed wildcard is spec-forbidden anyway). Proven by AC6 (Access-Control-Allow-Origin echoes the exact origin http://localhost:3100, not *)."
+    },
+    {
+      "scenario": "Client-cached role flag spoofed to bypass the dashboard guard",
+      "ruled_out": true,
+      "rationale": "The (dashboard) beforeLoad guard verifies against the REAL server (GET /api/admin/me, requireAdmin-enforced), not a client-held flag. Even if the client gate were bypassed entirely, every /api/admin/* call is independently guarded by requireAdmin server-side — the client gate is convenience only."
+    },
+    {
+      "scenario": "Error path leaks internal details / 500 on auth failure (info disclosure)",
+      "ruled_out": true,
+      "rationale": "requireAdmin wraps getSession in try/catch and returns 403 {error:'Forbidden'} on any exception (never 500). Role-management route catches AdminApiError -> {status, message}; any other error is logged server-side and returned as a generic 500 {error:'Failed to update user role'} with no stack."
+    },
+    {
+      "scenario": "Malformed (non-uuid) :id crashes the role-management route",
+      "ruled_out": true,
+      "rationale": "A DB throw on an invalid uuid is caught by the handler's try/catch and returned as a generic 500 (not an unhandled crash). Note (known-gap, low severity): a malformed id yields 500 rather than 404 because uuid pre-validation was intentionally NOT inserted to preserve the LOCKED 4-step guard order. Only reachable by an already-authenticated super_admin, so not an escalation vector."
+    }
+  ]
+}

@@ -13,6 +13,8 @@ export interface CreateOrderInput {
   }[];
   /** Optional reward/deal code (STAR-004) — re-validated + consumed server-side. */
   couponCode?: string;
+  /** Optional applied deal — the server recomputes the real discount from it. */
+  dealId?: string;
 }
 
 /** `POST /orders` — create an order (session required). Returns the full order. */

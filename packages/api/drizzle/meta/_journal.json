@@ -40,15 +40,29 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1783996918805,
-      "tag": "0005_nosy_genesis",
+      "when": 1783997122019,
+      "tag": "0005_add_rejected_order_status",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
+      "when": 1784001558019,
+      "tag": "0006_legal_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
       "when": 1784014457148,
-      "tag": "0006_windy_dexter_bennett",
+      "tag": "0007_nosy_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784014457149,
+      "tag": "0008_windy_dexter_bennett",
       "breakpoints": true
     }
   ]

@@ -1,6 +1,6 @@
 {
-  "id": "73d066b2-77a4-48bb-ab2e-ab6380569fe0",
-  "prevId": "13f03b80-c3b2-4107-9958-ddd2b7573063",
+  "id": "64e55a9b-dda8-438d-ad4f-eb30763f86bb",
+  "prevId": "ab0ad779-f76c-474b-a288-869264363be7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1263,28 +1263,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "coupons_user_reward_unique": {
-          "name": "coupons_user_reward_unique",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "reward_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"coupons\".\"reward_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1350,6 +1328,12 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "deal_id": {
+          "name": "deal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "order_number": {
           "name": "order_number",
@@ -1518,6 +1502,15 @@
           "tableFrom": "orders",
           "tableTo": "branches",
           "columnsFrom": ["branch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_deal_id_deals_id_fk": {
+          "name": "orders_deal_id_deals_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "deals",
+          "columnsFrom": ["deal_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1752,28 +1745,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "star_transactions_order_type_unique": {
-          "name": "star_transactions_order_type_unique",
-          "columns": [
-            {
-              "expression": "order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1929,7 +1900,16 @@
     "public.order_status": {
       "name": "order_status",
       "schema": "public",
-      "values": ["pending", "accepted", "preparing", "flavoring", "ready", "completed", "cancelled"]
+      "values": [
+        "pending",
+        "accepted",
+        "preparing",
+        "flavoring",
+        "ready",
+        "completed",
+        "cancelled",
+        "rejected"
+      ]
     },
     "public.payment_method": {
       "name": "payment_method",

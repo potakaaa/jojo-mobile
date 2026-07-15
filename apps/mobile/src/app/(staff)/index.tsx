@@ -18,9 +18,21 @@ const NAV_CARDS = [
     subtitle: 'View orders',
     navigateTo: '/(staff)/active-orders' as const,
   },
-  { title: 'Completed Orders', subtitle: 'Coming soon', navigateTo: null },
-  { title: 'Product Availability', subtitle: 'Coming soon', navigateTo: null },
-  { title: 'Branch Pickup Settings', subtitle: 'Coming soon', navigateTo: null },
+  {
+    title: 'Completed Orders',
+    subtitle: 'View history',
+    navigateTo: '/(staff)/completed-orders' as const,
+  },
+  {
+    title: 'Product Availability',
+    subtitle: 'Manage product availability',
+    navigateTo: '/(staff)/product-availability' as const,
+  },
+  {
+    title: 'Branch Pickup Settings',
+    subtitle: 'Configure pickup settings',
+    navigateTo: '/(staff)/branch-pickup-settings' as const,
+  },
 ] as const;
 
 /**
@@ -65,31 +77,20 @@ export default function StaffDashboard() {
           </View>
 
           <View style={styles.cards}>
-            {NAV_CARDS.map((card) =>
-              card.navigateTo ? (
-                // Tappable — navigates to MOCK preview screen
-                <Pressable
-                  key={card.title}
-                  onPress={() => router.push(card.navigateTo)}
-                  accessibilityRole="button"
-                >
-                  <Card mode={mode} style={styles.card}>
-                    <Text style={[styles.cardTitle, { color: theme.text }]}>{card.title}</Text>
-                    <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>
-                      {card.subtitle}
-                    </Text>
-                  </Card>
-                </Pressable>
-              ) : (
-                // Inert placeholder — no navigation, no onPress
-                <Card key={card.title} mode={mode} style={styles.card}>
+            {NAV_CARDS.map((card) => (
+              <Pressable
+                key={card.title}
+                onPress={() => router.push(card.navigateTo)}
+                accessibilityRole="button"
+              >
+                <Card mode={mode} style={styles.card}>
                   <Text style={[styles.cardTitle, { color: theme.text }]}>{card.title}</Text>
                   <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>
                     {card.subtitle}
                   </Text>
                 </Card>
-              ),
-            )}
+              </Pressable>
+            ))}
           </View>
 
           <Button label="Sign out" variant="outline" mode={mode} onPress={() => void signOut()} />

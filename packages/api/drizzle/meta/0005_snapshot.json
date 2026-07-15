@@ -1,5 +1,5 @@
 {
-  "id": "13f03b80-c3b2-4107-9958-ddd2b7573063",
+  "id": "ab0ad779-f76c-474b-a288-869264363be7",
   "prevId": "60e25690-70bd-4ca6-b2a2-46d3874e4893",
   "version": "7",
   "dialect": "postgresql",
@@ -1730,28 +1730,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "star_transactions_order_type_unique": {
-          "name": "star_transactions_order_type_unique",
-          "columns": [
-            {
-              "expression": "order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1907,7 +1885,16 @@
     "public.order_status": {
       "name": "order_status",
       "schema": "public",
-      "values": ["pending", "accepted", "preparing", "flavoring", "ready", "completed", "cancelled"]
+      "values": [
+        "pending",
+        "accepted",
+        "preparing",
+        "flavoring",
+        "ready",
+        "completed",
+        "cancelled",
+        "rejected"
+      ]
     },
     "public.payment_method": {
       "name": "payment_method",

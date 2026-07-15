@@ -1,0 +1,13 @@
+{
+  "task": "deals-api-integration Phase 3 (DEAL-003 / #24) — server-authoritative deal apply at placement",
+  "reviewer": "vc-execute-agent (self-review against approved plan + validate-contract, /goal autonomous execution)",
+  "decision": "approved-with-concerns",
+  "timestamp": "2026-07-14T09:47:00Z",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "Mobile cart->apply->checkout UX (incl. the client-side complex-type Apply guard) is Agent-Probe only — project-wide RN-runner gap, tracked at process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md. Not claimed as automated coverage.",
+    "The concurrency test proves the usage-limit invariant (exactly one 201) but not that the FOR UPDATE lock was physically contended vs lucky sequential timing; contention is confirmed by code review of the single .for('update') call.",
+    "Complex deal types remain unapplicable by design (deferred, charter). Coupons out of scope."
+  ],
+  "notes": "Server authority over money holds: createOrderSchema accepts ONLY dealId (uuid); the discount is recomputed inside the transaction from the raw deals.discount_value. Both clamps present in computeDealDiscountCents (Math.max(0, Math.min(computed, subtotalCents))) — proven by the fixed-clamp test (total 0, never negative). The deals row is SELECT ... FOR UPDATE'd before usage counts are read (concurrency test: exactly one 201). Complex types rejected with 400 before any math (zero rows persisted). Every rejection throws inside the db.transaction (atomicity test: 400 leaves zero rows). orders.deal_id is a nullable FK NO ACTION; migration 0004 additive-only. no-dealId path byte-for-byte backward-compatible. All 83 api tests, api/types/mobile typecheck, api/mobile lint pass."
+}

@@ -69,3 +69,32 @@ export interface StaffOrderDetail {
   totalCents: number;
   items: StaffOrderItem[];
 }
+
+// ─── STAFF-004: Product availability + branch settings contracts ─────────────
+
+/**
+ * A single product row returned by `GET /api/staff/products`.
+ *
+ * `basePrice` is typed as `string` because the DB column is `numeric(10,2)` —
+ * Drizzle returns it as a decimal string to avoid JS float precision loss.
+ *
+ * `isAvailable` reflects the branch-level override: `true` when no
+ * `branch_product_availability` row exists (LEFT JOIN default) OR when the row
+ * has `is_available = true`.
+ */
+export type StaffProduct = {
+  id: string;
+  name: string;
+  categoryId: string; // products.category_id is NOT NULL
+  basePrice: string; // numeric(10,2) returned as decimal string — NOT number
+  isAvailable: boolean;
+};
+
+/**
+ * Branch operational settings returned by `GET /api/staff/branch` and
+ * updated via `PATCH /api/staff/branch`.
+ */
+export type StaffBranchSettings = {
+  isAcceptingPickup: boolean;
+  estimatedPrepMinutes: number;
+};
