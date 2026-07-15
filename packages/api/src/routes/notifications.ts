@@ -15,9 +15,13 @@ import { serializeNotification } from './lib/serializers';
  */
 export const notificationsRouter: Router = Router();
 
+const NOTIFICATIONS_LIST_LIMIT = 100;
+
 /**
  * `GET /notifications` → `{ notifications: AppNotification[] }`.
- * The caller's OWN rows only, newest-first.
+ * The caller's OWN rows only, newest-first, capped at `NOTIFICATIONS_LIST_LIMIT`
+ * (the mobile client renders a flat list with no pagination UI, so a fixed cap —
+ * not cursor pagination like `GET /orders` — is the right-sized bound here).
  */
 notificationsRouter.get('/', async (req, res) => {
   const userId = req.user!.id;
@@ -25,20 +29,27 @@ notificationsRouter.get('/', async (req, res) => {
     .select()
     .from(notifications)
     .where(eq(notifications.user_id, userId))
-    .orderBy(desc(notifications.created_at));
+    .orderBy(desc(notifications.created_at))
+    .limit(NOTIFICATIONS_LIST_LIMIT);
   res.json({ notifications: rows.map(serializeNotification) });
 });
 
 const deviceTokenSchema = z.object({
   deviceId: z.string().min(1),
   pushToken: z.string().min(1),
-  platform: z.string().min(1),
+  // Tightened at the API boundary (not a DB enum/migration): the mobile client
+  // only ever sends `Platform.OS`, which is always exactly 'ios' | 'android' at
+  // RN runtime. Any other value is rejected with 422 and writes no row (AC-1).
+  platform: z.enum(['ios', 'android']),
 });
 
 /**
  * `POST /notifications/device-tokens` — register/refresh this device's Expo push
- * token. Upserts on `(user_id, device_id)` so a rotated token UPDATES the same
- * row instead of inserting a duplicate (AC-1).
+ * token. Upserts on `device_id` GLOBALLY (not per-user) so a rotated token
+ * UPDATES the same row instead of inserting a duplicate (AC-1) — and so
+ * re-registering the SAME physical device under a DIFFERENT account (e.g.
+ * logout/login on a shared device) REASSIGNS the row's `user_id` rather than
+ * creating a second row that would keep delivering pushes for both accounts.
  */
 notificationsRouter.post('/device-tokens', async (req, res) => {
   const userId = req.user!.id;
@@ -61,8 +72,8 @@ notificationsRouter.post('/device-tokens', async (req, res) => {
       updated_at: now,
     })
     .onConflictDoUpdate({
-      target: [deviceTokens.user_id, deviceTokens.device_id],
-      set: { push_token: pushToken, platform, last_seen_at: now, updated_at: now },
+      target: [deviceTokens.device_id],
+      set: { user_id: userId, push_token: pushToken, platform, last_seen_at: now, updated_at: now },
     });
 
   res.status(200).json({ ok: true });
@@ -93,7 +104,13 @@ notificationsRouter.patch('/:id/read', async (req, res) => {
     .where(and(eq(notifications.id, id), eq(notifications.user_id, userId)))
     .returning();
 
-  res.json({ notification: serializeNotification(updated!) });
+  if (!updated) {
+    // Concurrently deleted between the SELECT above and this UPDATE.
+    res.status(404).json({ error: 'Notification not found' });
+    return;
+  }
+
+  res.json({ notification: serializeNotification(updated) });
 });
 
 export default notificationsRouter;

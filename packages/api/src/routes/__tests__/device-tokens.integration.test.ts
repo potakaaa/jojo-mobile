@@ -6,10 +6,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  * AC-1 (PUSH-004 / #75) — device token registration.
  *
  * A device token is registered ONCE per physical device; re-registering the same
- * device with a rotated token UPDATES the same row (upsert on `(user_id,
- * device_id)`) rather than inserting a duplicate.
+ * device with a rotated token UPDATES the same row (upsert on `device_id`,
+ * GLOBALLY unique) rather than inserting a duplicate. Re-registering the SAME
+ * device under a DIFFERENT user REASSIGNS the row's `user_id` rather than
+ * creating a second row (a shared/handed-off device must not keep delivering
+ * pushes for the previous account).
  *
- * Hermetic: seeds its OWN customer user and cleans up in afterAll.
+ * Hermetic: seeds its OWN customer users and cleans up in afterAll.
  * Runs against a real local Postgres (docker compose up -d + db:migrate).
  */
 
@@ -37,6 +40,8 @@ const suffix = unique();
 
 let userId: string;
 let userCookies: string[];
+let userId2: string;
+let userCookies2: string[];
 
 async function signUpAndGetCookie(email: string, password: string): Promise<string[]> {
   await auth.api.signUpEmail({ body: { email, password, name: 'Test User' } });
@@ -63,11 +68,21 @@ beforeAll(async () => {
     .from(schema.users)
     .where(eq(schema.users.email, email));
   userId = row!.id;
+
+  const email2 = `dt-user2-${suffix}@example.com`;
+  userCookies2 = await signUpAndGetCookie(email2, 'sup3r-secret-pw');
+  const [row2] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.email, email2));
+  userId2 = row2!.id;
 });
 
 afterAll(async () => {
   await db.delete(schema.deviceTokens).where(eq(schema.deviceTokens.user_id, userId));
+  await db.delete(schema.deviceTokens).where(eq(schema.deviceTokens.user_id, userId2));
   await db.delete(schema.users).where(eq(schema.users.id, userId));
+  await db.delete(schema.users).where(eq(schema.users.id, userId2));
   logSpy?.mockRestore();
 });
 
@@ -134,12 +149,78 @@ describe('POST /notifications/device-tokens — AC-1', () => {
     expect(await tokensForDevice(deviceB)).toHaveLength(1);
   });
 
+  it('re-registering the SAME device under a DIFFERENT user reassigns ownership (no duplicate, no leak to the old account)', async () => {
+    const deviceId = `device-${suffix}-shared`;
+
+    await request(app)
+      .post('/notifications/device-tokens')
+      .set('Cookie', userCookies.join('; '))
+      .send({ deviceId, pushToken: 'ExponentPushToken[USER1]', platform: 'ios' });
+
+    const rowsForUser1 = await db
+      .select()
+      .from(schema.deviceTokens)
+      .where(eq(schema.deviceTokens.device_id, deviceId));
+    expect(rowsForUser1).toHaveLength(1);
+    expect(rowsForUser1[0]!.user_id).toBe(userId);
+
+    // Simulate logout + login as a different account on the same physical device.
+    await request(app)
+      .post('/notifications/device-tokens')
+      .set('Cookie', userCookies2.join('; '))
+      .send({ deviceId, pushToken: 'ExponentPushToken[USER2]', platform: 'ios' });
+
+    const rowsAfterHandoff = await db
+      .select()
+      .from(schema.deviceTokens)
+      .where(eq(schema.deviceTokens.device_id, deviceId));
+    // Still exactly ONE row for this physical device — reassigned, not duplicated.
+    expect(rowsAfterHandoff).toHaveLength(1);
+    expect(rowsAfterHandoff[0]!.user_id).toBe(userId2);
+    expect(rowsAfterHandoff[0]!.push_token).toBe('ExponentPushToken[USER2]');
+    // Same row identity as before (upsert-reassign, not insert).
+    expect(rowsAfterHandoff[0]!.id).toBe(rowsForUser1[0]!.id);
+  });
+
   it('rejects a malformed payload with 422', async () => {
     const res = await request(app)
       .post('/notifications/device-tokens')
       .set('Cookie', userCookies.join('; '))
       .send({ deviceId: '', pushToken: '', platform: '' });
     expect(res.status).toBe(422);
+  });
+
+  it("rejects a platform outside {'ios','android'} with 422 and writes no row (AC-1)", async () => {
+    const deviceId = `device-${suffix}-platform`;
+    const res = await request(app)
+      .post('/notifications/device-tokens')
+      .set('Cookie', userCookies.join('; '))
+      .send({ deviceId, pushToken: 'ExponentPushToken[WIN]', platform: 'windows' });
+    expect(res.status).toBe(422);
+
+    // No row was written for the rejected registration.
+    const rows = await tokensForDevice(deviceId);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("continues to accept 'ios' and 'android' platforms (AC-1 happy path)", async () => {
+    const iosDevice = `device-${suffix}-ios`;
+    const androidDevice = `device-${suffix}-android`;
+
+    const iosRes = await request(app)
+      .post('/notifications/device-tokens')
+      .set('Cookie', userCookies.join('; '))
+      .send({ deviceId: iosDevice, pushToken: 'ExponentPushToken[IOS]', platform: 'ios' });
+    expect(iosRes.status).toBe(200);
+
+    const androidRes = await request(app)
+      .post('/notifications/device-tokens')
+      .set('Cookie', userCookies.join('; '))
+      .send({ deviceId: androidDevice, pushToken: 'ExponentPushToken[AND]', platform: 'android' });
+    expect(androidRes.status).toBe(200);
+
+    expect((await tokensForDevice(iosDevice))[0]!.platform).toBe('ios');
+    expect((await tokensForDevice(androidDevice))[0]!.platform).toBe('android');
   });
 
   it('requires a session (401 without a cookie)', async () => {

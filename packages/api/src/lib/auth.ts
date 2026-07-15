@@ -88,8 +88,9 @@ export const auth = betterAuth({
       // Marketing push opt-in (PUSH-004 / #75). Self-owned like the profile
       // fields above (input: true) — a client may flip its OWN flag via
       // `updateUser`; never a privilege surface. Gates all 5 marketing
-      // notification types (never the 4 transactional types). A null value is
-      // treated as opted-IN at read-time (see notification-dispatch default).
+      // notification types (never the 4 transactional types). Requires
+      // affirmative consent: DB column defaults to false; only an explicit
+      // true opts in (see notification-dispatch's gate).
       marketingOptIn: { type: 'boolean', required: false, input: true },
     },
   },

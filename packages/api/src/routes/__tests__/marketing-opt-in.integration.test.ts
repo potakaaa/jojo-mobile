@@ -20,6 +20,11 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
 process.env.GOOGLE_CLIENT_ID ??= 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET ??= 'test-google-client-secret';
 process.env.VITEST = 'true';
+// AC-3 precondition: creds are unset → log-fallback path (see push-provider
+// AC-6). Saved/restored so this suite doesn't depend on, or pollute, ambient
+// process.env state shared with other files in the same vitest worker.
+const originalExpoToken = process.env.EXPO_ACCESS_TOKEN;
+delete process.env.EXPO_ACCESS_TOKEN;
 
 type DbModule = typeof import('../../db/client');
 type SchemaModule = typeof import('../../db/schema/index');
@@ -111,6 +116,8 @@ afterAll(async () => {
   await db.delete(schema.users).where(eq(schema.users.id, optedOutUserId));
   await db.delete(schema.branches).where(eq(schema.branches.id, branchId));
   logSpy?.mockRestore();
+  if (originalExpoToken === undefined) delete process.env.EXPO_ACCESS_TOKEN;
+  else process.env.EXPO_ACCESS_TOKEN = originalExpoToken;
 });
 
 describe('dispatchMarketingNotification — AC-3 opt-in gating', () => {

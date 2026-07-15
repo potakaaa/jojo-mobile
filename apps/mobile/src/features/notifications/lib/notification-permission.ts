@@ -109,9 +109,11 @@ export async function registerDeviceToken(): Promise<void> {
     // detail only (the (user_id, device_id) upsert key stays independent of the
     // rotating push token).
     const deviceId =
-      Platform.OS === 'ios'
-        ? ((await Application.getIosIdForVendorAsync()) ?? 'ios-unknown')
-        : Application.getAndroidId();
+      Platform.OS === 'ios' ? await Application.getIosIdForVendorAsync() : Application.getAndroidId();
+    // No stable vendor ID available yet (e.g. simulator, or not yet stabilized on
+    // first launch) — best-effort per this function's contract: leave unregistered
+    // rather than collide with another install under a shared sentinel id.
+    if (!deviceId) return;
 
     const registration: DeviceTokenRegistration = {
       deviceId,

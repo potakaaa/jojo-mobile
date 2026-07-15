@@ -28,6 +28,12 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
 process.env.GOOGLE_CLIENT_ID ??= 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET ??= 'test-google-client-secret';
 process.env.VITEST = 'true';
+// AC-2 precondition (see below): creds are unset → the push provider's
+// log-fallback path, so `[push] would send` log-line assertions are stable
+// regardless of ambient developer/CI credentials. Saved/restored, not just
+// deleted, so this suite doesn't pollute process.env for the rest of the run.
+const originalExpoToken = process.env.EXPO_ACCESS_TOKEN;
+delete process.env.EXPO_ACCESS_TOKEN;
 
 type AuthModule = typeof import('../../lib/auth');
 type DbModule = typeof import('../../db/client');
@@ -212,6 +218,8 @@ afterAll(async () => {
   await db.delete(schema.branches).where(eq(schema.branches.id, branch1Id));
   await db.delete(schema.branches).where(eq(schema.branches.id, branch2Id));
   logSpy?.mockRestore();
+  if (originalExpoToken === undefined) delete process.env.EXPO_ACCESS_TOKEN;
+  else process.env.EXPO_ACCESS_TOKEN = originalExpoToken;
 });
 
 // ─── AC-1: valid transitions → 200, new status, correct timestamp non-null ───
@@ -550,10 +558,23 @@ describe('PATCH /api/staff/orders/:orderId — AC-2 push notification dispatch',
     // pending → cancelled once; a second identical PATCH 409s (compare-and-swap)
     // AND even a direct re-dispatch would dedupe on (type, orderId).
     const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
-    await request(app)
+    logSpy.mockClear();
+    const first = await request(app)
       .patch(`/api/staff/orders/${orderId}`)
       .set('Cookie', staff1Cookies.join('; '))
       .send({ status: 'cancelled' });
+    expect(first.status).toBe(200);
+    expect(countPushSends()).toBe(1);
+
+    logSpy.mockClear();
+    const second = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    // Terminal status — the state machine 409s a re-transition (compare-and-swap).
+    expect(second.status).toBe(409);
+    expect(countPushSends()).toBe(0);
+
     const rows = await notificationRowsFor(orderId, 'order_cancelled');
     expect(rows).toHaveLength(1);
   });

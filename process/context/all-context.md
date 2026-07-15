@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-14 (Phase 1 delta)
+Last updated: 2026-07-15 (push notification real-delivery hardening delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -419,6 +419,50 @@ top of it later without re-plumbing the project.
   atomic compare-and-swap to avoid a race on concurrent transitions) plus a Completed Orders screen
   and a new `rejected` order-status enum value (migration `0005_add_rejected_order_status.sql`).
   Delivered by `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`.
+- **Push notifications, backend + real-delivery hardening (PUSH-004 #75 + real-push-delivery
+  15-07-26, on branch `feat/push-notifications-api`, uncommitted as of this pass — check
+  `git log`/`git status` before assuming landed):** PUSH-004 shipped the first real push send
+  pipeline — `device_tokens` table (`packages/api/src/db/schema/device_tokens.ts`), a
+  `marketing_opt_in` better-auth `additionalField` on `users` (`input:true`), an
+  `expo-server-sdk`-based `push-provider.ts`, `notification-dispatch.ts` (order-status +
+  marketing dispatch), and an in-process `scheduler.ts`. It has never run against real
+  credentials — `sendPush()` only ever hits its log-fallback branch in CI/dev
+  (`EXPO_ACCESS_TOKEN` unset). The `real-push-delivery_15-07-26` follow-up (same feature,
+  `process/features/rewards-notifications/active/real-push-delivery_15-07-26/`) hardens the code
+  *around* that seam so it is correct once real credentials exist, provable today with creds
+  unset: (1) `notifications.ts`'s `deviceTokenSchema.platform` is now a Zod
+  `z.enum(['ios','android'])` (API-boundary-only tightening, no DB/schema change — the column
+  stays `varchar`); (2) `push-provider.ts`'s constructed `ExpoPushMessage` now includes
+  `priority: 'high'` + `_contentAvailable: true` for background/killed-app wake delivery; (3)
+  `sendPush()`'s return type widened `Promise<void>` → `Promise<PushSendResult[]>` (per-ticket
+  `ok`/`error` classification, exports `PushSendResult`/`PERMANENT_PUSH_ERROR_CODES`/
+  `isPermanentPushError`); (4) a new `sendAndPrune()` wrapper in **`notification-dispatch.ts`**
+  (not `push-provider.ts`) calls `sendPush` then hard-deletes any `device_tokens` row whose
+  ticket reports a permanent `DeviceNotRegistered` error — both `dispatchOrderNotification` and
+  `dispatchMarketingNotification` now call it instead of `sendPush` directly. **Correlation
+  gotcha (durable, non-obvious):** `sendPush` filters non-Expo tokens
+  (`Expo.isExpoPushToken`) and re-chunks before sending, so tickets align with the
+  filtered+chunked `validTokens`/`messages` list, NOT the raw input `tokens` array — the prune
+  logic must correlate by that filtered/chunked order (preferring `details.expoPushToken` when
+  the SDK populates it, else positional index within the chunk), never by zipping tickets
+  against the original unfiltered array, or it can delete the wrong device's token row. (5)
+  `apps/mobile/app.config.ts`'s `expo-notifications` plugin entry became a tuple
+  (`['expo-notifications', { enableBackgroundRemoteNotifications: true }]`) to wire the
+  `remote-notification` `UIBackgroundModes` entitlement — no secret file needed for
+  typecheck/lint/build to pass. New reusable test pattern: `push-provider.test.ts` mixes
+  pure-unit assertions (mocked `Expo` client, for message-shape) with a real-seeded-`device_tokens`-row
+  fixture (mirroring `push-provider.integration.test.ts`'s hermetic self-seed/cleanup) for the
+  prune assertions — not "no DB" despite living in `.test.ts` not `.integration.test.ts`. API
+  suite: 167/167 with `EXPO_ACCESS_TOKEN` unset. **Known gaps (both accepted, documented, not
+  defects):** receipt-stage `DeviceNotRegistered` detection (`getPushNotificationReceiptsAsync`,
+  ~15min delayed poll) is deliberately deferred — only ticket-stage errors are pruned today, see
+  `process/features/rewards-notifications/backlog/receipt-stage-token-prune_NOTE_15-07-26.md`;
+  and real on-device delivery (AC-6) is a permanent, user-run Agent-Probe walkthrough (needs live
+  Firebase/APNs/EAS credentials + physical hardware) documented in a standalone runbook
+  (`real-push-delivery_REF-credential-runbook_15-07-26.md`) — no agent can complete it. As of this
+  pass the plan is CODE DONE (all automated gates green) but not yet VERIFIED — the plan's own
+  Phase Completion Rules require the user to review the credential runbook (AC-5) before
+  archival; the plan stays in `active/` pending that review, not yet moved to `completed/`.
 - Delivered by: `process/general-plans/completed/finalize-navigation-shell_09-07-26/` (navigation
   shell — archived plan, full route tree/decisions/validate-contract),
   `process/general-plans/completed/pickup-order-flow_10-07-26/` (customer ordering flow — archived
@@ -745,7 +789,14 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (issue #72 plan-folder housekeeping — added the missing HIST-001/HIST-002
+- Last delta: 2026-07-15 (real-push-delivery UPDATE PROCESS — added the missing PUSH-004 baseline
+  bullet (never previously documented here) plus the `real-push-delivery_15-07-26` hardening
+  follow-up: platform Zod-enum tightening, background/killed-app payload shaping, ticket-based
+  `sendAndPrune` token pruning in `notification-dispatch.ts`, `app.config.ts` background-mode
+  plugin. Plan NOT archived — CODE DONE, all automated gates green (API 167/167), but the plan's
+  own Phase Completion Rules require user review of the credential runbook (AC-5) before VERIFIED
+  archival; plan stays in `active/` pending that review, per the archival vacuous-green gate.)
+- Earlier delta: 2026-07-14 (issue #72 plan-folder housekeeping — added the missing HIST-001/HIST-002
   "Order History + Reorder, real-API" bullet documenting `order-history-reorder-api_13-07-26`
   (merged PR #73), and archived 3 stale `active/` plan folders: `order-history-reorder_13-07-26`
   (SUPERSEDED, never executed), `order-history-reorder-api_13-07-26` (completed, formally archived),
@@ -754,5 +805,7 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 - Earlier delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
 - Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
 - Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
-- HEAD at last delta: branch `dev/admin` (admin-dashboard Phase 1 auth/RBAC + CORS fix, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status` before assuming committed)
+- HEAD at last delta: branch `feat/push-notifications-api` (real-push-delivery hardening on top of
+  PUSH-004 #75, uncommitted at time of this UPDATE PROCESS pass — verify via `git log`/`git status`
+  before assuming committed)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

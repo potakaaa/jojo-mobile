@@ -4,12 +4,14 @@ import { users } from './users';
 /**
  * Per-device Expo push token registry (PUSH-004 / #75).
  *
- * Keyed by `(user_id, device_id)` — one row per physical device per user. A
- * rotated `push_token` on the SAME device UPDATES the existing row (upsert on
- * the unique constraint) rather than inserting a duplicate, so a user's device
- * is never registered twice. `device_id` is a generic string identifier supplied
- * by the client (Expo `identifierForVendor` / Android SSAID) — the column accepts
- * any stable string, independent of which platform API produced it.
+ * Keyed GLOBALLY by `device_id` — one row per physical device, period, not per
+ * (user, device). `device_id` (Expo `identifierForVendor` / Android SSAID) is
+ * stable per physical install regardless of which account is signed in, so a
+ * device can only ever belong to ONE user's push routing at a time. Re-registering
+ * the SAME `device_id` under a different `user_id` (e.g. logout then login as a
+ * different account on a shared device) REASSIGNS the row to the new user rather
+ * than inserting a second row — otherwise both accounts' pushes would keep
+ * landing on that one physical device indefinitely.
  */
 export const deviceTokens = pgTable(
   'device_tokens',
@@ -25,8 +27,5 @@ export const deviceTokens = pgTable(
     created_at: timestamp('created_at').defaultNow().notNull(),
     updated_at: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [
-    unique('device_tokens_user_device_unique').on(t.user_id, t.device_id),
-    index('device_tokens_user_idx').on(t.user_id),
-  ],
+  (t) => [unique('device_tokens_device_unique').on(t.device_id), index('device_tokens_user_idx').on(t.user_id)],
 );

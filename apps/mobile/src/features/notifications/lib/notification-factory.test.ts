@@ -97,7 +97,7 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
 
 // AC#3 — documented default + filter.
 test('should return the documented default for marketingOptIn and filter marketing when off', () => {
-  expect(DEFAULT_MARKETING_OPT_IN).toBe(true);
+  expect(DEFAULT_MARKETING_OPT_IN).toBe(false);
 
   const mixed = [
     item('deal', '2026-07-14T10:00:00.000Z', 'new_deal'),

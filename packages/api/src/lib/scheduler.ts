@@ -47,12 +47,28 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
   function tick(): void {
     const current = now().getTime();
     for (const trigger of triggers.values()) {
+      const end = trigger.windowEnd.getTime();
+      if (current >= end) {
+        // Window has fully passed — purge so dynamically-registered triggers
+        // (per-user/per-order) don't accumulate in memory forever.
+        triggers.delete(trigger.id);
+        fired.delete(trigger.id);
+        continue;
+      }
       if (fired.has(trigger.id)) continue;
       const start = trigger.windowStart.getTime();
-      const end = trigger.windowEnd.getTime();
       if (current >= start && current < end) {
         fired.add(trigger.id);
-        void trigger.onFire();
+        try {
+          const result = trigger.onFire();
+          if (result instanceof Promise) {
+            result.catch((err: unknown) =>
+              console.error(`[scheduler] trigger ${trigger.id} rejected`, err),
+            );
+          }
+        } catch (err) {
+          console.error(`[scheduler] trigger ${trigger.id} threw synchronously`, err);
+        }
       }
     }
   }

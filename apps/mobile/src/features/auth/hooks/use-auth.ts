@@ -56,8 +56,9 @@ export interface AuthContextValue {
    */
   hasCompletedProfile: boolean;
   /**
-   * Marketing push opt-in (PUSH-004), derived from the session. A null value on
-   * the record is treated as opted-IN (true) — matches the server default.
+   * Marketing push opt-in (PUSH-004), derived from the session. Requires
+   * affirmative consent — only an explicit true reads as opted-IN, matching the
+   * server default.
    */
   marketingOptIn: boolean;
   /** Persist the marketing opt-in flag and refresh the session. */
@@ -208,8 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : null;
     const role = user?.role ?? null;
     const isStaff = role !== null && STAFF_ROLES.includes(role as StaffRole);
-    // null opt-in = opted IN (matches the server default).
-    const marketingOptIn = sessionUser?.marketingOptIn !== false;
+    // Requires affirmative consent — only an explicit true is opted IN.
+    const marketingOptIn = sessionUser?.marketingOptIn === true;
     return {
       user,
       role,

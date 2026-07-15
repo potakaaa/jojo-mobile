@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { SignInResult } from '@/features/auth/hooks/use-auth';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { apiRequest } from '@/features/shared/lib/api-request';
 
@@ -30,7 +31,7 @@ import { apiRequest } from '@/features/shared/lib/api-request';
 // hook module transitively loads the auth/native graph and can't run under node).
 export { DEFAULT_MARKETING_OPT_IN } from '@/features/notifications/lib/notification-factory';
 
-const NOTIFICATIONS_QUERY_KEY = ['notifications'] as const;
+const notificationsQueryKey = (userId: string | undefined) => ['notifications', userId] as const;
 const EMPTY_NOTIFICATIONS: AppNotification[] = [];
 
 async function fetchNotifications(): Promise<AppNotification[]> {
@@ -49,7 +50,7 @@ export interface UseNotifications {
   unreadCount: number;
   markRead: (id: string) => void;
   marketingOptIn: boolean;
-  setMarketingOptIn: (value: boolean) => void;
+  setMarketingOptIn: (value: boolean) => Promise<SignInResult>;
 }
 
 const NotificationsContext = createContext<UseNotifications | null>(null);
@@ -59,7 +60,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user, marketingOptIn, setMarketingOptIn: persistMarketingOptIn } = useAuth();
 
   const { data } = useQuery({
-    queryKey: NOTIFICATIONS_QUERY_KEY,
+    queryKey: notificationsQueryKey(user?.id),
     queryFn: fetchNotifications,
     // Only fetch when signed in; the server route is session-gated.
     enabled: Boolean(user),
@@ -72,7 +73,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_QUERY_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationsQueryKey(user?.id) }),
   });
 
   const markRead = useCallback(
@@ -82,12 +83,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     [markReadMutation],
   );
 
+  // Returns the persist promise (rather than fire-and-forget) so the caller can
+  // await it and surface a failure — an opt-out that silently fails must not
+  // look like it succeeded.
   const setMarketingOptIn = useCallback(
-    (value: boolean) => {
-      // Fire-and-forget: persist through better-auth; the session refetch inside
-      // `persistMarketingOptIn` propagates the new value to `marketingOptIn`.
-      void persistMarketingOptIn(value);
-    },
+    (value: boolean) => persistMarketingOptIn(value),
     [persistMarketingOptIn],
   );
 

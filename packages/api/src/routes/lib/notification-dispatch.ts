@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db } from '../../db/client';
 import { deviceTokens, notifications, orders, users } from '../../db/schema/index';
-import { sendPush } from '../../lib/push-provider';
+import { isPermanentPushError, sendPush, type PushPayload } from '../../lib/push-provider';
 
 type OrderRow = typeof orders.$inferSelect;
 
@@ -48,6 +48,32 @@ async function loadPushTokens(userId: string): Promise<string[]> {
     .from(deviceTokens)
     .where(eq(deviceTokens.user_id, userId));
   return rows.map((row) => row.push_token);
+}
+
+/**
+ * Send a push to `tokens`, then hard-delete the `device_tokens` row for any
+ * token the provider reported as PERMANENTLY dead (`DeviceNotRegistered`).
+ * Transient errors leave the row untouched. Shared by both dispatchers so the
+ * pruning rule lives in exactly one place.
+ *
+ * Never throws — a prune failure (e.g. a DB error deleting the row) must not
+ * break the caller's flow any more than a send failure does. The delete is
+ * scoped by `push_token`, which is assumed globally unique per Expo push
+ * registration (`device_tokens` has a unique index on `device_id`, NOT
+ * `push_token`; Expo push tokens are themselves globally unique in practice, so
+ * this removes exactly the one dead device's row — plan Risk #5).
+ */
+async function sendAndPrune(tokens: string[], payload: PushPayload): Promise<void> {
+  const results = await sendPush(tokens, payload);
+  for (const result of results) {
+    if (result.status === 'error' && isPermanentPushError(result.errorType)) {
+      try {
+        await db.delete(deviceTokens).where(eq(deviceTokens.push_token, result.token));
+      } catch (err) {
+        console.error('[notify] token prune failed', err);
+      }
+    }
+  }
 }
 
 /**
@@ -92,7 +118,7 @@ export async function dispatchOrderNotification(
     });
 
     const tokens = await loadPushTokens(order.user_id);
-    await sendPush(tokens, {
+    await sendAndPrune(tokens, {
       title: copy.title,
       body: copy.body,
       data: { type, orderId: order.id },
@@ -114,8 +140,8 @@ export interface MarketingPayload {
  * Dispatch a marketing notification (PUSH-003 will build the real campaigns; this
  * is the substrate). MUST check `marketing_opt_in` FIRST, unconditionally — no
  * code path (including scheduler-triggered calls) may bypass this gate (SPEC hard
- * constraint). A null opt-in value is treated as opted-IN (documented default);
- * only an explicit `false` blocks.
+ * constraint). Requires affirmative consent: only an explicit `true` opts in;
+ * anything else (including a missing user) is treated as opted-out.
  *
  * Returns `true` when a notification was written+sent, `false` when gated out.
  */
@@ -129,8 +155,8 @@ export async function dispatchMarketingNotification(
     .from(users)
     .where(eq(users.id, userId));
 
-  // Opt-in gate — unconditional. null = opted in; only explicit false blocks.
-  const optedIn = user ? user.marketingOptIn !== false : false;
+  // Opt-in gate — unconditional. Only an explicit true opts in.
+  const optedIn = user?.marketingOptIn === true;
   if (!optedIn) return false;
 
   await db.insert(notifications).values({
@@ -143,7 +169,7 @@ export async function dispatchMarketingNotification(
   });
 
   const tokens = await loadPushTokens(userId);
-  await sendPush(tokens, {
+  await sendAndPrune(tokens, {
     title: payload.title,
     body: payload.body,
     data: { type },
