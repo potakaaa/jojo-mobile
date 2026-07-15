@@ -17,9 +17,7 @@ function DashboardHome() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="font-display text-display font-bold text-foreground">
-        Overview
-      </h1>
+      <h1 className="font-display text-display font-bold text-foreground">Overview</h1>
 
       <Card className="max-w-2xl rounded-3xl border-2 border-foreground shadow-[var(--shadow-offset-md)]">
         <CardHeader>

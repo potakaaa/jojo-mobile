@@ -40,7 +40,8 @@ export function AppSidebar() {
                   const isActive = item.activeOptions?.exact
                     ? location.pathname === item.to
                     : location.pathname.startsWith(item.to) &&
-                      (location.pathname === item.to || location.pathname.charAt(item.to.length) === '/');
+                      (location.pathname === item.to ||
+                        location.pathname.charAt(item.to.length) === '/');
 
                   return (
                     <SidebarMenuItem key={item.id}>

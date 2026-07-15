@@ -33,7 +33,10 @@ export function NavUser() {
         </div>
       </SidebarMenuItem>
       <SidebarMenuItem>
-        <SidebarMenuButton onClick={handleSignOut} className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive">
+        <SidebarMenuButton
+          onClick={handleSignOut}
+          className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
           <LogOut className="size-4" />
           <span>Sign out</span>
         </SidebarMenuButton>
