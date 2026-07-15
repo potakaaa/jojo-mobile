@@ -18,6 +18,7 @@ import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
+import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
 
 // ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
@@ -200,6 +201,10 @@ app.get('/api/branches/:id', async (req, res) => {
 app.use('/branches', branchesRouter);
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
+// Rewards routes: GET /rewards is a public catalog; /rewards/balance and
+// /rewards/:id/redeem are session-gated per-route inside the router (mirrors
+// /orders — never mount-level guarded).
+app.use('/rewards', rewardsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

@@ -5,11 +5,13 @@ import type {
   branchProductAvailability,
   branches,
   categories,
+  coupons,
   deals,
   orderItems,
   orders,
   productOptions,
   products,
+  rewards,
 } from '../../db/schema/index';
 
 type BranchRow = InferSelectModel<typeof branches>;
@@ -20,6 +22,8 @@ type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailab
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
 type DealRow = InferSelectModel<typeof deals>;
+type RewardRow = InferSelectModel<typeof rewards>;
+type CouponRow = InferSelectModel<typeof coupons>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
 type DealType = DealRow['deal_type'];
@@ -520,5 +524,66 @@ export function serializeStaffOrderDetail(
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     totalCents: numericToCents(order.total),
     items: items.map(serializeStaffOrderItem),
+  };
+}
+
+// ─── Rewards / coupons serializers (Phase 1 — rewards backend) ───────────────
+
+/**
+ * A reward at the HTTP boundary. Mirrors `@jojopotato/types` `Reward` (declared
+ * locally to keep the no-cross-dependency boundary convention). `rewardValue` is
+ * cents (`reward_value` is a pg numeric decimal-peso string), or null.
+ */
+export interface ApiReward {
+  id: string;
+  name: string;
+  requiredStars: number;
+  rewardType: string;
+  rewardValue: number | null;
+  eligibleProductId: string | null;
+  isActive: boolean;
+}
+
+/** Serialize a `rewards` row to `ApiReward` (money → cents at the boundary). */
+export function serializeReward(reward: RewardRow): ApiReward {
+  return {
+    id: reward.id,
+    name: reward.name,
+    requiredStars: reward.required_stars,
+    rewardType: reward.reward_type,
+    rewardValue: reward.reward_value === null ? null : numericToCents(reward.reward_value),
+    eligibleProductId: reward.eligible_product_id,
+    isActive: reward.is_active,
+  };
+}
+
+/**
+ * An issued coupon at the HTTP boundary. Mirrors `@jojopotato/types` `Coupon`
+ * (schema-based — no display `title`/`discountLabel`). Timestamps are ISO strings.
+ */
+export interface ApiCoupon {
+  id: string;
+  userId: string;
+  code: string;
+  status: CouponRow['status'];
+  dealId: string | null;
+  rewardId: string | null;
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+/** Serialize a `coupons` row to `ApiCoupon`. */
+export function serializeCoupon(coupon: CouponRow): ApiCoupon {
+  return {
+    id: coupon.id,
+    userId: coupon.user_id,
+    code: coupon.code,
+    status: coupon.status,
+    dealId: coupon.deal_id,
+    rewardId: coupon.reward_id,
+    expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
+    usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
+    createdAt: coupon.created_at.toISOString(),
   };
 }

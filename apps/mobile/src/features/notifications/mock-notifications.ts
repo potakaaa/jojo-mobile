@@ -8,7 +8,12 @@
  * These also feed the marketing evaluators in the factory/tests. Replace with
  * backend-backed data in #75.
  */
-import type { AppNotification, Coupon, NotificationType, OrderStatus } from '@jojopotato/types';
+import type {
+  AppNotification,
+  CouponDisplay,
+  NotificationType,
+  OrderStatus,
+} from '@jojopotato/types';
 
 import { targetForType } from '@/features/notifications/lib/notification-factory';
 
@@ -128,7 +133,7 @@ export const MOCK_NOTIFICATIONS: AppNotification[] = [
 export const MOCK_COUPON_LEAD_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
 /** Coupon whose `expiresAt` sits inside the lead window (fires coupon_expiring). */
-export const MOCK_COUPON: Coupon = {
+export const MOCK_COUPON: CouponDisplay = {
   id: 'coupon-fries-free',
   code: 'FREEFRIES',
   title: 'Free Classic Fries',

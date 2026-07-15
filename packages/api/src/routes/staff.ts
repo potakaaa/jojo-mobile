@@ -1,5 +1,5 @@
 import type { OrderStatus, StaffMe } from '@jojopotato/types';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -11,10 +11,17 @@ import {
   orderStatusEnum,
   orders,
   products,
+  starTransactions,
+  userStars,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
 import { canTransition } from './lib/order-state-machine';
-import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
+import {
+  numericToCents,
+  serializeStaffOrderDetail,
+  serializeStaffOrderSummary,
+} from './lib/serializers';
+import { computeStarsEarned } from './lib/star-accrual';
 
 /**
  * Non-terminal order statuses shown on the staff Active Orders dashboard.
@@ -35,11 +42,49 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
 // ─── Side-effect stubs (STAFF-003) ───────────────────────────────────────────
 
 /**
- * TODO(STAR-001): credit stars when an order is completed.
- * Replace with real star-crediting logic once the rewards system is built.
+ * Credit stars for a completed order (server-authoritative). Count-based accrual:
+ * an order earns exactly 1 star when its subtotal meets the minimum threshold,
+ * else 0 (see `computeStarsEarned`). The star amount is always derived here from
+ * the order's own `subtotal` — never client-sent.
+ *
+ * Runs in its own transaction: it upserts `user_stars` (incrementing BOTH
+ * `current_stars` and `lifetime_stars`) and inserts an `earned` `star_transactions`
+ * row. Idempotent per order — an explicit guard skips crediting if this order
+ * already has an `earned` row (belt-and-suspenders: the state machine already
+ * makes `completed` terminal, so this handler is the sole, once-only trigger).
  */
-function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
-  void _order; // TODO(STAR-001): replace with real star-crediting logic
+async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<void> {
+  const subtotalCents = numericToCents(order.subtotal);
+  const stars = computeStarsEarned(subtotalCents);
+  if (stars <= 0) return;
+
+  await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: starTransactions.id })
+      .from(starTransactions)
+      .where(and(eq(starTransactions.order_id, order.id), eq(starTransactions.type, 'earned')));
+    if (existing) return; // already credited — never double-credit an order.
+
+    await tx
+      .insert(userStars)
+      .values({ user_id: order.user_id, current_stars: stars, lifetime_stars: stars })
+      .onConflictDoUpdate({
+        target: userStars.user_id,
+        set: {
+          current_stars: sql`${userStars.current_stars} + ${stars}`,
+          lifetime_stars: sql`${userStars.lifetime_stars} + ${stars}`,
+          updated_at: new Date(),
+        },
+      });
+
+    await tx.insert(starTransactions).values({
+      user_id: order.user_id,
+      order_id: order.id,
+      type: 'earned',
+      stars,
+      description: `Earned ${stars} star for order ${order.order_number}`,
+    });
+  });
 }
 
 /**
@@ -287,7 +332,7 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // 8. Call side-effect stubs at the correct transition sites.
   const updatedOrder = { ...order, ...patch } as typeof order;
   if (targetStatus === 'completed') {
-    creditStarsForOrder(updatedOrder);
+    await creditStarsForOrder(updatedOrder);
     notifyCustomer(updatedOrder, 'completed');
   } else if (targetStatus === 'rejected') {
     notifyCustomer(updatedOrder, 'rejected');

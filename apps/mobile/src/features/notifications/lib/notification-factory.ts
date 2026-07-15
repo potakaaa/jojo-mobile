@@ -8,7 +8,7 @@
 import {
   MARKETING_NOTIFICATION_TYPES,
   type AppNotification,
-  type Coupon,
+  type CouponDisplay,
   type MarketingNotificationType,
   type NotificationTargetScreen,
   type NotificationType,
@@ -130,7 +130,7 @@ export function shouldNotifyOneMoreOrder(stars: number, required: number): boole
  * the coupon has no `expiresAt` (E1 — `expiresAt` is an ISO string, parse first).
  */
 export function shouldNotifyCouponExpiring(
-  coupon: Coupon,
+  coupon: CouponDisplay,
   now: number,
   leadWindowMs: number,
 ): boolean {
@@ -143,7 +143,7 @@ export function shouldNotifyCouponExpiring(
 /** Inputs the marketing evaluators read to build notifications. */
 export interface MarketingInputs {
   newDeals?: { dealId: string; title: string; body: string; createdAt?: string }[];
-  coupons?: { coupon: Coupon; now: number; leadWindowMs: number; createdAt?: string }[];
+  coupons?: { coupon: CouponDisplay; now: number; leadWindowMs: number; createdAt?: string }[];
   starProgress?: { stars: number; required: number; createdAt?: string };
   rewardUnlockEvents?: { eventId: string; title: string; body: string; createdAt?: string }[];
   promos?: { promoId: string; title: string; body: string; createdAt?: string }[];

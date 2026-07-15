@@ -11,14 +11,8 @@ export interface RewardsTeaserCardProps {
   onPress?: () => void;
 }
 
-const TIER_LABEL: Record<RewardsAccount['tier'], string> = {
-  bronze: 'Bronze',
-  silver: 'Silver',
-  gold: 'Gold',
-};
-
 /**
- * Tappable rewards teaser showing the member's current points and tier.
+ * Tappable rewards teaser showing the member's current star balance.
  * Tapping toggles a local pressed highlight — it does not navigate.
  */
 export function RewardsTeaserCard({ rewards, onPress }: RewardsTeaserCardProps) {
@@ -44,10 +38,8 @@ export function RewardsTeaserCard({ rewards, onPress }: RewardsTeaserCardProps) 
         <Ionicons name="star" size={18} color={Palette.ink} />
       </View>
       <View style={styles.textColumn}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>
-          {TIER_LABEL[rewards.tier]} member
-        </Text>
-        <Text style={[styles.points, { color: theme.text }]}>{rewards.points} points</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>Rewards member</Text>
+        <Text style={[styles.points, { color: theme.text }]}>{rewards.currentStars} stars</Text>
       </View>
       <View style={styles.ctaRow}>
         <Text style={[styles.cta, { color: theme.accent }]}>View rewards</Text>
