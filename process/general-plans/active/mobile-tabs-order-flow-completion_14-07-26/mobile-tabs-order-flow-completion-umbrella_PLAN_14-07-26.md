@@ -271,7 +271,7 @@ Known shared-surface notes for the orchestrator to resolve:
 |---|---|
 | 0 — Pre-program (plan creation) | ✅ COMPLETE |
 | 01 — Rewards/Stars Backend + Type Reconcile | ✅ VERIFIED |
-| 02 — Coupons Backend | ⏳ PLANNED |
+| 02 — Coupons Backend | ✅ VERIFIED |
 | 03 — Home Tab Rewire | ⏳ PLANNED |
 | 04 — Rewards Tab + Coupon Wallet UI | ⏳ PLANNED |
 | 05 — Account / Profile Screen | ⏳ PLANNED |
@@ -367,22 +367,41 @@ Mobile-screen UX (Home/Rewards/Wallet/Account render + redeem round-trip) is Age
 
 ## Current Execution State
 
-Last updated: 15-07-26
-Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED)
-Phase 1 status: ✅ VERIFIED
-Phase 1 EVL: PASS — 6 gates green independently (typecheck, lint, `packages/ui` 47/47, `apps/mobile` 13/13, `packages/api` 155/155 incl. new star-accrual.test.ts 6 + rewards.test.ts 12, format:check) — confirmed by orchestrator-driven EVL re-run, not just execute-agent's self-report
+Last updated: 15-07-26 (Phase 2 closeout)
+Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED)
+Phase 2 status: ✅ VERIFIED
+Phase 2 EVL: PASS — all gates green independently: `packages/api` 189/189 (baseline 155 + coupons.test.ts 18 + orders.test.ts +16), root typecheck 6/6, `apps/mobile` typecheck clean, lint clean (3 pre-existing unrelated `dev-with-tunnel.mjs` warnings, not Phase 2 regressions), `format:check` clean, migration `0007_round_menace.sql` applied clean — confirmed by orchestrator-driven EVL re-run, not just execute-agent's self-report
+Phase 2 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-02-coupons-backend_REPORT_14-07-26.md`
+Phase 2 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-02-coupons-backend/` (5 artifacts — adversarial-validation.json, context-snippets.json, review-decision.json, risk-gate.json, verification.json; `humanApprovalRequired:true` — human sign-off on the coupon/order pricing-engine evidence pack recommended before production deploy; not a program blocker, carried forward, same posture as Phase 1)
+Phase 1 status: ✅ VERIFIED (unchanged this pass)
 Phase 1 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-01-rewards-backend_REPORT_14-07-26.md`
-Phase 1 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-01-rewards-backend/` (`mustStopBeforeFinalize:false`, `humanApprovalRequired:true` — human sign-off on the rewards/credits evidence pack recommended before production deploy; not a program blocker, carried forward)
-Current phase: Phase 2 — Coupons Backend
+Phase 1 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-01-rewards-backend/` (`mustStopBeforeFinalize:false`, `humanApprovalRequired:true` — carried forward)
+Current phase: Phase 3 — Home Tab Rewire
 Current loop step: RESEARCH (not started)
 Validate-contract status: pending
 Program Net Gate: PENDING
-Latest validator run: 15-07-26 — none run this pass (no harness/context/plan-structure files touched by this UPDATE PROCESS session; see Phase 1 Learnings below for the one recommended-not-required context delta)
+Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 2 Learnings below)
+Outstanding non-blocking item: Phase 2's execution changes (see git status: `orders.ts`, `serializers.ts`, `coupons.ts` (new), `coupons.test.ts` (new), `orders.test.ts`, schema/migration files) are still UNCOMMITTED as of this UPDATE PROCESS pass — orchestrator should invoke `vc-git-manager` for the Phase 2 execution commit before or alongside this process-artifact commit, per the umbrella's "commit each phase before advancing" global constraint. Note: `apps/mobile/src/features/auth/hooks/use-auth.ts` is also modified in the working tree but is UNRELATED to Phase 2 (predates this program's session) — do not fold it into the Phase 2 execution commit; flag to orchestrator separately.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE, PLAN-SUPPLEMENT, or PVL.
 
 Note: The Stable Program Goal above is fixed. This section is the only part that changes — update-process-agent rewrites it after every phase closeout (overwrite, not append).
+
+---
+
+## Phase 2 Learnings for Downstream Phases
+
+Captured at Phase 2's UPDATE PROCESS closeout (15-07-26). Read this before starting Phase 3 or Phase 4 RESEARCH.
+
+1. **`POST /orders` now accepts an optional `couponId` and returns `couponId` on `ApiOrder`.** Phase 4's checkout UI wiring (passing a selected coupon into checkout) consumes this directly — the backend contract is done; only the mobile UI wiring remains, explicitly Phase 4's scope (Phase 2 does not touch mobile).
+2. **`serializeCouponWithLabel` (NOT `serializeCoupon`) is the join-based labeled serializer.** `GET /coupons` (consumed by Phase 4's coupon wallet UI) uses `serializeCouponWithLabel`, which LEFT JOINs `deals`+`rewards` to populate a human-readable `displayLabel` field. `serializeCoupon` (Phase 1's original, unmodified) has no label and remains the response shape for `POST /rewards/:id/redeem` only — do not conflate the two when building Phase 4's UI data-fetch hooks.
+3. **`rewardDiscountLabel(reward_type, reward_value, reward_name)` helper exists in `serializers.ts`** (note: 3-arg signature, deviated from the plan's original 2-arg spec — see Phase 2 plan's `## Deviations`) — reusable for any future reward-label rendering need; analogous to the existing `dealDiscountLabel`.
+4. **Migration `0007_round_menace.sql` added `orders.coupon_id`** (nullable, NO ACTION FK to `coupons.id`) — any future phase reading/writing the `orders` table should be aware this column now exists alongside `deal_id`.
+5. **Coupon auto-apply supports `fixed_discount`/`percentage_discount`/`free_item` (requires the eligible product in cart) reward-linked coupons, plus deal-linked coupons (via `computeDealDiscountCents` reuse), and stacks with an existing `dealId` discount — always clamped to subtotal, `discount_total` stores the clamped combined value.** `reward_type` has no DB-level enum constraint; unrecognized values are safely rejected (400) rather than mispriced. This is the canonical pattern for any future money-adjacent discount-stacking logic in this codebase.
+6. **High-risk evidence-pack pattern is now precedented twice** (Phase 1 rewards, Phase 2 coupons/order-pricing) — both `humanApprovalRequired:true`, both non-blocking to program progress, both carried forward for a single pre-production human sign-off pass. Future money-adjacent phases in this program (none currently planned — Phases 3-6 are UI/UX) would follow the same 5-artifact `harness/{phase-slug}/` shape if one arose.
+7. **Process observation (non-blocking):** Phase 2's execution changes remain uncommitted at this UPDATE PROCESS closeout (see Current Execution State's "Outstanding non-blocking item" above) — the orchestrator, not this agent, owns invoking `vc-git-manager`. Flagging so Phase 3's RESEARCH does not assume a clean working tree.
+8. **Recommended (not required) context delta, still deferred to program-end UPDATE PROCESS:** consistent with Phase 1's same recommendation, `process/context/all-context.md`'s "Current Implementation State" should gain a bullet for the full rewards+coupons backend once Phases 1-4 all ship, rather than churning mid-program. Not written this pass by explicit task instruction.
 
 ---
 

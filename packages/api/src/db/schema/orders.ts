@@ -1,5 +1,6 @@
 import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { branches } from './branches';
+import { coupons } from './coupons';
 import { deals } from './deals';
 import { users } from './users';
 
@@ -31,6 +32,10 @@ export const orders = pgTable(
     // Nullable FK to the applied deal (NO ACTION on delete — matches user_id/branch_id
     // precedent). NULL when no deal was applied. Usage counts derive from this column.
     deal_id: uuid('deal_id').references(() => deals.id),
+    // Nullable FK to the applied coupon (NO ACTION on delete — mirrors deal_id).
+    // NULL when no coupon was applied. Set atomically with the coupon CAS-mark-used
+    // inside the placement transaction (Phase 2 — coupon auto-apply at checkout).
+    coupon_id: uuid('coupon_id').references(() => coupons.id),
     order_number: varchar('order_number').unique().notNull(),
     status: orderStatusEnum('status').default('pending').notNull(),
     subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),

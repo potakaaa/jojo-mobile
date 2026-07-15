@@ -16,6 +16,7 @@ import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
+import { couponsRouter } from './routes/coupons';
 import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
 import { rewardsRouter } from './routes/rewards';
@@ -205,6 +206,10 @@ app.use('/orders', ordersRouter);
 // /rewards/:id/redeem are session-gated per-route inside the router (mirrors
 // /orders — never mount-level guarded).
 app.use('/rewards', rewardsRouter);
+// Coupons routes: GET /coupons (wallet list) and POST /coupons/:id/redeem are
+// session-gated per-route inside the router (mirrors /orders and /rewards —
+// customer-tier route, no /api prefix, never mount-level guarded).
+app.use('/coupons', couponsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

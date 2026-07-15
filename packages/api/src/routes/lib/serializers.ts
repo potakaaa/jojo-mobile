@@ -221,6 +221,7 @@ export interface ApiOrder {
   estimatedReadyAt: string | null;
   placedAt: string;
   dealId: string | null;
+  couponId: string | null;
   items: ApiOrderItem[];
 }
 
@@ -357,6 +358,7 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     placedAt: order.placed_at.toISOString(),
     dealId: order.deal_id,
+    couponId: order.coupon_id,
     items: items.map(serializeOrderItem),
   };
 }
@@ -586,4 +588,72 @@ export function serializeCoupon(coupon: CouponRow): ApiCoupon {
     usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
     createdAt: coupon.created_at.toISOString(),
   };
+}
+
+/**
+ * Human-readable label for a REWARD-issued coupon, analogous to
+ * `dealDiscountLabel`. `rewardType` is an unconstrained `varchar` (no DB enum),
+ * so the `default` branch is mandatory: any unrecognized type falls back to the
+ * reward's own name (never throws, never returns undefined).
+ *  - `fixed_discount`      → `"₱X OFF"` (X = whole-peso reward_value)
+ *  - `percentage_discount` → `"X% OFF"`
+ *  - `free_item`           → the reward's `name` (or `"Free item"` if empty)
+ *  - anything else         → the reward's `name` (or `"Reward"` if empty)
+ */
+export function rewardDiscountLabel(
+  rewardType: string,
+  rewardValue: string | null,
+  rewardName: string,
+): string {
+  switch (rewardType) {
+    case 'fixed_discount':
+      return `₱${Number(rewardValue ?? '0').toFixed(0)} OFF`;
+    case 'percentage_discount':
+      return `${Number(rewardValue ?? '0')}% OFF`;
+    case 'free_item':
+      return rewardName.trim().length > 0 ? rewardName : 'Free item';
+    default:
+      return rewardName.trim().length > 0 ? rewardName : 'Reward';
+  }
+}
+
+/**
+ * An issued coupon at the HTTP boundary WITH a derived, human-readable
+ * `displayLabel` (so the coupon-wallet card has renderable text). Used only by
+ * `GET /coupons`, which LEFT JOINs the linked deal/reward to build the label.
+ * `serializeCoupon` (no label) stays untouched for `POST /rewards/:id/redeem`.
+ */
+export interface ApiCouponWithLabel extends ApiCoupon {
+  displayLabel: string;
+}
+
+/**
+ * Serialize a `coupons` row PLUS its (optional) joined deal/reward row into an
+ * `ApiCouponWithLabel`. The label source mirrors how the coupon was issued:
+ * a `deal_id`-linked coupon uses `dealDiscountLabel` (reusing `serializeDeal`'s
+ * polymorphic value rule); a `reward_id`-linked coupon uses `rewardDiscountLabel`.
+ * Falls back to `"Coupon"` when neither link resolves a row. NEVER modifies or
+ * re-implements `serializeCoupon` — it wraps its output additively.
+ */
+export function serializeCouponWithLabel(
+  coupon: CouponRow,
+  deal: DealRow | null,
+  reward: RewardRow | null,
+): ApiCouponWithLabel {
+  let displayLabel = 'Coupon';
+  if (coupon.deal_id !== null && deal !== null) {
+    let discountValue = 0;
+    if (deal.discount_value !== null) {
+      if (deal.deal_type === 'percentage_discount') {
+        discountValue = Number(deal.discount_value);
+      } else if (deal.deal_type === 'fixed_discount') {
+        discountValue = numericToCents(deal.discount_value);
+      }
+    }
+    displayLabel = dealDiscountLabel(deal.deal_type, discountValue);
+  } else if (coupon.reward_id !== null && reward !== null) {
+    displayLabel = rewardDiscountLabel(reward.reward_type, reward.reward_value, reward.name);
+  }
+
+  return { ...serializeCoupon(coupon), displayLabel };
 }
