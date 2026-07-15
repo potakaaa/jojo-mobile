@@ -1,14 +1,14 @@
 import { CouponCard, EmptyState } from '@jojopotato/ui';
 import type { CouponStatus } from '@jojopotato/types';
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, SectionList, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMemo } from 'react';
+import { ActivityIndicator, Platform, SectionList, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useCoupons } from '@/features/coupons/hooks/use-coupons';
-import { useRedeemCoupon } from '@/features/coupons/hooks/use-redeem-coupon';
 import { toCouponDisplay } from '@/features/coupons/lib/to-coupon-display';
-import { ApiError, type ApiCouponWithLabel } from '@/lib/api-client';
+import { type ApiCouponWithLabel } from '@/lib/api-client';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -21,19 +21,24 @@ const GROUPS: { status: CouponStatus; title: string }[] = [
 
 /**
  * Coupon wallet (nested Rewards screen). Lists the member's real coupons grouped
- * by status, renders each via `@jojopotato/ui`'s `CouponCard` through the pure
- * `toCouponDisplay` adapter, and lets an available coupon be redeemed with a
- * confirm dialog. A re-redeem of an already-used/expired coupon (409) surfaces a
- * friendly inline message rather than crashing.
+ * by status and renders each via `@jojopotato/ui`'s `CouponCard` through the pure
+ * `toCouponDisplay` adapter.
+ *
+ * Display-only by design: coupons are NOT independently consumable from this
+ * screen. Consumption happens ONLY atomically at checkout via the `couponId`
+ * discount-apply flow (`POST /orders`), which computes the real discount AND
+ * marks the coupon used in one transaction. This screen previously had a
+ * standalone "Use coupon" action (`POST /coupons/:id/redeem`) that flipped a
+ * coupon to `used` with NO discount applied anywhere — burning the coupon's
+ * value for nothing. That action was removed; the wallet now only views coupons.
  */
 export default function CouponsScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
 
   const coupons = useCoupons();
-  const redeem = useRedeemCoupon();
-  const [redeemError, setRedeemError] = useState<string | null>(null);
 
   const grouped = useMemo(() => groupByStatus(coupons.data ?? []), [coupons.data]);
 
@@ -45,27 +50,6 @@ export default function CouponsScreen() {
       ),
     [grouped],
   );
-
-  const confirmRedeem = (coupon: ApiCouponWithLabel) => {
-    Alert.alert('Use this coupon?', `Redeem coupon ${coupon.code}? This can't be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Use coupon',
-        onPress: () => {
-          setRedeemError(null);
-          redeem.mutate(coupon.id, {
-            onError: (error) => {
-              setRedeemError(
-                error instanceof ApiError && error.status === 409
-                  ? 'This coupon is no longer available — it may already be used or expired.'
-                  : "Couldn't redeem this coupon. Please try again.",
-              );
-            },
-          });
-        },
-      },
-    ]);
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -93,31 +77,22 @@ export default function CouponsScreen() {
         ) : (
           <SectionList
             style={styles.scroll}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[
+              styles.content,
+              Platform.OS !== 'web' && {
+                paddingBottom: getFloatingTabBarClearance(insets.bottom),
+              },
+            ]}
             showsVerticalScrollIndicator={false}
             sections={sections}
             keyExtractor={(coupon) => coupon.id}
             stickySectionHeadersEnabled={false}
-            ListHeaderComponent={
-              redeemError ? (
-                <View style={[styles.errorBanner, { borderColor: theme.border }]}>
-                  <Text style={[styles.errorText, { color: theme.text }]}>{redeemError}</Text>
-                </View>
-              ) : null
-            }
             renderSectionHeader={({ section }) => (
               <Text style={[styles.groupTitle, { color: theme.text }]}>{section.title}</Text>
             )}
-            renderItem={({ item: coupon, section }) => (
-              <CouponCard
-                coupon={toCouponDisplay(coupon)}
-                mode={mode}
-                onPress={
-                  section.status === 'available' && !redeem.isPending
-                    ? () => confirmRedeem(coupon)
-                    : undefined
-                }
-              />
+            renderItem={({ item: coupon }) => (
+              // Display-only: no onPress — coupons are consumed at checkout, not here.
+              <CouponCard coupon={toCouponDisplay(coupon)} mode={mode} />
             )}
           />
         )}
@@ -162,15 +137,5 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
     marginTop: Spacing.two,
-  },
-  errorBanner: {
-    borderWidth: 2,
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    backgroundColor: Palette.jyellow,
-  },
-  errorText: {
-    fontFamily: FontFamily.body.semibold,
-    fontSize: TypeScale.bodySmall,
   },
 });

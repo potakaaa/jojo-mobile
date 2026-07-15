@@ -1,8 +1,9 @@
 import { Button, Card } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { splitBirthday } from '@/features/auth/lib/birthday';
@@ -21,6 +22,7 @@ export default function AccountScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { user, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const displayName = user?.name?.trim() ? user.name : 'Your account';
   const email = user?.email ?? '';
@@ -29,7 +31,12 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+        ]}
+      >
         <View style={styles.header}>
           <Text style={[styles.name, { color: theme.text }]}>{displayName}</Text>
           {email ? (
