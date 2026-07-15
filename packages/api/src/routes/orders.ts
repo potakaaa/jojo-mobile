@@ -102,6 +102,19 @@ ordersRouter.post('/', requireSession, async (req, res) => {
     return;
   }
 
+  // Single-active-discount rule: the cart model allows exactly ONE discount source
+  // at a time. A deal and a reward coupon must never both apply on one order, so
+  // reject the request up front (before any discount math / DB work) when both are
+  // present. `couponCode` counts as present only when it is a non-empty string —
+  // an empty/whitespace value is treated as absent (same as omitting it).
+  const hasCoupon = body.couponCode !== undefined && body.couponCode.trim() !== '';
+  if (body.dealId && hasCoupon) {
+    res.status(400).json({
+      error: 'Only one discount can be applied per order — remove the deal or the coupon.',
+    });
+    return;
+  }
+
   const userId = req.user!.id;
 
   try {

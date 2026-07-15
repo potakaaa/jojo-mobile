@@ -13,6 +13,7 @@ import {
   products,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
+import { creditStarForCompletedOrder } from '../lib/star-earning';
 import { canTransition } from './lib/order-state-machine';
 import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
 
@@ -35,11 +36,22 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
 // ─── Side-effect stubs (STAFF-003) ───────────────────────────────────────────
 
 /**
- * TODO(STAR-001): credit stars when an order is completed.
- * Replace with real star-crediting logic once the rewards system is built.
+ * Credit a Jojo Star for a completed order (wired as of the dev/star merge —
+ * resolves the STAFF-003 star-earn dependency). Delegates to the idempotent
+ * `creditStarForCompletedOrder` service (DB-enforced single credit per order; also
+ * triggers STAR-003 reward unlock + coupon generation on threshold crossing).
+ *
+ * Best-effort and fire-and-forget: the order status transition is already committed
+ * by the time this runs, so a credit failure must NOT fail the 200 response. We
+ * still `await` so any error is caught and logged here rather than surfacing as an
+ * unhandled rejection.
  */
-function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
-  void _order; // TODO(STAR-001): replace with real star-crediting logic
+async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<void> {
+  try {
+    await creditStarForCompletedOrder(order.id);
+  } catch (err) {
+    console.error(`[staff] failed to credit star for completed order ${order.id}`, err);
+  }
 }
 
 /**
@@ -287,7 +299,7 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // 8. Call side-effect stubs at the correct transition sites.
   const updatedOrder = { ...order, ...patch } as typeof order;
   if (targetStatus === 'completed') {
-    creditStarsForOrder(updatedOrder);
+    await creditStarsForOrder(updatedOrder);
     notifyCustomer(updatedOrder, 'completed');
   } else if (targetStatus === 'rejected') {
     notifyCustomer(updatedOrder, 'rejected');

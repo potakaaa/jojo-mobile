@@ -823,4 +823,29 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
     expect(res.status).toBe(201);
     expect(res.json.order.discountTotalCents).toBe(0);
   });
+
+  // Single-active-discount rule: a deal and a reward coupon are mutually exclusive
+  // and must never both apply on one order. The guard fires BEFORE any discount
+  // computation or DB write, so nothing is placed and the coupon is untouched.
+  it('rejects (400) when BOTH dealId and couponCode are supplied; no order/side-effects', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('rwExcl');
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponCode: code },
+    });
+    expect(res.status).toBe(400);
+
+    // No order row was created for this user.
+    const userOrders = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(userOrders).toHaveLength(0);
+
+    // The coupon was NOT consumed — still available, no used_at.
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+  });
 });

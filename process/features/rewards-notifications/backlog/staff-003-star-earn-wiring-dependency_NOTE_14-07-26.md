@@ -10,6 +10,13 @@ metadata:
 
 # Backlog NOTE — STAFF-003 Star-Earn Wiring Dependency
 
+> **RESOLVED (2026-07-15):** the earn half is wired in `packages/api/src/routes/staff.ts` — the
+> `PATCH /api/staff/orders/:orderId` completion transition now calls
+> `await creditStarForCompletedOrder(order.id)` (best-effort, error-logged). Covered by a new
+> `ready → completed` case in `staff-order-status.integration.test.ts`. The refund/reversal half
+> (`reverseStarForRefundedOrder`) remains unwired — no refund endpoint transitions
+> `payment_status → 'refunded'` yet, so that dependency stays open.
+
 **Created:** 2026-07-14 (STAR-003 UPDATE PROCESS)
 **Priority:** High (P0 — the full earn→unlock chain is built and tested but NOTHING calls it on real order completion)
 **Source:** STAR-001/002/003 out-of-scope deferred work
