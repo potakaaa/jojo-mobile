@@ -285,6 +285,9 @@ export default function CheckoutScreen() {
                 onPress={() => router.push('/(tabs)/order/payment-method')}
               />
             </View>
+            <Text style={[styles.paymentNote, { color: theme.textSecondary }]}>
+              Pay when you pick up — settle your order in cash or card at the branch counter.
+            </Text>
           </Card>
 
           {error ? <Text style={[styles.errorText, { color: theme.accent }]}>{error}</Text> : null}
@@ -318,7 +321,12 @@ export default function CheckoutScreen() {
           exiting={FadeOut.duration(150)}
           style={styles.sheetBackdrop}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={dismissConfirm} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={dismissConfirm}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss order confirmation"
+          />
           <Animated.View
             entering={SlideInDown.duration(300)}
             exiting={SlideOutDown.duration(200)}
@@ -440,6 +448,10 @@ const styles = StyleSheet.create({
   paymentValue: {
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.body,
+  },
+  paymentNote: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
   },
   errorText: {
     fontFamily: FontFamily.body.semibold,

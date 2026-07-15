@@ -63,6 +63,39 @@ let concurrencyDealId: string; // usage_limit_per_user: 1 (concurrency/row-lock)
 let bogoDealId: string; // buy_one_take_one (complex type reject)
 let inactiveDealId: string; // is_active: false
 
+// Reward fixtures (Phase 2 — coupon auto-apply at checkout).
+let fixedRewardId: string; // fixed_discount ₱5.00 (500c)
+let fixedLargeRewardId: string; // fixed_discount ₱50.00 (5000c) — clamps to subtotal
+let pctRewardId: string; // percentage_discount 20%
+let freeItemRewardId: string; // free_item, eligible = productId (base 500c)
+let freeItemAbsentRewardId: string; // free_item, eligible = otherProduct (not in cart)
+let unknownRewardId: string; // reward_type = 'mystery' (unrecognized)
+
+const COUPON_DAY = 24 * 60 * 60 * 1000;
+
+/** Insert an available (or specified) coupon and return its id. */
+async function insertCoupon(values: {
+  userId: string;
+  rewardId?: string | null;
+  dealId?: string | null;
+  status?: 'available' | 'used' | 'expired';
+  expiresAt?: Date | null;
+}): Promise<string> {
+  const [row] = await db
+    .insert(schema.coupons)
+    .values({
+      user_id: values.userId,
+      code: `OCPN-${uid()}${uid()}`.toUpperCase(),
+      reward_id: values.rewardId ?? null,
+      deal_id: values.dealId ?? null,
+      status: values.status ?? 'available',
+      expires_at:
+        values.expiresAt === undefined ? new Date(Date.now() + COUPON_DAY) : values.expiresAt,
+    })
+    .returning({ id: schema.coupons.id });
+  return row!.id;
+}
+
 async function post(
   path: string,
   opts: { user?: string; body?: unknown } = {},
@@ -299,6 +332,50 @@ beforeAll(async () => {
     deal_type: 'percentage_discount',
     discount_value: '10.00',
     is_active: false,
+  });
+
+  const seedReward = async (
+    values: Partial<typeof schema.rewards.$inferInsert> &
+      Pick<typeof schema.rewards.$inferInsert, 'name' | 'reward_type'>,
+  ): Promise<string> => {
+    const [row] = await db
+      .insert(schema.rewards)
+      .values({ required_stars: 5, is_active: true, ...values })
+      .returning({ id: schema.rewards.id });
+    return row!.id;
+  };
+
+  fixedRewardId = await seedReward({
+    name: `Fixed5 Rw ${suffix}`,
+    reward_type: 'fixed_discount',
+    reward_value: '5.00',
+  });
+  fixedLargeRewardId = await seedReward({
+    name: `Fixed50 Rw ${suffix}`,
+    reward_type: 'fixed_discount',
+    reward_value: '50.00',
+  });
+  pctRewardId = await seedReward({
+    name: `Pct20 Rw ${suffix}`,
+    reward_type: 'percentage_discount',
+    reward_value: '20.00',
+  });
+  freeItemRewardId = await seedReward({
+    name: `FreeFries ${suffix}`,
+    reward_type: 'free_item',
+    reward_value: '50.00',
+    eligible_product_id: productId,
+  });
+  freeItemAbsentRewardId = await seedReward({
+    name: `FreeNuggets ${suffix}`,
+    reward_type: 'free_item',
+    reward_value: '30.00',
+    eligible_product_id: otherProductId,
+  });
+  unknownRewardId = await seedReward({
+    name: `Mystery ${suffix}`,
+    reward_type: 'mystery',
+    reward_value: '10.00',
   });
 });
 
@@ -636,6 +713,255 @@ describe('POST /orders — deal apply (DEAL-003)', () => {
     // FOR UPDATE serializes the two placements: exactly one succeeds.
     expect(statuses).toEqual([201, 400]);
     expect(await countOrdersWithDeal(concurrencyDealId, freshUser)).toBe(1);
+  });
+});
+
+describe('POST /orders — coupon apply (Phase 2)', () => {
+  const couponBody = (branchId: string, couponId: string) => ({
+    ...singleItemBody(branchId),
+    couponId,
+  });
+
+  async function countOrdersWithCoupon(couponId: string): Promise<number> {
+    const rows = await db.select().from(schema.orders).where(eq(schema.orders.coupon_id, couponId));
+    return rows.length;
+  }
+
+  async function couponStatus(couponId: string): Promise<string> {
+    const [row] = await db.select().from(schema.coupons).where(eq(schema.coupons.id, couponId));
+    return row!.status;
+  }
+
+  it('fixed_discount reward coupon: real cents discount, persists coupon_id, marks used', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: fixedRewardId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(201);
+    // ₱5.00 → 500c < 1300 subtotal → discount 500, total 800.
+    expect(json.order.discountTotalCents).toBe(500);
+    expect(json.order.totalCents).toBe(800);
+    expect(json.order.couponId).toBe(couponId);
+    expect(await couponStatus(couponId)).toBe('used');
+  });
+
+  it('percentage_discount reward coupon: rounded cents discount', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: pctRewardId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(201);
+    // 20% of 1300 = 260 → total 1040.
+    expect(json.order.discountTotalCents).toBe(260);
+    expect(json.order.totalCents).toBe(1040);
+  });
+
+  it('free_item reward coupon: discounts the product BASE price, NOT the customized line price', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: freeItemRewardId });
+    // singleItemBody applies a +150c size option, so the LINE unit is 650 — but
+    // the discount must equal the product base price (500), not 650.
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(201);
+    expect(json.order.discountTotalCents).toBe(500); // base 5.00, not the 650 line price
+    expect(json.order.totalCents).toBe(800);
+  });
+
+  it('free_item reward coupon: eligible product not in cart → 400, no order, coupon stays available', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: freeItemAbsentRewardId });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId), // cart has productId, reward wants otherProduct
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('deal-issued coupon (deal_id set): reuses computeDealDiscountCents', async () => {
+    const couponId = await insertCoupon({ userId: userA, dealId: pctDealId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(201);
+    // pctDeal is 20% → 260 discount.
+    expect(json.order.discountTotalCents).toBe(260);
+    expect(json.order.couponId).toBe(couponId);
+  });
+
+  it('deal-issued coupon of a complex deal type → 400, no order', async () => {
+    const couponId = await insertCoupon({ userId: userA, dealId: bogoDealId });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('unrecognized reward_type coupon → 400, no order', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: unknownRewardId });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(400);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('stacking: deal + coupon discounts sum; invariant subtotal - discount === total holds', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: fixedRewardId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(201);
+    // deal 20% = 260, coupon ₱5 = 500 → combined 760; total 540.
+    expect(json.order.discountTotalCents).toBe(760);
+    expect(json.order.totalCents).toBe(540);
+    expect(json.order.discountTotalCents).toBe(json.order.subtotalCents - json.order.totalCents);
+    expect(json.order.dealId).toBe(pctDealId);
+    expect(json.order.couponId).toBe(couponId);
+  });
+
+  it('stacking clamp: combined discount never exceeds subtotal; discount_total stays consistent', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: fixedLargeRewardId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(201);
+    // deal 260 + coupon ₱50 (5000, clamped to 1300) → sum clamped to subtotal 1300.
+    expect(json.order.discountTotalCents).toBe(1300);
+    expect(json.order.totalCents).toBe(0);
+    expect(json.order.discountTotalCents).toBeLessThanOrEqual(json.order.subtotalCents);
+    expect(json.order.discountTotalCents).toBe(json.order.subtotalCents - json.order.totalCents);
+  });
+
+  it('rejects (400) a coupon whose linked deal is the SAME deal already applied; no order, coupon stays available', async () => {
+    // Both dealId=D and a couponId whose coupon.deal_id=D would double-count the
+    // deal discount (deal path + coupon-deal path). The guard rejects it clearly.
+    const couponId = await insertCoupon({ userId: userA, dealId: pctDealId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(400);
+    expect(json.error).toBe('This deal is already applied to your order');
+    // Whole tx rolled back: no order carries the coupon, coupon stays available.
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('stacks (201) a deal + a coupon linked to a DIFFERENT deal (guard does not trip)', async () => {
+    const couponId = await insertCoupon({ userId: userA, dealId: fixedSmallDealId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(201);
+    // deal pct 20% = 260, coupon fixed ₱5 = 500 → combined 760; total 540.
+    expect(json.order.discountTotalCents).toBe(760);
+    expect(json.order.totalCents).toBe(540);
+    expect(json.order.dealId).toBe(pctDealId);
+    expect(json.order.couponId).toBe(couponId);
+  });
+
+  it('expired coupon → 409, no order', async () => {
+    const couponId = await insertCoupon({
+      userId: userA,
+      rewardId: fixedRewardId,
+      expiresAt: new Date(Date.now() - COUPON_DAY),
+    });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(409);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+  });
+
+  it('already-used coupon → 409, no order', async () => {
+    const couponId = await insertCoupon({
+      userId: userA,
+      rewardId: fixedRewardId,
+      status: 'used',
+    });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(409);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+  });
+
+  it("another user's coupon → 403, no order", async () => {
+    const couponId = await insertCoupon({ userId: userB, rewardId: fixedRewardId });
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, couponId),
+    });
+    expect(status).toBe(403);
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('unknown couponId → 404, no order', async () => {
+    const { status } = await post('/orders', {
+      user: userA,
+      body: couponBody(branch20Id, '00000000-0000-4000-8000-000000000000'),
+    });
+    expect(status).toBe(404);
+  });
+
+  it('no-couponId placement returns couponId null (backward-compatible)', async () => {
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: singleItemBody(branch20Id),
+    });
+    expect(status).toBe(201);
+    expect(json.order.couponId).toBeNull();
+  });
+
+  it('concurrent double-apply: exactly one 201, the other 409; coupon consumed exactly once', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: fixedRewardId });
+    const [a, b] = await Promise.all([
+      post('/orders', { user: userA, body: couponBody(branch20Id, couponId) }),
+      post('/orders', { user: userA, body: couponBody(branch20Id, couponId) }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    // FOR UPDATE serializes: exactly one placement consumes the coupon.
+    expect(statuses).toEqual([201, 409]);
+    expect(await countOrdersWithCoupon(couponId)).toBe(1);
+    expect(await couponStatus(couponId)).toBe('used');
+  });
+
+  it('atomicity: a failure after the coupon lock (order-number exhaustion) leaves the coupon available', async () => {
+    const couponId = await insertCoupon({ userId: userA, rewardId: fixedRewardId });
+    // Force every order_number attempt to collide with an existing number so the
+    // insert never succeeds → 500 thrown AFTER the coupon lock/validate but before
+    // the CAS mark-used → whole transaction rolls back, coupon stays available.
+    const existing = await post('/orders', { user: userA, body: singleItemBody(branch20Id) });
+    const existingNumber: string = existing.json.order.orderNumber;
+    const spy = vi.spyOn(orderNumberGenerator, 'generate').mockReturnValue(existingNumber);
+    try {
+      const { status } = await post('/orders', {
+        user: userA,
+        body: couponBody(branch20Id, couponId),
+      });
+      expect(status).toBe(500);
+      expect(await countOrdersWithCoupon(couponId)).toBe(0);
+      expect(await couponStatus(couponId)).toBe('available');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

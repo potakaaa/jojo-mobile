@@ -1,0 +1,76 @@
+/**
+ * Global jest setup for `apps/mobile` RN component tests (registered via
+ * `jest.config.js` `setupFiles`). Installs the module mocks every screen test
+ * needs so individual test files never redeclare them.
+ *
+ * 1. `react-native-reanimated` — this repo's pin (4.5.0 + react-native-worklets
+ *    0.10.0) throws `Cannot read properties of undefined (reading 'loadUnpackers')`
+ *    at import time under jest, even through the library's own `/mock` export
+ *    (which still pulls in the broken worklets initializer chain in v4). A
+ *    hand-rolled no-op stub of the APIs actually used (`floating-tab-bar.tsx`
+ *    imports reanimated at module scope, and every tab-root screen transitively
+ *    imports `getFloatingTabBarClearance` from it) is required and proven working.
+ * 2. `expo-router` — a lightweight stub so `router.push`/`useRouter` resolve
+ *    without a real navigation container in jsdom.
+ */
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+
+import { jest } from '@jest/globals';
+
+jest.mock('react-native-reanimated', () => {
+  const RN = require('react-native');
+  const passthrough = (value: unknown) => value;
+  return {
+    __esModule: true,
+    default: {
+      View: RN.View,
+      Text: RN.Text,
+      ScrollView: RN.ScrollView,
+      Image: RN.Image,
+      createAnimatedComponent: (Component: unknown) => Component,
+    },
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useSharedValue: (value: unknown) => ({ value }),
+    withTiming: passthrough,
+    withSpring: passthrough,
+    interpolate: passthrough,
+    interpolateColor: passthrough,
+  };
+});
+
+// The better-auth client (`@better-auth/expo` → `@better-auth/core`) ships
+// untranspiled ESM that jest's transform whitelist doesn't cover, and pulling the
+// real auth stack into a component test is pointless. `api-client.ts` only needs
+// `authClient.getCookie()`, so stub the whole module — this unblocks every test
+// that transitively imports `@/lib/api-client` (both Rewards and Coupons screens).
+jest.mock('@/features/auth/lib/auth-client', () => ({
+  authClient: {
+    getCookie: () => '',
+    useSession: () => ({ data: null, isPending: false }),
+    $fetch: jest.fn(),
+  },
+}));
+
+jest.mock('expo-router', () => {
+  const router = {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+    dismiss: jest.fn(),
+  };
+  const Passthrough = ({ children }: { children?: unknown }) => children ?? null;
+  const StackLike = Object.assign(() => null, { Screen: () => null });
+  return {
+    __esModule: true,
+    router,
+    useRouter: () => router,
+    useLocalSearchParams: () => ({}),
+    usePathname: () => '/',
+    Link: Passthrough,
+    Stack: StackLike,
+    Tabs: StackLike,
+    Redirect: () => null,
+  };
+});

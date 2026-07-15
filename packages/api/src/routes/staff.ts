@@ -1,5 +1,5 @@
 import type { OrderStatus, StaffMe } from '@jojopotato/types';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -11,6 +11,8 @@ import {
   orderStatusEnum,
   orders,
   products,
+  starTransactions,
+  userStars,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
 import {
@@ -18,7 +20,15 @@ import {
   type OrderNotificationEvent,
 } from './lib/notification-dispatch';
 import { canTransition } from './lib/order-state-machine';
-import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
+import {
+  numericToCents,
+  serializeStaffOrderDetail,
+  serializeStaffOrderSummary,
+} from './lib/serializers';
+import { computeStarsEarned } from './lib/star-accrual';
+
+/** The transaction handle passed to `db.transaction(async (tx) => …)`. */
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Non-terminal order statuses shown on the staff Active Orders dashboard.
@@ -39,11 +49,52 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
 // ─── Side-effect stubs (STAFF-003) ───────────────────────────────────────────
 
 /**
- * TODO(STAR-001): credit stars when an order is completed.
- * Replace with real star-crediting logic once the rewards system is built.
+ * Credit stars for a completed order (server-authoritative). Count-based accrual:
+ * an order earns exactly 1 star when its subtotal meets the minimum threshold,
+ * else 0 (see `computeStarsEarned`). The star amount is always derived here from
+ * the order's own `subtotal` — never client-sent.
+ *
+ * Runs INSIDE the caller's transaction (the same tx that flips the order to
+ * `completed`), so the status flip + `user_stars` upsert + `star_transactions`
+ * insert commit atomically — a crash can never leave an order `completed` but
+ * uncredited (there is no retry path; `completed` is terminal). It upserts
+ * `user_stars` (incrementing BOTH `current_stars` and `lifetime_stars`) and
+ * inserts an `earned` `star_transactions` row. Idempotent per order — an explicit
+ * guard skips crediting if this order already has an `earned` row.
  */
-function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
-  void _order; // TODO(STAR-001): replace with real star-crediting logic
+async function creditStarsForOrder(
+  tx: DbTransaction,
+  order: typeof orders.$inferSelect,
+): Promise<void> {
+  const subtotalCents = numericToCents(order.subtotal);
+  const stars = computeStarsEarned(subtotalCents);
+  if (stars <= 0) return;
+
+  const [existing] = await tx
+    .select({ id: starTransactions.id })
+    .from(starTransactions)
+    .where(and(eq(starTransactions.order_id, order.id), eq(starTransactions.type, 'earned')));
+  if (existing) return; // already credited — never double-credit an order.
+
+  await tx
+    .insert(userStars)
+    .values({ user_id: order.user_id, current_stars: stars, lifetime_stars: stars })
+    .onConflictDoUpdate({
+      target: userStars.user_id,
+      set: {
+        current_stars: sql`${userStars.current_stars} + ${stars}`,
+        lifetime_stars: sql`${userStars.lifetime_stars} + ${stars}`,
+        updated_at: new Date(),
+      },
+    });
+
+  await tx.insert(starTransactions).values({
+    user_id: order.user_id,
+    order_id: order.id,
+    type: 'earned',
+    stars,
+    description: `Earned ${stars} star for order ${order.order_number}`,
+  });
 }
 
 /**
@@ -279,26 +330,37 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
-  // 7. Apply the update — compare-and-swap: also guard on current status so a
-  //    concurrent PATCH that already advanced the order results in 0 rows matched → 409.
-  const [updatedRow] = await db
-    .update(orders)
-    .set(patch)
-    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
-    .returning({ id: orders.id });
+  // 7. Apply the update inside a transaction — compare-and-swap on current status
+  //    so a concurrent PATCH that already advanced the order results in 0 rows
+  //    matched → 409. For a completion, the star credit is folded into THIS SAME
+  //    transaction, so the status flip + user_stars upsert + star_transactions
+  //    insert commit atomically (a crash can never leave a completed-but-uncredited
+  //    order — `completed` is terminal with no retry path).
+  const updatedOrder = { ...order, ...patch } as typeof order;
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+      .returning({ id: orders.id });
+    if (!updatedRow) return false;
 
-  if (!updatedRow) {
+    if (targetStatus === 'completed') {
+      await creditStarsForOrder(tx, updatedOrder);
+    }
+    return true;
+  });
+
+  if (!committed) {
     res.status(409).json({ error: 'Concurrent modification detected; please retry' });
     return;
   }
 
-  // 8. Call side-effect handlers at the correct transition sites. Customer push
-  //    notifications fire for exactly the 4 transactional events
+  // 8. Customer push notifications fire for the 4 transactional events
   //    (accepted/preparing/ready/cancelled) — NOT completed/rejected (PUSH-004).
-  const updatedOrder = { ...order, ...patch } as typeof order;
-  if (targetStatus === 'completed') {
-    creditStarsForOrder(updatedOrder);
-  } else if (targetStatus === 'accepted') {
+  //    Star credit for `completed` already happened atomically inside the
+  //    transaction above.
+  if (targetStatus === 'accepted') {
     await notifyCustomer(updatedOrder, 'accepted');
   } else if (targetStatus === 'preparing') {
     await notifyCustomer(updatedOrder, 'preparing');
@@ -325,13 +387,9 @@ const patchProductAvailabilitySchema = z.object({
 
 const patchBranchSettingsSchema = z
   .object({
-    isAcceptingPickup: z.boolean().optional(),
-    estimatedPrepMinutes: z.number().int().min(1).max(120).optional(),
+    estimatedPrepMinutes: z.number().int().min(1).max(120),
   })
-  .refine(
-    (data) => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined,
-    { message: 'At least one field required' },
-  );
+  .strict();
 
 /**
  * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
@@ -488,13 +546,15 @@ staffRouter.get('/branch', async (req, res) => {
 /**
  * `PATCH /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
  *
- * Updates operational settings for the staff member's assigned branch.
- * Cross-branch writes are structurally impossible — branch is always session-derived.
+ * Updates the estimated prep time for the staff member's assigned branch.
+ * Pickup acceptance (`is_accepting_pickup`) is admin-only — use the admin branches
+ * API to change it. Cross-branch writes are structurally impossible (branch is
+ * always session-derived).
  *
  * Status codes:
  *   200 — settings updated; returns updated values.
  *   403 — unassigned staff.
- *   422 — empty body or invalid field values.
+ *   422 — missing or invalid `estimatedPrepMinutes`.
  */
 staffRouter.patch('/branch', async (req, res) => {
   const branchId = await resolveBranchScope(db, req.staffSession!.userId);
@@ -508,12 +568,12 @@ staffRouter.patch('/branch', async (req, res) => {
     res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
     return;
   }
-  const { isAcceptingPickup, estimatedPrepMinutes } = parseResult.data;
+  const { estimatedPrepMinutes } = parseResult.data;
 
-  // Build update patch with only the provided fields.
-  const patch: Partial<typeof branches.$inferInsert> = { updated_at: new Date() };
-  if (isAcceptingPickup !== undefined) patch.is_accepting_pickup = isAcceptingPickup;
-  if (estimatedPrepMinutes !== undefined) patch.estimated_prep_minutes = estimatedPrepMinutes;
+  const patch: Partial<typeof branches.$inferInsert> = {
+    updated_at: new Date(),
+    estimated_prep_minutes: estimatedPrepMinutes,
+  };
 
   await db.update(branches).set(patch).where(eq(branches.id, branchId));
 

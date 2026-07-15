@@ -1,0 +1,13 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 2 — Coupons backend",
+  "reviewer": "vc-execute-agent (self-review against approved inner-PVL PASS validate-contract)",
+  "decision": "approved",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "reward_type is an unconstrained varchar (no DB enum); an unexpected value is safely rejected at checkout with 400 rather than mispriced. A schema-level enum constraint is a natural future follow-up, not required now.",
+    "The full reward→coupon→redeem→checkout round trip through Phase 1's live endpoint is not exercised in one flow — tests deliberately use hermetic fixtures per phase, so a genuine cross-phase integration seam is unverified until Phase 4's Agent-Probe walkthrough.",
+    "Race coverage is two-caller regression, not many-caller load."
+  ],
+  "notes": "All money-adjacent invariants proven by passing Fully-Automated vitest+supertest gates against a real Postgres: server-derived discount only (client sends couponId, never an amount), per-part dual-clamp + sum-clamp on stacking (subtotal - discount_total === total holds), free-item priced from product base_price (anti-gaming), unrecognized reward_type + complex deal types rejected, consume-exactly-once proven by two independent race tests plus a rollback/atomicity test. serializeCoupon signature preserved (rewards.test.ts regression green). Migration is additive-only (nullable FK, NO ACTION, drizzle-generated). Exit Gate fully green (189/189 API, typecheck 6/6, lint clean, mobile typecheck clean, format clean). Recommend human sign-off on this pack before production deploy of the coupon/pricing surface (standard for credits logic). humanApprovalRequired=true.",
+  "timestamp": "2026-07-15T01:10:00Z"
+}
