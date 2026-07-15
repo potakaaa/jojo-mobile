@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -28,9 +30,15 @@ class RewardError extends Error {
   }
 }
 
-/** Generate a unique, human-readable reward coupon code. */
+/**
+ * Generate a unique, human-readable reward coupon code. The random segment uses
+ * `node:crypto` (cryptographically secure) rather than `Math.random`, since a
+ * coupon code carries redeemable discount value and must not be guessable. Shape
+ * stays `RWD-XXXXXXYYYY` — 6 secure-random hex chars + 4 base36 time chars — so
+ * it still fits the human-readable, DB-unique `coupons.code` constraint.
+ */
 function generateCouponCode(): string {
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const rand = randomBytes(4).toString('hex').slice(0, 6).toUpperCase();
   const time = Date.now().toString(36).slice(-4).toUpperCase();
   return `RWD-${rand}${time}`;
 }

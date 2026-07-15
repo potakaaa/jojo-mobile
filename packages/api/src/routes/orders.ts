@@ -332,6 +332,13 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             throw new OrderError(400, 'This coupon cannot be applied at checkout');
           }
         } else if (coupon.deal_id !== null) {
+          // Reject stacking a coupon whose linked deal is the SAME deal already
+          // applied on this order — otherwise the deal discount would be counted
+          // twice (once via the deal path, once via this coupon path), which
+          // clamps to a free order. Reject clearly rather than silently zeroing.
+          if (body.dealId !== undefined && coupon.deal_id === body.dealId) {
+            throw new OrderError(400, 'This deal is already applied to your order');
+          }
           const [deal] = await tx.select().from(deals).where(eq(deals.id, coupon.deal_id));
           if (!deal) {
             throw new OrderError(400, 'This coupon cannot be applied at checkout');

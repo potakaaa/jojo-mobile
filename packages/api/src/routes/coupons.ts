@@ -80,7 +80,15 @@ couponsRouter.post('/:id/redeem', requireSession, async (req, res) => {
     .returning();
 
   if (updated) {
-    res.status(200).json({ coupon: serializeCouponWithLabel(updated, null, null) });
+    // Resolve the linked deal/reward so the response carries a real display
+    // label (mirrors how GET /coupons builds the join) instead of an empty one.
+    const deal = updated.deal_id
+      ? ((await db.select().from(deals).where(eq(deals.id, updated.deal_id)))[0] ?? null)
+      : null;
+    const reward = updated.reward_id
+      ? ((await db.select().from(rewards).where(eq(rewards.id, updated.reward_id)))[0] ?? null)
+      : null;
+    res.status(200).json({ coupon: serializeCouponWithLabel(updated, deal, reward) });
     return;
   }
 

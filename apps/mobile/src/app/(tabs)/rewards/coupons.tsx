@@ -1,7 +1,7 @@
 import { CouponCard, EmptyState } from '@jojopotato/ui';
 import type { CouponStatus } from '@jojopotato/types';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
@@ -36,6 +36,15 @@ export default function CouponsScreen() {
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
   const grouped = useMemo(() => groupByStatus(coupons.data ?? []), [coupons.data]);
+
+  // Build SectionList sections in the fixed GROUPS order, omitting empty groups.
+  const sections = useMemo(
+    () =>
+      GROUPS.map(({ status, title }) => ({ status, title, data: grouped[status] })).filter(
+        (section) => section.data.length > 0,
+      ),
+    [grouped],
+  );
 
   const confirmRedeem = (coupon: ApiCouponWithLabel) => {
     Alert.alert('Use this coupon?', `Redeem coupon ${coupon.code}? This can't be undone.`, [
@@ -82,35 +91,35 @@ export default function CouponsScreen() {
             mode={mode}
           />
         ) : (
-          <ScrollView
+          <SectionList
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
-          >
-            {redeemError ? (
-              <View style={[styles.errorBanner, { borderColor: theme.border }]}>
-                <Text style={[styles.errorText, { color: theme.text }]}>{redeemError}</Text>
-              </View>
-            ) : null}
-
-            {GROUPS.map(({ status, title }) => {
-              const items = grouped[status];
-              if (items.length === 0) return null;
-              return (
-                <View key={status} style={styles.group}>
-                  <Text style={[styles.groupTitle, { color: theme.text }]}>{title}</Text>
-                  {items.map((coupon) => (
-                    <CouponCard
-                      key={coupon.id}
-                      coupon={toCouponDisplay(coupon)}
-                      mode={mode}
-                      onPress={status === 'available' ? () => confirmRedeem(coupon) : undefined}
-                    />
-                  ))}
+            sections={sections}
+            keyExtractor={(coupon) => coupon.id}
+            stickySectionHeadersEnabled={false}
+            ListHeaderComponent={
+              redeemError ? (
+                <View style={[styles.errorBanner, { borderColor: theme.border }]}>
+                  <Text style={[styles.errorText, { color: theme.text }]}>{redeemError}</Text>
                 </View>
-              );
-            })}
-          </ScrollView>
+              ) : null
+            }
+            renderSectionHeader={({ section }) => (
+              <Text style={[styles.groupTitle, { color: theme.text }]}>{section.title}</Text>
+            )}
+            renderItem={({ item: coupon, section }) => (
+              <CouponCard
+                coupon={toCouponDisplay(coupon)}
+                mode={mode}
+                onPress={
+                  section.status === 'available' && !redeem.isPending
+                    ? () => confirmRedeem(coupon)
+                    : undefined
+                }
+              />
+            )}
+          />
         )}
       </SafeAreaView>
     </View>
@@ -142,17 +151,17 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
-    gap: Spacing.four,
+    gap: Spacing.two,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  group: { gap: Spacing.two },
   groupTitle: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+    marginTop: Spacing.two,
   },
   errorBanner: {
     borderWidth: 2,

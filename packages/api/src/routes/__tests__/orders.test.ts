@@ -845,6 +845,35 @@ describe('POST /orders — coupon apply (Phase 2)', () => {
     expect(json.order.discountTotalCents).toBe(json.order.subtotalCents - json.order.totalCents);
   });
 
+  it('rejects (400) a coupon whose linked deal is the SAME deal already applied; no order, coupon stays available', async () => {
+    // Both dealId=D and a couponId whose coupon.deal_id=D would double-count the
+    // deal discount (deal path + coupon-deal path). The guard rejects it clearly.
+    const couponId = await insertCoupon({ userId: userA, dealId: pctDealId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(400);
+    expect(json.error).toBe('This deal is already applied to your order');
+    // Whole tx rolled back: no order carries the coupon, coupon stays available.
+    expect(await countOrdersWithCoupon(couponId)).toBe(0);
+    expect(await couponStatus(couponId)).toBe('available');
+  });
+
+  it('stacks (201) a deal + a coupon linked to a DIFFERENT deal (guard does not trip)', async () => {
+    const couponId = await insertCoupon({ userId: userA, dealId: fixedSmallDealId });
+    const { status, json } = await post('/orders', {
+      user: userA,
+      body: { ...singleItemBody(branch20Id), dealId: pctDealId, couponId },
+    });
+    expect(status).toBe(201);
+    // deal pct 20% = 260, coupon fixed ₱5 = 500 → combined 760; total 540.
+    expect(json.order.discountTotalCents).toBe(760);
+    expect(json.order.totalCents).toBe(540);
+    expect(json.order.dealId).toBe(pctDealId);
+    expect(json.order.couponId).toBe(couponId);
+  });
+
   it('expired coupon → 409, no order', async () => {
     const couponId = await insertCoupon({
       userId: userA,

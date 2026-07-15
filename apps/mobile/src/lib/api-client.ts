@@ -145,11 +145,15 @@ export async function getDeal(dealId: string): Promise<Deal> {
 async function authedJson<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // Only attach the Cookie header when a session cookie actually exists — an
+  // unauthenticated `getCookie()` returns null, which would otherwise be sent as
+  // the literal string "null".
+  const cookie = authClient.getCookie();
   let res: Response;
   try {
     res = await fetch(`${env.apiUrl}${path}`, {
       ...init,
-      headers: { ...commonHeaders, Cookie: authClient.getCookie(), ...init?.headers },
+      headers: { ...commonHeaders, ...(cookie ? { Cookie: cookie } : {}), ...init?.headers },
       signal: controller.signal,
     });
   } finally {

@@ -23,6 +23,9 @@ import {
 } from './lib/serializers';
 import { computeStarsEarned } from './lib/star-accrual';
 
+/** The transaction handle passed to `db.transaction(async (tx) => …)`. */
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
  * Non-terminal order statuses shown on the staff Active Orders dashboard.
  * `completed`, `cancelled`, and `rejected` are terminal and never surface in the list.
@@ -47,43 +50,46 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
  * else 0 (see `computeStarsEarned`). The star amount is always derived here from
  * the order's own `subtotal` — never client-sent.
  *
- * Runs in its own transaction: it upserts `user_stars` (incrementing BOTH
- * `current_stars` and `lifetime_stars`) and inserts an `earned` `star_transactions`
- * row. Idempotent per order — an explicit guard skips crediting if this order
- * already has an `earned` row (belt-and-suspenders: the state machine already
- * makes `completed` terminal, so this handler is the sole, once-only trigger).
+ * Runs INSIDE the caller's transaction (the same tx that flips the order to
+ * `completed`), so the status flip + `user_stars` upsert + `star_transactions`
+ * insert commit atomically — a crash can never leave an order `completed` but
+ * uncredited (there is no retry path; `completed` is terminal). It upserts
+ * `user_stars` (incrementing BOTH `current_stars` and `lifetime_stars`) and
+ * inserts an `earned` `star_transactions` row. Idempotent per order — an explicit
+ * guard skips crediting if this order already has an `earned` row.
  */
-async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<void> {
+async function creditStarsForOrder(
+  tx: DbTransaction,
+  order: typeof orders.$inferSelect,
+): Promise<void> {
   const subtotalCents = numericToCents(order.subtotal);
   const stars = computeStarsEarned(subtotalCents);
   if (stars <= 0) return;
 
-  await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ id: starTransactions.id })
-      .from(starTransactions)
-      .where(and(eq(starTransactions.order_id, order.id), eq(starTransactions.type, 'earned')));
-    if (existing) return; // already credited — never double-credit an order.
+  const [existing] = await tx
+    .select({ id: starTransactions.id })
+    .from(starTransactions)
+    .where(and(eq(starTransactions.order_id, order.id), eq(starTransactions.type, 'earned')));
+  if (existing) return; // already credited — never double-credit an order.
 
-    await tx
-      .insert(userStars)
-      .values({ user_id: order.user_id, current_stars: stars, lifetime_stars: stars })
-      .onConflictDoUpdate({
-        target: userStars.user_id,
-        set: {
-          current_stars: sql`${userStars.current_stars} + ${stars}`,
-          lifetime_stars: sql`${userStars.lifetime_stars} + ${stars}`,
-          updated_at: new Date(),
-        },
-      });
-
-    await tx.insert(starTransactions).values({
-      user_id: order.user_id,
-      order_id: order.id,
-      type: 'earned',
-      stars,
-      description: `Earned ${stars} star for order ${order.order_number}`,
+  await tx
+    .insert(userStars)
+    .values({ user_id: order.user_id, current_stars: stars, lifetime_stars: stars })
+    .onConflictDoUpdate({
+      target: userStars.user_id,
+      set: {
+        current_stars: sql`${userStars.current_stars} + ${stars}`,
+        lifetime_stars: sql`${userStars.lifetime_stars} + ${stars}`,
+        updated_at: new Date(),
+      },
     });
+
+  await tx.insert(starTransactions).values({
+    user_id: order.user_id,
+    order_id: order.id,
+    type: 'earned',
+    stars,
+    description: `Earned ${stars} star for order ${order.order_number}`,
   });
 }
 
@@ -316,23 +322,35 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
-  // 7. Apply the update — compare-and-swap: also guard on current status so a
-  //    concurrent PATCH that already advanced the order results in 0 rows matched → 409.
-  const [updatedRow] = await db
-    .update(orders)
-    .set(patch)
-    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
-    .returning({ id: orders.id });
+  // 7. Apply the update inside a transaction — compare-and-swap on current status
+  //    so a concurrent PATCH that already advanced the order results in 0 rows
+  //    matched → 409. For a completion, the star credit is folded into THIS SAME
+  //    transaction, so the status flip + user_stars upsert + star_transactions
+  //    insert commit atomically (a crash can never leave a completed-but-uncredited
+  //    order — `completed` is terminal with no retry path).
+  const updatedOrder = { ...order, ...patch } as typeof order;
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+      .returning({ id: orders.id });
+    if (!updatedRow) return false;
 
-  if (!updatedRow) {
+    if (targetStatus === 'completed') {
+      await creditStarsForOrder(tx, updatedOrder);
+    }
+    return true;
+  });
+
+  if (!committed) {
     res.status(409).json({ error: 'Concurrent modification detected; please retry' });
     return;
   }
 
-  // 8. Call side-effect stubs at the correct transition sites.
-  const updatedOrder = { ...order, ...patch } as typeof order;
+  // 8. Non-transactional side effects (push stub) run OUTSIDE the tx, only after
+  //    the status flip (and any star credit) has durably committed.
   if (targetStatus === 'completed') {
-    await creditStarsForOrder(updatedOrder);
     notifyCustomer(updatedOrder, 'completed');
   } else if (targetStatus === 'rejected') {
     notifyCustomer(updatedOrder, 'rejected');

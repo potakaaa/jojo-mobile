@@ -331,6 +331,28 @@ describe('POST /coupons/:id/redeem — CAS status flip', () => {
     expect(row!.used_at).not.toBeNull();
   });
 
+  it('redeem response carries a real displayLabel for a reward-linked coupon', async () => {
+    const id = await insertCoupon({
+      userId: userA,
+      rewardId,
+      expiresAt: new Date(Date.now() + DAY),
+    });
+    const { status, json } = await post(`/coupons/${id}/redeem`, { user: userA });
+    expect(status).toBe(200);
+    expect(json.coupon.displayLabel).toBe('₱50 OFF'); // fixed_discount ₱50.00 reward
+  });
+
+  it('redeem response carries a real displayLabel for a deal-linked coupon', async () => {
+    const id = await insertCoupon({
+      userId: userA,
+      dealId,
+      expiresAt: new Date(Date.now() + DAY),
+    });
+    const { status, json } = await post(`/coupons/${id}/redeem`, { user: userA });
+    expect(status).toBe(200);
+    expect(json.coupon.displayLabel).toBe('20% OFF'); // percentage_discount 20
+  });
+
   it('concurrent double-redeem: exactly one 200, the other 409 (CAS race safety)', async () => {
     const id = await insertCoupon({
       userId: userA,

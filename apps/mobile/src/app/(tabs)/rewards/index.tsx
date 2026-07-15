@@ -145,7 +145,8 @@ export default function RewardsScreen() {
                   key={reward.id}
                   reward={reward}
                   currentStars={currentStars}
-                  redeeming={redeem.isPending}
+                  isRedeemingThis={redeem.isPending && redeem.variables === reward.id}
+                  isGlobalRedeeming={redeem.isPending}
                   onRedeem={() => confirmRedeem(reward)}
                   mode={mode}
                 />
@@ -161,13 +162,23 @@ export default function RewardsScreen() {
 interface RewardRowProps {
   reward: Reward;
   currentStars: number;
-  redeeming: boolean;
+  /** True only for the specific reward currently being redeemed (drives its spinner). */
+  isRedeemingThis: boolean;
+  /** True while ANY reward redemption is in flight (disables every row's button). */
+  isGlobalRedeeming: boolean;
   onRedeem: () => void;
   mode: 'light' | 'dark';
 }
 
 /** One catalog row: name, cost badge, and an affordability-gated redeem button. */
-function RewardRow({ reward, currentStars, redeeming, onRedeem, mode }: RewardRowProps) {
+function RewardRow({
+  reward,
+  currentStars,
+  isRedeemingThis,
+  isGlobalRedeeming,
+  onRedeem,
+  mode,
+}: RewardRowProps) {
   const theme = useTheme();
   const affordability = getRewardAffordability(currentStars, reward.requiredStars);
 
@@ -184,8 +195,8 @@ function RewardRow({ reward, currentStars, redeeming, onRedeem, mode }: RewardRo
           label="Redeem"
           size="sm"
           onPress={onRedeem}
-          disabled={!affordability.canAfford || redeeming}
-          loading={redeeming && affordability.canAfford}
+          disabled={!affordability.canAfford || isGlobalRedeeming}
+          loading={isRedeemingThis}
           mode={mode}
         />
         {affordability.message ? (
