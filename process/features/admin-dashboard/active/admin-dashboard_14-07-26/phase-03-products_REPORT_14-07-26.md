@@ -54,7 +54,9 @@ plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-
   extracted composites (hard constraint per Decision 1 — verified, no local duplicates built).
 - `apps/admin/src/features/products/**` (new) — product list/detail/create/edit screens, option
   sub-editor, per-branch availability toggle grid (feature-local, not extracted, per Decision 1).
-  Route structure: `products.tsx` (list) + `products.$productId.tsx` (detail) as originally planned.
+  Route structure (final): `products.tsx` (thin `<Outlet/>` layout) + `products.index.tsx` (list UI) +
+  `products.$productId.tsx` (detail) — split during the AC8 fix below; this layout+index split is the
+  reference pattern for nested admin list→detail routes.
 - `apps/admin/src/components/{app-sidebar,nav-user,sidebar,sheet,tooltip,separator,skeleton}.tsx`
   — landed via the concurrent cross-cutting Sidebar Navigation work (commit `fb0a8c8`, already
   closed out and archived to `completed/` before this phase's EXECUTE started); Phase 3's `products`/
@@ -89,9 +91,7 @@ plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-
 | Full API suite | `pnpm --filter @jojopotato/api test` | PASS — 183/183, 0 regressions |
 | API typecheck | `pnpm --filter @jojopotato/api typecheck` | PASS |
 | Admin typecheck | `pnpm --filter @jojopotato/admin typecheck` | PASS |
-| AC8 (Agent-Probe) | manual browser walkthrough (categories→products→options→availability, incl.
-  price-edit confirmation) | DONE by user — found + fixed the products-detail-Outlet bug; re-walked
-  and PASSED after the fix |
+| AC8 (Agent-Probe) | manual browser walkthrough (categories→products→options→availability, incl. price-edit confirmation) | DONE by user — found + fixed the products-detail-Outlet bug; re-walked and PASSED after the fix |
 
 ## Plan Deviations
 

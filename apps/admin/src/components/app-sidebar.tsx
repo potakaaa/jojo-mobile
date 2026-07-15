@@ -53,7 +53,7 @@ export function AppSidebar() {
                           rounded-md text-foreground transition-all
                           hover:bg-cream-tint-1 hover:border-2 hover:border-foreground
                           active:shadow-[1px_1px_0_var(--color-ink)] active:translate-x-px active:translate-y-px
-                          ${item.disabled ? 'opacity-40 pointer-events-none cursor-not-allowed' : ''}
+                          ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}
                           ${isActive ? 'bg-primary border-2 border-foreground shadow-[3px_3px_0_var(--color-ink)]' : 'border-2 border-transparent'}
                         `}
                       >

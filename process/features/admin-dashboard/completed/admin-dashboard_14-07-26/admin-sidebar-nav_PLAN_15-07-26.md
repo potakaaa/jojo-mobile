@@ -101,7 +101,7 @@ interface NavGroup {
 ## Implementation Checklist
 
 1. Install shadcn sidebar component: `cd apps/admin && npx shadcn@latest add sidebar separator`
-2. Create nav config (`apps/admin/src/config/nav-config.ts`) using the provided schema and routing groups (Main, Catalog, Management, Dev).
+2. Create nav config (`apps/admin/src/config/nav-config.ts`) using the provided schema and routing groups (Main, Management, Dev). Catalog items (Categories, Products) live under the Management group — no separate Catalog group.
 3. Create AppSidebar component (`apps/admin/src/components/app-sidebar.tsx`) that reads from `navConfig` and applies the Brutalist theming spec.
 4. Create NavUser component (`apps/admin/src/components/nav-user.tsx`) to display user initial, email, role badge, and sign-out button.
 5. Update DashboardLayout (`apps/admin/src/routes/(dashboard)/route.tsx`) to wrap `<Outlet />` with `SidebarProvider` and `AppSidebar`.

@@ -50,7 +50,8 @@ function ProductDetailPage() {
     );
   }
 
-  const priceValid = priceInput.trim().length > 0 && Number(priceInput) >= 0;
+  const priceValid =
+    priceInput.trim().length > 0 && Number.isFinite(Number(priceInput)) && Number(priceInput) >= 0;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-background p-8 text-foreground">

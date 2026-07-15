@@ -37,9 +37,11 @@ const createBranchSchema = z.object({
 // `isActive` is NOT a `createBranchSchema` field, so `.partial()` alone can't
 // carry it — it is added explicitly so a generic PATCH can reactivate a branch
 // the deactivate route set to `false` (`{ isActive: true }`).
-const updateBranchSchema = createBranchSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
+// `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
+const updateBranchSchema = createBranchSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
 // GET / — ALL branches (active + inactive), name-ascending. No `is_active`
 // filter: the admin view must show deactivated rows (unlike the public route).

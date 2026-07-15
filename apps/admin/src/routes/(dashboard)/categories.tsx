@@ -33,6 +33,9 @@ function CategoriesPage() {
   const categoriesQuery = useAdminCategories();
   const createMutation = useCreateCategory();
   const updateMutation = useUpdateCategory();
+  // Separate mutation instance so reactivation errors surface beside the list
+  // instead of being hidden behind the closed edit-form dialog.
+  const reactivateMutation = useUpdateCategory();
   const deactivateMutation = useDeactivateCategory();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -62,7 +65,7 @@ function CategoriesPage() {
   }
 
   function handleReactivate(category: AdminCategory) {
-    updateMutation.mutate({ id: category.id, input: { isActive: true } });
+    reactivateMutation.mutate({ id: category.id, input: { isActive: true } });
   }
 
   function handleDeactivateConfirm() {
@@ -84,6 +87,12 @@ function CategoriesPage() {
         onBack={() => void navigate({ to: '/' })}
         action={<Button onClick={openCreate}>New category</Button>}
       />
+
+      {reactivateMutation.error instanceof Error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {reactivateMutation.error.message}
+        </p>
+      ) : null}
 
       <CategoryList
         categories={categoriesQuery.data}

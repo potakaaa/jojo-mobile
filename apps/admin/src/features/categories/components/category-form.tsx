@@ -37,8 +37,12 @@ export function CategoryForm({
       name: name.trim(),
       slug: slug.trim(),
     };
-    const sort = Number(sortOrder.trim());
-    if (sortOrder.trim().length > 0 && Number.isInteger(sort) && sort >= 0) {
+    const trimmed = sortOrder.trim();
+    if (trimmed.length > 0) {
+      const sort = Number(trimmed);
+      // Native <input type="number" min step> already blocks submit on invalid
+      // values; this guards direct programmatic paths and never silently drops it.
+      if (!Number.isInteger(sort) || sort < 0) return;
       input.sortOrder = sort;
     }
 
@@ -58,7 +62,9 @@ export function CategoryForm({
       <label className="flex flex-col gap-1 text-sm">
         Sort order (optional)
         <Input
-          inputMode="numeric"
+          type="number"
+          min={0}
+          step={1}
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value)}
           placeholder="0"

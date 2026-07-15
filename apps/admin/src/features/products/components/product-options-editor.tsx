@@ -37,12 +37,14 @@ export function ProductOptionsEditor({ productId }: ProductOptionsEditorProps) {
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
     const php = Number(delta || '0');
     if (!Number.isFinite(php) || php < 0) return;
     createMutation.mutate(
       {
         optionType,
-        name: name.trim(),
+        name: trimmedName,
         priceDeltaCents: Math.round(php * 100),
       },
       {

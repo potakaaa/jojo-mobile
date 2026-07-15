@@ -20,17 +20,19 @@ const adminCategoriesRouter: ExpressRouter = Router();
 const uuidSchema = z.uuid();
 
 const createCategorySchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1),
+  name: z.string().trim().min(1),
+  slug: z.string().trim().min(1),
   sortOrder: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
 
 // `isActive` is added explicitly (not in `createCategorySchema`) so a generic
 // PATCH can reactivate a category the deactivate route set to `false`.
-const updateCategorySchema = createCategorySchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
+// `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
+const updateCategorySchema = createCategorySchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
 // GET / — ALL categories (active + inactive), sort_order then name. The admin
 // view must show deactivated rows (unlike the public menu).

@@ -34,6 +34,9 @@ function ProductsPage() {
   const categoriesQuery = useAdminCategories();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
+  // Separate mutation instance so reactivation errors surface beside the list
+  // instead of polluting (or being hidden behind) the closed edit-form dialog.
+  const reactivateMutation = useUpdateProduct();
   const deactivateMutation = useDeactivateProduct();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -60,14 +63,21 @@ function ProductsPage() {
 
   function handleFormSubmit(input: ProductCreateInput) {
     if (editing) {
-      updateMutation.mutate({ id: editing.id, input }, { onSuccess: () => setFormOpen(false) });
+      // Omit categoryId when unchanged so a plain field edit never re-triggers
+      // the server's active-category FK check against an unrelated category.
+      const { categoryId, ...rest } = input;
+      const patch = categoryId === editing.categoryId ? rest : input;
+      updateMutation.mutate(
+        { id: editing.id, input: patch },
+        { onSuccess: () => setFormOpen(false) },
+      );
     } else {
       createMutation.mutate(input, { onSuccess: () => setFormOpen(false) });
     }
   }
 
   function handleReactivate(product: AdminProduct) {
-    updateMutation.mutate({ id: product.id, input: { isActive: true } });
+    reactivateMutation.mutate({ id: product.id, input: { isActive: true } });
   }
 
   function handleDeactivateConfirm() {
@@ -89,6 +99,12 @@ function ProductsPage() {
         onBack={() => void navigate({ to: '/' })}
         action={<Button onClick={openCreate}>New product</Button>}
       />
+
+      {reactivateMutation.error instanceof Error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {reactivateMutation.error.message}
+        </p>
+      ) : null}
 
       <ProductList
         products={productsQuery.data}

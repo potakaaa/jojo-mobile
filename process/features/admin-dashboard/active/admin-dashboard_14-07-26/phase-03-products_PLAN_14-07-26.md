@@ -438,10 +438,11 @@ stubs for all 7 Fully-Automated ACs.
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-products_PLAN_14-07-26.md`
-2. **Last completed phase or step:** Step 4 — PVL (15-07-26). Steps 1-4 of the 7-step inner loop are
-   complete. Gate: PASS.
+2. **Last completed phase or step:** Step 7 — UPDATE-PROCESS (15-07-26). All 7 steps of the inner
+   loop are complete. Gate: PASS; EVL 183/183 green; AC8 Agent-Probe VERIFIED.
 3. **Validate-contract status:** written (15-07-26) — see `## Validate Contract` below. Gate: PASS.
-   Next action is Step 5 (EXECUTE) — spawn `vc-execute-agent` against this plan file.
+   EXECUTE + EVL + UPDATE-PROCESS are all complete — Phase 3 is closed out. No further action on
+   this plan.
 4. **Supporting context files loaded:** `admin-dashboard_UMBRELLA_PLAN_14-07-26.md`,
    `phase-02-branches_PLAN_14-07-26.md` (full, incl. its validate-contract, as the CRUD-shape
    template), `process/context/all-context.md`, `process/context/tests/all-tests.md`,
@@ -454,10 +455,9 @@ stubs for all 7 Fully-Automated ACs.
    `apps/admin/src/features/branches/**` (full, incl. `deactivate-branch-dialog.tsx` as the
    confirm-dialog generalization source), `apps/admin/src/components/` (dir listing — confirmed no
    composites exist yet).
-5. **Next step for a fresh agent picking up mid-execution:** run Step 5 (EXECUTE) — spawn
-   `vc-execute-agent` against this plan file with the validate-contract's test gate commands and
-   Execute-Agent Instructions (E1/E2 below) in context. Do not re-run RESEARCH/INNOVATE/PVL —
-   Decisions 1-3 are locked and the Gate is PASS.
+5. **Next step for a fresh agent:** none — Phase 3 is complete and verified. Do not re-run any step;
+   the E1/E2 Execute-Agent Instructions and open-gaps below are retained as a historical record of
+   the EXECUTE pass. Next program work is Phase 4 (ADM-004 — Deals CRUD).
 
 ---
 

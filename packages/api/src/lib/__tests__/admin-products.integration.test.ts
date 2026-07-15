@@ -259,7 +259,16 @@ describe('AC1 — order price snapshot integrity', () => {
       .send({ priceDeltaCents: 9900 })
       .set('Content-Type', 'application/json');
     expect(patchRes.status).toBe(200);
+    expect(patchRes.body.option.priceDeltaCents).toBe(9900);
 
+    // The option row itself must reflect the new delta...
+    const [persistedOption] = await db
+      .select()
+      .from(schema.productOptions)
+      .where(eq(schema.productOptions.id, optionId));
+    expect(persistedOption!.price_delta).toBe('99.00');
+
+    // ...while the historical order_items snapshot stays frozen (AC1).
     const after = await db
       .select()
       .from(schema.orderItems)

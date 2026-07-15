@@ -41,7 +41,15 @@ export function ConfirmDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-foreground bg-card p-6 text-card-foreground shadow-[var(--shadow-offset-md)]">
+        <Dialog.Content
+          className="fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-foreground bg-card p-6 text-card-foreground shadow-[var(--shadow-offset-md)]"
+          onEscapeKeyDown={(e) => {
+            if (pending) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (pending) e.preventDefault();
+          }}
+        >
           <Dialog.Title className="font-display text-h3">{title}</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-muted-foreground">
             {description}

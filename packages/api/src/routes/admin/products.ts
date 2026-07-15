@@ -40,8 +40,8 @@ const optionTypeSchema = z.enum(['size', 'flavor', 'add_on']);
 
 const createProductSchema = z.object({
   categoryId: z.uuid(),
-  name: z.string().min(1),
-  slug: z.string().min(1),
+  name: z.string().trim().min(1),
+  slug: z.string().trim().min(1),
   description: z.string().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   basePriceCents: z.number().int().nonnegative(),
@@ -49,21 +49,24 @@ const createProductSchema = z.object({
   isRewardEligible: z.boolean().optional(),
 });
 
-const updateProductSchema = createProductSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
+// `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
+const updateProductSchema = createProductSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
 const createOptionSchema = z.object({
   optionType: optionTypeSchema,
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   priceDeltaCents: z.number().int().nonnegative().optional(),
   sortOrder: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
 
-const updateOptionSchema = createOptionSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
+const updateOptionSchema = createOptionSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
 const availabilitySchema = z.object({
   isAvailable: z.boolean(),

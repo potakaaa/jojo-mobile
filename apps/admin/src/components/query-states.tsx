@@ -29,7 +29,10 @@ export function QueryStates({
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">{loadingLabel}</p>;
   }
-  if (error) {
+  // Only block the whole surface on error when there is no content to show.
+  // On a background refetch error react-query keeps the last data (isEmpty
+  // stays false), so cached rows remain visible instead of being replaced.
+  if (error && isEmpty) {
     return (
       <p role="alert" className="text-sm text-destructive">
         {errorLabel}: {error instanceof Error ? error.message : 'Unknown error'}

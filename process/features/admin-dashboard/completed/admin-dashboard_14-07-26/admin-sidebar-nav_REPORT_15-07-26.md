@@ -27,6 +27,10 @@ Nothing was skipped from the original spec. The UI was adapted strictly accordin
 - ✅ **Active state correct:** Implemented path matching `location.pathname.startsWith(item.to)` with exact option for the root path.
 - ✅ **No TS errors:** `AppSidebar` tanstack Router `<Link to={...}>` typechecks successfully after route tree generation.
 - ✅ **Auth guard intact:** No alterations were made to the `beforeLoad` admin auth guard.
+- ⚠️ **Footer / sign-out button:** not independently verified — no Agent-Probe acceptance result recorded.
+- ⚠️ **Collapse / expand behavior:** not independently verified — no acceptance result recorded.
+- ⚠️ **Keyboard shortcut (Cmd/Ctrl+B) & focus behavior:** not independently verified — no acceptance result recorded.
+- ⚠️ **Mobile / tablet responsive layout:** not independently verified — no acceptance result recorded.
 
 ## Plan Deviations
 
