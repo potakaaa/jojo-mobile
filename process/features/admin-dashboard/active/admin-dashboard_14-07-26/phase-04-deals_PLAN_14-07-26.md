@@ -641,6 +641,23 @@ own EXECUTE scope.
 - [ ] 6. EVL
 - [ ] 7. UPDATE-PROCESS
 
+**Enhancement E1 loop (2-step create dialog + transactional create-with-components, added
+15-07-26 PLAN-SUPPLEMENT — see `## Enhancement E1` below):**
+- [x] E1-3. PLAN-SUPPLEMENT (this pass, 15-07-26 — E1 spec captured, user-approved design)
+- [x] E1-4. PVL (15-07-26 — Gate: PASS, 0 FAILs / 0 CONCERNs; see `### Validate Contract (E1)`)
+- [x] E1-5. EXECUTE (15-07-26 — transactional create-with-components + 2-step wizard shipped;
+  admin-deals suite 39/39 green (28 base + 11 new E1 across AC-E1..E5); full API suite 222/222,
+  0 regressions; deal-savings unit test 7 cases green; API + admin typecheck clean; touched files
+  format-clean + lint-clean. AC-E6 wizard UI walkthrough is Agent-Probe, owed at EVL. See
+  `## Deviations (E1)` below.)
+- [ ] E1-6. EVL
+- [ ] E1-7. UPDATE-PROCESS
+
+Note: 4a's own Steps 6 (EVL) and 7 (UPDATE-PROCESS) are independent of the E1 loop — 4a can be
+EVL'd/archived on its own shipped scope, or the orchestrator may choose to fold E1 into the same
+UPDATE-PROCESS pass once E1 also reaches EXECUTE. Either sequencing is valid; do not block one on
+the other.
+
 ## Deviations (EXECUTE, 15-07-26 — all within-blast-radius)
 
 1. **Deals category resolution is route-side resolve-or-ensure, not seed-only.** Decision 8 / item 1
@@ -689,6 +706,11 @@ backfill), so the VALIDATE-accepted CONDITIONAL (schema-migration risk class wit
    against THIS plan file, following the Test Gates table in `## Validate Contract` below and the
    Implementation Checklist in order. Do not reuse the prior discount-model Gate: PASS contract as
    evidence for this rewrite.
+6. **Enhancement E1 (added 15-07-26, PLAN-SUPPLEMENT — see `## Enhancement E1` above 4a's shipped
+   scope was frozen):** E1 is at Step E1-3 (PLAN-SUPPLEMENT complete). Next step: spawn
+   vc-validate-agent for a FRESH E1-scoped PVL pass (Step E1-4) — do not reuse 4a's CONDITIONAL
+   contract. Once E1 reaches `Gate: PASS` or an accepted CONDITIONAL, proceed to Step E1-5
+   (EXECUTE) against the `## Enhancement E1` section's Touchpoints/Implementation content.
 
 ---
 
@@ -941,4 +963,491 @@ subagent invocation) — accepted concern: "schema/data-migration risk class pre
 5-artifact risk-evidence-pack" — rationale recorded above under Open gaps; if a human reviewer later
 disagrees, the fix is to build the pack retroactively before Phase 4a is marked ✅ VERIFIED (not
 before EXECUTE starts — EXECUTE is authorized to proceed now).
+
+
+---
+
+## Deviations (E1 EXECUTE, 15-07-26 — all within-blast-radius)
+
+1. **`slugify` is a new local helper in the wizard, not a shared util.** The UI Spec said
+   "same slugify convention as the existing product/branch create forms" — but those forms
+   (`product-form.tsx`/`branch-form.tsx`) have NO auto-derive (manual slug fields) and no shared
+   slugify util exists anywhere in `apps/admin`/`packages/utils`. Implemented a small local
+   `slugify()` inside `deal-create-wizard.tsx` (lowercase → non-alphanumerics collapsed to hyphens
+   → trim) with a hand-edit override (`slugEdited` flag), fully realizing the spec's stated intent
+   (auto-derive from Name, still editable). Feature-local, no new shared surface.
+2. **Wizard mirrors `DealForm`'s `onSubmit(input)` signature and reuses the existing
+   `handleSubmit`.** Rather than give the wizard its own mutation call, it takes the same
+   `submitting`/`error`/`onSubmit`/`onCancel` props as `DealForm` and the create branch of
+   `deals.index.tsx`'s existing `handleSubmit` routes it to `createMutation.mutate(input)` (now
+   carrying `components`). Cleanest wiring, no duplicate mutation logic. `use-admin-deals.ts` /
+   `admin-deals-api.ts`'s `createDeal()` needed no body change (they already forward the full
+   input object) — only `DealCreateInput` gained the optional `components?` field.
+3. **AC-E4 returns 400 (not 422).** The AC allowed "422/400"; the route returns 400 on Zod
+   `safeParse` failure, matching every existing write route's convention in this program.
+4. **Duplicate-pair reject proven purely via the DB unique index inside the transaction** (no
+   hand-rolled dedup pass), exactly as the Layer-2 feasibility analysis anticipated: the bulk
+   `deal_components` insert fires the composite unique index → `isUniqueViolation` → 409 → whole
+   transaction rolls back (no orphan product). AC-E2's duplicate variant proves this.
+
+None are hard-stop deviations. No schema change (E1 is API+UI only), no auth/billing/public-API
+break — the `POST /api/admin/deals` delta is a single additive OPTIONAL field, backward-compat
+proven byte-for-byte by AC-E3. The base-4a create-handler was the only base-4a behavior touched,
+per D-E1; edit/detail flow untouched, per D-E3.
+
+---
+
+## Enhancement E1 — 2-Step Create Dialog + Transactional Create-With-Components
+
+**Date added**: 15-07-26 (PLAN-SUPPLEMENT, post-EXECUTE enhancement to the shipped 4a deals-as-
+products feature). Design is user-approved. This section is additive to the shipped 4a scope above
+— it does NOT reopen or restate 4a's Decisions 1-8; it enhances the CREATE path only (D-E3 below).
+
+### Why
+
+The shipped `DealForm` (`apps/admin/src/features/deals/components/deal-form.tsx`) creates a bare
+deal-product with no components — an admin must create, then separately open the detail screen and
+use `DealComponentEditor` to attach items one at a time, with no visibility into whether the deal
+price is actually a good deal. E1 replaces the CREATE flow only with a 2-step wizard that captures
+components AND shows a live savings calculation before the deal is created, and makes deal creation
+atomic (product + all components in one transaction) so a create can never leave an orphan
+component-less deal when the admin's intent was to seed it with items.
+
+### Locked Decisions (user-approved)
+
+**D-E1 — Transactional create-with-components.** `POST /api/admin/deals` gains an OPTIONAL
+`components: [{ productId: uuid, quantity: int>=1 }]` field. When present, the handler wraps (a)
+insert the `is_deal=true` product and (b) insert all `deal_components` rows in ONE
+`db.transaction()` (mirrors the `orders.ts` `db.transaction()` precedent at
+`packages/api/src/routes/orders.ts:~100`, read above). Reuses the SAME app-layer guards the
+attach-component route already applies: FK-existence per component (component product must exist),
+component-is-itself-a-deal reject (no deals-of-deals at create — there is no self-reference case
+at create time since the deal's own id doesn't exist yet, but a component with `is_deal=true` is
+still rejected), and duplicate-component-in-payload reject (the same `(dealProductId,
+componentProductId)` unique index constraint the attach route relies on — surfaced as a clean
+400/409, not a raw constraint violation). Omitting `components` behaves EXACTLY like today's
+shipped create (100% backward-compatible — no existing caller breaks). The `components` array is
+Zod-validated (`z.array(z.object({ productId: z.uuid(), quantity: z.number().int().min(1) }))`,
+optional, default `undefined`).
+
+**D-E2 — Require ≥1 item, UI-only.** The wizard's `Create deal` button (step 2) is disabled until
+≥1 component row has been added. The SERVER does NOT hard-require `components` — the field stays
+optional at the API layer (backward-compat + any future non-wizard caller). This is a deliberate
+split: UI guard, not a server-side Zod `.min(1)` on the array.
+
+**D-E3 — Wizard is CREATE-ONLY.** Editing an existing deal keeps using the existing detail page
+(`deals.$dealId.tsx` → `DealForm` in edit mode + `DealComponentEditor`, unchanged). This enhancement
+does NOT touch the edit/detail flow, `useUpdateDeal()`, or `useAttachComponent()`/
+`useDetachComponent()` — those remain exactly as shipped in 4a.
+
+### UI Spec
+
+**2-step create dialog** replacing the current single-step `DealForm` create path (the dialog shell
+itself — `form-dialog.tsx` — is reused; only the create-mode BODY changes to a wizard). Step rail
+shows ①Details / ②Items with active/done states, brutalist theme (2px ink borders, jyellow active
+state, hard offset shadow, Fredoka headings) — same visual language already established across
+`apps/admin` (product-form, branch-form, etc.).
+
+- **Step 1 — Details:** Name, Slug (auto-derived from Name — same slugify convention as the
+  existing product/branch create forms; user can still hand-edit), Description (optional), Deal
+  price (₱, same PHP-input → cents-on-submit convention as the shipped `DealForm`). `Next` is
+  disabled until Name is non-empty AND price parses to a valid non-negative number.
+- **Step 2 — What's inside:** a product picker reusing `DealComponentEditor`'s selection logic
+  (`useAdminProducts()` — which already excludes `is_deal=true` products by construction, so a deal
+  can never be seeded with another deal from the UI; dup-prevention against already-added rows in
+  local wizard state, mirroring the existing `attachedIds` Set pattern). Each added item row shows:
+  a thumbnail from the product's `imageUrl` (Lucide `Package`/placeholder icon fallback when
+  `imageUrl` is null — NO emoji, per repo convention), the product's à-la-carte `basePriceCents`,
+  a quantity stepper (− n +, minimum 1), and a computed line subtotal (`unitCents × qty`). Empty
+  state: "No items yet — add the products this deal includes." (mirrors `DealComponentEditor`'s
+  existing empty-state copy).
+- **Savings panel (visual centerpiece, step 2 only):** à-la-carte total = Σ(`component.
+  basePriceCents × qty`) across all added rows, computed CLIENT-SIDE from the already-loaded
+  `useAdminProducts()` data (no extra fetch) — shown muted/secondary. Below it: Deal price (from
+  step 1). Below that: a jyellow, ink-bordered, hard-shadow box reading "Customer saves ₱X · Y% off"
+  when `dealPriceCents < aLaCarteTotalCents` (savings = à-la-carte − deal price; percent =
+  savings / à-la-carte × 100, one decimal). When `dealPriceCents >= aLaCarteTotalCents`, flip to a
+  warning-styled box: "⚠ This deal costs ₱X more than buying separately." (no crash/blocking — this
+  is informational only, the admin can still create the deal). With 0 items, the panel is omitted
+  entirely (à-la-carte total of 0 is not a meaningful comparison).
+- **Footer:** Step 1 → `[Cancel] [Next: items →]`. Step 2 → `[← Back] [Create deal]` (disabled per
+  D-E2 until ≥1 item). Submit shows a loading state on the button (`isLoading` prop, same as the
+  shipped `Button` component already supports) then closes the dialog on success or shows the
+  server error inline on failure (same `role="alert"` pattern as the shipped `DealForm`).
+- Accessibility/UX: real `<label>` elements for every input (matches shipped `DealForm`/
+  `DealComponentEditor` convention), visible focus states (inherited from the shared `Input`/
+  `Button`/`select` primitives — no new focus-ring work needed), `cursor-pointer` on interactive
+  rows (quantity stepper buttons, remove-item buttons), keyboard/tab order follows visual order
+  (Name → Slug → Description → Price → Next; then product-select → qty → Add → item rows'
+  remove-buttons → Back/Create).
+
+### Touchpoints (E1)
+
+**Modified:**
+- `packages/api/src/routes/admin/deals.ts` — `createDealSchema` gains optional `components:
+  z.array(z.object({ productId: z.uuid(), quantity: z.number().int().min(1) })).optional()`;
+  `POST /` handler rewritten to wrap product-insert + component-inserts in `db.transaction()` when
+  `components` is present (falls through to the existing single-insert path when absent).
+- `packages/api/src/lib/__tests__/admin-deals.integration.test.ts` — new test cases (see Verification
+  Evidence below); existing AC1-AC11 cases untouched (backward-compat is asserted, not just assumed).
+- `apps/admin/src/features/deals/lib/admin-deals-api.ts` — `DealCreateInput` gains optional
+  `components?: { productId: string; quantity: number }[]`; `createDeal()` passes it through
+  unchanged (already forwards the full input object as the request body — no change to the function
+  body needed beyond the type).
+- `apps/admin/src/features/deals/hooks/use-admin-deals.ts` — `useCreateDeal()` unchanged (already
+  generic over `DealCreateInput`); no edit needed here.
+- `apps/admin/src/features/deals/components/deal-form.tsx` — the CREATE-mode usage of this component
+  is replaced by the new wizard (see New files below); this file is KEPT UNCHANGED and continues to
+  serve the EDIT-mode path on `deals.$dealId.tsx` (D-E3) — no edit to this file's content.
+- The route/screen that currently renders `<DealForm>` for create (the deals list screen's "New
+  Deal" action, in `apps/admin/src/features/deals/components/deal-list.tsx` or the
+  `deals.index.tsx` route — confirm exact current wiring during EXECUTE research) is updated to
+  render the new wizard component instead, in create mode only.
+
+**New:**
+- `apps/admin/src/features/deals/components/deal-create-wizard.tsx` — the 2-step wizard container:
+  step state, step-1 fields, step-2 fields, footer nav, calls `useCreateDeal()` on final submit with
+  the full `DealCreateInput` incl. `components`.
+- `apps/admin/src/features/deals/lib/deal-savings.ts` — small pure function(s): `computeALaCarteTotalCents(items: {unitCents: number; quantity: number}[]): number` and a savings-derivation helper (percent + saves/costs-more flag). Cents-based, unit-testable if `apps/admin`'s vitest runner is used for it (see Verification Evidence — this is the one client-logic unit worth a real test).
+- Step-2 item-row sub-component (either inline in `deal-create-wizard.tsx` or a small
+  `deal-wizard-item-row.tsx` — EXECUTE decides based on file-length; keep `deal-create-wizard.tsx`
+  under a reasonable size per the repo's existing file-size guidance).
+
+**Explicitly NOT touched:** `deals.$dealId.tsx` (detail/edit route), `DealComponentEditor` (still
+used verbatim for post-create component editing on the detail screen), `useAttachComponent`/
+`useDetachComponent` (unchanged), `useUpdateDeal` (unchanged), `admin/products.ts`,
+`data-table.tsx`/`form-dialog.tsx`/`confirm-dialog.tsx`/`query-states.tsx`/`page-header.tsx` (reused
+as-is, no edits).
+
+### Public Contract Delta
+
+`POST /api/admin/deals` — request body gains an OPTIONAL field:
+
+```
+components?: { productId: string; quantity: number }[]   // quantity >= 1
+```
+
+Response shape (`201 { deal: AdminDealProduct }`) is UNCHANGED — `AdminDealProduct.components` is
+already populated on the detail response shape (per the shipped `fetchComponents()`/
+`serializeAdminDealProduct`); the create response's `components` field will now reflect the
+just-attached components when the wizard supplies them (previously always `[]` on create since no
+components could be attached in the same call). No other response-shape change.
+
+Errors: `400` on malformed `components` entries (Zod), `400` on a `components` entry whose
+`productId` resolves to an `is_deal=true` product (deal-of-deals reject, same rule as the standalone
+attach route), `404` on a `components` entry whose `productId` does not resolve to any product,
+`409` on a duplicate `productId` within the same `components` array (same unique-constraint-backed
+guard the standalone attach route uses — reuse `isUniqueViolation`, do not hand-roll a separate
+duplicate-detection pass, so the failure mode is identical to the existing attach-route behavior).
+On ANY of these failures, the WHOLE request rolls back — no product row is created (AC-E2 below is
+the hard proof of this).
+
+### Acceptance Criteria (E1)
+
+1. `POST /api/admin/deals` with a valid `components` array creates the `is_deal=true` product AND
+   all `deal_components` rows atomically in one transaction — proven by:
+   `deal-create-with-components-atomic-happy-path` | strategy: Fully-Automated.
+2. **[HARD — atomicity, Known-Gap banned]** If one entry in the `components` array is invalid
+   (nonexistent `productId`, OR a `productId` whose product is itself `is_deal=true`, OR a
+   duplicate `productId` within the array), the ENTIRE create request rolls back — no orphan
+   `products` row is left behind (verified by querying `products` for the attempted name/slug after
+   the failed request and asserting zero rows) — proven by:
+   `deal-create-with-components-atomicity-rollback` | strategy: Fully-Automated.
+3. `POST /api/admin/deals` with NO `components` field behaves exactly as the shipped 4a create path
+   (backward-compatibility regression guard against the existing AC2 behavior) — proven by:
+   `deal-create-without-components-backward-compat` | strategy: Fully-Automated (re-run of the
+   existing AC2 `deal-create-happy-path` case, unmodified, as a regression guard for this change).
+4. Malformed `components` entries (missing `productId`, non-uuid `productId`, `quantity` < 1 or
+   non-integer) are rejected with `422`/`400` by Zod before any DB write — proven by:
+   `deal-create-components-zod-rejection` | strategy: Fully-Automated.
+5. The self-reference/deal-of-deals guard applies at create time exactly as it does on the
+   standalone attach route (a `components` entry whose product `is_deal=true` is rejected; there is
+   no create-time self-reference case since the new deal's id does not exist yet — this AC covers
+   the deal-of-deals half only) — proven by: `deal-create-components-deal-of-deals-reject` |
+   strategy: Fully-Automated.
+6. Admin UI: the 2-step wizard navigates Details → Items and back correctly; `Next` is gated on
+   Name+valid-price; `Create deal` is gated on ≥1 item (D-E2); the savings panel renders the correct
+   à-la-carte total, savings amount, and percent-off when deal price < à-la-carte total, and flips to
+   the "costs more" warning when deal price ≥ à-la-carte total; the empty-items state renders
+   correctly; product thumbnails render from `imageUrl` with a non-emoji fallback icon when absent —
+   proven by: `deal-create-wizard-ui-manual-walkthrough` | strategy: Agent-Probe (no `apps/admin`
+   browser/E2E runner exists yet — same project-wide gap as 4a's AC12).
+7. `computeALaCarteTotalCents` (and the savings-percent derivation) is a pure function that correctly
+   sums `unitCents × quantity` across N items and computes savings/percent-off given a deal price —
+   proven by: `deal-savings-calc-pure-function` | strategy: Fully-Automated (unit test in
+   `apps/admin`'s existing vitest runner — this is the one client-logic surface in this enhancement
+   worth an automated unit test, per the plan's own guidance to prefer automated tests where a real
+   runner already exists).
+
+### Verification Evidence (E1)
+
+| Gate / Scenario | Strategy | Proves SPEC criterion |
+|---|---|---|
+| `deal-create-with-components-atomic-happy-path` — create + N components in one transaction, all rows exist | Fully-Automated | AC-E1 |
+| `deal-create-with-components-atomicity-rollback` — one invalid component entry → whole create rolls back, zero orphan product row | Fully-Automated | AC-E2 (HARD, Known-Gap banned) |
+| `deal-create-without-components-backward-compat` — omitting `components` behaves identically to shipped 4a create (AC2 re-run) | Fully-Automated | AC-E3 |
+| `deal-create-components-zod-rejection` — malformed components array entries rejected before DB write | Fully-Automated | AC-E4 |
+| `deal-create-components-deal-of-deals-reject` — a components entry that is itself `is_deal=true` rejected at create | Fully-Automated | AC-E5 |
+| `deal-create-wizard-ui-manual-walkthrough` — 2-step nav, gating, savings math, warning state, empty state, thumbnails | Agent-Probe | AC-E6 |
+| `deal-savings-calc-pure-function` — à-la-carte total + savings/percent-off pure-function correctness | Fully-Automated | AC-E7 |
+
+**Failing stubs (Fully-Automated tier, TDD red-first starting point for EXECUTE):**
+
+```text
+test("AC-E1 — should create a deal-product and all deal_components rows atomically in one transaction", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E1")
+})
+test("AC-E2 — should roll back the entire create (zero orphan product row) when one components entry is invalid", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E2")
+})
+test("AC-E3 — should behave identically to the shipped create path when components is omitted", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E3")
+})
+test("AC-E4 — should reject malformed components array entries with a validation error before any DB write", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E4")
+})
+test("AC-E5 — should reject a components entry whose product is itself is_deal=true", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E5")
+})
+test("AC-E7 — computeALaCarteTotalCents and savings derivation should be correct for N items", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E7")
+})
+```
+
+Server test file: same file, same command as 4a — `packages/api/src/lib/__tests__/admin-deals.
+integration.test.ts`, run via `pnpm --filter @jojopotato/api test admin-deals` (no `--` before the
+filter argument). Client unit test (AC-E7): new file `apps/admin/src/features/deals/lib/
+deal-savings.test.ts` (or colocated per the existing `apps/admin` vitest convention — confirm exact
+convention during EXECUTE by checking for existing `apps/admin` `.test.ts` files), run via `pnpm
+--filter @jojopotato/admin test`.
+
+### Security / Clean-Code (E1)
+
+- Zod-before-Postgres on the `components` array, exactly like every other write route in this
+  program — validate the full array shape before the transaction opens.
+- `requireAdmin` is inherited unchanged (admin-level, not super_admin-only) — no new authz surface.
+- No hard deletes introduced. The transaction wraps two INSERTs only (product + N component rows);
+  no UPDATE/DELETE semantics change.
+- Reuse, do not duplicate: the deal-of-deals guard, the FK-existence check, and the duplicate-
+  attach 409 mapping (`isUniqueViolation`) are the SAME guards the standalone attach route already
+  uses — the create-with-components path calls the same guard logic (extracted into a shared
+  helper if the code would otherwise be duplicated verbatim across both routes — EXECUTE decides
+  based on how much divergence the transaction context actually requires).
+- Cents-at-boundary discipline unchanged — `basePriceCents` in, `centsToNumeric` at the DB boundary,
+  same as every other write in this program.
+- The core correctness property of E1 is transaction atomicity (AC-E2) — this is the HARD gate;
+  Known-Gap is explicitly banned for it, mirroring 4a's own AC9 precedent.
+
+### Validate Contract (E1)
+
+Status: PASS
+Date: 15-07-26
+date: 2026-07-15
+generated-by: inner-pvl: phase-4
+Scope note: this contract validates ONLY Enhancement E1 (2-step create wizard + transactional
+create-with-components) — it does NOT reuse, overwrite, or extend the `## Validate Contract`
+section above (Gate: CONDITIONAL, dated 15-07-26), which is scoped to the shipped base 4a deals-
+as-products feature and is left untouched. No `supersedes:` line applies here — this is a fresh
+contract for previously-unvalidated scope (the Enhancement E1 subsection was a PLACEHOLDER, not a
+completed prior contract).
+
+Parallel strategy: sequential (single-agent synthesis)
+Rationale: 7-signal score for this fan-out is 3/7 (S1 multi-package: packages/api + apps/admin;
+S2 API surface touched — additive optional field only, no schema/auth change; S7 not met — E1's
+blast radius is ~7 files, below the 5+ threshold is met actually... see note) — recomputed: S1
+present (2 packages), S2 present (public API contract delta), S6 not present (no new high-risk
+class — no new migration, no new auth/billing surface), S7 present (7 touchpoint files ≥ 5) →
+3/7 MEDIUM, which would normally recommend parallel subagents. No Agent/Task spawning tool was
+available in this validate-agent's invocation, so all Layer 1 (4 dimensions) and Layer 2
+(per-section feasibility) checks were performed directly, sequentially, by this single agent
+instance, each backed by a direct source-file read (not inference) — see Dimension findings and
+Layer 2 sections below for the evidence trail. This mirrors the same documented process deviation
+as the base 4a contract above.
+EXECUTE strategy recommendation (separate from this VALIDATE fan-out): sequential, single
+vc-execute-agent (opus) — one route-file edit (`admin/deals.ts`) + one new pure-function file +
+one new wizard component, all within a tight dependency chain (server change must land before the
+client wizard can call it meaningfully); no independent parallelizable workstreams.
+
+Test gates (C3 5-column table):
+
+| criterion id | behavior | strategy | proving test | gap-resolution |
+|---|---|---|---|---|
+| AC-E1 | create deal-product + N components atomically in one `db.transaction()` | Fully-Automated | `admin-deals.integration.test.ts` — `deal-create-with-components-atomic-happy-path` | B |
+| AC-E2 (HARD, Known-Gap banned) | one invalid `components` entry rolls back the ENTIRE create — zero orphan `products` row | Fully-Automated | same suite — `deal-create-with-components-atomicity-rollback` | B |
+| AC-E3 | omitting `components` behaves identically to the shipped 4a create path (backward-compat regression) | Fully-Automated | same suite — `deal-create-without-components-backward-compat` (AC2 re-run, unmodified) | A |
+| AC-E4 | malformed `components` entries rejected by Zod before any DB write | Fully-Automated | same suite — `deal-create-components-zod-rejection` | B |
+| AC-E5 | a `components` entry whose product is itself `is_deal=true` rejected at create | Fully-Automated | same suite — `deal-create-components-deal-of-deals-reject` | B |
+| AC-E6 | 2-step wizard nav/gating, savings panel math + warning flip, empty-item state, thumbnail fallback | Agent-Probe | manual walkthrough (no `apps/admin` browser/E2E runner — project-wide gap, P2 AC7 / P3 AC8 / 4a AC12 precedent) | D |
+| AC-E7 | `computeALaCarteTotalCents` + savings/percent-off pure-function correctness across N items | Fully-Automated | `apps/admin` vitest — `deal-savings-calc-pure-function` | B |
+| Regression guard (no SPEC id) | existing 4a AC1-AC11 unaffected by the `POST /` handler rewrite | Fully-Automated | `pnpm --filter @jojopotato/api test admin-deals` (full file re-run, no `--` before filter) | A |
+| Regression guard (no SPEC id) | full API suite unaffected | Fully-Automated | `pnpm --filter @jojopotato/api test` | A |
+| Regression guard (no SPEC id) | no cross-package type breakage | Fully-Automated | `pnpm --filter @jojopotato/api typecheck` + `pnpm --filter @jojopotato/admin generate-routes && pnpm --filter @jojopotato/admin typecheck` | A |
+| Style guard (no SPEC id) | formatting clean before commit | Fully-Automated | `pnpm format:check` | A |
+
+gap-resolution legend: A — proven now, re-run of an already-existing gate; B — fixed in this plan
+(new test added by this plan's own checklist, TDD stub already provided below); C — deferred to a
+named later phase/plan (not used here); D — backlog test-building stub (named residual, keep-
+active, continue — AC-E6 only).
+
+Failing stubs (Fully-Automated rows only — copied verbatim from the Enhancement E1 section's own
+stub block, which already matches this table's scenario names 1:1):
+
+```text
+test("AC-E1 — should create a deal-product and all deal_components rows atomically in one transaction", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E1")
+})
+test("AC-E2 — should roll back the entire create (zero orphan product row) when one components entry is invalid", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E2")
+})
+test("AC-E3 — should behave identically to the shipped create path when components is omitted", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E3")
+})
+test("AC-E4 — should reject malformed components array entries with a validation error before any DB write", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E4")
+})
+test("AC-E5 — should reject a components entry whose product is itself is_deal=true", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E5")
+})
+test("AC-E7 — computeALaCarteTotalCents and savings derivation should be correct for N items", () => {
+  throw new Error("NOT IMPLEMENTED — TDD stub: AC-E7")
+})
+```
+
+Dimension findings:
+- Infra fit: PASS — no container/infra/worker surface touched; no new migration (schema already
+  shipped by base 4a — `is_deal` column and `deal_components` table both confirmed live in
+  `packages/api/src/db/schema/{products,deal_components}.ts` and migration `0007_fearless_
+  crystal.sql`, directly read); no new env/port/config surface.
+- Test coverage: PASS — AC-E1 through AC-E7 each have a named proving test (5 Fully-Automated +
+  1 Fully-Automated pure-unit + 1 Agent-Probe) with matching TDD stubs for every Fully-Automated
+  row; no developed E1 behavior rests on Known-Gap alone (net-gate vacuous-green check: AC-E6 is a
+  legitimate Agent-Probe proving strategy, same precedent as 4a's AC12/P2's AC7/P3's AC8 — not a
+  coverage-less residual).
+- Breaking changes: PASS — `POST /api/admin/deals` request-body delta is a single OPTIONAL field
+  (`components?: {...}[]`); response envelope shape is unchanged (`{ deal: AdminDealProduct }`,
+  `AdminDealProduct.components` already exists on the type from base 4a — verified directly in
+  `packages/api/src/routes/lib/serializers.ts:480-501`); omitting the field is proven
+  byte-for-byte backward-compatible by AC-E3's literal re-run of the existing AC2 test case, not
+  merely asserted. No other route, consumer, or public contract touched.
+- Security surface: PASS — `requireAdmin` inheritance unchanged (no new route file, no new mount);
+  Zod-before-Postgres extended to the new `components` array field, consistent with every existing
+  write route in this program; no new hard-delete path (the transaction only performs 2 INSERT
+  statement classes — product + N component rows — confirmed by reading the current handler, no
+  UPDATE/DELETE semantics added); no new secret/CORS/trust-boundary surface. STRIDE quick-scan: no
+  new information-disclosure surface (same admin-only deal-product data as the existing detail
+  response); no new elevation-of-privilege path (guard logic — FK-existence, deal-of-deals reject,
+  duplicate-pair reject — is a superset composition of already-shipped, already-tested guard
+  checks from the standalone attach route, not novel authorization logic).
+
+Layer 2 — per-section feasibility:
+- Section: Transactional create-with-components (D-E1, AC-E1, AC-E2) — Status: PASS. Mechanical
+  feasibility: the `db.transaction()` throw-inside-callback-triggers-rollback pattern is
+  live-verified against `packages/api/src/routes/orders.ts:100` (`db.transaction(async (tx) => {
+  ... throw new OrderError(...) ... })`) — this exact mechanism is already proven correct in
+  production code (order placement), not a novel pattern being introduced for the first time.
+  Applying it to `admin/deals.ts`'s `POST /` handler (currently a single non-transactional
+  `db.insert(products)` at lines 167-205, directly read) is a mechanical rewrite: wrap the product
+  insert + a loop of `deal_components` inserts in one `db.transaction(async (tx) => {...})`, using
+  `tx.select`/`tx.insert` instead of `db.select`/`db.insert` for every statement inside the
+  callback. Gaps found: none — whether per-component guard checks (FK-existence, deal-of-deals)
+  run before opening the transaction (pre-validate) or inside it (using `tx`) is left open by the
+  plan; both preserve atomicity correctly (a pre-validate-then-transact design trivially satisfies
+  AC-E2 for the existence/deal-of-deals failure modes; the duplicate-pair failure mode can ONLY be
+  proven via the DB unique constraint — `deal_components_deal_component_idx`, confirmed present in
+  `packages/api/src/db/schema/deal_components.ts` — which structurally REQUIRES the product to
+  already exist in-transaction before the constraint can fire, which is exactly the scenario AC-E2
+  is designed to catch: a broken/non-transactional implementation of the duplicate-pair check WOULD
+  leak an orphan product row, so AC-E2's test is not redundant with the other failure modes — it is
+  the one failure mode that mechanically forces genuine transactional proof). Conflicts found: none.
+  Highest-risk edit + mitigation: the `POST /` handler rewrite is the single highest-risk edit in
+  E1 (it modifies an already-shipped, already-tested route) — mitigated by AC-E3's literal re-run
+  of the unmodified AC2 test as a structural regression guard, and by keeping the existing
+  single-insert code path reachable (not deleted) when `components` is absent, per D-E2/D-E1.
+- Section: Backward compatibility (D-E2, AC-E3) — Status: PASS. Mechanical feasibility: the new
+  `components` Zod field is `.optional()` with no `.default()`, so `parsed.data.components ===
+  undefined` for every existing caller that never sends it — confirmed the plan does not introduce
+  a server-side `.min(1)` on the array (D-E2 correctly scopes the ≥1-item rule to the UI wizard
+  only, not the Zod schema), so a non-wizard caller (or a future one) posting zero components is
+  still accepted, exactly matching current behavior. Gaps found: none. Conflicts found: none.
+  Highest-risk edit: none beyond the shared `POST /` handler already covered above.
+- Section: Guard reuse mechanics (D-E1 "reuses the SAME app-layer guards") — Status: PASS
+  (observation, not a CONCERN). Mechanical feasibility: read the live `POST /:id/components`
+  handler (lines 265-323) directly — the FK-existence check, deal-of-deals reject, and duplicate-
+  pair `isUniqueViolation` catch are currently INLINE in that single-component-attach handler, not
+  extracted into a shared helper function. The plan's own Security/Clean-Code (E1) section already
+  defers the extract-vs-duplicate-inline decision to EXECUTE ("extracted into a shared helper if
+  the code would otherwise be duplicated verbatim... EXECUTE decides") — this is correctly flagged
+  in-plan already, not a validate-time gap. Observation (non-blocking): the new `components` array
+  field uses `productId` as its per-item key name, while the existing standalone attach route's
+  schema uses `componentProductId` for the logically-equivalent value — a minor naming asymmetry
+  between two related endpoints, intentional per the plan's own Zod schema
+  (`z.array(z.object({ productId: z.uuid(), quantity: ... }))`), cosmetic only, no functional risk.
+  Gaps found: none requiring plan changes. Conflicts found: none.
+- Section: UI Spec / Savings Panel (AC-E6, AC-E7) — Status: PASS (with accepted known-gap on
+  AC-E6). Mechanical feasibility: `apps/admin`'s vitest config (`apps/admin/vitest.config.ts`) has
+  no restrictive `include` override — default vitest glob picks up any `*.test.ts` file under
+  `src/`, confirmed against the one existing precedent test file
+  (`apps/admin/src/routes/-index.test.tsx`) and the `"test": "vitest run --passWithNoTests"`
+  script — so a new colocated `apps/admin/src/features/deals/lib/deal-savings.test.ts` next to the
+  new `deal-savings.ts` pure-function file will be picked up automatically with no config change
+  needed. The savings/percent-off math itself (à-la-carte total = Σ unitCents×qty; savings =
+  à-la-carte − deal price; percent = savings/à-la-carte×100) is a pure integer-cents computation
+  with no external dependency, fully unit-testable. Gaps found: none. Conflicts found: none.
+  Highest-risk edit: none — this is the lowest-risk file in the enhancement (pure function, no I/O).
+- Section: Public Contract Delta — Status: PASS. Mechanical feasibility: confirmed
+  `serializeAdminDealProduct(product, components)` (already shipped, `serializers.ts:496-501`)
+  already accepts a `components` array and is already used by the existing `GET /:id` handler to
+  populate a non-empty `components` field on a detail response — the create-response change
+  (populating `components` instead of always returning `[]`) reuses this exact same function
+  signature; EXECUTE only needs to resolve the just-inserted components into `AdminDealComponent[]`
+  shape (via a `fetchComponents()` call after commit, or an equivalent in-transaction resolution)
+  before calling the same serializer. No new response type needed. Gaps found: none. Conflicts
+  found: none.
+
+Net gate: 0 FAILs / 0 CONCERNs / 4 Layer 1 PASS / 5 Layer 2 sections PASS (1 with a non-blocking
+observation, 1 with an accepted known-gap on AC-E6 only) → **PASS**.
+
+Known-gap exclusion note: AC-E6 (Agent-Probe) is NOT a Known-Gap-tier row for net-gate purposes —
+it is a legitimate proving strategy per the C-4 3-strategy reconciliation, identical precedent to
+4a's own AC12. The net-gate vacuous-green ban does not apply: every developed E1 behavior has
+either a Fully-Automated gate (AC-E1–E5, AC-E7 + all regression/style guards) or an Agent-Probe
+gate (AC-E6 wizard UI) — none rests on Known-Gap alone.
+
+Open gaps:
+- AC-E6 Agent-Probe manual walkthrough — accepted, project-wide precedent (no `apps/admin`
+  browser/E2E runner exists yet; same gap already documented for 4a's AC12, P2's AC7, P3's AC8).
+  Not a new gap introduced by this enhancement.
+- Guard-logic extraction (shared helper vs. inline duplication between the standalone attach route
+  and the new create-with-components path) is an EXECUTE-time implementation decision, already
+  flagged in-plan (Security/Clean-Code E1 section) — not a blocking gap, tracked here for
+  visibility only.
+
+What this coverage does NOT prove:
+- AC-E1/AC-E2/AC-E3/AC-E4/AC-E5/AC-E7's Fully-Automated gates prove server-side and pure-function
+  correctness (transaction atomicity, rollback integrity, backward-compat, validation, deal-of-
+  deals rejection, savings math) against a real local Postgres / in-process unit run — they do NOT
+  prove the wizard UI actually calls the API correctly through real browser interaction, renders
+  the savings panel with correct visual state transitions, or that keyboard/tab order works as
+  specified; that is AC-E6's job, and AC-E6 is Agent-Probe only (no automated browser assertion).
+- The full-suite regression gate (`pnpm --filter @jojopotato/api test`) and the admin-deals-scoped
+  re-run prove no OTHER existing route/suite broke — they do NOT prove the admin UI's TypeScript
+  types are structurally correct against the (unchanged) response shape; that is what the
+  `apps/admin typecheck` gate (run after `generate-routes`) proves instead, and it was already
+  proven for the unchanged response shape by 4a — E1 adds no new response type to re-verify there.
+- None of these gates exercise the 4b mobile-repoint handoff — untouched by E1, out of scope.
+- AC-E7's unit test proves `computeALaCarteTotalCents`/savings-derivation correctness in isolation;
+  it does NOT prove the wizard component correctly WIRES that function's output into the rendered
+  savings panel (e.g. a copy/paste error binding the wrong variable to the displayed percentage) —
+  that residual risk is covered only by AC-E6's Agent-Probe walkthrough, which explicitly includes
+  "the savings panel renders the correct à-la-carte total, savings amount, and percent-off."
+
+Gate: PASS (0 FAILs, 0 CONCERNs; 1 project-wide Agent-Probe known-gap on AC-E6 accepted under the
+same standing program-wide precedent as 4a AC12/P2 AC7/P3 AC8 — not a new exception created here)
+Accepted by: N/A — Gate is PASS, no CONCERNs required acceptance. (AC-E6's Agent-Probe residual is
+a proving-strategy choice, not an accepted CONCERN — see Known-gap exclusion note above.)
+
+vc-validate-agent: this Enhancement E1 section (Locked Decisions, UI Spec, Touchpoints, Public
+Contract Delta, Acceptance Criteria, Verification Evidence, Security, this Validate Contract) is
+the full spec-under-test for E1 — the AC-E1..AC-E7 numbering is deliberately distinct from 4a's
+AC1-AC12 so both sets of test gates coexist in the same test file without collision.
 

@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -47,6 +47,15 @@ const uuidSchema = z.uuid();
  */
 const DEALS_CATEGORY_SLUG = 'deals';
 
+// Optional component entries seeded at create time (Enhancement E1). When
+// present, the deal-product and all `deal_components` rows are written in ONE
+// transaction so a failed component can never leave an orphan deal-product.
+// Omitting `components` behaves EXACTLY like the shipped single-insert create.
+const createDealComponentSchema = z.object({
+  productId: z.uuid(),
+  quantity: z.number().int().min(1),
+});
+
 const createDealSchema = z.object({
   name: z.string().trim().min(1),
   slug: z.string().trim().min(1),
@@ -55,6 +64,7 @@ const createDealSchema = z.object({
   basePriceCents: z.number().int().nonnegative(),
   isActive: z.boolean().optional(),
   isRewardEligible: z.boolean().optional(),
+  components: z.array(createDealComponentSchema).optional(),
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -164,6 +174,19 @@ adminDealsRouter.get('/:id', async (req, res) => {
 
 // POST / — create a deal-product (`is_deal = true`), `category_id` server-pinned
 // to the reserved Deals category (never client-supplied). Duplicate `slug` → 409.
+//
+// Enhancement E1 — OPTIONAL `components: [{ productId, quantity }]`. When present,
+// the deal-product insert + all `deal_components` inserts run in ONE
+// `db.transaction()` (mirrors the `orders.ts` placement transaction) so any
+// failure rolls back the whole request — a create can never leave an orphan
+// component-less deal when the admin intended to seed it with items. The same
+// app-layer guards the standalone attach route uses are reused here: FK-existence
+// per component (missing → 404), deal-of-deals reject (a component that is itself
+// `is_deal=true` → 400), and duplicate-pair reject (the composite unique index
+// fires → clean 409 via the shared `isUniqueViolation`, not a hand-rolled pass —
+// so the failure mode is identical to the attach route). There is no self-
+// reference case at create time (the new deal's id does not exist yet). Omitting
+// `components` falls through to the shipped single-insert path (backward-compat).
 adminDealsRouter.post('/', async (req, res) => {
   try {
     const parsed = createDealSchema.safeParse(req.body);
@@ -175,30 +198,89 @@ adminDealsRouter.post('/', async (req, res) => {
 
     const categoryId = await resolveDealsCategoryId();
 
-    let inserted;
-    try {
-      [inserted] = await db
-        .insert(products)
-        .values({
-          category_id: categoryId,
-          name: d.name,
-          slug: d.slug,
-          description: d.description ?? null,
-          image_url: d.imageUrl ?? null,
-          base_price: centsToNumeric(d.basePriceCents),
-          is_deal: true,
-          ...(d.isActive === undefined ? {} : { is_active: d.isActive }),
-          ...(d.isRewardEligible === undefined ? {} : { is_reward_eligible: d.isRewardEligible }),
-        })
-        .returning();
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw new AdminApiError(409, 'Slug already in use');
+    const productValues = {
+      category_id: categoryId,
+      name: d.name,
+      slug: d.slug,
+      description: d.description ?? null,
+      image_url: d.imageUrl ?? null,
+      base_price: centsToNumeric(d.basePriceCents),
+      is_deal: true,
+      ...(d.isActive === undefined ? {} : { is_active: d.isActive }),
+      ...(d.isRewardEligible === undefined ? {} : { is_reward_eligible: d.isRewardEligible }),
+    };
+
+    // Fast path: no components → shipped single-insert behavior (backward-compat).
+    if (!d.components || d.components.length === 0) {
+      let inserted;
+      try {
+        [inserted] = await db.insert(products).values(productValues).returning();
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new AdminApiError(409, 'Slug already in use');
+        }
+        throw err;
       }
-      throw err;
+      res.status(201).json({ deal: serializeAdminDealProduct(inserted!) });
+      return;
     }
 
-    res.status(201).json({ deal: serializeAdminDealProduct(inserted!) });
+    const components = d.components;
+
+    // Transactional path: deal-product + all component rows, atomically.
+    const inserted = await db.transaction(async (tx) => {
+      // Guard every component BEFORE inserting the product: each must exist and
+      // must not itself be a deal (deal-of-deals). One bulk read yields both the
+      // FK-existence check and the `is_deal` flag (no per-row query).
+      const componentIds = components.map((c) => c.productId);
+      const found = await tx
+        .select({ id: products.id, isDeal: products.is_deal })
+        .from(products)
+        .where(inArray(products.id, componentIds));
+      const isDealById = new Map(found.map((r) => [r.id, r.isDeal]));
+      for (const c of components) {
+        const isDeal = isDealById.get(c.productId);
+        if (isDeal === undefined) {
+          throw new AdminApiError(404, 'Component product not found');
+        }
+        if (isDeal) {
+          throw new AdminApiError(400, 'A deal cannot contain another deal');
+        }
+      }
+
+      let created;
+      try {
+        [created] = await tx.insert(products).values(productValues).returning();
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new AdminApiError(409, 'Slug already in use');
+        }
+        throw err;
+      }
+
+      // Insert all component rows in one statement — a duplicate `(deal,
+      // component)` pair within the payload violates the composite unique index
+      // and fails the whole statement → clean 409 → rolls back the product too.
+      try {
+        await tx.insert(dealComponents).values(
+          components.map((c) => ({
+            deal_product_id: created!.id,
+            component_product_id: c.productId,
+            quantity: c.quantity,
+          })),
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new AdminApiError(409, 'Duplicate component in deal');
+        }
+        throw err;
+      }
+
+      return created!;
+    });
+
+    const resolvedComponents = await fetchComponents(inserted.id);
+    res.status(201).json({ deal: serializeAdminDealProduct(inserted, resolvedComponents) });
   } catch (err) {
     handleAdminError(err, res, 'creating deal');
   }

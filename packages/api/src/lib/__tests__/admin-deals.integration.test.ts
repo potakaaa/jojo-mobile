@@ -660,3 +660,182 @@ describe('AC11 — staff can toggle a deal-product per-branch availability like 
     expect(row!.is_available).toBe(true);
   });
 });
+
+// ─── Enhancement E1: transactional create-with-components ─────────────────────
+//
+// Covers validate-contract E1 Test Gates AC-E1..AC-E5, AC-E7 (AC-E6 is Agent-Probe
+// wizard UI, no runner). Exercises the OPTIONAL `components` field on
+// `POST /api/admin/deals` — the deal-product and all `deal_components` rows are
+// written in one transaction; any failure rolls back the whole create (no orphan).
+
+function createDealWith(
+  components: { productId: string; quantity: number }[],
+  overrides: Record<string, unknown> = {},
+) {
+  return request(app)
+    .post('/api/admin/deals')
+    .set('Cookie', adminCookies.join('; '))
+    .send(dealPayload({ components, ...overrides }))
+    .set('Content-Type', 'application/json');
+}
+
+describe('AC-E1 — should create a deal-product and all deal_components rows atomically in one transaction', () => {
+  it('creates the is_deal product AND every component row, and returns them in the response', async () => {
+    const c1 = await seedRegularProduct();
+    const c2 = await seedRegularProduct();
+
+    const res = await createDealWith([
+      { productId: c1, quantity: 2 },
+      { productId: c2, quantity: 1 },
+    ]);
+    expect(res.status).toBe(201);
+
+    const dealId = res.body.deal.id as string;
+    expect(res.body.deal.isDeal).toBe(true);
+
+    // The response carries the just-attached components (not `[]`).
+    const respComponentIds = (res.body.deal.components as { componentProductId: string }[]).map(
+      (c) => c.componentProductId,
+    );
+    expect(respComponentIds).toContain(c1);
+    expect(respComponentIds).toContain(c2);
+
+    // All deal_components rows exist with the supplied quantities.
+    const rows = await db
+      .select()
+      .from(schema.dealComponents)
+      .where(eq(schema.dealComponents.deal_product_id, dealId));
+    expect(rows).toHaveLength(2);
+    const qtyById = new Map(rows.map((r) => [r.component_product_id, r.quantity]));
+    expect(qtyById.get(c1)).toBe(2);
+    expect(qtyById.get(c2)).toBe(1);
+  });
+});
+
+describe('AC-E2 — should roll back the entire create (zero orphan product row) when one components entry is invalid', () => {
+  it('rolls back when one component productId does not resolve (no orphan deal-product)', async () => {
+    const good = await seedRegularProduct();
+    const slug = `deal-${unique()}`;
+
+    const res = await createDealWith(
+      [
+        { productId: good, quantity: 1 },
+        { productId: '00000000-0000-0000-0000-000000000000', quantity: 1 },
+      ],
+      { slug },
+    );
+    expect(res.status).toBe(404);
+
+    // No deal-product row was created — the whole transaction rolled back.
+    const orphan = await db.select().from(schema.products).where(eq(schema.products.slug, slug));
+    expect(orphan).toHaveLength(0);
+  });
+
+  it('rolls back when a component is itself a deal (no orphan deal-product)', async () => {
+    const good = await seedRegularProduct();
+    const otherDeal = await seedDeal();
+    const slug = `deal-${unique()}`;
+
+    const res = await createDealWith(
+      [
+        { productId: good, quantity: 1 },
+        { productId: otherDeal, quantity: 1 },
+      ],
+      { slug },
+    );
+    expect(res.status).toBe(400);
+
+    const orphan = await db.select().from(schema.products).where(eq(schema.products.slug, slug));
+    expect(orphan).toHaveLength(0);
+  });
+
+  it('rolls back on a duplicate productId within the components array (no orphan deal-product)', async () => {
+    const dup = await seedRegularProduct();
+    const slug = `deal-${unique()}`;
+
+    const res = await createDealWith(
+      [
+        { productId: dup, quantity: 1 },
+        { productId: dup, quantity: 2 },
+      ],
+      { slug },
+    );
+    expect(res.status).toBe(409);
+
+    const orphan = await db.select().from(schema.products).where(eq(schema.products.slug, slug));
+    expect(orphan).toHaveLength(0);
+    // And no stray deal_components rows leaked either.
+    const links = await db
+      .select()
+      .from(schema.dealComponents)
+      .where(eq(schema.dealComponents.component_product_id, dup));
+    expect(links).toHaveLength(0);
+  });
+});
+
+describe('AC-E3 — should behave identically to the shipped create path when components is omitted', () => {
+  it('creates a deal-product with an empty components array when components is omitted (AC2 re-run)', async () => {
+    const res = await createDeal({ basePriceCents: 19900 });
+    expect(res.status).toBe(201);
+    const deal = res.body.deal;
+    expect(deal.id).toBeTruthy();
+    expect(deal.isDeal).toBe(true);
+    expect(deal.basePriceCents).toBe(19900);
+    expect(deal.isActive).toBe(true);
+    expect(deal.components).toEqual([]);
+  });
+
+  it('treats an explicit empty components array like the shipped single-insert path', async () => {
+    const res = await createDealWith([]);
+    expect(res.status).toBe(201);
+    expect(res.body.deal.components).toEqual([]);
+  });
+});
+
+describe('AC-E4 — should reject malformed components array entries with a validation error before any DB write', () => {
+  it('rejects a non-uuid productId with 400 (Zod before Postgres)', async () => {
+    const res = await request(app)
+      .post('/api/admin/deals')
+      .set('Cookie', adminCookies.join('; '))
+      .send(dealPayload({ components: [{ productId: 'not-a-uuid', quantity: 1 }] }))
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a quantity below 1 with 400', async () => {
+    const good = await seedRegularProduct();
+    const res = await request(app)
+      .post('/api/admin/deals')
+      .set('Cookie', adminCookies.join('; '))
+      .send(dealPayload({ components: [{ productId: good, quantity: 0 }] }))
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-integer quantity with 400', async () => {
+    const good = await seedRegularProduct();
+    const res = await request(app)
+      .post('/api/admin/deals')
+      .set('Cookie', adminCookies.join('; '))
+      .send(dealPayload({ components: [{ productId: good, quantity: 1.5 }] }))
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a components entry missing productId with 400', async () => {
+    const res = await request(app)
+      .post('/api/admin/deals')
+      .set('Cookie', adminCookies.join('; '))
+      .send(dealPayload({ components: [{ quantity: 1 }] }))
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('AC-E5 — should reject a components entry whose product is itself is_deal=true', () => {
+  it('rejects a deal-of-deals component at create with 400', async () => {
+    const otherDeal = await seedDeal();
+    const res = await createDealWith([{ productId: otherDeal, quantity: 1 }]);
+    expect(res.status).toBe(400);
+  });
+});

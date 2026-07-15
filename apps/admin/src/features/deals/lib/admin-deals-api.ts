@@ -30,6 +30,12 @@ export interface AdminDealProduct {
   components: AdminDealComponent[];
 }
 
+/** One seeded component on a create-with-components request (Enhancement E1). */
+export interface DealComponentInput {
+  productId: string;
+  quantity: number;
+}
+
 export interface DealCreateInput {
   name: string;
   slug: string;
@@ -38,6 +44,12 @@ export interface DealCreateInput {
   basePriceCents: number;
   isActive?: boolean;
   isRewardEligible?: boolean;
+  /**
+   * Optional components to seed the deal with in one atomic create (E1). Omitting
+   * this behaves exactly like the shipped bare create; `createDeal()` forwards
+   * the whole input as the request body, so no function-body change is needed.
+   */
+  components?: DealComponentInput[];
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

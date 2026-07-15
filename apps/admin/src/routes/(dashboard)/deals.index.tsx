@@ -5,6 +5,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
+import { DealCreateWizard } from '@/features/deals/components/deal-create-wizard';
 import { DealForm } from '@/features/deals/components/deal-form';
 import { DealList } from '@/features/deals/components/deal-list';
 import {
@@ -107,16 +108,28 @@ function DealsPage() {
       <FormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
+        size={editing ? 'default' : 'wide'}
         title={editing ? 'Edit deal' : 'New deal'}
-        description={editing ? `Update “${editing.name}”.` : 'Create a new deal.'}
+        description={
+          editing ? `Update “${editing.name}”.` : 'Create a new deal and pick what’s inside.'
+        }
       >
-        <DealForm
-          initial={editing ?? undefined}
-          submitting={formSubmitting}
-          error={formError}
-          onSubmit={handleSubmit}
-          onCancel={() => setFormOpen(false)}
-        />
+        {editing ? (
+          <DealForm
+            initial={editing}
+            submitting={formSubmitting}
+            error={formError}
+            onSubmit={handleSubmit}
+            onCancel={() => setFormOpen(false)}
+          />
+        ) : (
+          <DealCreateWizard
+            submitting={createMutation.isPending}
+            error={createMutation.error instanceof Error ? createMutation.error.message : null}
+            onSubmit={handleSubmit}
+            onCancel={() => setFormOpen(false)}
+          />
+        )}
       </FormDialog>
 
       <ConfirmDialog

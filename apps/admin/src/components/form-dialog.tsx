@@ -14,15 +14,26 @@ interface FormDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
+  size?: 'default' | 'wide';
   children: ReactNode;
 }
 
-export function FormDialog({ open, onOpenChange, title, description, children }: FormDialogProps) {
+export function FormDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  size = 'default',
+  children,
+}: FormDialogProps) {
+  const maxWidth = size === 'wide' ? 'max-w-4xl' : 'max-w-lg';
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border-2 border-foreground bg-card p-6 text-card-foreground shadow-[var(--shadow-offset-md)]">
+        <Dialog.Content
+          className={`fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-full ${maxWidth} -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border-2 border-foreground bg-card p-6 text-card-foreground shadow-[var(--shadow-offset-md)]`}
+        >
           <Dialog.Title className="font-display text-h3">{title}</Dialog.Title>
           {description ? (
             <Dialog.Description className="mt-1 mb-4 text-sm text-muted-foreground">
