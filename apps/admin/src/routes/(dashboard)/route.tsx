@@ -1,6 +1,8 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
 
 import { env } from '@/config/env';
+import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/app-sidebar';
 
 /**
  * Pathless `(dashboard)` layout route. Its `beforeLoad` guard wraps EVERY child
@@ -36,5 +38,17 @@ export const Route = createFileRoute('/(dashboard)')({
 });
 
 function DashboardLayout() {
-  return <Outlet />;
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <main className="flex min-h-screen w-full flex-col bg-background">
+        <div className="flex items-center p-4 md:hidden">
+          <SidebarTrigger />
+        </div>
+        <div className="flex-1 p-4 md:p-8">
+          <Outlet />
+        </div>
+      </main>
+    </SidebarProvider>
+  );
 }
