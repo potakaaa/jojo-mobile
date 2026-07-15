@@ -272,7 +272,7 @@ Known shared-surface notes for the orchestrator to resolve:
 | 0 — Pre-program (plan creation) | ✅ COMPLETE |
 | 01 — Rewards/Stars Backend + Type Reconcile | ✅ VERIFIED |
 | 02 — Coupons Backend | ✅ VERIFIED |
-| 03 — Home Tab Rewire | ⏳ PLANNED |
+| 03 — Home Tab Rewire | ✅ VERIFIED |
 | 04 — Rewards Tab + Coupon Wallet UI | ⏳ PLANNED |
 | 05 — Account / Profile Screen | ⏳ PLANNED |
 | 06 — Cross-Tab UX Polish | ⏳ PLANNED |
@@ -367,26 +367,44 @@ Mobile-screen UX (Home/Rewards/Wallet/Account render + redeem round-trip) is Age
 
 ## Current Execution State
 
-Last updated: 15-07-26 (Phase 2 closeout)
-Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED)
-Phase 2 status: ✅ VERIFIED
-Phase 2 EVL: PASS — all gates green independently: `packages/api` 189/189 (baseline 155 + coupons.test.ts 18 + orders.test.ts +16), root typecheck 6/6, `apps/mobile` typecheck clean, lint clean (3 pre-existing unrelated `dev-with-tunnel.mjs` warnings, not Phase 2 regressions), `format:check` clean, migration `0007_round_menace.sql` applied clean — confirmed by orchestrator-driven EVL re-run, not just execute-agent's self-report
+Last updated: 15-07-26 (Phase 3 closeout)
+Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED), Phase 3 (Home Tab Rewire — ✅ VERIFIED)
+Phase 3 status: ✅ VERIFIED
+Phase 3 EVL: PASS — all mobile gates green independently: typecheck clean, lint clean (7/7 tasks; 3 pre-existing unrelated `dev-with-tunnel.mjs` warnings, not Phase 3 regressions), `apps/mobile` test 22/22 (incl. new `menu-to-home-view.test.ts` adapter 9/9), `format:check` clean, mock-home production-import grep clean (scope: `apps/mobile/src/app` + `features/home/components`), dead-file (`rewards-teaser-card.tsx`) deletion confirmed
+Phase 3 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-03-home-rewire_REPORT_14-07-26.md`
+Phase 3 known state (not a blocker): `apps/mobile/src/features/home/mock-home.ts` was NOT fully deleted from disk — it is demoted to showcase-only (still imported transitively by `features/cart/mock-cart.ts`, the `component-showcase.tsx` demo seed), removed from the production render path only. This matches the plan's C1 explicit exclusion of `mock-cart.ts`, not a deviation from plan intent — recorded here as a durable known state for any future full-cleanup pass.
+Phase 3 Agent-Probe owed (Known-Gap, non-blocking): on-device Home render + friendliness walkthrough (branch/menu/deals/rewards render from live data; loading/empty/error+retry across all 4 queries; branch↔cart sync; navigation) — no RN runner exists (project-wide gap), never claimed as automated coverage.
+Phase 2 status: ✅ VERIFIED (unchanged this pass)
 Phase 2 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-02-coupons-backend_REPORT_14-07-26.md`
-Phase 2 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-02-coupons-backend/` (5 artifacts — adversarial-validation.json, context-snippets.json, review-decision.json, risk-gate.json, verification.json; `humanApprovalRequired:true` — human sign-off on the coupon/order pricing-engine evidence pack recommended before production deploy; not a program blocker, carried forward, same posture as Phase 1)
+Phase 2 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-02-coupons-backend/` (5 artifacts — adversarial-validation.json, context-snippets.json, review-decision.json, risk-gate.json, verification.json; `humanApprovalRequired:true` — human sign-off on the coupon/order pricing-engine evidence pack recommended before production deploy; not a program blocker, carried forward)
 Phase 1 status: ✅ VERIFIED (unchanged this pass)
 Phase 1 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-01-rewards-backend_REPORT_14-07-26.md`
 Phase 1 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-01-rewards-backend/` (`mustStopBeforeFinalize:false`, `humanApprovalRequired:true` — carried forward)
-Current phase: Phase 3 — Home Tab Rewire
+Current phase: Phase 4 — Rewards Tab + Coupon Wallet UI
 Current loop step: RESEARCH (not started)
 Validate-contract status: pending
 Program Net Gate: PENDING
-Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 2 Learnings below)
-Outstanding non-blocking item: Phase 2's execution changes (see git status: `orders.ts`, `serializers.ts`, `coupons.ts` (new), `coupons.test.ts` (new), `orders.test.ts`, schema/migration files) are still UNCOMMITTED as of this UPDATE PROCESS pass — orchestrator should invoke `vc-git-manager` for the Phase 2 execution commit before or alongside this process-artifact commit, per the umbrella's "commit each phase before advancing" global constraint. Note: `apps/mobile/src/features/auth/hooks/use-auth.ts` is also modified in the working tree but is UNRELATED to Phase 2 (predates this program's session) — do not fold it into the Phase 2 execution commit; flag to orchestrator separately.
+Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 3 Learnings below)
+Outstanding non-blocking item (carried, unresolved this pass — inter-phase bookkeeping scope only): Phase 2's execution changes remain UNCOMMITTED as of this pass — orchestrator should invoke `vc-git-manager` for the Phase 2 (and now Phase 3) execution commit(s) before or alongside process-artifact commits, per the umbrella's "commit each phase before advancing" global constraint. `apps/mobile/src/features/auth/hooks/use-auth.ts` remains modified in the working tree and is UNRELATED to this program — do not fold it into any program execution commit; flag to orchestrator separately.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE, PLAN-SUPPLEMENT, or PVL.
 
 Note: The Stable Program Goal above is fixed. This section is the only part that changes — update-process-agent rewrites it after every phase closeout (overwrite, not append).
+
+---
+
+## Phase 3 Learnings for Downstream Phases
+
+Captured at Phase 3's UPDATE PROCESS closeout (15-07-26). Read this before starting Phase 4 RESEARCH — Phase 4 (Rewards Tab + Coupon Wallet UI) shares the `features/rewards/` directory and the `/rewards/balance` consumption pattern Phase 3 just established.
+
+1. **`apps/mobile/src/features/rewards/hooks/use-rewards-summary.ts` + `getRewardsBalance()` (`apps/mobile/src/lib/api-client.ts`) now exist and are live.** They return `{currentStars, lifetimeStars, rewardThreshold, starsToNextReward}` (tier-free, no envelope wrapper — matches `getMenu()`'s pattern, not `getBranches`/`getDeals`'s `{key}` envelope pattern). Phase 4's Rewards tab should consume `useRewardsSummary()` directly rather than re-deriving balance state or re-implementing the fetch.
+2. **`getRewardsBalance()` attaches the session cookie (`authClient.getCookie()`), diverging from the plan's original "mirror `getMenu()` verbatim" instruction (Deviation D1 in the Phase 3 report).** `getMenu()` is a PUBLIC route; `/rewards/balance` is `requireSession`-gated. The established, reusable pattern for any future authed mobile fetch in `lib/api-client.ts` is: keep the no-envelope response-parsing style, but attach `Cookie: authClient.getCookie()` — the same pattern `features/staff/lib/staff-api.ts`'s `staffFetch` already uses. Phase 4's coupon-wallet fetch (`GET /coupons`, also session-gated per the umbrella's Phase 1/2 delivery) must follow the same cookie-attachment pattern, not a verbatim copy of a public-route fetch helper.
+3. **`packages/ui`'s `RewardProgressCard`/`StarProgressBar` already consume the tier-free `RewardsAccount`/`RewardsProgress` shapes — confirmed twice now (Phase 3's inner-PVL direct source read, then re-confirmed at EXECUTE with zero adaptation needed).** Phase 4 can wire these components directly against current prop types; the earlier cross-phase coordination risk (E1, tracked since Phase 1) is fully closed, not just deferred.
+4. **`apps/mobile/src/features/home/lib/menu-to-home-view.ts` establishes the pure-adapter pattern for flattening a nested API tree shape into a flat UI-prop shape** (`flattenMenuForHome`, covered by a 9-case vitest unit suite). Any future screen that needs to reshape a nested API response for a flat-shaped UI component should follow this same extract-to-pure-function-plus-unit-test pattern (Fully-Automated) rather than inlining the reshape logic in the screen component — this is also the concrete answer to the umbrella's "Test Infra Improvement Notes" opportunity for future UI phases.
+5. **Known state (non-blocking): `apps/mobile/src/features/home/mock-home.ts` was NOT deleted from disk.** It is demoted to showcase-only — still transitively imported by `features/cart/mock-cart.ts` (the `component-showcase.tsx` demo seed), which was explicitly out of scope for Phase 3's C1 cleanup step. The production render path (`(tabs)/index.tsx` + `features/home/components`) is clean per the Exit Gate grep. This is NOT a Phase 3 deviation — it matches the plan's explicit C1 exclusion — but is recorded here so no future phase mistakes `mock-home.ts`'s continued on-disk presence for an incomplete Phase 3.
+6. **Process observation (non-blocking):** Phase 2's (and now Phase 3's) execution changes remain uncommitted at this UPDATE PROCESS closeout (see Current Execution State's "Outstanding non-blocking item" above) — the orchestrator, not this agent, owns invoking `vc-git-manager`. Flagging so Phase 4's RESEARCH does not assume a clean working tree.
+7. **Recommended (not required) context delta, still deferred to program-end UPDATE PROCESS:** consistent with Phases 1 and 2's same recommendation, `process/context/all-context.md`'s "Current Implementation State" should gain a bullet for the full rewards+coupons+Home-rewire delivery once Phases 1-4 all ship, rather than churning mid-program. Not written this pass by explicit task instruction (program-end task).
 
 ---
 

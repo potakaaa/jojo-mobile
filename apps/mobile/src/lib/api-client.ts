@@ -1,6 +1,7 @@
-import type { Deal, MenuResponse, PickupBranch } from '@jojopotato/types';
+import type { Deal, MenuResponse, PickupBranch, RewardsProgress } from '@jojopotato/types';
 
 import { env } from '@/config/env';
+import { authClient } from '@/features/auth/lib/auth-client';
 
 /**
  * Typed fetch wrapper for the menu/branch API. Targets THIS branch's real
@@ -91,4 +92,36 @@ export async function getDeals(branchId?: string): Promise<Deal[]> {
 export async function getDeal(dealId: string): Promise<Deal> {
   const body = await getJson<{ deal: Deal }>(`/deals/${encodeURIComponent(dealId)}`);
   return body.deal;
+}
+
+/** Star balance + tier-free reward progress (`GET /rewards/balance`). */
+export type RewardsBalance = RewardsProgress & { lifetimeStars: number };
+
+/**
+ * `GET /rewards/balance` → returns the balance object DIRECTLY (no envelope
+ * wrapper, mirroring `getMenu`'s shape — `{ currentStars, lifetimeStars,
+ * rewardThreshold, starsToNextReward }`).
+ *
+ * Unlike the public `getBranches`/`getMenu`/`getDeals` calls, this route is
+ * session-gated (`requireSession`), so it must attach the persisted better-auth
+ * session cookie via `authClient.getCookie()` — the same documented
+ * @better-auth/expo pattern `staffFetch` uses. A plain unauthenticated fetch
+ * would 401, so `getJson` (public-only) cannot be reused here.
+ */
+export async function getRewardsBalance(): Promise<RewardsBalance> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${env.apiUrl}/rewards/balance`, {
+      headers: { ...commonHeaders, Cookie: authClient.getCookie() },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!res.ok) {
+    throw new Error(`API request failed (${res.status}): /rewards/balance`);
+  }
+  return (await res.json()) as RewardsBalance;
 }
