@@ -1,8 +1,22 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
+import { createServerFn } from '@tanstack/react-start';
+import { getCookie } from '@tanstack/react-start/server';
 
 import { env } from '@/config/env';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
+
+/**
+ * Read the persisted sidebar collapse state on the SERVER during SSR. The
+ * sidebar primitive writes `sidebar_state` on every toggle; reading it here
+ * (not in a client-only `useState` initializer) keeps the server-rendered HTML
+ * and the client hydration in agreement — the loader result is serialized into
+ * the page, so hydration reuses it and there is no mismatch. Absent/invalid
+ * cookie falls back to open (shadcn convention: only an explicit `false` closes).
+ */
+const getSidebarState = createServerFn({ method: 'GET' }).handler(
+  () => getCookie('sidebar_state') !== 'false',
+);
 
 /**
  * Pathless `(dashboard)` layout route. Its `beforeLoad` guard wraps EVERY child
@@ -34,12 +48,14 @@ export const Route = createFileRoute('/(dashboard)')({
       throw redirect({ to: '/login' });
     }
   },
+  loader: () => getSidebarState(),
   component: DashboardLayout,
 });
 
 function DashboardLayout() {
+  const defaultOpen = Route.useLoaderData();
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={defaultOpen}>
       <AppSidebar />
       <main className="flex min-h-screen w-full flex-col bg-background">
         <div className="flex items-center p-4 md:hidden">
