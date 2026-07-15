@@ -27,5 +27,8 @@ export const deviceTokens = pgTable(
     created_at: timestamp('created_at').defaultNow().notNull(),
     updated_at: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [unique('device_tokens_device_unique').on(t.device_id), index('device_tokens_user_idx').on(t.user_id)],
+  (t) => [
+    unique('device_tokens_device_unique').on(t.device_id),
+    index('device_tokens_user_idx').on(t.user_id),
+  ],
 );

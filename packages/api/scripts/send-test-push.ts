@@ -24,7 +24,7 @@ async function main(): Promise<void> {
       '\n' +
         '============================================================\n' +
         'WARNING: EXPO_ACCESS_TOKEN is NOT set.\n' +
-        'This run will only hit sendPush\'s log-fallback path (a fake\n' +
+        "This run will only hit sendPush's log-fallback path (a fake\n" +
         '"would send" log) and will NOT deliver anything to a phone.\n' +
         'Set EXPO_ACCESS_TOKEN in packages/api/.env first for a real send.\n' +
         '============================================================\n',

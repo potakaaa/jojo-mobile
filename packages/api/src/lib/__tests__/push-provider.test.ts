@@ -84,9 +84,8 @@ async function tokenExists(pushToken: string): Promise<boolean> {
 beforeAll(async () => {
   ({ db } = await import('../../db/client'));
   schema = await import('../../db/schema/index');
-  ({ dispatchOrderNotification, dispatchMarketingNotification } = await import(
-    '../../routes/lib/notification-dispatch'
-  ));
+  ({ dispatchOrderNotification, dispatchMarketingNotification } =
+    await import('../../routes/lib/notification-dispatch'));
   ({ sendPush } = await import('../push-provider'));
 });
 
@@ -120,9 +119,21 @@ describe('sendPush — AC-2 background payload shape (Expo mocked, no DB)', () =
 
     // The 4 transactional order-status notification types (mirrors ORDER_COPY).
     const transactional = [
-      { title: 'Order accepted', body: 'Your order has been accepted and is queued.', type: 'order_accepted' },
-      { title: 'Order being prepared', body: 'The kitchen is preparing your order.', type: 'order_preparing' },
-      { title: 'Order ready for pickup', body: 'Your order is ready — head to the branch!', type: 'order_ready' },
+      {
+        title: 'Order accepted',
+        body: 'Your order has been accepted and is queued.',
+        type: 'order_accepted',
+      },
+      {
+        title: 'Order being prepared',
+        body: 'The kitchen is preparing your order.',
+        type: 'order_preparing',
+      },
+      {
+        title: 'Order ready for pickup',
+        body: 'Your order is ready — head to the branch!',
+        type: 'order_ready',
+      },
       { title: 'Order cancelled', body: 'Your order was cancelled.', type: 'order_cancelled' },
     ];
 
@@ -178,14 +189,17 @@ describe('sendPush — #5a/Risk #6 ticket→token correlation (filtered+chunked 
     );
     // Error ticket carries NO expoPushToken → forces the positional fallback,
     // which must resolve against the filtered+chunked message order.
-    vi.spyOn(Expo.prototype, 'sendPushNotificationsAsync').mockImplementation(
-      async (messages) =>
-        messages.map((m) => {
-          const to = Array.isArray(m.to) ? m.to[0]! : m.to;
-          return to === 'ExponentPushToken[DEAD]'
-            ? { status: 'error' as const, message: 'gone', details: { error: 'DeviceNotRegistered' as const } }
-            : { status: 'ok' as const, id: 'r' };
-        }),
+    vi.spyOn(Expo.prototype, 'sendPushNotificationsAsync').mockImplementation(async (messages) =>
+      messages.map((m) => {
+        const to = Array.isArray(m.to) ? m.to[0]! : m.to;
+        return to === 'ExponentPushToken[DEAD]'
+          ? {
+              status: 'error' as const,
+              message: 'gone',
+              details: { error: 'DeviceNotRegistered' as const },
+            }
+          : { status: 'ok' as const, id: 'r' };
+      }),
     );
 
     const results = await sendPush(
@@ -211,22 +225,21 @@ describe('sendAndPrune — AC-3 permanent-error token pruning via both dispatche
   /** Mock the SDK send: DeviceNotRegistered for `deadToken`, transient for the rest. */
   function mockDeviceNotRegisteredFor(deadToken: string) {
     vi.spyOn(Expo, 'isExpoPushToken').mockReturnValue(true);
-    vi.spyOn(Expo.prototype, 'sendPushNotificationsAsync').mockImplementation(
-      async (messages) =>
-        messages.map((m) => {
-          const to = Array.isArray(m.to) ? m.to[0]! : m.to;
-          return to === deadToken
-            ? {
-                status: 'error' as const,
-                message: 'gone',
-                details: { error: 'DeviceNotRegistered' as const, expoPushToken: to },
-              }
-            : {
-                status: 'error' as const,
-                message: 'slow',
-                details: { error: 'MessageRateExceeded' as const, expoPushToken: to },
-              };
-        }),
+    vi.spyOn(Expo.prototype, 'sendPushNotificationsAsync').mockImplementation(async (messages) =>
+      messages.map((m) => {
+        const to = Array.isArray(m.to) ? m.to[0]! : m.to;
+        return to === deadToken
+          ? {
+              status: 'error' as const,
+              message: 'gone',
+              details: { error: 'DeviceNotRegistered' as const, expoPushToken: to },
+            }
+          : {
+              status: 'error' as const,
+              message: 'slow',
+              details: { error: 'MessageRateExceeded' as const, expoPushToken: to },
+            };
+      }),
     );
   }
 
