@@ -12,8 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as dashboardRouteRouteImport } from './routes/(dashboard)/route'
 import { Route as dashboardIndexRouteImport } from './routes/(dashboard)/index'
+import { Route as dashboardProductsRouteImport } from './routes/(dashboard)/products'
 import { Route as dashboardComponentsRouteImport } from './routes/(dashboard)/components'
+import { Route as dashboardCategoriesRouteImport } from './routes/(dashboard)/categories'
 import { Route as dashboardBranchesRouteImport } from './routes/(dashboard)/branches'
+import { Route as dashboardProductsProductIdRouteImport } from './routes/(dashboard)/products.$productId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -29,9 +32,19 @@ const dashboardIndexRoute = dashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardProductsRoute = dashboardProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
 const dashboardComponentsRoute = dashboardComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardCategoriesRoute = dashboardCategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
 const dashboardBranchesRoute = dashboardBranchesRouteImport.update({
@@ -39,39 +52,71 @@ const dashboardBranchesRoute = dashboardBranchesRouteImport.update({
   path: '/branches',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardProductsProductIdRoute =
+  dashboardProductsProductIdRouteImport.update({
+    id: '/$productId',
+    path: '/$productId',
+    getParentRoute: () => dashboardProductsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/branches': typeof dashboardBranchesRoute
+  '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
+  '/products': typeof dashboardProductsRouteWithChildren
   '/': typeof dashboardIndexRoute
+  '/products/$productId': typeof dashboardProductsProductIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/branches': typeof dashboardBranchesRoute
+  '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
+  '/products': typeof dashboardProductsRouteWithChildren
   '/': typeof dashboardIndexRoute
+  '/products/$productId': typeof dashboardProductsProductIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(dashboard)': typeof dashboardRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/(dashboard)/branches': typeof dashboardBranchesRoute
+  '/(dashboard)/categories': typeof dashboardCategoriesRoute
   '/(dashboard)/components': typeof dashboardComponentsRoute
+  '/(dashboard)/products': typeof dashboardProductsRouteWithChildren
   '/(dashboard)/': typeof dashboardIndexRoute
+  '/(dashboard)/products/$productId': typeof dashboardProductsProductIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/login' | '/branches' | '/components' | '/'
+  fullPaths:
+    | '/login'
+    | '/branches'
+    | '/categories'
+    | '/components'
+    | '/products'
+    | '/'
+    | '/products/$productId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/branches' | '/components' | '/'
+  to:
+    | '/login'
+    | '/branches'
+    | '/categories'
+    | '/components'
+    | '/products'
+    | '/'
+    | '/products/$productId'
   id:
     | '__root__'
     | '/(dashboard)'
     | '/login'
     | '/(dashboard)/branches'
+    | '/(dashboard)/categories'
     | '/(dashboard)/components'
+    | '/(dashboard)/products'
     | '/(dashboard)/'
+    | '/(dashboard)/products/$productId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -102,11 +147,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof dashboardIndexRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
+    '/(dashboard)/products': {
+      id: '/(dashboard)/products'
+      path: '/products'
+      fullPath: '/products'
+      preLoaderRoute: typeof dashboardProductsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
     '/(dashboard)/components': {
       id: '/(dashboard)/components'
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof dashboardComponentsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/categories': {
+      id: '/(dashboard)/categories'
+      path: '/categories'
+      fullPath: '/categories'
+      preLoaderRoute: typeof dashboardCategoriesRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
     '/(dashboard)/branches': {
@@ -116,18 +175,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof dashboardBranchesRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
+    '/(dashboard)/products/$productId': {
+      id: '/(dashboard)/products/$productId'
+      path: '/$productId'
+      fullPath: '/products/$productId'
+      preLoaderRoute: typeof dashboardProductsProductIdRouteImport
+      parentRoute: typeof dashboardProductsRoute
+    }
   }
 }
 
+interface dashboardProductsRouteChildren {
+  dashboardProductsProductIdRoute: typeof dashboardProductsProductIdRoute
+}
+
+const dashboardProductsRouteChildren: dashboardProductsRouteChildren = {
+  dashboardProductsProductIdRoute: dashboardProductsProductIdRoute,
+}
+
+const dashboardProductsRouteWithChildren =
+  dashboardProductsRoute._addFileChildren(dashboardProductsRouteChildren)
+
 interface dashboardRouteRouteChildren {
   dashboardBranchesRoute: typeof dashboardBranchesRoute
+  dashboardCategoriesRoute: typeof dashboardCategoriesRoute
   dashboardComponentsRoute: typeof dashboardComponentsRoute
+  dashboardProductsRoute: typeof dashboardProductsRouteWithChildren
   dashboardIndexRoute: typeof dashboardIndexRoute
 }
 
 const dashboardRouteRouteChildren: dashboardRouteRouteChildren = {
   dashboardBranchesRoute: dashboardBranchesRoute,
+  dashboardCategoriesRoute: dashboardCategoriesRoute,
   dashboardComponentsRoute: dashboardComponentsRoute,
+  dashboardProductsRoute: dashboardProductsRouteWithChildren,
   dashboardIndexRoute: dashboardIndexRoute,
 }
 
