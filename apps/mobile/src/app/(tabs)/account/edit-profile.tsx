@@ -106,6 +106,7 @@ export default function EditProfileScreen() {
                   <Input
                     ref={monthRef}
                     mode={mode}
+                    accessibilityLabel="Birth month"
                     placeholder="MM"
                     value={bMonth}
                     onChangeText={(v) => {
@@ -124,6 +125,7 @@ export default function EditProfileScreen() {
                   <Input
                     ref={dayRef}
                     mode={mode}
+                    accessibilityLabel="Birth day"
                     placeholder="DD"
                     value={bDay}
                     onChangeText={(v) => {
@@ -146,6 +148,7 @@ export default function EditProfileScreen() {
                   <Input
                     ref={yearRef}
                     mode={mode}
+                    accessibilityLabel="Birth year"
                     placeholder="YYYY"
                     value={bYear}
                     onChangeText={(v) => {

@@ -12,11 +12,11 @@ metadata:
 # Phase 06 — Cross-Tab UX Polish
 
 **Program:** mobile-tabs-order-flow-completion
-**Umbrella plan:** process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/mobile-tabs-order-flow-completion-umbrella_PLAN_14-07-26.md
+**Umbrella plan:** process/general-plans/completed/mobile-tabs-order-flow-completion_14-07-26/mobile-tabs-order-flow-completion-umbrella_PLAN_14-07-26.md
 **Date**: 14-07-26 (supplemented 15-07-26; VALIDATE gap-fix 15-07-26)
 **Status**: ✅ VERIFIED — EXECUTE + EVL complete, all gates green (see Phase Loop Progress)
 **Complexity**: COMPLEX (phase of a COMPLEX phase program)
-**Report destination:** process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-06-ux-polish_REPORT_14-07-26.md
+**Report destination:** process/general-plans/completed/mobile-tabs-order-flow-completion_14-07-26/phase-06-ux-polish_REPORT_14-07-26.md
 
 ## Overview / Context
 
@@ -260,11 +260,11 @@ depends on, silently degrading sort order after B1's migration.** Fixed via a bo
 
 ## Resume and Execution Handoff
 
-- Selected plan file path: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-06-ux-polish_PLAN_14-07-26.md`
-- Last completed step: PVL (Step 4) — CONDITIONAL gate, B1a gap found and fixed into plan text, validate-contract written (this pass, 15-07-26)
-- Validate-contract status: CONDITIONAL (see `## Validate Contract` below) — 1 concern (B1a) resolved via plan fix + execute-agent instruction; no unresolved FAILs
+- Selected plan file path: `process/general-plans/completed/mobile-tabs-order-flow-completion_14-07-26/phase-06-ux-polish_PLAN_14-07-26.md`
+- Last completed step: UPDATE PROCESS (Step 7) — all 7 inner-loop steps complete; EXECUTE + EVL green, program archived (see Phase Loop Progress).
+- Validate-contract status: historical record below was CONDITIONAL at PVL time (1 concern, B1a); B1a was applied during EXECUTE and independently confirmed green at EVL — no open gaps remain.
 - Supporting context: Phase 3/4/5 reports (delivered screens + jest runner), `packages/ui/src/index.ts`, `theme.ts` tokens, `apps/mobile/src/test-utils/render.tsx` + `jest-setup.ts`
-- Next step: Spawn vc-execute-agent against this plan + validate-contract. Execute B1 and B1a together (B1a is a small, bounded addition to the same migration). Do not spawn EXECUTE until Phases 1-5 exit gates have passed (Entry Gate) — already confirmed.
+- Next step: none — phase VERIFIED and archived. This handoff block is retained as historical record.
 
 ## Validate Contract
 

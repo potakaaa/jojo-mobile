@@ -55,7 +55,18 @@ export default function RewardsScreen() {
       `Redeem "${reward.name}" for ${reward.requiredStars} ${reward.requiredStars === 1 ? 'star' : 'stars'}? This will use your stars and add a coupon to your wallet.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Redeem', onPress: () => redeem.mutate(reward.id) },
+        {
+          text: 'Redeem',
+          onPress: () =>
+            redeem.mutate(reward.id, {
+              onError: () => {
+                Alert.alert(
+                  "Couldn't redeem reward",
+                  'Please refresh your rewards balance and try again.',
+                );
+              },
+            }),
+        },
       ],
     );
   };
