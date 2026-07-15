@@ -5,6 +5,7 @@ import {
   branchProductAvailability,
   branches,
   categories,
+  coupons,
   dealBranches,
   dealProducts,
   deals,
@@ -12,9 +13,35 @@ import {
   orders,
   productOptions,
   products,
+  rewards,
+  starTransactions,
+  userStars,
   users,
 } from '../schema/index';
-import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
+import { seedBranches, seedCategories, seedDeals, seedProducts, seedRewards } from './data';
+
+// Relative image paths (resolved against the API origin at render time by the
+// mobile app — see apps/mobile/src/lib/image-url.ts). Served statically from
+// packages/api/public/images by the `/images` mount in src/index.ts. Products/deals
+// without an entry keep image_url = null and render the app's placeholder block.
+const PRODUCT_IMAGE_BY_SLUG: Record<string, string> = {
+  'classic-fries': '/images/fries-large.webp',
+  'cheese-fries': '/images/fries-large.webp',
+  'original-corndog': '/images/corndog.webp',
+  'double-cheese-corndog': '/images/corndog.webp',
+  'spicy-nuggets': '/images/nuggets.webp',
+  'classic-nuggets': '/images/nuggets.webp',
+  lemonade: '/images/lemonade.webp',
+  'fries-corndog-combo': '/images/product-trio.webp',
+};
+
+const DEAL_IMAGE_BY_TITLE: Record<string, string> = {
+  'First app order: Free lemonade upgrade': '/images/lemonade.webp',
+  'Snack break deal: Fries + Lemonade bundle': '/images/product-trio.webp',
+  'Buy 1 Take 1 lemonade': '/images/lemonade.webp',
+  'Branch-exclusive opening promo': '/images/mascot.webp',
+  'Weekend combo deal': '/images/product-trio.webp',
+};
 
 const STAFF_EMAIL = 'staff-branch1@jojopotato.local';
 
@@ -139,6 +166,7 @@ async function seedProductsTable(
       category_id: categoryId,
       base_price: product.base_price,
       is_reward_eligible: product.is_reward_eligible,
+      image_url: PRODUCT_IMAGE_BY_SLUG[product.slug] ?? null,
     };
     const [inserted] = await db
       .insert(products)
@@ -215,6 +243,7 @@ async function seedDealsTable(): Promise<Map<string, string>> {
       end_at: new Date(now.getTime() + deal.windowDays * 24 * 60 * 60 * 1000),
       usage_limit_per_user: deal.usage_limit_per_user,
       total_usage_limit: deal.total_usage_limit,
+      image_url: DEAL_IMAGE_BY_TITLE[deal.title] ?? null,
     };
     const [existing] = await db
       .select({ id: deals.id })
@@ -427,6 +456,452 @@ async function seedSampleOrders(
   }
 }
 
+// Idempotent rewards catalog seed. `rewards` has no unique column, so idempotency
+// is app-level: find-by-name, then update or insert. free_item rewards resolve
+// their `eligible_product_id` from a seeded product slug; discount rewards leave it
+// null. Returns a name→id map so coupons can link a reward.
+async function seedRewardsTable(
+  productIdBySlug: Map<string, string>,
+): Promise<Map<string, string>> {
+  const idByName = new Map<string, string>();
+  for (const reward of seedRewards) {
+    let eligibleProductId: string | null = null;
+    if (reward.eligibleProductSlug) {
+      const resolved = productIdBySlug.get(reward.eligibleProductSlug);
+      if (!resolved) {
+        throw new Error(
+          `Seed data error: reward "${reward.name}" references unknown product "${reward.eligibleProductSlug}"`,
+        );
+      }
+      eligibleProductId = resolved;
+    }
+    const row = {
+      name: reward.name,
+      required_stars: reward.required_stars,
+      reward_type: reward.reward_type,
+      reward_value: reward.reward_value,
+      eligible_product_id: eligibleProductId,
+      is_active: true,
+    };
+    const [existing] = await db
+      .select({ id: rewards.id })
+      .from(rewards)
+      .where(eq(rewards.name, reward.name));
+    const [rewardRow] = existing
+      ? await db
+          .update(rewards)
+          .set({ ...row, updated_at: new Date() })
+          .where(eq(rewards.id, existing.id))
+          .returning({ id: rewards.id, name: rewards.name })
+      : await db.insert(rewards).values(row).returning({ id: rewards.id, name: rewards.name });
+    if (!rewardRow)
+      throw new Error(`Seed error: upsert of reward "${reward.name}" returned no row`);
+    idByName.set(rewardRow.name, rewardRow.id);
+  }
+  return idByName;
+}
+
+// Resolve jojo@test.com's user id after seedTestUser() has run. Throws if absent
+// (seedTestUser fail-closes under production and otherwise always creates it).
+async function resolveTestUserId(): Promise<string> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, TEST_USER.email));
+  if (!row) throw new Error('Seed error: jojo@test.com not found after seedTestUser');
+  return row.id;
+}
+
+// Complete jojo@test.com's customer profile so the app routes straight to the
+// tabs (not onboarding) and the Account screen shows real data. birthday is a
+// pg `date` column → 'YYYY-MM-DD' string; onboardedAt flips the nav gate.
+async function seedTestUserProfile(jojoId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      name: 'Jojo Dela Cruz',
+      birthday: '1998-03-15',
+      address: 'Unit 4B, C.M. Recto Ave, Cogon, Cagayan de Oro',
+      onboardedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, jojoId));
+}
+
+// Upsert jojo's star balance. user_stars.user_id is UNIQUE, so ON CONFLICT keys
+// off it. current_stars 7 unlocks the 4/5/6-star rewards but not the 8/10-star ones.
+async function seedUserStarsRow(jojoId: string): Promise<void> {
+  await db
+    .insert(userStars)
+    .values({ user_id: jojoId, current_stars: 7, lifetime_stars: 25 })
+    .onConflictDoUpdate({
+      target: userStars.user_id,
+      set: { current_stars: 7, lifetime_stars: 25, updated_at: new Date() },
+    });
+}
+
+type JojoOrderItemSpec = {
+  slug: string;
+  name: string;
+  quantity: number;
+  unitPrice: string;
+  options?: {
+    optionId: string;
+    optionType: 'size' | 'flavor' | 'add_on';
+    name: string;
+    priceDeltaCents: number;
+  }[];
+};
+
+type JojoOrderSpec = {
+  number: string;
+  status: 'completed' | 'ready' | 'preparing' | 'accepted' | 'cancelled' | 'rejected';
+  minutesAgo: number;
+  items: JojoOrderItemSpec[];
+};
+
+// jojo@test.com's order history + in-flight + edge-state orders. Spans past
+// completed orders (populate History + justify stars), live states (tracking
+// variety), and cancelled/rejected edges. Prices match the seeded product base
+// prices; discount_total is 0 so total == subtotal.
+const JOJO_ORDERS: JojoOrderSpec[] = [
+  {
+    number: 'JP-260701-J001',
+    status: 'completed',
+    minutesAgo: 14 * 24 * 60,
+    items: [
+      {
+        slug: 'classic-fries',
+        name: 'Classic Fries',
+        quantity: 2,
+        unitPrice: '89.00',
+        options: [
+          { optionId: 'opt-size-large', optionType: 'size', name: 'Large', priceDeltaCents: 3000 },
+        ],
+      },
+      { slug: 'lemonade', name: 'Lemonade', quantity: 1, unitPrice: '59.00' },
+    ],
+  },
+  {
+    number: 'JP-260703-J002',
+    status: 'completed',
+    minutesAgo: 12 * 24 * 60,
+    items: [
+      {
+        slug: 'fries-corndog-combo',
+        name: 'Fries + Corndog Combo',
+        quantity: 1,
+        unitPrice: '139.00',
+      },
+    ],
+  },
+  {
+    number: 'JP-260705-J003',
+    status: 'completed',
+    minutesAgo: 10 * 24 * 60,
+    items: [
+      { slug: 'spicy-nuggets', name: 'Spicy Nuggets', quantity: 1, unitPrice: '99.00' },
+      { slug: 'lemonade', name: 'Lemonade', quantity: 1, unitPrice: '59.00' },
+    ],
+  },
+  {
+    number: 'JP-260708-J004',
+    status: 'completed',
+    minutesAgo: 7 * 24 * 60,
+    items: [
+      { slug: 'original-corndog', name: 'Original Corndog', quantity: 3, unitPrice: '69.00' },
+    ],
+  },
+  {
+    number: 'JP-260714-J005',
+    status: 'ready',
+    minutesAgo: 20,
+    items: [
+      { slug: 'classic-fries', name: 'Classic Fries', quantity: 1, unitPrice: '89.00' },
+      { slug: 'lemonade', name: 'Lemonade', quantity: 1, unitPrice: '59.00' },
+    ],
+  },
+  {
+    number: 'JP-260714-J006',
+    status: 'preparing',
+    minutesAgo: 10,
+    items: [{ slug: 'spicy-nuggets', name: 'Spicy Nuggets', quantity: 2, unitPrice: '99.00' }],
+  },
+  {
+    number: 'JP-260714-J007',
+    status: 'accepted',
+    minutesAgo: 5,
+    items: [
+      {
+        slug: 'fries-corndog-combo',
+        name: 'Fries + Corndog Combo',
+        quantity: 1,
+        unitPrice: '139.00',
+      },
+    ],
+  },
+  {
+    number: 'JP-260710-J008',
+    status: 'cancelled',
+    minutesAgo: 5 * 24 * 60,
+    items: [{ slug: 'lemonade', name: 'Lemonade', quantity: 1, unitPrice: '59.00' }],
+  },
+  {
+    number: 'JP-260711-J009',
+    status: 'rejected',
+    minutesAgo: 4 * 24 * 60,
+    items: [{ slug: 'classic-fries', name: 'Classic Fries', quantity: 1, unitPrice: '89.00' }],
+  },
+];
+
+/** Sum item line totals (quantity × unitPrice) to a 2-decimal peso string. */
+function orderSubtotal(items: JojoOrderItemSpec[]): string {
+  const cents = items.reduce(
+    (sum, item) => sum + Math.round(Number(item.unitPrice) * 100) * item.quantity,
+    0,
+  );
+  return (cents / 100).toFixed(2);
+}
+
+/**
+ * Seed jojo@test.com's orders (History + tracking + star sources). Idempotent via
+ * fixed order_numbers (ON CONFLICT (order_number) DO UPDATE) + delete-then-reinsert
+ * items. Per-status timestamps are derived from placed_at. Returns the ids of the
+ * `completed` orders so star_transactions can tie earned stars to real orders.
+ */
+async function seedJojoOrders(
+  jojoId: string,
+  branchId: string,
+  productIdBySlug: Map<string, string>,
+): Promise<string[]> {
+  const now = Date.now();
+  const completedOrderIds: string[] = [];
+
+  for (const spec of JOJO_ORDERS) {
+    const placedAt = new Date(now - spec.minutesAgo * 60_000);
+    const acceptedAt = new Date(placedAt.getTime() + 2 * 60_000);
+    const readyAt = new Date(placedAt.getTime() + 15 * 60_000);
+    const completedAt = new Date(placedAt.getTime() + 25 * 60_000);
+    const cancelledAt = new Date(placedAt.getTime() + 3 * 60_000);
+    const estimatedReadyAt = new Date(placedAt.getTime() + 15 * 60_000);
+    const subtotal = orderSubtotal(spec.items);
+
+    const timestamps = {
+      accepted_at:
+        spec.status === 'completed' ||
+        spec.status === 'ready' ||
+        spec.status === 'preparing' ||
+        spec.status === 'accepted'
+          ? acceptedAt
+          : null,
+      ready_at: spec.status === 'completed' || spec.status === 'ready' ? readyAt : null,
+      completed_at: spec.status === 'completed' ? completedAt : null,
+      cancelled_at: spec.status === 'cancelled' ? cancelledAt : null,
+      estimated_ready_at:
+        spec.status === 'ready' || spec.status === 'preparing' || spec.status === 'accepted'
+          ? estimatedReadyAt
+          : null,
+    };
+
+    await db
+      .insert(orders)
+      .values({
+        user_id: jojoId,
+        branch_id: branchId,
+        order_number: spec.number,
+        status: spec.status,
+        subtotal,
+        discount_total: '0',
+        total: subtotal,
+        payment_method: 'pay_at_branch',
+        payment_status: 'unpaid',
+        placed_at: placedAt,
+        ...timestamps,
+      })
+      .onConflictDoUpdate({
+        target: orders.order_number,
+        set: {
+          user_id: jojoId,
+          branch_id: branchId,
+          status: spec.status,
+          subtotal,
+          discount_total: '0',
+          total: subtotal,
+          placed_at: placedAt,
+          ...timestamps,
+          updated_at: new Date(),
+        },
+      });
+
+    const [orderRow] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.order_number, spec.number));
+    if (!orderRow) {
+      throw new Error(`Seed error: jojo order "${spec.number}" not found after upsert`);
+    }
+    if (spec.status === 'completed') completedOrderIds.push(orderRow.id);
+
+    await db.delete(orderItems).where(eq(orderItems.order_id, orderRow.id));
+    await db.insert(orderItems).values(
+      spec.items.map((item) => {
+        const productId = productIdBySlug.get(item.slug);
+        if (!productId) {
+          throw new Error(
+            `Seed data error: jojo order item references unknown product "${item.slug}"`,
+          );
+        }
+        return {
+          order_id: orderRow.id,
+          product_id: productId,
+          product_name_snapshot: item.name,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total_price: (Number(item.unitPrice) * item.quantity).toFixed(2),
+          selected_options: item.options ?? [],
+        };
+      }),
+    );
+  }
+  return completedOrderIds;
+}
+
+// Seed jojo's star ledger. Idempotent: delete this user's transactions first, then
+// insert a consistent-looking set (earned rows tied to completed orders + a welcome
+// bonus + one redeemed). The user_stars row is the authoritative balance; these
+// rows are the display ledger.
+async function seedStarTransactionsRows(
+  jojoId: string,
+  completedOrderIds: string[],
+): Promise<void> {
+  await db.delete(starTransactions).where(eq(starTransactions.user_id, jojoId));
+
+  const rows: {
+    user_id: string;
+    order_id: string | null;
+    type: 'earned' | 'redeemed';
+    stars: number;
+    description: string;
+  }[] = [
+    { user_id: jojoId, order_id: null, type: 'earned', stars: 5, description: 'Welcome bonus' },
+  ];
+  for (const orderId of completedOrderIds) {
+    rows.push({
+      user_id: jojoId,
+      order_id: orderId,
+      type: 'earned',
+      stars: 5,
+      description: 'Stars earned from order',
+    });
+  }
+  rows.push({
+    user_id: jojoId,
+    order_id: null,
+    type: 'redeemed',
+    stars: 18,
+    description: 'Redeemed reward',
+  });
+
+  await db.insert(starTransactions).values(rows);
+}
+
+type JojoCouponSpec = {
+  code: string;
+  status: 'available' | 'used' | 'expired';
+  rewardName: string | null;
+  dealTitle: string | null;
+  expiresInDays: number;
+  used: boolean;
+};
+
+// jojo's coupon wallet: reward-issued + deal-issued available coupons, one used,
+// one expired. Idempotent via the unique `code` column.
+const JOJO_COUPONS: JojoCouponSpec[] = [
+  {
+    code: 'WELCOME-JOJO-01',
+    status: 'available',
+    rewardName: 'Free Lemonade',
+    dealTitle: null,
+    expiresInDays: 30,
+    used: false,
+  },
+  {
+    code: 'DEAL-CENTRIO-01',
+    status: 'available',
+    rewardName: null,
+    dealTitle: 'Branch-exclusive opening promo',
+    expiresInDays: 14,
+    used: false,
+  },
+  {
+    code: 'USED-FRIES-01',
+    status: 'used',
+    rewardName: 'Free Regular Fries',
+    dealTitle: null,
+    expiresInDays: 30,
+    used: true,
+  },
+  {
+    code: 'EXPIRED-15OFF-01',
+    status: 'expired',
+    rewardName: '15% Off',
+    dealTitle: null,
+    expiresInDays: -5,
+    used: false,
+  },
+];
+
+async function seedJojoCoupons(
+  jojoId: string,
+  rewardIdByName: Map<string, string>,
+  dealIdByTitle: Map<string, string>,
+): Promise<void> {
+  const now = Date.now();
+  for (const spec of JOJO_COUPONS) {
+    let rewardId: string | null = null;
+    if (spec.rewardName) {
+      rewardId = rewardIdByName.get(spec.rewardName) ?? null;
+      if (!rewardId)
+        throw new Error(
+          `Seed data error: coupon "${spec.code}" references unknown reward "${spec.rewardName}"`,
+        );
+    }
+    let dealId: string | null = null;
+    if (spec.dealTitle) {
+      dealId = dealIdByTitle.get(spec.dealTitle) ?? null;
+      if (!dealId)
+        throw new Error(
+          `Seed data error: coupon "${spec.code}" references unknown deal "${spec.dealTitle}"`,
+        );
+    }
+    const expiresAt = new Date(now + spec.expiresInDays * 24 * 60 * 60 * 1000);
+    const usedAt = spec.used ? new Date(now - 2 * 24 * 60 * 60 * 1000) : null;
+    const row = {
+      user_id: jojoId,
+      reward_id: rewardId,
+      deal_id: dealId,
+      code: spec.code,
+      status: spec.status,
+      expires_at: expiresAt,
+      used_at: usedAt,
+    };
+    await db
+      .insert(coupons)
+      .values(row)
+      .onConflictDoUpdate({
+        target: coupons.code,
+        set: {
+          user_id: jojoId,
+          reward_id: rewardId,
+          deal_id: dealId,
+          status: spec.status,
+          expires_at: expiresAt,
+          used_at: usedAt,
+        },
+      });
+  }
+}
+
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
   await seedStaffUser(branchIdBySlug);
@@ -436,7 +911,20 @@ export async function runSeed(): Promise<void> {
   await seedBranchProductAvailabilityTable(branchIdBySlug, productIdBySlug);
   const dealIdByTitle = await seedDealsTable();
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
+  const rewardIdByName = await seedRewardsTable(productIdBySlug);
   await seedTestUser();
+
+  // Rich customer data attached to jojo@test.com: completed profile (routes to
+  // tabs, populates Account), star balance, orders (History/tracking/star sources),
+  // star ledger, and a coupon wallet. All idempotent.
+  const [firstBranchId] = branchIdBySlug.values();
+  if (!firstBranchId) throw new Error('Seed error: no branches seeded for jojo orders');
+  const jojoId = await resolveTestUserId();
+  await seedTestUserProfile(jojoId);
+  await seedUserStarsRow(jojoId);
+  const completedOrderIds = await seedJojoOrders(jojoId, firstBranchId, productIdBySlug);
+  await seedStarTransactionsRows(jojoId, completedOrderIds);
+  await seedJojoCoupons(jojoId, rewardIdByName, dealIdByTitle);
 
   // Sample orders are owned by a dedicated demo customer (NOT jojo@test.com), so
   // the seed-test-user unit test can delete jojo@test.com without hitting the
@@ -450,7 +938,11 @@ export async function runSeed(): Promise<void> {
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
-  console.log(`  test user: ${TEST_USER.email}`);
+  console.log(`  rewards: ${rewardIdByName.size}`);
+  console.log(`  test user: ${TEST_USER.email} (profile completed)`);
+  console.log(`  jojo orders: ${JOJO_ORDERS.length} (completed: ${completedOrderIds.length})`);
+  console.log(`  jojo coupons: ${JOJO_COUPONS.length}`);
+  console.log(`  jojo stars: current 7 / lifetime 25`);
   console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);
 }

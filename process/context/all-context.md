@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 15-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 15-07-26, incl. mobile-tabs-order-flow-completion 6-phase program + admin-dashboard Phase 0-3 + Sidebar Nav + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Admin dashboard Products/Categories CRUD (`apps/admin` + `packages/api`, Phase 3 — Products/
   Categories CRUD ADM-003, delivered 15-07-26, ✅ VERIFIED — code-complete, automated-verified, AND
@@ -166,6 +166,70 @@ top of it later without re-plumbing the project.
   RESEARCH once a real second CRUD consumer exists (the umbrella's own "second consumer" rule).
   Delivered by: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/
   phase-02-branches_PLAN_14-07-26.md` (+ co-located REPORT in the same task folder).
+- **Mobile Tabs + Order-Flow Completion (6-phase program, delivered 15-07-26, ✅ PROGRAM COMPLETE —
+  branch `feat/mobile-tabs-order-flow-completion`):** closed out the app's remaining mock/placeholder
+  surfaces. All 5 tabs now render real data end-to-end; no `<ComingSoon>` shells remain except
+  Notifications-related surfaces (explicitly out of scope). Payment stayed pay-at-branch only
+  throughout — no processor added, `payment_status` never left `unpaid`.
+  - **Rewards/stars backend (Phase 1, `packages/api/src/routes/rewards.ts`):** `GET /rewards`
+    (catalog), `GET /rewards/balance` (tier-free — `RewardsAccount{userId,currentStars,lifetimeStars}`
+    + `RewardsProgress{currentStars,rewardThreshold,starsToNextReward}`, `rewardThreshold` fixed at 5,
+    NO tier/bronze/silver/gold system anywhere), `POST /rewards/:id/redeem` (row-locked, issues a
+    coupon). Real stars accrual (1 star per completed order ≥ ₱100, idempotent — hooked at the
+    terminal `completed` transition in STAFF-003's PATCH handler in `packages/api/src/routes/staff.ts`,
+    replacing the old `creditStarsForOrder` no-op stub). `packages/types/src/rewards.ts` reconciled
+    from the old `points`/`tier` placeholder shape to the real schema-based shape.
+  - **Coupons backend (Phase 2, `packages/api/src/routes/coupons.ts`):** `GET /coupons` (wallet list,
+    `serializeCouponWithLabel` — LEFT JOINs `deals`/`rewards` for a human-readable `displayLabel`),
+    `POST /coupons/:id/redeem` (available→used). `POST /orders` gained optional `couponId` +
+    server-computed discount (per `reward_type`: `fixed_discount`/`percentage_discount`/`free_item`),
+    stacks with an existing deal discount, always clamped to subtotal, atomic compare-and-swap.
+    Migration `0007_round_menace.sql` added nullable `orders.coupon_id`.
+  - **Mobile — Home tab (Phase 3):** rewired from 100%-mock (`features/home/mock-home.ts`) to real
+    `useBranch`/`useMenu`/`useDeals` + a real rewards summary; `mock-home.ts` remains on disk
+    (demoted to showcase-only, still imported by the unrelated `component-showcase.tsx` demo seed)
+    but is fully out of the production render path.
+  - **Mobile — Rewards tab + coupon wallet (Phase 4):** real balance/progress display + redeem flow;
+    coupon wallet screen. This phase also established `apps/mobile`'s FIRST RN component test runner
+    (jest-expo) — see Testing bullet below.
+  - **Mobile — Account tab (Phase 5):** real profile view (`account/index.tsx`, no more
+    `<ComingSoon>`) + new `account/edit-profile.tsx` route; `useAuth()` gained `updateProfile
+    ({name,birthday,address})` (additive, distinct from onboarding's `completeProfile()` — never
+    touches `onboardedAt`, never sends `role`). New `features/auth/lib/birthday.ts` canonical
+    birthday helper (`isValidBirthday`/`assembleBirthday`/`splitBirthday`).
+  - **Mobile — cross-tab UX polish (Phase 6, final):** Branches screen (`(tabs)/branches/index.tsx`)
+    migrated from local `useEffect`/`useState` fetch to react-query (`useQuery(['branches','all'],
+    getBranches)`, unfiltered — closed branches still shown with badge; deliberately does NOT reuse
+    `useBranch()`'s pre-filtered open-only list). A same-phase VALIDATE pass caught and fixed a real
+    silent regression: the canonical `/branches` response was dropping the `priority` field the
+    branch list's no-location sort depends on — `serializeBranch()` and mobile `BranchResponse` both
+    gained an additive `priority: number` passthrough. Removed the last 2 `__DEV__`-gated "Dev:" nav
+    links (`order/index.tsx`, replaced with real Cart/History header icons) — zero `"Dev:"` links
+    remain anywhere in `apps/mobile/src/app/(tabs)`. Added pay-at-branch copy to checkout +
+    confirmation (copy-only). a11y pass (`accessibilityRole`/`accessibilityLabel`) on cart/checkout/
+    coupons screens' bare `Pressable`/`TouchableOpacity` elements.
+  - **Testing (durable, project-wide-gap-closing fact):** `apps/mobile` now has a **jest-expo RN
+    component test runner** (first in the app, added Phase 4) alongside its existing pure-TS vitest —
+    `apps/mobile/src/test-utils/render.tsx` (async `renderWithProviders()`, must be awaited) +
+    `apps/mobile/src/test-utils/jest-setup.ts` (hand-rolled reanimated mock — lacks layout-animation
+    exports `FadeIn`/`FadeOut`/`SlideInDown`/`SlideOutDown`/`Easing`/`cancelAnimation`, a known gap
+    that blocked one optional Phase 6 test — plus a global `expo-router` stub and a global
+    `@/features/auth/lib/auth-client` mock required by any screen that transitively imports
+    `@/lib/api-client`). `apps/mobile`'s `test` script is now `vitest run --passWithNoTests && jest`
+    (vitest owns `*.test.ts` pure logic, jest owns `*.test.tsx` component rendering). **This CLOSES
+    the long-standing "no RN component/E2E runner" project-wide gap for component-level tests** —
+    navigation-level E2E (Detox/Maestro/Playwright) is still absent, that part of the gap remains
+    open. Final test totals: `apps/mobile` vitest 44 + jest 23 (6 suites); `packages/api` 189/189;
+    `packages/ui` jest 47/47.
+  - **Deferred/out of scope (unchanged, by design):** notifications API/push delivery, live-tracking
+    polling/websockets, admin/staff shells (separate programs), external payment processor, real
+    pricing for the 4 complex deal types.
+  - Delivered by (now archived):
+    `process/general-plans/completed/mobile-tabs-order-flow-completion_14-07-26/` (umbrella plan +
+    6 phase plans/reports + Phase 1/2 high-risk evidence packs). Execution commits on branch
+    `feat/mobile-tabs-order-flow-completion`: `04effb1` (Phase 1), `f9dc60e` (Phase 2), `7dae7f2`
+    (Phase 3), `3e9d246` (Phase 4), `be7e6d2` (Phase 5), `d8310f8` (auth error-surfacing fix); Phase 6
+    execution commit pending at time of this UPDATE PROCESS pass — check `git log`/`git status`.
 
 - **Admin dashboard auth/RBAC (`apps/admin` + `packages/api`, Phase 1 — Auth/RBAC ADM-001,
   delivered 14-07-26, ✅ VERIFIED):** the FIRST protected `/api/admin/*` surface in the repo.
@@ -280,11 +344,13 @@ top of it later without re-plumbing the project.
   `process/features/auth-accounts/completed/onboarding-screens_13-07-26/` (archived plan — read for
   full design, validate-contract, and execution/EVL evidence). Note: staff users bypass this
   onboarding entirely — the root gate checks `isStaff` first (STAFF-001 merge decision).
-- **Screens:** Home, Order, and Branches tabs now have real, end-to-end-wired business UI — the
-  full customer pickup-order journey (branch select → menu → product customize → cart → checkout
-  → confirmation → tracking → order history) is implemented and working, not just placeholder.
-  Rewards and Account tabs (`rewards/index.tsx`, `account/index.tsx` and everything nested under
-  them) remain `<ComingSoon>` placeholders — future work. The role-gated `(staff)` shell exists
+- **Screens:** ALL 5 customer tabs (Home, Order, Rewards, Branches, Account) now have real,
+  end-to-end-wired business UI — no `<ComingSoon>` shells remain among them (superseded 15-07-26 by
+  the mobile-tabs-order-flow-completion program; see the dedicated program bullet above). The full
+  customer pickup-order journey (branch select → menu → product customize → cart → checkout →
+  confirmation → tracking → order history) is implemented and working. Rewards tab shows real
+  balance/tier-progress + a coupon wallet; Account tab shows a real profile view + edit. Only
+  Notifications-related surfaces remain out of scope (local-mock, unchanged). The role-gated `(staff)` shell exists
   (STAFF-001, see below); STAFF-002 (Active Orders real data) and STAFF-003 (order status actions +
   Completed Orders) are delivered (see dedicated bullets below). STAFF-004 (product availability) is next.
 - **Checkout-flow UI rework (CART-002 #18, `feat/checkout-flow` branch — real-API wiring delivered 14-07-26):**
@@ -692,7 +758,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
             order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
             branches/                   -- real: index (list), [branchId] (detail + menu)
-            rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
+            rewards/, account/          -- real: rewards balance/tier-progress + coupon wallet; account profile view + edit-profile (delivered by mobile-tabs-order-flow-completion, 15-07-26)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
             _layout.tsx                -- Stack navigator (headerShown:false for root; STAFF-002+ screens add their own headers)
             index.tsx                  -- staff dashboard shell: BrandWordmark+Staff badge, branch name from /api/staff/me, 4 inert nav cards, sign-out
@@ -770,7 +836,7 @@ Metro/Expo resolves them like any other dependency.
 - **Data fetching:** `@tanstack/react-query` ^5.62.0 (`apps/mobile` only) — added 13-07-26 via `merge-menu-api-reconciliation`, scoped to menu/branch/product data (`lib/query-client.ts` + `features/{branch,menu}/hooks/`); NOT an app-wide data-fetching mandate — `features/orders/*` intentionally still uses the pre-existing `use-async-data.ts`/`api-request.ts` plumbing. `apps/admin` (added 14-07-26) also depends on react-query v5 but instantiates its OWN separate `QueryClient` — not shared with `apps/mobile`'s instance (different app/runtime).
 - **Linting/formatting:** Flat-config ESLint 9.x (`eslint-config-expo` ~57.0.0, `typescript-eslint` 8.x) + Prettier 3.9.x, shared via `@jojopotato/config`
 - **Admin web app (`apps/admin`, `@jojopotato/admin`, added 14-07-26):** TanStack Start (file-based routing, Vite 8-based build/dev) + Tailwind CSS v4 (`@theme` token block) + shadcn/ui primitives (installed as source, not a runtime dep) + `@tanstack/react-query` (own client instance). This is a NEW web app, distinct from the Expo/RN `apps/mobile` — `packages/ui` (React Native) is NOT reused here; brand tokens are ported from `packages/ui/src/theme.ts` into Tailwind's `@theme` CSS block instead. Currently Phase 0 scaffold only (no auth, no business screens) — see `process/features/admin-dashboard/`.
-- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`); `vitest` in `apps/mobile` (pure-TS logic only, node env — added by the checkout-flow rework, config extended by HIST-002); `vitest` + `@testing-library/react` (jsdom) in `apps/admin` (added 14-07-26 — the FIRST web-app component-test runner precedent in the repo, run `pnpm --filter @jojopotato/admin test`); `jest`/`jest-expo` in `packages/ui` (component tests). `packages/{types,utils}` and RN component/E2E coverage for `apps/mobile` still have no runner — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
+- **Testing:** `vitest` + `supertest` in `packages/api` (integration suites for auth, staff authz, branches, orders, deals, rewards, coupons — run `pnpm --filter @jojopotato/api test` after `docker compose up -d` + `db:migrate`; 189/189 as of 15-07-26); `vitest` in `apps/mobile` (pure-TS logic only, node env — 44 tests) PLUS `jest`/`jest-expo` (RN component tests — 23 tests, 6 suites; added 15-07-26 by the mobile-tabs-order-flow-completion program, Phase 4 — the FIRST RN component-test-runner precedent for `apps/mobile`, closing the long-standing "no RN component runner" gap for component-level tests; `apps/mobile`'s `test` script is `vitest run --passWithNoTests && jest`; reusable helpers `apps/mobile/src/test-utils/{render,jest-setup}.tsx`); `vitest` + `@testing-library/react` (jsdom) in `apps/admin` (added 14-07-26 — the first web-app component-test runner precedent in the repo, run `pnpm --filter @jojopotato/admin test`); `jest`/`jest-expo` in `packages/ui` (component tests, 47/47). `packages/{types,utils}` still have no runner, and `apps/mobile` still has no navigation-level E2E runner (Detox/Maestro/Playwright) — see `process/context/tests/all-tests.md`. Propose a runner explicitly when a feature plan needs coverage on an untested surface.
 - **Deploy/CI:** EAS Build/Submit (deploy) planned but not yet wired — no `eas.json`. GitHub Actions CI IS present (`.github/workflows/ci.yml`): format, lint, typecheck, test (Postgres service + `db:migrate`), build. Local Postgres for tests via root `docker-compose.yml` (`docker compose up -d`). `apps/admin`'s deploy pipeline is explicitly out of scope for the admin-dashboard program (builds the app, not its deploy story).
 
 ## Key Patterns and Conventions
@@ -860,6 +926,13 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 
 ## Scan Metadata
 
+- Latest delta: 2026-07-15 (mobile-tabs-order-flow-completion program-end UPDATE PROCESS — all 6
+  phases delivered and archived: rewards/stars backend + coupons backend + Home tab rewire + Rewards
+  tab/coupon wallet UI + Account/profile screen + cross-tab UX polish. Added the durable
+  "Mobile Tabs + Order-Flow Completion" bullet, the apps/mobile jest-expo RN component runner note
+  (closes the component-level "no RN runner" gap; E2E/navigation-level gap remains open), and
+  corrected the Home-tab claim from a superseded "real/wired" statement — Home is now genuinely real,
+  not mock. Program folder moved `process/general-plans/active/` → `completed/`.)
 - Generated: 2026-07-08 (full scan)
 - Last delta: 2026-07-15 (admin-dashboard Phase 3 UPDATE PROCESS — Products/Categories CRUD
   ✅ VERIFIED: full real vertical slice, third confirmed consumer of the append-only admin

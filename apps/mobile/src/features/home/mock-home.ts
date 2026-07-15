@@ -112,6 +112,6 @@ export const MOCK_BRANCH: PickupBranch = {
 
 export const MOCK_REWARDS: RewardsAccount = {
   userId: 'mock-user',
-  points: 1240,
-  tier: 'silver',
+  currentStars: 3,
+  lifetimeStars: 24,
 };

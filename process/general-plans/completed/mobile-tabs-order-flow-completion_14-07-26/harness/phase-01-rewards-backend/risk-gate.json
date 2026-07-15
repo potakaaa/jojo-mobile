@@ -1,0 +1,9 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 1 — Rewards/Stars backend",
+  "planPath": "process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-01-rewards-backend_PLAN_14-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": ["billing or credits", "permission, secret, or trust-boundary logic"],
+  "mustStopBeforeFinalize": false,
+  "humanApprovalRequired": true,
+  "why": "Stars carry value: accrual credits them on order completion and redeem spends them for a coupon. Amounts must be server-authoritative and redeem must be race-safe (no double-spend). This is a credits + trust-boundary surface. mustStopBeforeFinalize is false because this phase touches no irreversible/outward-facing action (no deploy, no migration beyond existing tables); humanApprovalRequired flags that a human should sign off before the rewards surface ships to production."
+}

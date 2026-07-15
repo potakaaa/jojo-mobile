@@ -1,13 +1,13 @@
 import type {
   CartItem,
-  Coupon,
+  CouponDisplay,
   Deal,
   Flavor,
   MenuItem,
   PickupBranch,
   PickupTime,
   RewardsAccount,
-  RewardsTierProgress,
+  RewardsProgress,
   Size,
 } from '@jojopotato/types';
 
@@ -57,17 +57,17 @@ export const MOCK_BRANCH: PickupBranch = {
 
 export const MOCK_REWARDS: RewardsAccount = {
   userId: 'u1',
-  points: 120,
-  tier: 'silver',
+  currentStars: 3,
+  lifetimeStars: 12,
 };
 
-export const MOCK_PROGRESS: RewardsTierProgress = {
-  currentPoints: 120,
-  pointsToNextTier: 80,
-  nextTier: 'gold',
+export const MOCK_PROGRESS: RewardsProgress = {
+  currentStars: 3,
+  rewardThreshold: 5,
+  starsToNextReward: 2,
 };
 
-export const MOCK_COUPON: Coupon = {
+export const MOCK_COUPON: CouponDisplay = {
   id: 'c1',
   code: 'JOJO10',
   title: '10% off',

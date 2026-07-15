@@ -5,6 +5,7 @@ export default function AccountStackLayout() {
   return (
     <Stack screenOptions={{ headerShown: true }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="edit-profile" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
       <Stack.Screen name="help" options={{ title: 'Help' }} />
     </Stack>

@@ -329,3 +329,54 @@ export const seedDeals: SeedDeal[] = [
     branchSlugs: [],
   },
 ];
+
+export type SeedReward = {
+  name: string;
+  required_stars: number;
+  reward_type: 'free_item' | 'fixed_discount' | 'percentage_discount';
+  /** Decimal-peso string for discount rewards; null for free-item rewards. */
+  reward_value: string | null;
+  /** Product slug the reward unlocks (free-item rewards only); null otherwise. */
+  eligibleProductSlug: string | null;
+};
+
+// Redeemable rewards catalog (Rewards tab). free_item rewards point at a real
+// seeded product; fixed/percentage rewards carry a reward_value and no product.
+// Idempotency is app-level (find-by-name) since `rewards` has no unique column.
+export const seedRewards: SeedReward[] = [
+  {
+    name: 'Free Regular Fries',
+    required_stars: 5,
+    reward_type: 'free_item',
+    reward_value: null,
+    eligibleProductSlug: 'classic-fries',
+  },
+  {
+    name: 'Free Lemonade',
+    required_stars: 4,
+    reward_type: 'free_item',
+    reward_value: null,
+    eligibleProductSlug: 'lemonade',
+  },
+  {
+    name: 'Free Corndog',
+    required_stars: 6,
+    reward_type: 'free_item',
+    reward_value: null,
+    eligibleProductSlug: 'original-corndog',
+  },
+  {
+    name: '₱50 Off Your Order',
+    required_stars: 8,
+    reward_type: 'fixed_discount',
+    reward_value: '50.00',
+    eligibleProductSlug: null,
+  },
+  {
+    name: '15% Off',
+    required_stars: 10,
+    reward_type: 'percentage_discount',
+    reward_value: '15.00',
+    eligibleProductSlug: null,
+  },
+];

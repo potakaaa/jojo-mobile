@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import {
   ActivityIndicator,
@@ -22,8 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
  * Order tab root — the real branch-scoped category menu (MENU-001). A
  * `BranchSwitcher` drives `useBranch()`, `useMenu()` fetches the branch's menu,
  * and each category renders a `CategorySection`. Tapping a product opens Product
- * Details. Temporary dev links to Cart/Order History remain (those screens are
- * still placeholders).
+ * Details. The header exposes real Cart and Order-History nav icons.
  */
 export default function OrderScreen() {
   const theme = useTheme();
@@ -50,7 +50,27 @@ export default function OrderScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.heading, { color: theme.text }]}>Menu</Text>
+          <View style={styles.header}>
+            <Text style={[styles.heading, { color: theme.text }]}>Menu</Text>
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View cart"
+                hitSlop={8}
+                onPress={() => router.push('/(tabs)/order/cart')}
+              >
+                <Ionicons name="cart-outline" size={24} color={theme.text} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Order history"
+                hitSlop={8}
+                onPress={() => router.push('/(tabs)/order/history')}
+              >
+                <Ionicons name="receipt-outline" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+          </View>
           <BranchSwitcher />
 
           {isLoading || isBranchLoading ? (
@@ -77,32 +97,9 @@ export default function OrderScreen() {
               </Text>
             </View>
           )}
-
-          {__DEV__ ? (
-            <View style={styles.devLinks}>
-              <DevLink
-                label="Dev: View Cart"
-                onPress={() => router.push('/(tabs)/order/cart')}
-                color={theme.accent}
-              />
-              <DevLink
-                label="Dev: Order History"
-                onPress={() => router.push('/(tabs)/order/history')}
-                color={theme.accent}
-              />
-            </View>
-          ) : null}
         </ScrollView>
       </SafeAreaView>
     </View>
-  );
-}
-
-function DevLink({ label, onPress, color }: { label: string; onPress: () => void; color: string }) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress}>
-      <Text style={[styles.link, { color }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -124,6 +121,17 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
     gap: Spacing.three,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.four,
+  },
   heading: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h1,
@@ -137,11 +145,6 @@ const styles = StyleSheet.create({
   stateText: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
-  },
-  devLinks: {
-    alignItems: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.four,
   },
   link: {
     fontFamily: FontFamily.body.semibold,
