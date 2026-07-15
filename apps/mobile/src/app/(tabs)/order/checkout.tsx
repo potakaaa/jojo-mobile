@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { MenuItem } from '@jojopotato/types';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   BranchCard,
   Button,
@@ -29,6 +30,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { getAppliedCouponCode, setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
@@ -81,6 +83,7 @@ export default function CheckoutScreen() {
   const { branches } = useBranch();
   const { placeOrder, submitting, error } = useCheckout();
   const { paymentMethod } = useOrder();
+  const queryClient = useQueryClient();
 
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
   const isBranchUnavailable = !branch && !!cart.pickupBranchId;
@@ -89,6 +92,10 @@ export default function CheckoutScreen() {
   const isEmpty = cart.items.length === 0;
 
   const submitOrder = async () => {
+    // Only send couponCode when a discount is actually applied (STAR-004) — the
+    // raw code is stashed out-of-band at apply time. The server re-validates and
+    // consumes it; a recompute-drop is rejected there, never silently ignored.
+    const couponCode = cart.appliedDiscount ? (getAppliedCouponCode() ?? undefined) : undefined;
     const order = await placeOrder({
       branchId: cart.pickupBranchId,
       paymentMethod,
@@ -97,9 +104,16 @@ export default function CheckoutScreen() {
         quantity: line.quantity,
         selectedOptions: line.selectedOptions.map((opt) => ({ optionId: opt.id })),
       })),
+      ...(couponCode ? { couponCode } : {}),
     });
     if (order) {
+      setAppliedCouponCode(null);
       clearCart();
+      // Refresh coupon + rewards caches so a consumed reward coupon no longer
+      // shows as "Available" — refetchOnWindowFocus doesn't fire on RN in-app
+      // tab nav. Invalidate by key PREFIX so all sub-keys refresh; don't await.
+      void queryClient.invalidateQueries({ queryKey: ['coupons'] });
+      void queryClient.invalidateQueries({ queryKey: ['rewards'] });
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',
         params: { orderId: order.id },

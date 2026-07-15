@@ -11,6 +11,8 @@ export interface CreateOrderInput {
     quantity: number;
     selectedOptions: { optionId: string }[];
   }[];
+  /** Optional reward/deal code (STAR-004) — re-validated + consumed server-side. */
+  couponCode?: string;
 }
 
 /** `POST /orders` — create an order (session required). Returns the full order. */

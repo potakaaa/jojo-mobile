@@ -1,10 +1,12 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { auth } from '../../lib/auth';
+import { rewardCouponCodeGenerator } from '../../lib/reward-coupon-code';
 import { db } from '../client';
 import {
   branchProductAvailability,
   branches,
   categories,
+  coupons,
   dealBranches,
   dealProducts,
   deals,
@@ -442,20 +444,31 @@ const REWARD_ROADMAP = [
   { name: 'Free premium loaded fries', required_stars: 20, reward_type: 'free_item', reward_value: null }, // prettier-ignore
 ] as const;
 
+// The roadmap tier bound to a real product (STAR-004 AC8): tier 1 ("Free regular
+// fries or lemonade", 5 stars) is bound to the seeded `classic-fries` product so
+// its reward coupon is redeemable end-to-end without STAFF-003. No migration —
+// `rewards.eligible_product_id` already exists, and `classic-fries` is a seeded
+// product.
+const REWARD_ELIGIBLE_PRODUCT_SLUG_BY_NAME: Record<string, string> = {
+  'Free regular fries or lemonade': 'classic-fries',
+};
+
 // rewards.name has no unique constraint, so idempotency is app-level: for each
 // roadmap tier, find the reward by name, then update-or-insert (active). Re-seeding
 // converges to exactly these N active tiers. NOTE: this only upserts by name — any
 // PRE-EXISTING extra active rewards in a shared local dev DB are left as-is
 // (acceptable for a dev seed; the hermetic per-run `_test` DB used by the gates is
 // unaffected, and the self-seeding test suite uses `seedRewardTier`, not `db:seed`).
-async function seedRewardsTable(): Promise<void> {
+async function seedRewardsTable(productIdBySlug: Map<string, string>): Promise<void> {
   for (const tier of REWARD_ROADMAP) {
     const [existing] = await db
       .select({ id: rewards.id })
       .from(rewards)
       .where(eq(rewards.name, tier.name));
 
-    const row = { ...tier, is_active: true };
+    const eligibleSlug = REWARD_ELIGIBLE_PRODUCT_SLUG_BY_NAME[tier.name];
+    const eligibleProductId = eligibleSlug ? (productIdBySlug.get(eligibleSlug) ?? null) : null;
+    const row = { ...tier, is_active: true, eligible_product_id: eligibleProductId };
     if (existing) {
       await db
         .update(rewards)
@@ -467,6 +480,37 @@ async function seedRewardsTable(): Promise<void> {
   }
 }
 
+// Mint an `available` reward coupon for the dev test user (STAR-004 AC8), so the
+// apply → checkout → consume flow is demoable/testable WITHOUT STAFF-003. Called
+// AFTER seedTestUser() (which creates jojo@test.com) — the test user's row does
+// not exist until then. Idempotent via the 0006 `coupons_user_reward_unique`
+// partial index (`onConflictDoNothing` carrying the matching `where` predicate,
+// per the STAR-001/003 E1 lesson: the bare target-only form throws on a partial
+// index). Fail-soft: if the test user or tier-1 reward is absent (e.g. prod guard
+// skipped seedTestUser), there is nothing to mint.
+async function seedTestUserRewardCoupon(): Promise<void> {
+  // Reuse seedTestUser()'s own by-email lookup shape (E3) to resolve the id.
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, TEST_USER.email));
+  if (!user) return;
+
+  const [reward] = await db
+    .select({ id: rewards.id })
+    .from(rewards)
+    .where(eq(rewards.name, REWARD_ROADMAP[0].name));
+  if (!reward) return;
+
+  await db
+    .insert(coupons)
+    .values({ user_id: user.id, reward_id: reward.id, code: rewardCouponCodeGenerator.generate() })
+    .onConflictDoNothing({
+      target: [coupons.user_id, coupons.reward_id],
+      where: sql`${coupons.reward_id} IS NOT NULL`,
+    });
+}
+
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
   await seedStaffUser(branchIdBySlug);
@@ -476,8 +520,10 @@ export async function runSeed(): Promise<void> {
   await seedBranchProductAvailabilityTable(branchIdBySlug, productIdBySlug);
   const dealIdByTitle = await seedDealsTable();
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
-  await seedRewardsTable();
+  await seedRewardsTable(productIdBySlug);
   await seedTestUser();
+  // Mint the test user's reward coupon AFTER seedTestUser() creates the row.
+  await seedTestUserRewardCoupon();
 
   // Sample orders are owned by a dedicated demo customer (NOT jojo@test.com), so
   // the seed-test-user unit test can delete jojo@test.com without hitting the
@@ -494,7 +540,7 @@ export async function runSeed(): Promise<void> {
   console.log(
     `  rewards: ${REWARD_ROADMAP.length} (roadmap: ${REWARD_ROADMAP.map((r) => `${r.required_stars}★`).join(', ')})`,
   );
-  console.log(`  test user: ${TEST_USER.email}`);
+  console.log(`  test user: ${TEST_USER.email} (+ 1 available reward coupon)`);
   console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);
 }

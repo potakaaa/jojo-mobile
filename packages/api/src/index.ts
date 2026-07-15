@@ -14,6 +14,7 @@ import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './li
 import { requireStaff } from './lib/require-staff';
 import { requireSession } from './middleware/require-session';
 import { branchesRouter } from './routes/branches';
+import { couponsRouter } from './routes/coupons';
 import { ordersRouter } from './routes/orders';
 import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
@@ -183,6 +184,11 @@ app.use('/orders', ordersRouter);
 // Rewards routes (STAR-002) — read-only, session-gated ONCE at mount. Every
 // handler in rewardsRouter assumes `req.user!.id` (the server-owned session user).
 app.use('/rewards', requireSession, rewardsRouter);
+
+// Coupon routes (STAR-004) — session-gated ONCE at mount. Every handler in
+// couponsRouter assumes `req.user!.id`. `POST /coupons/apply` is zero-mutation
+// (preview only); coupon consumption happens exclusively in POST /orders.
+app.use('/coupons', requireSession, couponsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

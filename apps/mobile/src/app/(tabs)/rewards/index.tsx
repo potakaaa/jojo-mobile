@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useAvailableRewards } from '@/features/rewards/hooks/use-available-rewards';
+import { useMyCoupons } from '@/features/rewards/hooks/use-my-coupons';
 import { useRewardsHistory } from '@/features/rewards/hooks/use-rewards-history';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
@@ -63,6 +64,7 @@ export default function RewardsScreen() {
   const summaryQuery = useRewardsSummary();
   const availableQuery = useAvailableRewards();
   const historyQuery = useRewardsHistory();
+  const couponsQuery = useMyCoupons();
 
   const [roadmapOpen, setRoadmapOpen] = useState(false);
 
@@ -84,6 +86,12 @@ export default function RewardsScreen() {
   const summary = summaryQuery.data;
   const availableRewards = availableQuery.data ?? [];
   const history = historyQuery.data?.transactions ?? [];
+  // Reward coupons the customer can redeem now: reward-backed + still available.
+  // Surfacing the code in-app is the minimal STAR-004 code-visibility affordance
+  // (the full Coupon Wallet is CPN-001, out of scope).
+  const availableRewardCoupons = (couponsQuery.data ?? []).filter(
+    (c) => c.status === 'available' && c.rewardId !== null,
+  );
 
   // Battle-pass roadmap: active reward tiers, ascending. Unlock keys off
   // cumulative lifetime stars (monotonic — matches STAR-003's unlock logic).
@@ -156,6 +164,35 @@ export default function RewardsScreen() {
               </Pressable>
             ) : null}
           </Card>
+
+          {/* Your reward code(s) (STAR-004) — the redeemable code the customer
+              enters in the cart. Selectable text (no clipboard dependency in the
+              app). Only rendered when an available reward coupon exists. */}
+          {availableRewardCoupons.length > 0 ? (
+            <>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Your reward code</Text>
+              {availableRewardCoupons.map((coupon) => (
+                <Card key={coupon.id} style={styles.codeCard} mode={mode}>
+                  <View style={styles.codeCardText}>
+                    <Text style={[styles.codeCardLabel, { color: theme.textSecondary }]}>
+                      {coupon.reward?.name ?? 'Reward'}
+                    </Text>
+                    <Text
+                      selectable
+                      style={[styles.codeValue, { color: theme.text }]}
+                      accessibilityLabel={`Reward code ${coupon.code}`}
+                    >
+                      {coupon.code}
+                    </Text>
+                    <Text style={[styles.codeHint, { color: theme.textSecondary }]}>
+                      Enter this code in your cart to redeem.
+                    </Text>
+                  </View>
+                  <Badge label="Available" variant="success" mode={mode} />
+                </Card>
+              ))}
+            </>
+          ) : null}
 
           {/* Available rewards — only tiers the user can claim now. The Claim/
               redeem CTA itself is STAR-004 + CPN-001, so this stays read-only
@@ -349,6 +386,29 @@ const styles = StyleSheet.create({
   emptyLine: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
+  },
+  codeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  codeCardText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  codeCardLabel: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.caption,
+  },
+  codeValue: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+    letterSpacing: 1,
+  },
+  codeHint: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
   },
   rewardRow: {
     flexDirection: 'row',

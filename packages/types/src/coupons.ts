@@ -28,3 +28,13 @@ export interface DbCoupon {
   usedAt: string | null;
   createdAt: string;
 }
+
+/**
+ * `GET /coupons` response row (STAR-004): a `DbCoupon` joined with a light reward
+ * label (name + required stars) for reward-backed coupons, `null` for deal
+ * coupons. Deliberately NOT the full UI-facing `Coupon` mapper — the Rewards
+ * screen only needs the code + a minimal label to surface an available reward.
+ */
+export interface CouponWithReward extends DbCoupon {
+  reward: { name: string; requiredStars: number } | null;
+}

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { applyDealById } from '@/features/deals/lib/apply-deal';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
@@ -58,15 +59,16 @@ export default function DealDetailsScreen() {
 
   const isEligible = eligibility.eligible;
 
-  const handleApply = () => {
-    // Known gap: usage is not persisted here — real consumption happens at order
-    // placement (out of scope this round).
-    const result = applyDealById(deal.id, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
+  const handleApply = async () => {
+    // Server round-trip (STAR-004): apply-by-id resolves the deal's code and
+    // validates it through POST /coupons/apply (deal + reward codes unified).
+    const result = await applyDealById(deal.id, cart, cart.pickupBranchId);
     if (!result.ok) {
       Alert.alert('Cannot apply deal', result.message);
       return;
     }
     applyDiscount(result.discount);
+    setAppliedCouponCode(deal.code ?? null);
     router.push('/(tabs)/order/cart');
   };
 

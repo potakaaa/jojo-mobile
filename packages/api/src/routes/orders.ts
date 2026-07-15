@@ -1,3 +1,4 @@
+import type { Cart, CartItem } from '@jojopotato/types';
 import { and, desc, eq, inArray, lt } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -6,12 +7,15 @@ import { db } from '../db/client';
 import {
   branchProductAvailability,
   branches,
+  coupons,
   orderItems,
   orders,
   productOptions,
   products,
+  starTransactions,
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
+import { resolveCouponDiscount } from './lib/coupon-apply';
 import { orderNumberGenerator } from './lib/order-number';
 import { serializeOrder, type SelectedOption } from './lib/serializers';
 
@@ -33,6 +37,10 @@ const createOrderSchema = z.object({
       }),
     )
     .min(1),
+  // Optional reward/deal code (STAR-004). When present, the coupon is
+  // re-validated + atomically consumed inside the placement transaction; omitting
+  // it leaves the non-coupon path a pure no-op (discount_total stays 0.00).
+  couponCode: z.string().optional(),
 });
 
 /** Carries an HTTP status through a thrown-inside-transaction rollback path. */
@@ -111,6 +119,10 @@ ordersRouter.post('/', requireSession, async (req, res) => {
 
       let subtotalCents = 0;
       const itemInserts: (typeof orderItems.$inferInsert)[] = [];
+      // Cents-based cart lines used for the server-side coupon recompute (LD5) —
+      // the discount is derived from THESE server-priced lines, never from a
+      // client-supplied amount.
+      const cartLines: CartItem[] = [];
 
       for (const line of body.items) {
         const product = productById.get(line.productId);
@@ -151,7 +163,47 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           total_price: centsToNumeric(lineTotalCents),
           selected_options: selectedSnapshot,
         });
+
+        cartLines.push({
+          lineId: product.id,
+          menuItemId: product.id,
+          quantity: line.quantity,
+          productNameSnapshot: product.name,
+          unitPriceCents,
+          selectedOptions: selectedSnapshot.map((o) => ({
+            id: o.optionId,
+            optionType: o.optionType,
+            name: o.name,
+            priceDeltaCents: o.priceDeltaCents,
+          })),
+        });
       }
+
+      // Coupon recompute (STAR-004). Re-resolve + re-validate the code server-side
+      // against the freshly-priced cart (defense in depth — LD5). On any failure
+      // (unknown code, ineligible, or the eligible item was removed since apply)
+      // the WHOLE placement is rejected: we never silently place at full price.
+      let discountTotalCents = 0;
+      let rewardCouponIdToConsume: string | null = null;
+      let rewardLabel = '';
+      if (body.couponCode !== undefined) {
+        const cart: Cart = { id: 'order-cart', items: cartLines, pickupBranchId: body.branchId };
+        const resolution = await resolveCouponDiscount(tx, {
+          code: body.couponCode.trim(),
+          userId,
+          pickupBranchId: body.branchId,
+          cart,
+          // Single-use is enforced by the UPDATE guard below (409), not here.
+          allowUsedReward: true,
+        });
+        if (!resolution.ok) {
+          throw new OrderError(resolution.status, resolution.message);
+        }
+        discountTotalCents = Math.min(resolution.discount.amountCents, subtotalCents);
+        rewardCouponIdToConsume = resolution.rewardCouponId;
+        rewardLabel = resolution.discount.label;
+      }
+      const orderTotalCents = subtotalCents - discountTotalCents;
 
       const placedAt = new Date();
       const estimatedReadyAt = new Date(
@@ -171,8 +223,8 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             branch_id: body.branchId,
             order_number: orderNumber,
             subtotal: centsToNumeric(subtotalCents),
-            discount_total: '0.00',
-            total: centsToNumeric(subtotalCents),
+            discount_total: centsToNumeric(discountTotalCents),
+            total: centsToNumeric(orderTotalCents),
             payment_method: body.paymentMethod,
             estimated_ready_at: estimatedReadyAt,
             placed_at: placedAt,
@@ -190,6 +242,32 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           `[orders] order_number generation exhausted ${MAX_ORDER_NUMBER_ATTEMPTS} attempts for user ${userId}`,
         );
         throw new OrderError(500, 'Could not allocate a unique order number, please retry');
+      }
+
+      // Consume a reward coupon AFTER the order row exists (so order_id on the
+      // redeemed ledger row is real) but INSIDE the same transaction (atomic:
+      // a later failure rolls back the consume too). The state-machine guard
+      // `UPDATE ... WHERE status='available'` is the double-spend defense (AC6):
+      // a concurrent/replayed placement finds 0 rows and the whole placement is
+      // rejected — never two successful redemptions, never an insert-based dedupe.
+      if (rewardCouponIdToConsume !== null) {
+        const consumed = await tx
+          .update(coupons)
+          .set({ status: 'used', used_at: new Date() })
+          .where(and(eq(coupons.id, rewardCouponIdToConsume), eq(coupons.status, 'available')))
+          .returning({ id: coupons.id });
+        if (consumed.length === 0) {
+          throw new OrderError(409, 'This reward has already been redeemed.');
+        }
+        // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
+        // redemption spends reward VALUE, it does not change the star COUNT.
+        await tx.insert(starTransactions).values({
+          user_id: userId,
+          order_id: createdOrder.id,
+          type: 'redeemed',
+          stars: 0,
+          description: `Redeemed reward: ${rewardLabel}`,
+        });
       }
 
       const insertedItems = await tx

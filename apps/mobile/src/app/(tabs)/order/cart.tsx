@@ -9,12 +9,13 @@ import {
   Input,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
@@ -86,12 +87,19 @@ export default function CartScreen() {
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
 
   const [couponCode, setCouponCode] = useState('');
+  const [applying, setApplying] = useState(false);
 
   const isEmpty = cart.items.length === 0;
   const pickupTime = useMemo(
     () => estimatedPickup(branch?.estimatedPrepMinutes ?? 20),
     [branch?.estimatedPrepMinutes],
   );
+
+  const itemsSignature = useMemo(
+    () => cart.items.map((it) => `${it.lineId}x${it.quantity}`).join('|'),
+    [cart.items],
+  );
+  const rewardBaselineSigRef = useRef<string | null>(null);
 
   // Re-lookup the applied deal from the mock catalog so richer display data
   // (title, discountLabel) is sourced from the catalog, not just the stored
@@ -117,41 +125,80 @@ export default function CartScreen() {
     const result = checkDealEligibility(deal, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
     if (!result.eligible) {
       clearDiscount();
+      setAppliedCouponCode(null);
       Alert.alert('Deal removed', result.message);
     }
   }, [cart, clearDiscount]);
 
+  // Reward coupons: eligibility (eligible_product_id) is server-side only, so we
+  // can't re-validate locally. Any cart-item change after a reward is applied
+  // clears it — the user re-applies (which re-validates server-side). Deals keep
+  // their own precise eligibility re-check (the effect above). Does NOT fire on
+  // the initial apply: the baseline sig is captured at apply time.
+  useEffect(() => {
+    if (cart.appliedDiscount?.source !== 'reward') return;
+    if (rewardBaselineSigRef.current === null) {
+      // Reward applied but no baseline yet (e.g. after a remount) — capture, don't clear.
+      rewardBaselineSigRef.current = itemsSignature;
+      return;
+    }
+    if (rewardBaselineSigRef.current !== itemsSignature) {
+      rewardBaselineSigRef.current = null;
+      clearDiscount();
+      setAppliedCouponCode(null);
+      Alert.alert('Cart updated', 'Re-apply your reward code to redeem it.');
+    }
+  }, [itemsSignature, cart.appliedDiscount, clearDiscount]);
+
+  const handleRemoveDiscount = () => {
+    clearDiscount();
+    setAppliedCouponCode(null);
+    rewardBaselineSigRef.current = null;
+  };
+
   const handleApplyCoupon = () => {
     const code = couponCode.trim();
-    if (!code) return;
+    if (!code || applying) return;
 
-    const doApply = () => {
-      // Known gap: usage is not persisted here — real consumption happens at
-      // order placement (out of scope this round).
-      const result = resolveAndApplyDeal(code, cart, cart.pickupBranchId, MOCK_DEAL_USAGE);
-      if (!result.ok) {
-        // Keep couponCode on failure so the user can see what they typed.
-        Alert.alert('Cannot apply deal', result.message);
-        return;
+    // Server round-trip (STAR-004): deal + reward codes are validated + priced by
+    // POST /coupons/apply (zero DB mutation — the coupon is only consumed at
+    // checkout). On success we stash the raw code so checkout can thread it to
+    // POST /orders, where it is re-validated and actually consumed. If the eligible
+    // item is later removed from the cart, the server recompute at placement
+    // rejects the order with a clear message (never a silent full-price charge).
+    const doApply = async () => {
+      setApplying(true);
+      try {
+        const result = await resolveAndApplyDeal(code, cart, cart.pickupBranchId);
+        if (!result.ok) {
+          // Keep couponCode on failure so the user can see what they typed.
+          Alert.alert('Cannot apply code', result.message);
+          return;
+        }
+        applyDiscount(result.discount);
+        setAppliedCouponCode(code);
+        rewardBaselineSigRef.current =
+          result.discount.source === 'reward' ? itemsSignature : null;
+        setCouponCode('');
+      } finally {
+        setApplying(false);
       }
-      applyDiscount(result.discount);
-      setCouponCode('');
     };
 
-    // One-deal-per-cart: replace-with-confirmation (mirrors this file's
+    // One-discount-per-cart: replace-with-confirmation (mirrors this file's
     // branch-switch confirmation UX; deals-screens plan step 11).
     if (cart.appliedDiscount) {
       Alert.alert(
-        'Replace applied deal?',
+        'Replace applied discount?',
         `This cart already has '${cart.appliedDiscount.label}' applied.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Replace', onPress: doApply },
+          { text: 'Replace', onPress: () => void doApply() },
         ],
       );
       return;
     }
-    doApply();
+    void doApply();
   };
 
   // Switch pickup to the next real branch (cyclic). If the cart has items,
@@ -285,7 +332,7 @@ export default function CartScreen() {
                     <Button
                       label="Remove discount"
                       variant="accent"
-                      onPress={clearDiscount}
+                      onPress={handleRemoveDiscount}
                       mode={mode}
                       style={styles.removeDiscountButton}
                     />
@@ -301,7 +348,14 @@ export default function CartScreen() {
                         mode={mode}
                       />
                     </View>
-                    <Button label="Apply" size="sm" onPress={handleApplyCoupon} mode={mode} />
+                    <Button
+                      label="Apply"
+                      size="sm"
+                      onPress={handleApplyCoupon}
+                      loading={applying}
+                      disabled={applying}
+                      mode={mode}
+                    />
                   </View>
                 )}
               </View>

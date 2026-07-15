@@ -30,6 +30,7 @@ let seedTestUser: SeedModule['seedTestUser'];
 let auth: AuthModule['auth'];
 let db: DbModule['db'];
 let users: SchemaModule['users'];
+let schema: SchemaModule;
 
 const TEST_EMAIL = 'jojo@test.com';
 // 8-char minimum enforced by better-auth (SPEC's jojo123 is 7 chars); mirrors seed.ts TEST_USER.
@@ -37,7 +38,17 @@ const TEST_PASSWORD = 'jojo1234';
 
 const rowsForTestUser = () => db.select().from(users).where(eq(users.email, TEST_EMAIL));
 
-const deleteTestUser = () => db.delete(users).where(eq(users.email, TEST_EMAIL));
+// STAR-004: the seed now mints an `available` reward coupon for jojo@test.com, so
+// a bare `DELETE FROM users` would violate the coupons.user_id FK. Delete the
+// user's coupons + star_transactions first so this test can still clear the row.
+const deleteTestUser = async () => {
+  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, TEST_EMAIL));
+  if (row) {
+    await db.delete(schema.coupons).where(eq(schema.coupons.user_id, row.id));
+    await db.delete(schema.starTransactions).where(eq(schema.starTransactions.user_id, row.id));
+  }
+  await db.delete(users).where(eq(users.email, TEST_EMAIL));
+};
 
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -45,7 +56,8 @@ beforeAll(async () => {
   ({ seedTestUser } = await import('../seed'));
   ({ auth } = await import('../../../lib/auth'));
   ({ db } = await import('../../client'));
-  ({ users } = await import('../../schema/index'));
+  schema = await import('../../schema/index');
+  ({ users } = schema);
   // Clean slate so a leftover row from a previous run can't mask a failure.
   await deleteTestUser();
 });

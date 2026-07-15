@@ -1,4 +1,4 @@
-import type { Reward, RewardsSummary, StarTransaction } from '@jojopotato/types';
+import type { CouponWithReward, Reward, RewardsSummary, StarTransaction } from '@jojopotato/types';
 
 import { env } from '@/config/env';
 import { authClient } from '@/features/auth/lib/auth-client';
@@ -50,4 +50,12 @@ export async function fetchRewardsHistory(): Promise<RewardsHistoryPage> {
   if (!res.ok) throw new Error('Failed to fetch rewards history');
   const data = (await res.json()) as RewardsHistoryPage;
   return { transactions: data.transactions ?? [], nextCursor: data.nextCursor ?? null };
+}
+
+/** `GET /coupons` → the caller's coupons (STAR-004), each with a light reward label. */
+export async function fetchMyCoupons(): Promise<CouponWithReward[]> {
+  const res = await rewardsFetch('/coupons');
+  if (!res.ok) throw new Error('Failed to fetch coupons');
+  const data = (await res.json()) as { coupons: CouponWithReward[] };
+  return data.coupons ?? [];
 }

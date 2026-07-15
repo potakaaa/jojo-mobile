@@ -334,3 +334,164 @@ describe('GET /orders/:orderId — access control', () => {
     expect(status).toBe(404);
   });
 });
+
+// ─── STAR-004: coupon redemption at order placement ──────────────────────────
+describe('POST /orders — coupon redemption (STAR-004)', () => {
+  let rewardId: string; // reward bound to `productId` (the shared fixture)
+  let rewardNullId: string; // reward with no eligible_product_id
+  let product2Id: string; // a product the reward is NOT bound to (LD5)
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const mintCoupon = (userId: string, rewardIdArg: string, code: string) =>
+    db.insert(schema.coupons).values({ user_id: userId, reward_id: rewardIdArg, code });
+  const freshCode = () => `JP-RWD-${uid().slice(0, 4).toUpperCase()}`;
+
+  beforeAll(async () => {
+    const [reward] = await db
+      .insert(schema.rewards)
+      .values({
+        name: `Free item ${uid()}`,
+        required_stars: 5,
+        reward_type: 'free_item',
+        eligible_product_id: productId,
+      })
+      .returning();
+    rewardId = reward!.id;
+
+    const [rewardNull] = await db
+      .insert(schema.rewards)
+      .values({
+        name: `Broken reward ${uid()}`,
+        required_stars: 5,
+        reward_type: 'free_item',
+        eligible_product_id: null,
+      })
+      .returning();
+    rewardNullId = rewardNull!.id;
+
+    const [cat2] = await db
+      .insert(schema.categories)
+      .values({ name: `OrdCat2 ${uid()}`, slug: `ord-cat2-${uid()}`, sort_order: 9 })
+      .returning();
+    const [p2] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat2!.id,
+        name: `Other ${uid()}`,
+        slug: `ord-other-${uid()}`,
+        base_price: '3.00',
+      })
+      .returning();
+    product2Id = p2!.id;
+    await db.insert(schema.branchProductAvailability).values({
+      branch_id: branch20Id,
+      product_id: product2Id,
+      is_available: true,
+    });
+  });
+
+  // AC5
+  it('marks the coupon used, sets used_at, writes one redeemed star_transactions row', async () => {
+    const { and, eq } = await import('drizzle-orm');
+    const u = await freshUser('rw5');
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(201);
+    // unit 650 (base 500 + size 150) * qty 2 = 1300 subtotal; one free unit = 650 off.
+    expect(res.json.order.subtotalCents).toBe(1300);
+    expect(res.json.order.discountTotalCents).toBe(650);
+    expect(res.json.order.totalCents).toBe(650);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+
+    const redeemed = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(redeemed).toHaveLength(1);
+    expect(redeemed[0]!.order_id).toBe(res.json.order.id);
+    expect(redeemed[0]!.stars).toBe(0);
+  });
+
+  // AC6
+  it('rejects a second placement using an already-used coupon (409), no double redeemed row', async () => {
+    const { and, eq } = await import('drizzle-orm');
+    const u = await freshUser('rw6');
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const first = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(first.status).toBe(201);
+
+    const second = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(second.status).toBe(409);
+
+    const redeemed = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(redeemed).toHaveLength(1);
+  });
+
+  // AC7 (placement half)
+  it('rejects placement for a reward with a null eligible_product_id', async () => {
+    const u = await freshUser('rw7');
+    const code = freshCode();
+    await mintCoupon(u, rewardNullId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // LD5 recompute-drop
+  it('rejects placement when the reward eligible item is not in the order items', async () => {
+    const u = await freshUser('rwLd5');
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code); // bound to productId, absent below
+
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: product2Id, quantity: 1, selectedOptions: [] }],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // REGRESSION
+  it('leaves discount_total at 0.00 when no couponCode is supplied', async () => {
+    const u = await freshUser('rwRegr');
+    const res = await post('/orders', { user: u, body: singleItemBody(branch20Id) });
+    expect(res.status).toBe(201);
+    expect(res.json.order.discountTotalCents).toBe(0);
+  });
+});
