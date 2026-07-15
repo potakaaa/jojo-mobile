@@ -59,7 +59,30 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 14-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 15-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Sidebar Nav + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard Sidebar Navigation (`apps/admin`, cross-cutting — delivered 15-07-26, ✅ COMPLETE):**
+  replaced the bare `<Outlet />` dashboard shell with a collapsible, config-driven sidebar using the
+  shadcn/ui sidebar primitive, themed to "Tactile Comic Brutalism" (2px ink borders, jyellow active
+  state, 3px hard offset shadow on active items, Fredoka group labels). New files:
+  - `apps/admin/src/config/nav-config.ts` — `navConfig` array (groups: Main, Management, Dev) driving
+    the entire sidebar; adding a route = adding one `NavItem` object. Routes not yet built are marked
+    `disabled: true` (grayed, unclickable).
+  - `apps/admin/src/components/app-sidebar.tsx` — `AppSidebar` iterating `navConfig`, exact-match
+    active-state check (`location.pathname.startsWith(item.to)` with `exact` for root), fully
+    brutalist-themed, integrated via `SidebarProvider` wrapper in `(dashboard)/route.tsx`.
+  - `apps/admin/src/components/nav-user.tsx` — `NavUser` footer: user initial avatar, email, role
+    badge, sign-out button; reads from `useAdminAuth()` — does NOT bypass `beforeLoad` auth guard.
+  - shadcn primitives added: `sidebar.tsx`, `sheet.tsx`, `tooltip.tsx`, `separator.tsx`, `skeleton.tsx`
+    (installed via `npx shadcn@latest add sidebar separator`; `button.tsx`/`input.tsx` were skipped to
+    preserve the existing brutalist theming).
+  - `(dashboard)/route.tsx` updated: `<Outlet />` now wrapped in `<SidebarProvider><AppSidebar />`.
+  - `(dashboard)/index.tsx` updated: old centered-card navigational shell stripped; pure content view.
+  Build verified: `pnpm --filter @jojopotato/admin build` succeeds (regenerates TanStack route tree);
+  no TS errors. Minor deviation: `import type { LucideIcon }` used in `nav-config.ts` (verbatim module
+  syntax rule); `@ts-expect-error` removed from `AppSidebar` after route-tree regeneration.
+  Archived: `process/features/admin-dashboard/completed/admin-dashboard_14-07-26/admin-sidebar-nav_PLAN_15-07-26.md`
+  (+ co-located REPORT in the same completed folder).
 
 - **Admin dashboard Branches CRUD (`apps/admin` + `packages/api`, Phase 2 — Branches CRUD ADM-002,
   delivered 14-07-26, ✅ VERIFIED — code-complete, automated-verified, AC7 owed):** the program's
@@ -537,11 +560,12 @@ Scanned against the canonical Context Group Detection Table
 - `staff-dashboard` feature established (STAFF-001 delivered 13-07-26). `process/features/staff-dashboard/`
   exists with `active/`, `completed/`, `backlog/` subdirs. Future STAFF-002/003/004 work lives here.
 - `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
-  delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED).
+  delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED;
+  Sidebar Navigation cross-cutting task delivered 15-07-26, ✅ COMPLETE).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
-  (3 backlog notes filed post-Phase-2). This is an 8-phase program (P0 scaffold through P7
-  analytics, ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current
-  phase (Phase 3 — Products/Categories CRUD, ADM-003, next).
+  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report). This is an
+  8-phase program (P0 scaffold through P7 analytics, ADM-001..007) — see the umbrella plan's
+  `## Current Execution State` for the current phase (Phase 3 — Products/Categories CRUD, ADM-003).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -648,12 +672,16 @@ jojo-mobile/                           (package.json name: jojo-potato)
       assets/                          -- icons, splash, favicon (placeholder branding)
       app.json                         -- Expo app config (bundle id, scheme, plugins)
       .env.example
-    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 1: browser-cookie auth + admin login + guarded (dashboard) shell -- see process/features/admin-dashboard/)
+    admin/                             -- @jojopotato/admin, TanStack Start web admin dashboard (Phase 1: browser-cookie auth + admin login + guarded (dashboard) shell; sidebar nav 15-07-26 -- see process/features/admin-dashboard/)
       src/
-        routes/                       -- TanStack Start file-based routes: __root.tsx (shell + QueryClientProvider), index.tsx (placeholder)
+        routes/                       -- TanStack Start file-based routes: __root.tsx (shell + QueryClientProvider), (dashboard)/route.tsx (SidebarProvider + AppSidebar wrapper), (dashboard)/index.tsx (pure content view), login.tsx
         components/
-          ui/                         -- shadcn/ui primitives (button.tsx, card.tsx) -- canonical registry source, NOT packages/ui (RN-only, not reused here)
+          ui/                         -- shadcn/ui primitives (button.tsx, card.tsx, sidebar.tsx, sheet.tsx, tooltip.tsx, separator.tsx, skeleton.tsx) -- canonical registry source, NOT packages/ui (RN-only, not reused here)
+          app-sidebar.tsx             -- config-driven brutalist sidebar; iterates navConfig; active-state via startsWith + exact-for-root
+          nav-user.tsx                -- sidebar footer: user initial, email, role badge, sign-out; reads useAdminAuth()
           admin-home.tsx              -- placeholder proving boot + brand tokens + stock primitives render on-brand
+        config/
+          nav-config.ts               -- navConfig array (Main/Management/Dev groups); single source of truth for sidebar route metadata; disabled flag for unbuilt routes
         styles/globals.css            -- Tailwind v4 @theme brand-token port + two-block shadcn semantic mapping (light-mode only)
         lib/{query-client,utils}.ts   -- separate react-query client instance (own runtime, not shared with apps/mobile) + shadcn cn() helper
         router.tsx                    -- TanStack Start router-instance factory
@@ -787,8 +815,8 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-14 (admin-dashboard Phase 2 UPDATE PROCESS — Branches CRUD ✅ VERIFIED: full real vertical slice, second confirmed consumer of the append-only admin aggregator pattern, drizzle `err.cause.code` unique-violation gotcha, 3 backlog notes filed for AC7/is_accepting_pickup/shared-composite-deferral)
-- Previous delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
-- Prior delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
-- HEAD at last delta: branch `feat/adm-002-branches` (admin-dashboard Phase 2 branches CRUD, execution commit `db75244` already made; unrelated concurrent workstream `admin-button-refinement` has uncommitted changes in the tree — not part of this phase, do not conflate)
+- Last delta: 2026-07-15 (admin-dashboard Sidebar Nav UPDATE PROCESS — cross-cutting sidebar navigation ✅ COMPLETE: nav-config.ts + AppSidebar + NavUser + shadcn sidebar/sheet/tooltip/separator/skeleton primitives; (dashboard)/route.tsx wrapped with SidebarProvider; old shell stripped from index.tsx; plan+report archived to completed/admin-dashboard_14-07-26/)
+- Previous delta: 2026-07-14 (admin-dashboard Phase 2 UPDATE PROCESS — Branches CRUD ✅ VERIFIED: full real vertical slice, second confirmed consumer of the append-only admin aggregator pattern, drizzle `err.cause.code` unique-violation gotcha, 3 backlog notes filed for AC7/is_accepting_pickup/shared-composite-deferral)
+- Prior delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
+- HEAD at last delta: branch `feat/adm-003-products` / `feat/adm-sidebar` (sidebar-nav execution commit `fb0a8c8`; Phase 3 products/categories CRUD uncommitted changes also present in tree)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

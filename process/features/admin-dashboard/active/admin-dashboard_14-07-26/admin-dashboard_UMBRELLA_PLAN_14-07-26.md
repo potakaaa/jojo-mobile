@@ -354,9 +354,10 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 14-07-26 (Phase 2 closeout)
+Last updated: 15-07-26 (Sidebar Nav cross-cutting closeout)
 Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
   14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26)
+Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
 Current phase N of total: 3 of 8 (Phase 3 — Products/Categories CRUD, ADM-003)
 Phase N name: Phase 3 — Products/Categories CRUD (ADM-003, #41)
 Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-03-products_PLAN_14-07-26.md` —
@@ -368,6 +369,20 @@ Next phase: Phase 3 — Products/Categories CRUD, Step 0 (RESEARCH). RESEARCH mu
   deferred §5 shared UI composite extraction (backlog note:
   `adm-shared-ui-composite-extraction-deferred_NOTE_14-07-26.md`) and the HARD snapshot-integrity
   invariant (order_items.unit_price must never mutate on product price edits — Known-Gap banned).
+
+**Sidebar Navigation closeout summary (15-07-26, cross-cutting):** Config-driven brutalist sidebar
+navigation delivered across the admin dashboard shell. `apps/admin/src/config/nav-config.ts` exports
+a `navConfig` array (Main/Management/Dev groups) as the single source of truth for all sidebar
+routes — adding a route = one object addition. `apps/admin/src/components/app-sidebar.tsx`
+(`AppSidebar`) iterates `navConfig`, applies exact active-state matching, and renders with Tactile
+Comic Brutalism styling (2px ink borders, jyellow + 3px offset shadow on active items, Fredoka
+labels, disabled/greyed unbuilt routes). `apps/admin/src/components/nav-user.tsx` (`NavUser`)
+displays user initial avatar, email, role badge, and sign-out via `useAdminAuth()` — no auth guard
+bypassed. New shadcn primitives: `sidebar.tsx`, `sheet.tsx`, `tooltip.tsx`, `separator.tsx`,
+`skeleton.tsx`. `(dashboard)/route.tsx` now wraps `<Outlet />` with `<SidebarProvider>` +
+`<AppSidebar />`; old centered-card shell stripped from `(dashboard)/index.tsx`. Build verified
+(`pnpm --filter @jojopotato/admin build` ✅); no TS errors. Plan and report archived to
+`process/features/admin-dashboard/completed/admin-dashboard_14-07-26/`.
 
 **Phase 2 closeout summary (14-07-26):** Full real vertical slice delivered — `packages/api/src/
 routes/admin/branches.ts` (list incl. inactive / get / create / update / soft-deactivate), appended
