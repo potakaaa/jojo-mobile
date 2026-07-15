@@ -1,6 +1,6 @@
 import type {
   CartItem as CartItemData,
-  Coupon,
+  CouponDisplay,
   Deal,
   Flavor,
   MenuItem,
@@ -8,7 +8,7 @@ import type {
   PickupBranch,
   PickupTime,
   RewardsAccount,
-  RewardsTierProgress,
+  RewardsProgress,
   Size,
 } from '@jojopotato/types';
 import {
@@ -116,17 +116,17 @@ const SAMPLE_BRANCH_CLOSED: PickupBranch = {
 
 const SAMPLE_REWARDS: RewardsAccount = {
   userId: 'user-1',
-  points: 340,
-  tier: 'silver',
+  currentStars: 3,
+  lifetimeStars: 18,
 };
 
-const SAMPLE_PROGRESS: RewardsTierProgress = {
-  currentPoints: 340,
-  pointsToNextTier: 160,
-  nextTier: 'gold',
+const SAMPLE_PROGRESS: RewardsProgress = {
+  currentStars: 3,
+  rewardThreshold: 5,
+  starsToNextReward: 2,
 };
 
-const SAMPLE_COUPON: Coupon = {
+const SAMPLE_COUPON: CouponDisplay = {
   id: 'coupon-welcome',
   code: 'WELCOME10',
   title: 'Welcome discount',
@@ -134,7 +134,7 @@ const SAMPLE_COUPON: Coupon = {
   isRedeemed: false,
 };
 
-const SAMPLE_COUPON_REDEEMED: Coupon = {
+const SAMPLE_COUPON_REDEEMED: CouponDisplay = {
   id: 'coupon-used',
   code: 'FREEDIP',
   title: 'Free dip sauce',
@@ -296,7 +296,7 @@ export default function ComponentShowcaseScreen() {
           <Section title="StarProgressBar">
             <StarProgressBar progress={SAMPLE_PROGRESS} />
             <StarProgressBar
-              progress={{ currentPoints: 900, pointsToNextTier: 0, nextTier: null }}
+              progress={{ currentStars: 5, rewardThreshold: 5, starsToNextReward: 0 }}
             />
           </Section>
 

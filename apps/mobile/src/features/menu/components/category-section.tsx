@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { useTheme } from '@/hooks/use-theme';
+import { resolveImageUrl } from '@/lib/image-url';
 
 export interface CategorySectionProps {
   category: Category;
@@ -43,16 +44,23 @@ export function CategorySection({ category, onProductPress }: CategorySectionPro
         <View style={styles.grid}>
           {rows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.row}>
-              {row.map((product: Product) => (
-                <View key={product.id} style={styles.cell}>
-                  {/* ProductCard renders the cents `MenuItem` shape; menu-tree
-                      products are all branch-available, so isAvailable = true. */}
-                  <ProductCard
-                    product={productToMenuItem(product, true)}
-                    onPress={() => onProductPress(product.id)}
-                  />
-                </View>
-              ))}
+              {row.map((product: Product) => {
+                // Resolve the (relative) image path to an absolute URL; pass it as
+                // `imageSource` so the browse grid shows real photos. `undefined`
+                // (no image) leaves ProductCard on its built-in placeholder.
+                const imageUri = resolveImageUrl(product.imageUrl);
+                return (
+                  <View key={product.id} style={styles.cell}>
+                    {/* ProductCard renders the cents `MenuItem` shape; menu-tree
+                        products are all branch-available, so isAvailable = true. */}
+                    <ProductCard
+                      product={productToMenuItem(product, true)}
+                      imageSource={imageUri ? { uri: imageUri } : undefined}
+                      onPress={() => onProductPress(product.id)}
+                    />
+                  </View>
+                );
+              })}
               {row.length < 2 ? <View style={styles.cell} /> : null}
             </View>
           ))}
