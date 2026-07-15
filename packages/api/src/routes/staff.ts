@@ -375,13 +375,9 @@ const patchProductAvailabilitySchema = z.object({
 
 const patchBranchSettingsSchema = z
   .object({
-    isAcceptingPickup: z.boolean().optional(),
-    estimatedPrepMinutes: z.number().int().min(1).max(120).optional(),
+    estimatedPrepMinutes: z.number().int().min(1).max(120),
   })
-  .refine(
-    (data) => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined,
-    { message: 'At least one field required' },
-  );
+  .strict();
 
 /**
  * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
@@ -538,13 +534,15 @@ staffRouter.get('/branch', async (req, res) => {
 /**
  * `PATCH /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
  *
- * Updates operational settings for the staff member's assigned branch.
- * Cross-branch writes are structurally impossible — branch is always session-derived.
+ * Updates the estimated prep time for the staff member's assigned branch.
+ * Pickup acceptance (`is_accepting_pickup`) is admin-only — use the admin branches
+ * API to change it. Cross-branch writes are structurally impossible (branch is
+ * always session-derived).
  *
  * Status codes:
  *   200 — settings updated; returns updated values.
  *   403 — unassigned staff.
- *   422 — empty body or invalid field values.
+ *   422 — missing or invalid `estimatedPrepMinutes`.
  */
 staffRouter.patch('/branch', async (req, res) => {
   const branchId = await resolveBranchScope(db, req.staffSession!.userId);
@@ -558,12 +556,12 @@ staffRouter.patch('/branch', async (req, res) => {
     res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
     return;
   }
-  const { isAcceptingPickup, estimatedPrepMinutes } = parseResult.data;
+  const { estimatedPrepMinutes } = parseResult.data;
 
-  // Build update patch with only the provided fields.
-  const patch: Partial<typeof branches.$inferInsert> = { updated_at: new Date() };
-  if (isAcceptingPickup !== undefined) patch.is_accepting_pickup = isAcceptingPickup;
-  if (estimatedPrepMinutes !== undefined) patch.estimated_prep_minutes = estimatedPrepMinutes;
+  const patch: Partial<typeof branches.$inferInsert> = {
+    updated_at: new Date(),
+    estimated_prep_minutes: estimatedPrepMinutes,
+  };
 
   await db.update(branches).set(patch).where(eq(branches.id, branchId));
 
