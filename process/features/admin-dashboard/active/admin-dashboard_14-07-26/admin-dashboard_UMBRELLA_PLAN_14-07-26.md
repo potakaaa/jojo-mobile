@@ -267,8 +267,8 @@ incomplete and must be sent back to PLAN.
 |---|---|---|---|---|---|---|
 | P0 — Scaffold ✅ VERIFIED | — (infra) | P0 | Create `apps/admin` (TanStack Start + Tailwind + shadcn), port theme tokens, wire tsconfig/eslint extends from `@jojopotato/config`, confirm turborepo build pipeline output dir, choose test runner (default: Vitest + `@testing-library/react`) | `apps/admin/**` (new), `turbo.json` (unchanged — dist/ matched existing glob), `pnpm-workspace.yaml` (already covers `apps/*`) | — | Build tooling drift vs. Expo app's tooling; turbo pipeline miscabling could silently exclude admin from `pnpm build`/CI — RESOLVED, no drift found |
 | P1 — Auth/RBAC (ADM-001, #39) | #39 | P0 | `requireAdmin` middleware (sibling to `require-staff.ts:55-80`), mount `/api/admin`, extend better-auth `trustedOrigins` for admin web origin, add a **browser cookie session** flow (new to this repo — Expo only has bearer-token flow today), admin login + dashboard-landing screens, `packages/types/src/admin.ts`, resolve `TODO(STAFF-ADM)` seam, role-management route+UI (super_admin only; self-escalation guard) | `packages/api/src/lib/require-admin.ts` (new), `packages/api/src/lib/auth.ts` (trustedOrigins), `packages/api/src/index.ts` (mount), `packages/api/src/routes/admin/**` (new: users/roles), `packages/types/src/admin.ts` (new), `apps/admin/src/features/auth/**` (new) | P0 | Cookie-session-for-web is UNPROVEN in this repo — **Phase 1's first step is a feasibility probe** of better-auth cookie sessions against a browser client before committing to the design; getting this wrong reshapes every later phase's auth plumbing |
-| P2 — Branches CRUD (ADM-002, #40) | #40 | P0 | Full vertical slice: branch list/detail/create/edit/(soft-)delete via real `/api/admin/branches` + real `apps/admin` screens + real Postgres rows; slug uniqueness enforced | `packages/api/src/routes/admin/branches.ts` (new), `apps/admin/src/features/branches/**` (new) | P1 | `is_accepting_pickup` is shared mutable state with the mobile staff shell (STAFF-004, not yet built) — must establish single-source-of-truth semantics now, or admin and staff writes could race/conflict later |
-| P3 — Products/Categories CRUD (ADM-003, #41) | #41 | P0 | CRUD for products, categories, product_options, branch_product_availability; money boundary conversion (decimal PHP in DB ↔ cents in API/UI) | `packages/api/src/routes/admin/products.ts`, `admin/categories.ts` (new), `apps/admin/src/features/products/**`, `features/categories/**` (new) | P2 (reuses branch-scoping patterns) | Snapshot-integrity regression is a HARD invariant — editing `base_price` must be proven NOT to mutate historical `order_items.unit_price`; this is the highest-stakes correctness bar in the whole program |
+| P2 — Branches CRUD (ADM-002, #40) ✅ VERIFIED | #40 | P0 | Full vertical slice: branch list/detail/create/edit/(soft-)delete via real `/api/admin/branches` + real `apps/admin` screens + real Postgres rows; slug uniqueness enforced | `packages/api/src/routes/admin/branches.ts` (new), `apps/admin/src/features/branches/**` (new) | P1 | `is_accepting_pickup` is shared mutable state with the mobile staff shell (STAFF-004, not yet built) — must establish single-source-of-truth semantics now, or admin and staff writes could race/conflict later. RESOLVED-as-Known-Gap: no optimistic-concurrency guard exists; last-write-wins accepted, blocked on STAFF-004 (backlog note filed). |
+| P3 — Products/Categories CRUD (ADM-003, #41) ✅ VERIFIED | #41 | P0 | CRUD for products, categories, product_options, branch_product_availability; money boundary conversion (decimal PHP in DB ↔ cents in API/UI) | `packages/api/src/routes/admin/products.ts`, `admin/categories.ts` (new), `apps/admin/src/features/products/**`, `features/categories/**` (new) | P2 (reuses branch-scoping patterns) | Snapshot-integrity regression is a HARD invariant — editing `base_price` must be proven NOT to mutate historical `order_items.unit_price`; this is the highest-stakes correctness bar in the whole program. RESOLVED: real passing automated regression test (AC1), Known-Gap never used. |
 | P4 — Deals CRUD (ADM-004, #42) | #42 | P0 | CRUD for deals + deal_products/deal_branches join tables; 6 deal types (enum); `end_at > start_at` app-level validation | `packages/api/src/routes/admin/deals.ts` (new), `apps/admin/src/features/deals/**` (new) | P2, P3 (deals reference branches + products) | Coupon-cascade behavior when a deal with outstanding coupons is deactivated is an OPEN QUESTION — must be explicitly flagged (not silently decided) in the P4 phase plan |
 | P5 — Rewards CRUD (ADM-005, #43) | #43 | P1 | CRUD for rewards; `reward_type` is free-text varchar (no enum) — validate allowed values app-side | `packages/api/src/routes/admin/rewards.ts` (new), `apps/admin/src/features/rewards/**` (new) | P0, P1 (no direct dependency on P2-P4 catalog data) | Retroactivity regression is a HARD invariant — editing `required_stars` must be proven NOT to rewrite historical `star_transactions`; second of the two program-level non-negotiable invariants |
 | P6 — Orders view (ADM-006, #44) | #44 | P1 | Read-only order list per branch; filter by branch/status/date; NO status mutation in this program | `packages/api/src/routes/admin/orders.ts` (new, read-only), `apps/admin/src/features/orders/**` (new) | P2 (branch filter needs branch list) | Customer-PII exposure boundary — orders carry customer name/contact; needs an explicit design note contrasting this against the existing §19 staff-role restriction pattern, not an ad-hoc call during EXECUTE |
@@ -282,8 +282,8 @@ incomplete and must be sent back to PLAN.
 |---|---|---|---|
 | 0 | P0 — Scaffold | — | ✅ VERIFIED |
 | 1 | P1 — Auth/RBAC (ADM-001) | P0 | ✅ VERIFIED |
-| 2 | P2 — Branches CRUD (ADM-002) | P1 | ⏳ PLANNED |
-| 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ⏳ PLANNED |
+| 2 | P2 — Branches CRUD (ADM-002) | P1 | ✅ VERIFIED |
+| 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ✅ VERIFIED |
 | 4 | P4 — Deals CRUD (ADM-004) | P2, P3 | ⏳ PLANNED |
 | 5 | P5 — Rewards CRUD (ADM-005) | P0, P1 | ⏳ PLANNED |
 | 6 | P6 — Orders view (ADM-006) | P2 | ⏳ PLANNED |
@@ -300,8 +300,8 @@ fan-in but still only depend on strictly earlier phases).
 |---|---|
 | P0 — Scaffold | ✅ VERIFIED |
 | P1 — Auth/RBAC (ADM-001) | ✅ VERIFIED |
-| P2 — Branches CRUD (ADM-002) | ⏳ PLANNED |
-| P3 — Products/Categories CRUD (ADM-003) | ⏳ PLANNED |
+| P2 — Branches CRUD (ADM-002) | ✅ VERIFIED |
+| P3 — Products/Categories CRUD (ADM-003) | ✅ VERIFIED |
 | P4 — Deals CRUD (ADM-004) | ⏳ PLANNED |
 | P5 — Rewards CRUD (ADM-005) | ⏳ PLANNED |
 | P6 — Orders view (ADM-006) | ⏳ PLANNED |
@@ -354,15 +354,97 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 14-07-26
-Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED, 14-07-26)
-Current phase N of total: 2 of 8 (Phase 2 — Branches CRUD, ADM-002)
-Phase N name: Phase 2 — Branches CRUD (ADM-002, #40)
-Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-02-branches_PLAN_14-07-26.md` —
-  but Phase Loop Progress Step 1 RESEARCH has not started)
+Last updated: 15-07-26 (Phase 3 UPDATE PROCESS closeout)
+Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
+  14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26); Phase 3 — Products/Categories CRUD
+  (✅ VERIFIED, 15-07-26)
+Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
+Current phase N of total: 4 of 8 (Phase 4 — Deals CRUD, ADM-004)
+Phase N name: Phase 4 — Deals CRUD (ADM-004, #42)
+Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-04-deals_PLAN_14-07-26.md` — Phase
+  Loop Progress Step 1 RESEARCH has not started; depth is FULL-PICTURE-BUT-FLEXIBLE per the Phase
+  Plan Index, so RESEARCH finalizes the line-level EXECUTE checklist)
 Phase N EVL: not applicable yet (no EXECUTE has run)
 Phase N report: not written yet
-Next phase: Phase 2 — Branches CRUD, Step 0 (RESEARCH).
+Next phase: Phase 4 — Deals CRUD, Step 0 (RESEARCH). RESEARCH must (1) re-evaluate the deferred
+  `data-table`/`form-dialog` shared composites against the `deal_products`/`deal_branches`
+  junction-table UI — Phase 3 confirmed this is now the live re-eval trigger point; (2) resolve the
+  coupon-cascade-on-deactivation open question flagged in the Phase Plan Index (3 options, needs
+  sign-off at P4 INNOVATE); (3) apply the Phase 3 TanStack Start nested-detail-route `<Outlet/>`
+  lesson from the start for any deal detail screen, rather than discovering it via a broken
+  walkthrough again.
+
+**Phase 3 closeout summary (15-07-26):** Full real vertical slice for the product catalog surface —
+`packages/api/src/routes/admin/{products,categories}.ts` (new), mounted on the existing append-only
+`/api/admin` aggregator (third confirmed consumer, after P1's `users.ts` and P2's `branches.ts`).
+`handleAdminError`/`isUniqueViolation` relocated from `branches.ts` into `routes/admin/lib/
+errors.ts` and exported (Decision 2) — now shared by all three admin route files. `centsToNumeric`
+exported from `routes/lib/serializers.ts` (was module-private in `orders.ts`); `orders.ts`'s 3 real
+call sites (not the plan's stale estimate of 2) updated to import it, with `orders.test.ts` re-run
+as a regression guard (31/31 green). Availability writes use Drizzle `.onConflictDoUpdate()` on
+`bpa_branch_product_idx` (Decision 3) — no manual select-then-insert-or-update; realtime UI sync
+explicitly deferred (refetch-on-focus only, consistent with the app's existing staleness model, not
+new debt). `apps/admin` gained its first 3 shared composites (`query-states`, `confirm-dialog`,
+`page-header`, Decision 1) — Categories consumes all 3 (hard constraint, verified no local
+duplicates); Products consumes them where they fit and stays feature-local for the option/
+availability sub-editors. `data-table`/`form-dialog` deliberately NOT extracted — re-eval trigger is
+now Phase 4's `deal_products`/`deal_branches` junction UI. 31 new supertest cases (19
+`admin-products.integration.test.ts` + 12 `admin-categories.integration.test.ts`), reusing the
+`makeUser(role)` self-seeding fixture a third time — full API suite 183/183, 0 regressions,
+independently EVL-confirmed. **AC1 (snapshot-integrity, HARD, Known-Gap banned) is proven by a real
+passing automated regression test** — places a product, places a real order snapshotting its price,
+edits `base_price` via the new admin route, asserts historical `order_items.unit_price`/
+`total_price` are unchanged; this is the single highest-stakes correctness bar in the whole program
+and it is now closed for good, not deferred. **AC8 (Agent-Probe manual walkthrough) was actually
+performed by the user this session — not left owed like P2's AC7.** The walkthrough found a real bug:
+the "Manage" button changed the URL to `/products/:id` but the detail screen never painted, because
+TanStack Start auto-nests `products.$productId.tsx` under `products.tsx` (shared filename prefix)
+and the parent rendered no `<Outlet/>`. Fixed same session (commit `79df222`) by splitting
+`products.tsx` into a thin `<Outlet/>` layout plus a new `products.index.tsx` holding the list UI —
+re-walked and passed after the fix. This nested-route Outlet gotcha is now the reference pattern for
+any future admin list→detail screen (P4-P7). Report:
+`process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-products_REPORT_14-07-26.md`.
+
+Program Net Gate: 4/8 phases VERIFIED — PENDING overall
+Latest validator run: 15-07-26 — this UPDATE PROCESS pass (see phase report + this session's
+closeout packet for results)
+
+**Sidebar Navigation closeout summary (15-07-26, cross-cutting):** Config-driven brutalist sidebar
+navigation delivered across the admin dashboard shell. `apps/admin/src/config/nav-config.ts` exports
+a `navConfig` array (Main/Management/Dev groups) as the single source of truth for all sidebar
+routes — adding a route = one object addition. `apps/admin/src/components/app-sidebar.tsx`
+(`AppSidebar`) iterates `navConfig`, applies exact active-state matching, and renders with Tactile
+Comic Brutalism styling (2px ink borders, jyellow + 3px offset shadow on active items, Fredoka
+labels, disabled/greyed unbuilt routes). `apps/admin/src/components/nav-user.tsx` (`NavUser`)
+displays user initial avatar, email, role badge, and sign-out via `useAdminAuth()` — no auth guard
+bypassed. New shadcn primitives: `sidebar.tsx`, `sheet.tsx`, `tooltip.tsx`, `separator.tsx`,
+`skeleton.tsx`. `(dashboard)/route.tsx` now wraps `<Outlet />` with `<SidebarProvider>` +
+`<AppSidebar />`; old centered-card shell stripped from `(dashboard)/index.tsx`. Build verified
+(`pnpm --filter @jojopotato/admin build` ✅); no TS errors. Plan and report archived to
+`process/features/admin-dashboard/completed/admin-dashboard_14-07-26/`.
+
+**Phase 2 closeout summary (14-07-26):** Full real vertical slice delivered — `packages/api/src/
+routes/admin/branches.ts` (list incl. inactive / get / create / update / soft-deactivate), appended
+to the existing `/api/admin` aggregator (`routes/admin/index.ts`), inheriting `requireAdmin` +
+`adminCors` with zero inline role checks (second confirmed consumer of the Phase 1 append-only
+aggregator pattern). `serializers.ts` gained an additive `AdminBranch`/`serializeAdminBranch`
+(local-declaration convention, `packages/types` untouched). Slug-uniqueness enforced via a Postgres
+`23505` catch — durable gotcha: drizzle-orm wraps the driver error in `DrizzleQueryError`, so the
+code lives on `err.cause.code`, not the top-level `err.code` (AC3's Fully-Automated test caught the
+top-level-only check as a real defect, not a hypothetical). `apps/admin` gained its first fetch
+wrapper (`features/branches/lib/admin-branches-api.ts`, `credentials:'include'`), its first real
+consumer of the dedicated `queryClient`, and a full list/create/edit/deactivate screen wired to a
+new `(dashboard)/branches` route (radix-Dialog confirm gate on deactivate — Safety requirement).
+12 new supertest cases (`admin-branches.integration.test.ts`, reusing the `makeUser(role)`
+self-seeding fixture from Phase 1); full API suite 134/134, 0 regressions. Independently
+EVL-confirmed (6/6 gates green, 0 fix cycles). Known gaps carried forward (documented, not silently
+dropped, all with backlog notes): AC7 Agent-Probe manual walkthrough owed (no browser/E2E runner
+exists yet); `is_accepting_pickup` shared-state race with the not-yet-built STAFF-004 mobile write
+path (no optimistic-concurrency guard anywhere on `branches`, last-write-wins accepted); the §5
+shared UI composite extraction was deliberately deferred (feature-folder components built instead;
+revisit at Phase 3 RESEARCH once a real second CRUD consumer exists, per the "second consumer" rule
+already in this umbrella's §5). Report:
+`process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-02-branches_REPORT_14-07-26.md`.
 
 Phase 1 closeout summary (RE-CLOSED 14-07-26, post-AC8 CORS fix): First `/api/admin/*` protected
 surface shipped — `requireAdmin(auth)` middleware (mirrors `requireStaff`, admits `admin`/`super_admin`
@@ -412,14 +494,10 @@ touches the seed/auth surface, left as a user decision).
 
 Report: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-01-auth-rbac_REPORT_14-07-26.md`.
 
-Program Net Gate: 2/8 phases VERIFIED — PENDING overall
-Latest validator run: 14-07-26 — `validate-context-discovery`, `validate-plan-inventory` (this
-UPDATE PROCESS re-close pass; see phase report + this session's closeout packet for results)
-
 Orchestrator rule: read "Phase N status" and the named phase plan's `## Phase Loop Progress`
 before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE,
-PLAN-SUPPLEMENT, or PVL. Phase 2's plan file already exists (FULL depth) but has NOT started its
-inner loop — spawn vc-research-agent next, not vc-execute-agent.
+PLAN-SUPPLEMENT, or PVL. Phase 4's plan file already exists (FLEXIBLE depth) but has NOT started
+its inner loop — spawn vc-research-agent next, not vc-execute-agent.
 
 Note: this section is the only part of the umbrella plan expected to change over the program's
 life — update-process-agent rewrites it after every phase closeout (overwrite, not append — git
@@ -520,7 +598,7 @@ inner-loop PLAN-SUPPLEMENT after RESEARCH).
 | P0 — Scaffold | [phase-00-scaffold_PLAN_14-07-26.md](./phase-00-scaffold_PLAN_14-07-26.md) | FULL | ESLint config shape, turbo build-output dir, TanStack scaffold filenames → this phase's RESEARCH/INNOVATE |
 | P1 — Auth/RBAC (ADM-001) | [phase-01-auth-rbac_PLAN_14-07-26.md](./phase-01-auth-rbac_PLAN_14-07-26.md) | FULL | Browser-cookie-session feasibility probe gates the auth design (first RESEARCH step) |
 | P2 — Branches CRUD (ADM-002) | [phase-02-branches_PLAN_14-07-26.md](./phase-02-branches_PLAN_14-07-26.md) | FULL | `is_accepting_pickup` shared-state coordination with STAFF-004 (Known-Gap) |
-| P3 — Products/Categories CRUD (ADM-003) | [phase-03-products_PLAN_14-07-26.md](./phase-03-products_PLAN_14-07-26.md) | FLEXIBLE | Snapshot-integrity regression test (HARD, Known-Gap banned); export shared `centsToNumeric` |
+| P3 — Products/Categories CRUD (ADM-003) ✅ VERIFIED | [phase-03-products_PLAN_14-07-26.md](./phase-03-products_PLAN_14-07-26.md) | FLEXIBLE | RESOLVED — snapshot-integrity regression test (AC1) real and passing, Known-Gap never used; `centsToNumeric` exported. Only residual: `data-table`/`form-dialog` extraction deferred to P4 re-eval. |
 | P4 — Deals CRUD (ADM-004) | [phase-04-deals_PLAN_14-07-26.md](./phase-04-deals_PLAN_14-07-26.md) | FLEXIBLE | **Coupon-cascade on deal deactivation — 3 options, needs sign-off at P4 INNOVATE** |
 | P5 — Rewards CRUD (ADM-005) | [phase-05-rewards_PLAN_14-07-26.md](./phase-05-rewards_PLAN_14-07-26.md) | FLEXIBLE | Reward-retroactivity regression test (HARD, Known-Gap banned) |
 | P6 — Orders view (ADM-006) | [phase-06-orders_PLAN_14-07-26.md](./phase-06-orders_PLAN_14-07-26.md) | FLEXIBLE | Customer-PII exposure boundary design note (name+phone in, email out) |

@@ -8,6 +8,7 @@ import type {
 import type { InferSelectModel } from 'drizzle-orm';
 
 import type {
+  branchProductAvailability,
   branches,
   categories,
   deals,
@@ -22,6 +23,7 @@ type BranchRow = InferSelectModel<typeof branches>;
 type CategoryRow = InferSelectModel<typeof categories>;
 type ProductRow = InferSelectModel<typeof products>;
 type ProductOptionRow = InferSelectModel<typeof productOptions>;
+type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailability>;
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
 type DealRow = InferSelectModel<typeof deals>;
@@ -55,6 +57,122 @@ export interface ApiBranch {
   isAcceptingPickup: boolean;
   /** Great-circle distance in km from a query point, when lat/lng were supplied. */
   distanceKm?: number;
+}
+
+/**
+ * Admin-facing branch shape (ADM-002). Mirrors `ApiBranch` (minus the query-only
+ * `distanceKm`) plus `slug` and `isActive`, both of which the PUBLIC `ApiBranch`
+ * omits — the admin dashboard must see every branch's slug and active state,
+ * including deactivated (soft-deleted) rows. Declared locally here, matching the
+ * existing `ApiBranch`/`ApiOrder`/`ApiDeal` local-declaration convention (no
+ * cross-dependency on `packages/types` just for a boundary shape).
+ */
+export interface AdminBranch {
+  id: string;
+  name: string;
+  slug: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  phone: string;
+  openingHours: string;
+  estimatedPrepMinutes: number;
+  isAcceptingPickup: boolean;
+  isActive: boolean;
+}
+
+// ─── Admin catalog serializers (ADM-003) ────────────────────────────────────
+//
+// Admin-facing shapes for the product-catalog surface. Declared LOCALLY here
+// (never in `packages/types`) matching the `AdminBranch` convention — the admin
+// dashboard is the only consumer, and there is no second consumer yet to justify
+// promoting these to the shared types package. All money fields are integer
+// cents at the boundary (`numericToCents`/`centsToNumeric` are the only place
+// the numeric<->cents conversion happens). Unlike the PUBLIC `ApiMenu*` shapes,
+// these carry `slug`/`isActive`/`sortOrder` and never hide inactive rows.
+
+export interface AdminCategory {
+  id: string;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface AdminProduct {
+  id: string;
+  categoryId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  basePriceCents: number;
+  isActive: boolean;
+  isRewardEligible: boolean;
+}
+
+export interface AdminProductOption {
+  id: string;
+  productId: string;
+  optionType: ProductOptionType;
+  name: string;
+  priceDeltaCents: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface AdminBranchAvailability {
+  id: string;
+  branchId: string;
+  productId: string;
+  isAvailable: boolean;
+}
+
+export function serializeAdminCategory(category: CategoryRow): AdminCategory {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    sortOrder: category.sort_order,
+    isActive: category.is_active,
+  };
+}
+
+export function serializeAdminProduct(product: ProductRow): AdminProduct {
+  return {
+    id: product.id,
+    categoryId: product.category_id,
+    name: product.name,
+    slug: product.slug,
+    description: product.description,
+    imageUrl: product.image_url,
+    basePriceCents: numericToCents(product.base_price),
+    isActive: product.is_active,
+    isRewardEligible: product.is_reward_eligible,
+  };
+}
+
+export function serializeAdminProductOption(option: ProductOptionRow): AdminProductOption {
+  return {
+    id: option.id,
+    productId: option.product_id,
+    optionType: toOptionType(option.option_type),
+    name: option.name,
+    priceDeltaCents: numericToCents(option.price_delta),
+    isActive: option.is_active,
+    sortOrder: option.sort_order,
+  };
+}
+
+export function serializeAdminBranchAvailability(
+  row: BranchProductAvailabilityRow,
+): AdminBranchAvailability {
+  return {
+    id: row.id,
+    branchId: row.branch_id,
+    productId: row.product_id,
+    isAvailable: row.is_available,
+  };
 }
 
 export interface ApiMenuOption {
@@ -119,6 +237,16 @@ export function numericToCents(value: string): number {
   return Math.round(Number(value) * 100);
 }
 
+/**
+ * Convert integer cents (`1250`) to the Postgres `numeric` decimal string
+ * (`"12.50"`) the pg driver expects at write time. Inverse of `numericToCents`.
+ * Exported so every write path (order placement, admin product/option writes)
+ * shares one round-half-up conversion instead of re-declaring it per route file.
+ */
+export function centsToNumeric(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
 function toOptionType(value: string): ProductOptionType {
   return value as ProductOptionType;
 }
@@ -135,6 +263,27 @@ export function serializeBranch(branch: BranchRow, distanceKm?: number): ApiBran
     estimatedPrepMinutes: branch.estimated_prep_minutes,
     isAcceptingPickup: branch.is_accepting_pickup,
     ...(distanceKm === undefined ? {} : { distanceKm }),
+  };
+}
+
+/**
+ * Serialize a `branches` row for the ADMIN surface (ADM-002). Unlike
+ * `serializeBranch`, this includes `slug` and `isActive` and never carries a
+ * distance (admin views are not geo-sorted).
+ */
+export function serializeAdminBranch(branch: BranchRow): AdminBranch {
+  return {
+    id: branch.id,
+    name: branch.name,
+    slug: branch.slug,
+    address: branch.address,
+    latitude: Number(branch.latitude),
+    longitude: Number(branch.longitude),
+    phone: branch.phone,
+    openingHours: branch.opening_hours,
+    estimatedPrepMinutes: branch.estimated_prep_minutes,
+    isAcceptingPickup: branch.is_accepting_pickup,
+    isActive: branch.is_active,
   };
 }
 
