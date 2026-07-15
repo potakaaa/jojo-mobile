@@ -1,20 +1,16 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { act, fireEvent } from '@testing-library/react-native';
+import { fireEvent } from '@testing-library/react-native';
 
 import CouponsScreen from '@/app/(tabs)/rewards/coupons';
 import { useCoupons } from '@/features/coupons/hooks/use-coupons';
-import { useRedeemCoupon } from '@/features/coupons/hooks/use-redeem-coupon';
-import { ApiError, type ApiCouponWithLabel } from '@/lib/api-client';
+import { type ApiCouponWithLabel } from '@/lib/api-client';
 import { renderWithProviders, spyOnAlert } from '@/test-utils/render';
 
-// Hooks are mocked so the screen renders against fixed data. `jest.mock` is
-// hoisted above these imports at runtime, so the imported bindings are the mocks.
+// The coupons hook is mocked so the screen renders against fixed data. `jest.mock`
+// is hoisted above these imports at runtime, so the imported binding is the mock.
 jest.mock('@/features/coupons/hooks/use-coupons');
-jest.mock('@/features/coupons/hooks/use-redeem-coupon');
 
 const mockCoupons = jest.mocked(useCoupons);
-const mockRedeemHook = jest.mocked(useRedeemCoupon);
-const mockMutate = jest.fn();
 
 function coupon(over: Partial<ApiCouponWithLabel> = {}): ApiCouponWithLabel {
   return {
@@ -45,10 +41,6 @@ function queryStub(
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockRedeemHook.mockReturnValue({
-    mutate: mockMutate,
-    isPending: false,
-  } as unknown as ReturnType<typeof useRedeemCoupon>);
 });
 
 describe('CouponsScreen', () => {
@@ -100,7 +92,10 @@ describe('CouponsScreen', () => {
     expect(result.refetch).toHaveBeenCalled();
   });
 
-  test('redeeming an available coupon opens a confirm dialog, then fires the mutation', async () => {
+  test('the wallet is display-only: tapping an available coupon opens no confirm dialog', async () => {
+    // Coupons are consumed atomically at checkout via the couponId flow — the
+    // wallet no longer has a standalone "Use coupon" redeem action, so pressing a
+    // coupon must NOT open a confirm Alert.
     mockCoupons.mockReturnValue(
       queryStub({ data: [coupon({ id: 'avail-1', code: 'RWD-AVAIL1', status: 'available' })] }),
     );
@@ -108,35 +103,8 @@ describe('CouponsScreen', () => {
 
     const { getByText } = await renderWithProviders(<CouponsScreen />);
 
-    fireEvent.press(getByText('RWD-AVAIL1')); // press bubbles to the CouponCard Pressable
-    expect(alertSpy).toHaveBeenCalledTimes(1);
+    fireEvent.press(getByText('RWD-AVAIL1'));
 
-    // Invoke the confirm button's onPress (mutation is a jest.fn — no state update).
-    const buttons = alertSpy.mock.calls[0]![2] as { text: string; onPress?: () => void }[];
-    buttons.find((b) => b.text === 'Use coupon')?.onPress?.();
-
-    expect(mockMutate.mock.calls[0]![0]).toBe('avail-1');
-  });
-
-  test('shows a friendly inline message when re-redeeming an already-used coupon (409)', async () => {
-    mockCoupons.mockReturnValue(
-      queryStub({ data: [coupon({ id: 'avail-1', code: 'RWD-AVAIL1', status: 'available' })] }),
-    );
-    // Simulate the mutation rejecting with a 409 by invoking the passed onError.
-    mockMutate.mockImplementation((_id: unknown, opts: unknown) => {
-      (opts as { onError?: (e: Error) => void })?.onError?.(new ApiError(409, 'gone'));
-    });
-    const alertSpy = spyOnAlert();
-
-    const { getByText } = await renderWithProviders(<CouponsScreen />);
-
-    // Press + confirm in one act scope; the mocked onError sets the inline 409 message.
-    await act(async () => {
-      fireEvent.press(getByText('RWD-AVAIL1'));
-      const buttons = alertSpy.mock.calls[0]![2] as { text: string; onPress?: () => void }[];
-      buttons.find((b) => b.text === 'Use coupon')?.onPress?.();
-    });
-
-    expect(getByText(/no longer available/i)).toBeTruthy();
+    expect(alertSpy).not.toHaveBeenCalled();
   });
 });
