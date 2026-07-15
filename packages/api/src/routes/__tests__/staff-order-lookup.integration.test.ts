@@ -63,6 +63,8 @@ let productId: string;
 let categoryId: string;
 let customerId: string;
 let staff1Email: string;
+let staff2Email: string;
+let unassignedEmail: string;
 let staff1Cookies: string[];
 let unassignedStaffCookies: string[];
 
@@ -177,7 +179,7 @@ beforeAll(async () => {
     .where(eq(schema.users.email, staff1Email));
 
   // Staff-2 assigned to branch-2 (seeded for isolation completeness).
-  const staff2Email = `staff2-sl-${suffix}@example.com`;
+  staff2Email = `staff2-sl-${suffix}@example.com`;
   await signUpAndGetCookie(staff2Email, 'sup3r-secret-pw');
   await db
     .update(schema.users)
@@ -185,7 +187,7 @@ beforeAll(async () => {
     .where(eq(schema.users.email, staff2Email));
 
   // Unassigned staff (no branch).
-  const unassignedEmail = `staff-unassigned-sl-${suffix}@example.com`;
+  unassignedEmail = `staff-unassigned-sl-${suffix}@example.com`;
   unassignedStaffCookies = await signUpAndGetCookie(unassignedEmail, 'sup3r-secret-pw');
   await db
     .update(schema.users)
@@ -205,6 +207,9 @@ afterAll(async () => {
     .update(schema.users)
     .set({ assignedBranchId: null })
     .where(inArrayCleanup(schema.users.assignedBranchId, [branch1Id, branch2Id]));
+  await db
+    .delete(schema.users)
+    .where(inArrayCleanup(schema.users.email, [staff1Email, staff2Email, unassignedEmail]));
   await db.delete(schema.users).where(eq(schema.users.id, customerId));
   await db.delete(schema.products).where(eq(schema.products.id, productId));
   await db.delete(schema.categories).where(eq(schema.categories.id, categoryId));

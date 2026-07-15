@@ -76,7 +76,7 @@ duplicate reward.
 
 ## Flow / State Diagram
 
-```
+```text
 CUSTOMER SIDE (already true today — confirm, no rework expected)
   Checkout complete
         |

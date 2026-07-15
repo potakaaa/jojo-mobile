@@ -9,7 +9,7 @@ phase: "STAFF-005"
 # STAFF-005 (PUP-002): Pickup Code Lookup — Implementation Plan
 
 Date: 15-07-26
-Status: PLAN (pre-validate)
+Status: EXECUTED (Gate: PASS; EVL independently confirmed green) — pending user-confirmed Agent-Probe walkthrough before ✅ VERIFIED
 Complexity: SIMPLE (single direction, one package-pair: `packages/api` + `apps/mobile`)
 
 **GitHub Issue:** #35 (PUP-002), P1
@@ -174,10 +174,10 @@ No developed backend behavior is assigned Known-Gap. The only Agent-Probe/Known-
 ## Resume and Execution Handoff
 
 1. **Selected plan file:** `process/features/staff-dashboard/active/staff-005-pickup-code_15-07-26/staff-005-pickup-code_PLAN_15-07-26.md`
-2. **Last completed step:** VALIDATE written (Gate: PASS). No code changed.
+2. **Last completed step:** EXECUTE done, EVL independently confirmed green (see `staff-005-pickup-code_REPORT_15-07-26.md`). All 6 touchpoint files created/modified; API suite 191/191, both typechecks clean, mobile lint clean.
 3. **Validate-contract status:** written 15-07-26 (Gate: PASS) — see `## Validate Contract` below.
 4. **Supporting context loaded:** `process/context/all-context.md`; `process/context/tests/all-tests.md`; SPEC (same folder); `packages/api/src/routes/staff.ts`; `staff-api.ts`; `(staff)/index.tsx` + `_layout.tsx`; `staff-order-status.integration.test.ts` (fixture pattern).
-5. **Next step for a fresh agent:** ENTER EXECUTE MODE. Prerequisites for the API test gate: `docker compose up -d` (or the native Postgres on this box — see all-tests.md dev-machine gotcha) + `pnpm --filter @jojopotato/api db:migrate` before `pnpm --filter @jojopotato/api test`. Then EXECUTE the checklist in order (backend route + test first, then mobile). Follow execute-agent instructions E1–E5 in the contract.
+5. **Next step for a fresh agent:** do NOT re-enter EXECUTE MODE — implementation is already done and gate-confirmed. The only remaining step is the user-confirmed Agent-Probe walkthrough (staff pickup-lookup screen + customer confirmation/tracking code visibility, see `## Verification Evidence`). Once confirmed, mark this plan `✅ VERIFIED` per `## Phase Completion Rules`.
 
 ## Validate Contract
 
@@ -228,7 +228,7 @@ C-4 reconciliation: the strategy column carries only Fully-Automated / Agent-Pro
 
 ### Failing stubs (Fully-Automated rows — red-first starting points for execute-agent)
 
-```
+```typescript
 test("should return 200 with the matching order for a valid code at own branch", () => { throw new Error("NOT IMPLEMENTED — TDD stub: lookup (a) valid code + own branch → 200") })
 test("should return 404 for a code belonging to a different branch", () => { throw new Error("NOT IMPLEMENTED — TDD stub: lookup (b) cross-branch → 404") })
 test("should return a byte-identical 404 body for a nonexistent code and a cross-branch code", () => { throw new Error("NOT IMPLEMENTED — TDD stub: lookup (c) expect(cResBody).toEqual(bResBody)") })
@@ -271,7 +271,7 @@ Accepted by: session (autonomous VALIDATE subagent) — no CONCERNs required acc
 
 ## Autonomous Goal Block
 
-```
+```text
 SESSION GOAL: STAFF-005 (PUP-002) — staff pickup-code lookup route + mobile "Enter Pickup Code" screen
 Charter + umbrella plan: N/A — single standalone plan (staff-dashboard feature, no umbrella program)
 Autonomy: reversible decisions auto-proceed; hard-stop only on irreversible/outward-facing actions not in this contract. Per feedback_autonomous_phase_execution — BLOCKED → backlog + continue.
@@ -287,4 +287,4 @@ Execute start: backend route + new staff-order-lookup.integration.test.ts first,
 
 ## Next Step
 
-Plan validated — **Gate: PASS**. Say **ENTER EXECUTE MODE** to implement the checklist (backend route + integration test first, then mobile), following execute-agent instructions E1–E5 in the Validate Contract. Do not mark `✅ VERIFIED` until the Agent-Probe walkthrough is confirmed.
+Implementation complete and EVL-confirmed green (see `staff-005-pickup-code_REPORT_15-07-26.md`). The only remaining step is the user-confirmed Agent-Probe walkthrough (staff pickup-lookup screen + customer confirmation/tracking code visibility). Do not mark `✅ VERIFIED` until that walkthrough is confirmed. Do not re-enter EXECUTE MODE for this plan.
