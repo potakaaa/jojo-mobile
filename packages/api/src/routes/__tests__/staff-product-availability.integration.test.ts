@@ -13,10 +13,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  *   AC-2 — PATCH /products/:id/availability false → product removed from customer menu
  *   AC-3 — PATCH /products/:id/availability true → product restored to customer menu
  *   AC-4 — branch isolation on products: staff2 cannot touch branch1 products
- *   AC-5 — PATCH /branch { isAcceptingPickup: false } → POST /orders → 400
- *   AC-6 — PATCH /branch { isAcceptingPickup: true } → branch restored
  *   AC-7 — PATCH /branch { estimatedPrepMinutes: 30 } → GET /branch reflects update
  *   AC-8 — branch isolation: staff2 PATCH /branch only affects branch2, not branch1
+ *   AC-5/AC-6 removed: pickup toggling is admin-only (PATCH /api/admin/branches/:id)
  *   Edge cases: empty body 422, invalid UUID 404, prep time out of range 422
  *   Unassigned staff 403 on GET /products
  *
@@ -332,52 +331,6 @@ describe('PATCH /api/staff/products/:productId/availability — AC-4 branch isol
   });
 });
 
-// ─── AC-5: pickup toggle off → POST /orders → 400 ────────────────────────────
-
-describe('PATCH /api/staff/branch — AC-5 pickup toggle off', () => {
-  it('isAcceptingPickup: false → customer POST /orders → 400', async () => {
-    const patchRes = await request(app)
-      .patch('/api/staff/branch')
-      .set('Cookie', staff1Cookies.join('; '))
-      .send({ isAcceptingPickup: false });
-    expect(patchRes.status).toBe(200);
-    expect(patchRes.body.isAcceptingPickup).toBe(false);
-
-    // Customer attempts to place an order at branch-1 — should be blocked with 400.
-    // Use a minimal valid order body (product1 is available for ordering).
-    const orderRes = await request(app)
-      .post('/orders')
-      .set('Cookie', customerCookies.join('; '))
-      .send({
-        branchId: branch1Id,
-        items: [{ productId: product1Id, quantity: 1, selectedOptions: [] }],
-        paymentMethod: 'pay_at_branch',
-      });
-
-    expect(orderRes.status).toBe(400);
-  });
-});
-
-// ─── AC-6: pickup toggle on → branch restored ────────────────────────────────
-
-describe('PATCH /api/staff/branch — AC-6 pickup toggle on', () => {
-  it('isAcceptingPickup: true → GET /api/staff/branch reflects restored state', async () => {
-    const patchRes = await request(app)
-      .patch('/api/staff/branch')
-      .set('Cookie', staff1Cookies.join('; '))
-      .send({ isAcceptingPickup: true });
-    expect(patchRes.status).toBe(200);
-    expect(patchRes.body.isAcceptingPickup).toBe(true);
-
-    // Confirm via GET /api/staff/branch.
-    const getRes = await request(app)
-      .get('/api/staff/branch')
-      .set('Cookie', staff1Cookies.join('; '));
-    expect(getRes.status).toBe(200);
-    expect(getRes.body.isAcceptingPickup).toBe(true);
-  });
-});
-
 // ─── AC-7: prep time edit ────────────────────────────────────────────────────
 
 describe('PATCH /api/staff/branch — AC-7 prep time edit', () => {
@@ -437,6 +390,14 @@ describe('Edge cases', () => {
       .patch('/api/staff/branch')
       .set('Cookie', staff1Cookies.join('; '))
       .send({});
+    expect(res.status).toBe(422);
+  });
+
+  it('isAcceptingPickup in body (admin-only field) → 422', async () => {
+    const res = await request(app)
+      .patch('/api/staff/branch')
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ isAcceptingPickup: false });
     expect(res.status).toBe(422);
   });
 
