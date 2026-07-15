@@ -457,6 +457,78 @@ export function serializeDeal(
   };
 }
 
+// ─── Admin deal serializer (ADM-004) ────────────────────────────────────────
+//
+// Admin-facing deal shape. Declared LOCALLY here (never in `packages/types`)
+// matching the `AdminBranch`/`AdminProduct` local-declaration convention — the
+// admin dashboard is the only consumer, and there is no second cross-boundary
+// consumer yet to justify promoting it to the shared types package.
+//
+// Deliberately DIFFERENT from the PUBLIC `ApiDeal`/`serializeDeal` above:
+//  - `discountValue` is the RAW stored value converted UNCONDITIONALLY via
+//    `numericToCents` (no per-`deal_type` polymorphic collapsing, no
+//    `discountLabel`) so the admin edit form pre-fills the actual stored number.
+//  - Carries `isActive` (the admin list is a management view that shows
+//    deactivated/out-of-window deals; the public route hides them).
+//  - `productIds`/`branchIds`/`outstandingCoupons` are OPTIONAL extras populated
+//    only on the DETAIL response (they require separate queries); the list route
+//    omits them to avoid N+1 joins.
+
+export interface AdminDeal {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  dealType: DealType;
+  discountValue: number | null; // cents (numericToCents), unconditional — null allowed
+  minimumOrderAmount: number; // cents
+  startAt: string; // ISO
+  endAt: string; // ISO
+  usageLimitPerUser: number | null;
+  totalUsageLimit: number | null;
+  isActive: boolean;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+  productIds: string[]; // attached deal_products (detail only; [] on list)
+  branchIds: string[]; // attached deal_branches (detail only; [] on list)
+  outstandingCoupons: number; // status='available' coupons for this deal (detail only; 0 on list)
+}
+
+interface AdminDealExtras {
+  productIds: string[];
+  branchIds: string[];
+  outstandingCoupons: number;
+}
+
+/**
+ * Serialize a `deals` row to the admin `AdminDeal` shape. Pure row→DTO mapper —
+ * the `extras` (attached id arrays + outstanding-coupon count) are fetched by the
+ * route handler and passed in, keeping the serializer free of DB-query duties
+ * (matching every other admin serializer). Omit `extras` on the list route so it
+ * never triggers per-row junction/coupon queries.
+ */
+export function serializeAdminDeal(deal: DealRow, extras?: AdminDealExtras): AdminDeal {
+  return {
+    id: deal.id,
+    title: deal.title,
+    description: deal.description,
+    imageUrl: deal.image_url,
+    dealType: deal.deal_type,
+    discountValue: deal.discount_value === null ? null : numericToCents(deal.discount_value),
+    minimumOrderAmount: numericToCents(deal.minimum_order_amount),
+    startAt: deal.start_at.toISOString(),
+    endAt: deal.end_at.toISOString(),
+    usageLimitPerUser: deal.usage_limit_per_user,
+    totalUsageLimit: deal.total_usage_limit,
+    isActive: deal.is_active,
+    createdAt: deal.created_at.toISOString(),
+    updatedAt: deal.updated_at.toISOString(),
+    productIds: extras?.productIds ?? [],
+    branchIds: extras?.branchIds ?? [],
+    outstandingCoupons: extras?.outstandingCoupons ?? 0,
+  };
+}
+
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────
 
 /**
