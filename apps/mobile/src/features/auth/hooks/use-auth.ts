@@ -72,8 +72,21 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function toResult(error: { message?: string } | null | undefined): SignInResult {
-  return error ? { ok: false, error: error.message ?? 'Something went wrong' } : { ok: true };
+function toResult(
+  error: { message?: string; status?: number; statusText?: string } | null | undefined,
+): SignInResult {
+  if (!error) {
+    return { ok: true };
+  }
+  // better-fetch's error branch spreads the parsed JSON body into `error`, but a
+  // non-JSON response (e.g. a proxy/tunnel serving an HTML error page instead of
+  // proxying through, or any unexpected upstream shape) leaves `message` empty —
+  // `status`/`statusText` still survive since they're always attached separately.
+  // Surfacing them keeps a failure diagnosable instead of a dead-end generic string.
+  const fallback = error.status
+    ? `Something went wrong (${error.status}${error.statusText ? ` ${error.statusText}` : ''}). Please try again.`
+    : 'Something went wrong. Please try again.';
+  return { ok: false, error: error.message || fallback };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
