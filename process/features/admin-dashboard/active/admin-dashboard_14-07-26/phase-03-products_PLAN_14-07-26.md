@@ -10,8 +10,10 @@ date: 14-07-26
 # Phase 3 — Products & Categories CRUD (ADM-003, #41)
 
 Date: 14-07-26
-Status: PVL COMPLETE — Gate: PASS (see `## Validate Contract` below). RESEARCH + INNOVATE +
-PLAN-SUPPLEMENT + PVL are all complete; ready for EXECUTE (Step 5).
+Status: ✅ VERIFIED (15-07-26) — full 7-step inner loop complete. EXECUTE + independent EVL confirmed
+183/183 API suite green (0 fix cycles); AC8 manual walkthrough DONE (a real routing bug found during
+the walkthrough — TanStack Start nested-detail-route Outlet gap — was fixed same session, see
+`## Phase Loop Progress` and the phase report).
 Complexity: COMPLEX (part of an 8-phase program — see umbrella plan)
 
 Phase Completion Rules: this phase is CODE DONE only after Implementation Steps are executed and
@@ -248,7 +250,7 @@ in requests/responses are integer cents; the route layer is the only place `cent
 
 1. **Export `centsToNumeric`** from `routes/lib/serializers.ts` (alongside `numericToCents`);
    update `orders.ts`'s call sites to import it; remove the module-private declaration from
-   `orders.ts`; run `pnpm --filter @jojopotato/api test -- orders` to confirm zero regression.
+   `orders.ts`; run `pnpm --filter @jojopotato/api test orders` to confirm zero regression.
    **VALIDATE correction: the plan's originally-cited line numbers (declaration 49-51, call sites
    150-151) are stale — confirmed at VALIDATE-time the function is actually declared at
    `orders.ts:55-57` with THREE call sites (`orders.ts:175-176` for `unit_price`/`total_price`,
@@ -257,7 +259,7 @@ in requests/responses are integer cents; the route layer is the only place `cent
    trusting these hardcoded numbers — see Execute-Agent Instruction E1.**
 2. **Decision 2 — relocate error helpers**: move `handleAdminError`/`isUniqueViolation` from
    `branches.ts` into `routes/admin/lib/errors.ts`, export both; update `branches.ts`'s imports;
-   run `pnpm --filter @jojopotato/api test -- admin-branches` to confirm zero regression.
+   run `pnpm --filter @jojopotato/api test admin-branches` to confirm zero regression.
 3. **Decision 1 — extract 3 shared composites** into `apps/admin/src/components/`: `query-states.tsx`,
    `confirm-dialog.tsx` (generalized from P2's `deactivate-branch-dialog.tsx`), `page-header.tsx`.
 4. **Build `admin/categories.ts` route** (CRUD + soft-delete via `PATCH .../deactivate`, slug
@@ -368,7 +370,7 @@ Note: exact test file paths follow the P2 convention — new supertest integrati
 `admin-branches.integration.test.ts` under `packages/api/src/lib/__tests__/` (e.g.
 `admin-products.integration.test.ts`, `admin-categories.integration.test.ts`), reusing the
 `makeUser(role)` self-seeding fixture. `packages/api` uses vitest + supertest (`pnpm --filter
-@jojopotato/api test -- admin-products` / `-- admin-categories`, requires local Postgres migrated —
+@jojopotato/api test admin-products` / `test admin-categories`, requires local Postgres migrated —
 either `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate`, or this dev machine's
 already-running native Postgres per `process/context/tests/all-tests.md`'s Debugging Quick
 Reference). Exact filenames finalized in EXECUTE (vitest's CLI filter is filename-substring based,
@@ -400,9 +402,16 @@ validate-contract).
 - [x] 4. PVL (validate-contract) (15-07-26 — Gate: PASS, 0 FAILs / 0 blocking CONCERNs; 2
   Execute-Agent Instructions recorded (line-number correction, backlog-note reminder); see
   `## Validate Contract` below)
-- [ ] 5. EXECUTE
-- [ ] 6. EVL
-- [ ] 7. UPDATE-PROCESS
+- [x] 5. EXECUTE (15-07-26 — full API+admin vertical slice delivered; 183/183 API suite green
+  incl. 19 admin-products + 12 admin-categories new cases + orders/admin-branches regression guards;
+  both typechecks green; commit `b238d03`)
+- [x] 6. EVL (15-07-26 — independent re-run confirmed 183/183 green, 0 fix cycles; AC1
+  snapshot-integrity proven by a real passing automated test, not Known-Gap; AC8 Agent-Probe
+  walkthrough performed by the user — found and the same session fixed a real bug: `products.tsx`
+  nested detail route never rendered because the parent had no `<Outlet/>` — split into a thin
+  `<Outlet/>` layout (`products.tsx`) + `products.index.tsx` list, commit `79df222`; AC8 is VERIFIED,
+  not owed)
+- [x] 7. UPDATE-PROCESS (15-07-26 — this pass)
 
 ---
 
@@ -477,16 +486,16 @@ Test gates (C3 5-column table — ADDITIVE; existing consumers still parse the l
 
 | criterion id | behavior | strategy | proving test | gap-resolution |
 |---|---|---|---|---|
-| AC1 | Editing a product's `base_price` via the new admin route MUST NOT mutate any existing `order_items.unit_price`/`total_price` row for orders placed before the edit (HARD invariant, Known-Gap banned) | Fully-Automated | `pnpm --filter @jojopotato/api test -- admin-products` (new file, `packages/api/src/lib/__tests__/admin-products.integration.test.ts`) | A |
-| AC2 | Categories: create/read/update/soft-delete; slug uniqueness enforced server-side (409 via `isUniqueViolation`, not a raw constraint leak) | Fully-Automated | `pnpm --filter @jojopotato/api test -- admin-categories` (new file, `packages/api/src/lib/__tests__/admin-categories.integration.test.ts`) | A |
+| AC1 | Editing a product's `base_price` via the new admin route MUST NOT mutate any existing `order_items.unit_price`/`total_price` row for orders placed before the edit (HARD invariant, Known-Gap banned) | Fully-Automated | `pnpm --filter @jojopotato/api test admin-products` (new file, `packages/api/src/lib/__tests__/admin-products.integration.test.ts`) | A |
+| AC2 | Categories: create/read/update/soft-delete; slug uniqueness enforced server-side (409 via `isUniqueViolation`, not a raw constraint leak) | Fully-Automated | `pnpm --filter @jojopotato/api test admin-categories` (new file, `packages/api/src/lib/__tests__/admin-categories.integration.test.ts`) | A |
 | AC3 | Products: create/read/update/soft-delete; `category_id` FK validated (400 on invalid/inactive); `base_price` round-trips cents→numeric→cents with no drift | Fully-Automated | same command as AC1 | A |
 | AC4 | Product options: create/read/update/soft-delete per product; `option_type` enum (`size\|flavor\|add_on`) validated server-side; `price_delta` round-trips | Fully-Automated | same command as AC1 | A |
 | AC5 | Branch-product-availability: `.onConflictDoUpdate()` upsert on `bpa_branch_product_idx` is idempotent, no duplicate rows on repeated PATCH | Fully-Automated | same command as AC1 | A |
 | AC6 | All new `/api/admin/products/*` and `/api/admin/categories/*` routes reject non-admin/non-super_admin callers (403) | Fully-Automated | same command as AC1 and AC2, dedicated `staff`-role fixture via `makeUser('staff')` | A |
 | AC7 | Soft-delete only for all four entities — `PATCH .../deactivate` sets the flag false, row survives (row count unchanged) | Fully-Automated | same commands as AC1/AC2 | A |
 | AC8 | `apps/admin` categories→products→options→availability CRUD round-trip against a real dev Postgres, with a confirmation step before destructive/price-changing actions | Agent-Probe | Manual walkthrough scenario (see "What This Coverage Does NOT Prove" below for exact judgment points) | A |
-| Regression guard | `centsToNumeric` export refactor (Step 1) does not change order-placement money math | Fully-Automated | `pnpm --filter @jojopotato/api test -- orders` (existing `packages/api/src/routes/__tests__/orders.test.ts`) | A |
-| Regression guard | error-helper relocation (Step 2) does not change branches CRUD behavior | Fully-Automated | `pnpm --filter @jojopotato/api test -- admin-branches` (existing `packages/api/src/lib/__tests__/admin-branches.integration.test.ts`) | A |
+| Regression guard | `centsToNumeric` export refactor (Step 1) does not change order-placement money math | Fully-Automated | `pnpm --filter @jojopotato/api test orders` (existing `packages/api/src/routes/__tests__/orders.test.ts`) | A |
+| Regression guard | error-helper relocation (Step 2) does not change branches CRUD behavior | Fully-Automated | `pnpm --filter @jojopotato/api test admin-branches` (existing `packages/api/src/lib/__tests__/admin-branches.integration.test.ts`) | A |
 | Decision 3 residual | No realtime/websocket sync on `branch_product_availability` writes — refetch-on-focus only (consistent with the app's existing 30s `staleTime` staleness model, not new debt) | Known-Gap | — (documented; no automated coverage possible within this phase's scope) | D |
 
 gap-resolution legend:
@@ -500,12 +509,12 @@ Hybrid / Agent-Probe). Known-Gap is never a `strategy:` value — it is the name
 Decision 3 realtime-sync gap, carried via gap-resolution D.
 
 Legacy line form (retained so existing validate-contract consumers still parse):
-- API CRUD (AC1-AC7): Fully-automated: `pnpm --filter @jojopotato/api test -- admin-products` /
+- API CRUD (AC1-AC7): Fully-automated: `pnpm --filter @jojopotato/api test admin-products` /
   `-- admin-categories` (precondition: local Postgres reachable via `DATABASE_URL`, migrated —
   either `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate`, or this dev machine's
   native Postgres per `all-tests.md`'s Debugging Quick Reference)
-- Regression guards: Fully-automated: `pnpm --filter @jojopotato/api test -- orders` and
-  `pnpm --filter @jojopotato/api test -- admin-branches`
+- Regression guards: Fully-automated: `pnpm --filter @jojopotato/api test orders` and
+  `pnpm --filter @jojopotato/api test admin-branches`
 - App walkthrough (AC8): agent-probe: manual categories→products→options→availability walkthrough in
   the running `apps/admin` dev server against the real API, including a price-edit confirmation step
 - Decision 3 realtime-sync gap: known-gap: documented as accepted residual — consistent with the
