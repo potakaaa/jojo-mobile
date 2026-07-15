@@ -68,6 +68,18 @@ export interface AuthContextValue {
     birthday: string;
     address: string;
   }) => Promise<SignInResult>;
+  /**
+   * Save the editable profile fields for an already-onboarded user WITHOUT
+   * touching `onboardedAt`. Deliberately separate from `completeProfile`, which
+   * re-stamps `onboardedAt` — reusing that here would corrupt onboarding state
+   * and re-trigger the onboarding nav gate. `role` is server-owned and never
+   * sent. Refreshes the session so the profile view reflects the change.
+   */
+  updateProfile: (info: {
+    name: string;
+    birthday: string;
+    address: string;
+  }) => Promise<SignInResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -169,6 +181,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refetch],
   );
 
+  const updateProfile = useCallback(
+    async (info: { name: string; birthday: string; address: string }): Promise<SignInResult> => {
+      // Explicit field-by-field payload — never spread a form-state object, so a
+      // server-owned field like `role` can never ride along. `onboardedAt` is
+      // intentionally omitted (that is `completeProfile`'s job, not this one).
+      const { error } = await authClient.updateUser({
+        name: info.name,
+        birthday: info.birthday,
+        address: info.address,
+      });
+      if (error) {
+        return toResult(error);
+      }
+      // Force a server round-trip so the edited values propagate to the session
+      // and the profile view updates without an app restart.
+      await refetch();
+      return toResult(null);
+    },
+    [refetch],
+  );
+
   const value = useMemo<AuthContextValue>(() => {
     const sessionUser = data?.user as
       | {
@@ -211,8 +244,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       completeOnboarding,
       completeProfile,
+      updateProfile,
     };
-  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding, completeProfile]);
+  }, [
+    data,
+    isPending,
+    hasOnboarded,
+    signIn,
+    signOut,
+    completeOnboarding,
+    completeProfile,
+    updateProfile,
+  ]);
 
   return createElement(AuthContext.Provider, { value }, children);
 }
