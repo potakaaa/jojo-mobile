@@ -1,11 +1,11 @@
 import { asc, eq } from 'drizzle-orm';
-import { Router, type Response, type Router as ExpressRouter } from 'express';
+import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
 import { branches } from '../../db/schema/index';
 import { serializeAdminBranch } from '../lib/serializers';
-import { AdminApiError } from './lib/errors';
+import { AdminApiError, handleAdminError, isUniqueViolation } from './lib/errors';
 
 /**
  * Admin branch CRUD routes (ADM-002). The `requireAdmin` guard + CORS are applied
@@ -37,35 +37,11 @@ const createBranchSchema = z.object({
 // `isActive` is NOT a `createBranchSchema` field, so `.partial()` alone can't
 // carry it — it is added explicitly so a generic PATCH can reactivate a branch
 // the deactivate route set to `false` (`{ isActive: true }`).
-const updateBranchSchema = createBranchSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
-
-/**
- * Convert a thrown error into an HTTP response. `AdminApiError` (thrown by the
- * handlers below and by the Postgres unique-violation catch) maps to its own
- * status; anything else is an unexpected 500. Mirrors `users.ts`'s catch shape.
- */
-function handleAdminError(err: unknown, res: Response, context: string): void {
-  if (err instanceof AdminApiError) {
-    res.status(err.status).json({ error: err.message });
-    return;
-  }
-  console.error(`[admin] unexpected error ${context}`, err);
-  res.status(500).json({ error: `Failed while ${context}` });
-}
-
-/**
- * Postgres `unique_violation` (node-postgres/pg code `23505`) — a duplicate `slug`
- * insert/update. Drizzle wraps driver errors in a `DrizzleQueryError` carrying the
- * original pg error on `.cause`, so check both the error itself and its cause.
- */
-function isUniqueViolation(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const code = (err as { code?: string }).code;
-  const causeCode = (err as { cause?: { code?: string } }).cause?.code;
-  return code === '23505' || causeCode === '23505';
-}
+// `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
+const updateBranchSchema = createBranchSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
 // GET / — ALL branches (active + inactive), name-ascending. No `is_active`
 // filter: the admin view must show deactivated rows (unlike the public route).

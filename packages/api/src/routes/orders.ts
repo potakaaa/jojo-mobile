@@ -16,7 +16,12 @@ import {
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
 import { orderNumberGenerator } from './lib/order-number';
-import { numericToCents, serializeOrder, type SelectedOption } from './lib/serializers';
+import {
+  centsToNumeric,
+  numericToCents,
+  serializeOrder,
+  type SelectedOption,
+} from './lib/serializers';
 
 export const ordersRouter: Router = Router();
 
@@ -50,10 +55,6 @@ class OrderError extends Error {
     super(message);
     this.name = 'OrderError';
   }
-}
-
-function centsToNumeric(cents: number): string {
-  return (cents / 100).toFixed(2);
 }
 
 /**
