@@ -1,26 +1,15 @@
 /**
  * Branch Pickup Settings screen (staff) — STAFF-004.
  *
- * Allows staff to toggle pickup order acceptance and update the estimated
- * prep time for their assigned branch.
- *
- * - Pickup toggle: immediate PATCH on switch change.
- * - Prep time: text input with a "Save" button; client-side validation (1–120 min).
+ * Allows staff to update the estimated prep time for their assigned branch.
+ * Pickup acceptance toggling is admin-only.
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -41,7 +30,6 @@ export default function BranchPickupSettingsScreen() {
   const { data: settings, isLoading, isError } = useStaffBranchSettings();
   const { mutate: patchSettings, isPending } = usePatchBranchSettings();
 
-  const [pickupValue, setPickupValue] = useState<boolean | null>(null);
   const [prepTimeText, setPrepTimeText] = useState('');
   const [prepTimeError, setPrepTimeError] = useState<string | null>(null);
   const [seededSettings, setSeededSettings] = useState(settings);
@@ -51,14 +39,8 @@ export default function BranchPickupSettingsScreen() {
   if (settings !== seededSettings) {
     setSeededSettings(settings);
     if (settings) {
-      setPickupValue(settings.isAcceptingPickup);
       setPrepTimeText(String(settings.estimatedPrepMinutes));
     }
-  }
-
-  function handlePickupToggle(newValue: boolean) {
-    setPickupValue(newValue);
-    patchSettings({ isAcceptingPickup: newValue }, { onError: () => setPickupValue(!newValue) });
   }
 
   function handleSavePrepTime() {
@@ -99,25 +81,6 @@ export default function BranchPickupSettingsScreen() {
             </View>
           ) : settings ? (
             <>
-              {/* Pickup toggle */}
-              <View style={[styles.section, { borderBottomColor: theme.border }]}>
-                <View style={styles.sectionRow}>
-                  <View style={styles.sectionInfo}>
-                    <Text style={[styles.sectionLabel, { color: theme.text }]}>
-                      Accept Pickup Orders
-                    </Text>
-                    <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>
-                      When off, customers cannot place new pickup orders for this branch
-                    </Text>
-                  </View>
-                  <Switch
-                    value={pickupValue ?? settings.isAcceptingPickup}
-                    onValueChange={handlePickupToggle}
-                    accessibilityLabel="Toggle pickup order acceptance"
-                  />
-                </View>
-              </View>
-
               {/* Prep time */}
               <View style={styles.section}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>
