@@ -23,13 +23,15 @@ import {
 } from 'react';
 
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { apiRequest } from '@/features/shared/lib/api-request';
+
 // Re-exported from the pure factory module so runtime consumers keep importing it
 // from here, while the node-env test suite imports it from the pure module (this
 // hook module transitively loads the auth/native graph and can't run under node).
 export { DEFAULT_MARKETING_OPT_IN } from '@/features/notifications/lib/notification-factory';
-import { apiRequest } from '@/features/shared/lib/api-request';
 
 const NOTIFICATIONS_QUERY_KEY = ['notifications'] as const;
+const EMPTY_NOTIFICATIONS: AppNotification[] = [];
 
 async function fetchNotifications(): Promise<AppNotification[]> {
   const { notifications } = await apiRequest<{ notifications: AppNotification[] }>(
@@ -63,8 +65,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     enabled: Boolean(user),
     refetchOnWindowFocus: true,
   });
-  // Server returns rows newest-first already; no client re-sort needed.
-  const notifications = data ?? [];
+  // Server returns rows newest-first already; no client re-sort needed. A stable
+  // module-level empty-array fallback (not a fresh `[]` literal) keeps `notifications`
+  // reference-stable across renders while `data` is undefined.
+  const notifications = data ?? EMPTY_NOTIFICATIONS;
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,

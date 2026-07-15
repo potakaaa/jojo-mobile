@@ -48,7 +48,7 @@ export function __resetPermissionSeam(mock: PermissionResult = 'granted'): void 
  * True in Expo dev and in the node test env (no real OS dialog is available).
  * Production builds (`__DEV__ === false`) take the real `expo-notifications` path.
  */
-function useSimulatedPermission(): boolean {
+function shouldSimulatePermission(): boolean {
   return typeof __DEV__ === 'undefined' || __DEV__ === true;
 }
 
@@ -62,7 +62,7 @@ export async function requestNotificationPermission(): Promise<PermissionResult>
   alreadyAsked = true;
 
   // Dev / test: simulate (no real OS dialog).
-  if (useSimulatedPermission()) return devMockResult;
+  if (shouldSimulatePermission()) return devMockResult;
 
   try {
     const Notifications = await import('expo-notifications');
