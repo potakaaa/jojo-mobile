@@ -96,6 +96,13 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
     return;
   }
 
+  // ADM-004 deals-as-products filter (sites a + b): by default the customer menu
+  // EXCLUDES deal-products (is_deal=false) so they never appear mixed into regular
+  // categories. `?isDeal=true` FLIPS the filter to return ONLY deal-products (same
+  // route, same response shape — serves the mobile Deals tab without a new
+  // endpoint). Any other value defaults to the regular (non-deal) menu.
+  const isDealMenu = req.query.isDeal === 'true';
+
   // Active products available at this branch, joined to their (active) category.
   const productRows = await db
     .select({ product: products, category: categories })
@@ -109,7 +116,13 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       ),
     )
     .innerJoin(categories, eq(categories.id, products.category_id))
-    .where(and(eq(products.is_active, true), eq(categories.is_active, true)))
+    .where(
+      and(
+        eq(products.is_active, true),
+        eq(categories.is_active, true),
+        eq(products.is_deal, isDealMenu),
+      ),
+    )
     .orderBy(asc(categories.sort_order), asc(products.name));
 
   const productIds = productRows.map((r) => r.product.id);

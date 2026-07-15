@@ -179,6 +179,17 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         });
       }
 
+      // ─── DORMANT (ADM-004 deals-as-products pivot / ADM-008 test debt) ─────
+      // This server-authoritative deal-apply block targets the LEGACY discount-
+      // shaped `deals`/`orders.deal_id` mechanism, which is now DORMANT: the
+      // ADM-004 re-plan replaced standalone discount deals with deals-as-products
+      // (`products.is_deal` + `deal_components`), so no live caller sends `dealId`
+      // today (the mobile cart's apply-deal path reads the dormant public
+      // `GET /deals` route only). Left in place UNTOUCHED for ADM-008 (coupon
+      // domain) to potentially resume in a modified form; `orders.test.ts`'s
+      // ~15 deal-apply cases now exercise this caller-less path as deliberate
+      // regression insurance, not dead-code rot. Do NOT delete without ADM-008
+      // sign-off.
       // Server-authoritative deal apply. Runs AFTER the subtotal is known and
       // BEFORE the order insert, inside this same transaction, so any rejection
       // throws and rolls back the whole placement (atomic — no partial order).

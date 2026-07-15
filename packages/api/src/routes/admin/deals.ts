@@ -1,160 +1,124 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
+import { categories, dealComponents, products } from '../../db/schema/index';
 import {
-  branches,
-  coupons,
-  dealBranches,
-  dealProducts,
-  deals,
-  products,
-} from '../../db/schema/index';
-import { centsToNumeric, serializeAdminDeal } from '../lib/serializers';
+  centsToNumeric,
+  serializeAdminDealProduct,
+  type AdminDealComponent,
+} from '../lib/serializers';
 import { AdminApiError, handleAdminError, isUniqueViolation } from './lib/errors';
 
 /**
- * Admin deals CRUD routes (ADM-004): the `deals` table plus its `deal_products`
- * and `deal_branches` many-to-many junctions. The `requireAdmin` guard + CORS are
- * applied ONCE at the `/api/admin` mount in `index.ts` and inherited here, so NO
- * handler re-checks role.
+ * Admin deals CRUD routes (ADM-004 — deals-as-products). A "deal" is simply a
+ * `products` row with `is_deal = true`, priced at its own `base_price`, whose
+ * "what's inside" is described by the `deal_components` junction to other
+ * products. This deliberately styles itself as a SIBLING of `admin/products.ts`
+ * (same Zod-before-Postgres conventions, same `AdminApiError`/`handleAdminError`/
+ * `isUniqueViolation` reuse, same `centsToNumeric` cents-at-boundary rule) so a
+ * reader can diff the two files to see exactly where deals diverge: `categoryId`
+ * is server-pinned (never client-supplied), there is a `deal_components` junction
+ * instead of `product_options`/`branch_product_availability`, and writes always
+ * carry `is_deal = true`.
  *
- * Two DELIBERATE NEW PRECEDENTS for a `routes/admin/*` file (called out so they
- * read as intentional, not scope creep — mirroring how `lib/errors.ts` documents
- * the P2/P3 precedents it set):
- *  1. FIRST admin-initiated write to `coupons` — the deactivate route's opt-in
- *     `couponPolicy: 'expire'` path transitions this deal's `available` coupons
- *     to `expired`. Never touched by any prior admin phase.
- *  2. FIRST `db.transaction()` in any admin route — the `'expire'` cascade wraps
- *     the coupon `UPDATE` + `deals.is_active` flip in one atomic transaction so a
- *     partial failure can never leave the two tables inconsistent (the same
- *     `db.transaction()` pattern already proven in `routes/orders.ts`).
+ * The `requireAdmin` guard + CORS are applied ONCE at the `/api/admin` mount in
+ * `index.ts` and inherited here, so NO handler re-checks role.
  *
- * Soft-delete ONLY: deactivation flips `is_active = false` via its own dedicated
- * `POST .../deactivate` route; there is NEVER a `DELETE` on a `deals` row. The
- * junction `DELETE` endpoints remove only the many-to-many LINK row, never the
- * underlying deal/product/branch. `order_items` and `star_transactions` are NEVER
- * touched by this phase. Money is integer CENTS at the HTTP boundary — the
- * `centsToNumeric`/`numericToCents` conversion is the ONLY place cents<->numeric
- * happens (never in the app layer), applied UNCONDITIONALLY across all 6 deal
- * types (no per-`deal_type` branching — see `serializeAdminDeal`).
+ * Soft-delete ONLY: deactivation reuses the products `is_active` toggle via
+ * `PATCH /:id { isActive: false }` (a deal IS a products row — no dedicated
+ * deactivate route needed); there is NEVER a `DELETE` on a deal-product. The
+ * `deal_components` `DELETE` endpoint removes only the LINK row, never a product.
+ * `order_items` are NEVER touched here — editing a deal-product's `base_price`
+ * writes only the `products` row; historical snapshots stay frozen (AC9).
+ *
+ * Supersedes the discount-shaped ADM-004 deals CRUD (commit d5070d8) — that
+ * model (`deals`/`deal_products`/`deal_branches`/coupon-cascade) is now dormant.
  */
 const adminDealsRouter: ExpressRouter = Router();
 
 const uuidSchema = z.uuid();
 
-const dealTypeSchema = z.enum([
-  'percentage_discount',
-  'fixed_discount',
-  'buy_one_take_one',
-  'free_item',
-  'free_upgrade',
-  'bundle',
-]);
+/**
+ * Reserved category every deal-product is pinned to (Decision 8). `products
+ * .category_id` is NOT NULL, so a deal needs a real category; the admin never
+ * picks one — it is implicit. Matches the slug the seed also provisions.
+ */
+const DEALS_CATEGORY_SLUG = 'deals';
 
-/** Deal types that REQUIRE a non-null `discount_value` (D5). */
-const DISCOUNT_REQUIRED_TYPES: ReadonlySet<z.infer<typeof dealTypeSchema>> = new Set([
-  'percentage_discount',
-  'fixed_discount',
-]);
+const createDealSchema = z.object({
+  name: z.string().trim().min(1),
+  slug: z.string().trim().min(1),
+  description: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  basePriceCents: z.number().int().nonnegative(),
+  isActive: z.boolean().optional(),
+  isRewardEligible: z.boolean().optional(),
+});
 
-// Accept both full ISO (`2026-07-15T10:00:00.000Z`) and `datetime-local`
-// (`2026-07-15T10:00`) strings — any value `new Date()` can parse.
-const dateStringSchema = z
-  .string()
-  .refine((s) => !Number.isNaN(new Date(s).getTime()), { message: 'Invalid datetime' });
-
-const createDealSchema = z
-  .object({
-    title: z.string().trim().min(1),
-    description: z.string().nullable().optional(),
-    imageUrl: z.string().nullable().optional(),
-    dealType: dealTypeSchema,
-    discountValueCents: z.number().int().nonnegative().nullable().optional(),
-    minimumOrderAmountCents: z.number().int().nonnegative().optional(),
-    startAt: dateStringSchema,
-    endAt: dateStringSchema,
-    usageLimitPerUser: z.number().int().positive().nullable().optional(),
-    totalUsageLimit: z.number().int().positive().nullable().optional(),
-  })
-  .refine((v) => new Date(v.endAt).getTime() > new Date(v.startAt).getTime(), {
-    message: 'end_at must be after start_at',
-    path: ['endAt'],
-  })
-  .refine(
-    (v) => !(DISCOUNT_REQUIRED_TYPES.has(v.dealType) && (v.discountValueCents ?? null) === null),
-    { message: 'discount_value is required for this deal type', path: ['discountValueCents'] },
-  );
-
-// PATCH: all fields optional, `is_active` intentionally EXCLUDED (deactivation is
-// its own route). No cross-field date refine here — the handler does the
-// fetch-merge-validate for `start_at`/`end_at` (D5/AC10) instead, because a
-// `.refine()` on an isolated partial body cannot validate a single-field change.
+// `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
 const updateDealSchema = z
   .object({
-    title: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).optional(),
+    slug: z.string().trim().min(1).optional(),
     description: z.string().nullable().optional(),
     imageUrl: z.string().nullable().optional(),
-    dealType: dealTypeSchema.optional(),
-    discountValueCents: z.number().int().nonnegative().nullable().optional(),
-    minimumOrderAmountCents: z.number().int().nonnegative().optional(),
-    startAt: dateStringSchema.optional(),
-    endAt: dateStringSchema.optional(),
-    usageLimitPerUser: z.number().int().positive().nullable().optional(),
-    totalUsageLimit: z.number().int().positive().nullable().optional(),
+    basePriceCents: z.number().int().nonnegative().optional(),
+    isActive: z.boolean().optional(),
+    isRewardEligible: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
-const deactivateDealSchema = z.object({
-  couponPolicy: z.enum(['leave', 'expire']).optional(),
+const attachComponentSchema = z.object({
+  componentProductId: z.uuid(),
+  quantity: z.number().int().positive().optional(),
 });
 
-const attachProductSchema = z.object({ productId: z.uuid() });
-const attachBranchSchema = z.object({ branchId: z.uuid() });
+/**
+ * Resolve the reserved "Deals" category id, creating it idempotently if absent
+ * (Decision 8's goal: deal-creation can never 500 on a missing FK, regardless of
+ * seed state). The seed also provisions this row up front for dev parity; the
+ * `onConflictDoUpdate` on the unique `slug` makes a concurrent create race-safe.
+ */
+async function resolveDealsCategoryId(): Promise<string> {
+  const [existing] = await db
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.slug, DEALS_CATEGORY_SLUG));
+  if (existing) return existing.id;
 
-/** 404 (not a raw 500 FK-violation) when a deal id doesn't resolve to a real row. */
-async function requireDealExists(dealId: string): Promise<void> {
-  const [deal] = await db.select({ id: deals.id }).from(deals).where(eq(deals.id, dealId));
-  if (!deal) {
-    throw new AdminApiError(404, 'Deal not found');
-  }
+  const [created] = await db
+    .insert(categories)
+    .values({ name: 'Deals', slug: DEALS_CATEGORY_SLUG, sort_order: 999 })
+    .onConflictDoUpdate({ target: categories.slug, set: { updated_at: new Date() } })
+    .returning({ id: categories.id });
+  return created!.id;
 }
 
 /**
- * Shared attach helper for both junctions (D3 / Clean-Code note): pre-checks the
- * deal AND the referenced product/branch exist (clean 404 instead of a raw FK
- * 500), then runs the insert wrapped in the shared `isUniqueViolation` catch → a
- * clean 409 on a duplicate attach (never a silent upsert, never a raw constraint
- * leak).
+ * Resolve a deal-product's `deal_components` into the display shape (join to each
+ * component's `products` row for its name). Populated only on the DETAIL response
+ * — the list route passes `[]` to avoid an N+1 join.
  */
-async function attachRef(opts: {
-  dealId: string;
-  refId: string;
-  refExists: () => Promise<boolean>;
-  refNotFoundMessage: string;
-  insertRow: () => Promise<unknown>;
-  duplicateMessage: string;
-}): Promise<void> {
-  await requireDealExists(opts.dealId);
-  if (!(await opts.refExists())) {
-    throw new AdminApiError(404, opts.refNotFoundMessage);
-  }
-  try {
-    await opts.insertRow();
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new AdminApiError(409, opts.duplicateMessage);
-    }
-    throw err;
-  }
+async function fetchComponents(dealProductId: string): Promise<AdminDealComponent[]> {
+  return db
+    .select({
+      componentProductId: dealComponents.component_product_id,
+      componentName: products.name,
+      quantity: dealComponents.quantity,
+    })
+    .from(dealComponents)
+    .innerJoin(products, eq(products.id, dealComponents.component_product_id))
+    .where(eq(dealComponents.deal_product_id, dealProductId))
+    .orderBy(asc(products.name));
 }
 
-// ─── Deals CRUD ──────────────────────────────────────────────────────────────
+// ─── Deals CRUD (is_deal=true products) ──────────────────────────────────────
 
-// GET / — ALL deals (active + inactive, in- and out-of-window), newest first.
-// Optional ?isActive=true|false filter. Admin management view — never the
-// public route's active/in-window filter.
+// GET / — ALL deal-products (active + inactive), optional ?isActive=true|false.
+// Admin management view — never a public active-only filter. `components` is []
+// on the list (avoids per-row junction joins).
 adminDealsRouter.get('/', async (req, res) => {
   const isActiveRaw = req.query.isActive;
   if (isActiveRaw !== undefined && isActiveRaw !== 'true' && isActiveRaw !== 'false') {
@@ -162,20 +126,22 @@ adminDealsRouter.get('/', async (req, res) => {
     return;
   }
 
-  const rows =
-    isActiveRaw === undefined
-      ? await db.select().from(deals).orderBy(desc(deals.created_at))
-      : await db
-          .select()
-          .from(deals)
-          .where(eq(deals.is_active, isActiveRaw === 'true'))
-          .orderBy(desc(deals.created_at));
+  const conditions = [eq(products.is_deal, true)];
+  if (isActiveRaw !== undefined) {
+    conditions.push(eq(products.is_active, isActiveRaw === 'true'));
+  }
 
-  res.json({ deals: rows.map((d) => serializeAdminDeal(d)) });
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(asc(products.name));
+
+  res.json({ deals: rows.map((p) => serializeAdminDealProduct(p)) });
 });
 
-// GET /:id — single deal WITH its attached product/branch id arrays and the
-// count of outstanding (`available`) coupons for the UI deactivate confirm (D1).
+// GET /:id — single deal-product WITH its resolved components array. 404 on a
+// malformed/missing id OR a product that isn't a deal (is_deal !== true).
 adminDealsRouter.get('/:id', async (req, res) => {
   const id = String(req.params.id);
   if (!uuidSchema.safeParse(id).success) {
@@ -183,36 +149,21 @@ adminDealsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  const [deal] = await db.select().from(deals).where(eq(deals.id, id));
+  const [deal] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), eq(products.is_deal, true)));
   if (!deal) {
     res.status(404).json({ error: 'Deal not found' });
     return;
   }
 
-  const productRows = await db
-    .select({ productId: dealProducts.product_id })
-    .from(dealProducts)
-    .where(eq(dealProducts.deal_id, id));
-  const branchRows = await db
-    .select({ branchId: dealBranches.branch_id })
-    .from(dealBranches)
-    .where(eq(dealBranches.deal_id, id));
-  const [couponCount] = await db
-    .select({ value: count() })
-    .from(coupons)
-    .where(and(eq(coupons.deal_id, id), eq(coupons.status, 'available')));
-
-  res.json({
-    deal: serializeAdminDeal(deal, {
-      productIds: productRows.map((r) => r.productId),
-      branchIds: branchRows.map((r) => r.branchId),
-      outstandingCoupons: couponCount?.value ?? 0,
-    }),
-  });
+  const components = await fetchComponents(id);
+  res.json({ deal: serializeAdminDealProduct(deal, components) });
 });
 
-// POST / — create a deal. `deal_type` enum, `end_at > start_at`, and conditional
-// `discount_value` requiredness are all Zod-validated BEFORE any DB call (D5).
+// POST / — create a deal-product (`is_deal = true`), `category_id` server-pinned
+// to the reserved Deals category (never client-supplied). Duplicate `slug` → 409.
 adminDealsRouter.post('/', async (req, res) => {
   try {
     const parsed = createDealSchema.safeParse(req.body);
@@ -222,38 +173,41 @@ adminDealsRouter.post('/', async (req, res) => {
     }
     const d = parsed.data;
 
-    const [inserted] = await db
-      .insert(deals)
-      .values({
-        title: d.title,
-        description: d.description ?? null,
-        image_url: d.imageUrl ?? null,
-        deal_type: d.dealType,
-        discount_value:
-          (d.discountValueCents ?? null) === null
-            ? null
-            : centsToNumeric(d.discountValueCents as number),
-        ...(d.minimumOrderAmountCents === undefined
-          ? {}
-          : { minimum_order_amount: centsToNumeric(d.minimumOrderAmountCents) }),
-        start_at: new Date(d.startAt),
-        end_at: new Date(d.endAt),
-        ...(d.usageLimitPerUser === undefined ? {} : { usage_limit_per_user: d.usageLimitPerUser }),
-        ...(d.totalUsageLimit === undefined ? {} : { total_usage_limit: d.totalUsageLimit }),
-      })
-      .returning();
+    const categoryId = await resolveDealsCategoryId();
 
-    res.status(201).json({ deal: serializeAdminDeal(inserted!) });
+    let inserted;
+    try {
+      [inserted] = await db
+        .insert(products)
+        .values({
+          category_id: categoryId,
+          name: d.name,
+          slug: d.slug,
+          description: d.description ?? null,
+          image_url: d.imageUrl ?? null,
+          base_price: centsToNumeric(d.basePriceCents),
+          is_deal: true,
+          ...(d.isActive === undefined ? {} : { is_active: d.isActive }),
+          ...(d.isRewardEligible === undefined ? {} : { is_reward_eligible: d.isRewardEligible }),
+        })
+        .returning();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new AdminApiError(409, 'Slug already in use');
+      }
+      throw err;
+    }
+
+    res.status(201).json({ deal: serializeAdminDealProduct(inserted!) });
   } catch (err) {
     handleAdminError(err, res, 'creating deal');
   }
 });
 
-// PATCH /:id — update deal fields (NOT `is_active` — that is the deactivate
-// route). When the body touches `start_at`/`end_at`, the existing row is fetched
-// and the MERGED start/end pair is validated against `end_at > start_at` (D5/AC10)
-// — a partial payload that looks internally consistent alone can still be
-// rejected once merged.
+// PATCH /:id — partial update of a deal-product (name/slug/description/
+// basePriceCents/imageUrl/isActive). Scoped to `is_deal = true` rows only (a
+// regular product id → 404). isActive:false is the deactivate path (no separate
+// route). Duplicate `slug` → 409. base_price edit never touches order_items (AC9).
 adminDealsRouter.patch('/:id', async (req, res) => {
   try {
     const id = String(req.params.id);
@@ -268,228 +222,135 @@ adminDealsRouter.patch('/:id', async (req, res) => {
     }
     const d = parsed.data;
 
-    // Fetch-merge-validate for dates — ONLY when a date field is present (E4).
-    if (d.startAt !== undefined || d.endAt !== undefined) {
-      const [existing] = await db.select().from(deals).where(eq(deals.id, id));
-      if (!existing) {
-        throw new AdminApiError(404, 'Deal not found');
-      }
-      const mergedStart = d.startAt !== undefined ? new Date(d.startAt) : existing.start_at;
-      const mergedEnd = d.endAt !== undefined ? new Date(d.endAt) : existing.end_at;
-      if (mergedEnd.getTime() <= mergedStart.getTime()) {
-        throw new AdminApiError(400, 'end_at must be after start_at');
-      }
-    }
-
-    const updates: Partial<typeof deals.$inferInsert> = { updated_at: new Date() };
-    if (d.title !== undefined) updates.title = d.title;
+    const updates: Partial<typeof products.$inferInsert> = { updated_at: new Date() };
+    if (d.name !== undefined) updates.name = d.name;
+    if (d.slug !== undefined) updates.slug = d.slug;
     if (d.description !== undefined) updates.description = d.description;
     if (d.imageUrl !== undefined) updates.image_url = d.imageUrl;
-    if (d.dealType !== undefined) updates.deal_type = d.dealType;
-    if (d.discountValueCents !== undefined) {
-      updates.discount_value =
-        d.discountValueCents === null ? null : centsToNumeric(d.discountValueCents);
-    }
-    if (d.minimumOrderAmountCents !== undefined) {
-      updates.minimum_order_amount = centsToNumeric(d.minimumOrderAmountCents);
-    }
-    if (d.startAt !== undefined) updates.start_at = new Date(d.startAt);
-    if (d.endAt !== undefined) updates.end_at = new Date(d.endAt);
-    if (d.usageLimitPerUser !== undefined) updates.usage_limit_per_user = d.usageLimitPerUser;
-    if (d.totalUsageLimit !== undefined) updates.total_usage_limit = d.totalUsageLimit;
+    if (d.basePriceCents !== undefined) updates.base_price = centsToNumeric(d.basePriceCents);
+    if (d.isActive !== undefined) updates.is_active = d.isActive;
+    if (d.isRewardEligible !== undefined) updates.is_reward_eligible = d.isRewardEligible;
 
-    const [updated] = await db.update(deals).set(updates).where(eq(deals.id, id)).returning();
+    let updated;
+    try {
+      [updated] = await db
+        .update(products)
+        .set(updates)
+        .where(and(eq(products.id, id), eq(products.is_deal, true)))
+        .returning();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new AdminApiError(409, 'Slug already in use');
+      }
+      throw err;
+    }
+
     if (!updated) {
       throw new AdminApiError(404, 'Deal not found');
     }
 
-    res.json({ deal: serializeAdminDeal(updated) });
+    res.json({ deal: serializeAdminDealProduct(updated) });
   } catch (err) {
     handleAdminError(err, res, 'updating deal');
   }
 });
 
-// POST /:id/deactivate — soft-deactivate. Body `{ couponPolicy?: 'leave'|'expire' }`,
-// default 'leave' (D1). 'leave' flips `is_active` only (zero coupon writes).
-// 'expire' atomically flips `is_active` AND expires every `available` coupon for
-// this deal in ONE transaction; `outstandingCouponsAffected` is the count of rows
-// actually transitioned (0 for 'leave' or when nothing was outstanding).
-adminDealsRouter.post('/:id/deactivate', async (req, res) => {
+// ─── Component junction (deal_components) ─────────────────────────────────────
+
+// POST /:id/components — attach a component product (+ optional quantity). The
+// single component FK-existence read ALSO yields `is_deal` for the deal-of-deals
+// guard (Decision 3 — zero extra query). Guards, in order: self-reference (a deal
+// cannot contain itself) → 400; component missing → 404; component is itself a
+// deal → 400; duplicate (deal, component) pair → 409.
+adminDealsRouter.post('/:id/components', async (req, res) => {
   try {
-    const id = String(req.params.id);
-    if (!uuidSchema.safeParse(id).success) {
+    const dealProductId = String(req.params.id);
+    if (!uuidSchema.safeParse(dealProductId).success) {
       throw new AdminApiError(404, 'Deal not found');
     }
 
-    const parsed = deactivateDealSchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid deactivate payload', details: parsed.error.issues });
-      return;
-    }
-    const policy = parsed.data.couponPolicy ?? 'leave';
-
-    if (policy === 'leave') {
-      const [updated] = await db
-        .update(deals)
-        .set({ is_active: false, updated_at: new Date() })
-        .where(eq(deals.id, id))
-        .returning();
-      if (!updated) {
-        throw new AdminApiError(404, 'Deal not found');
-      }
-      res.json({ deal: serializeAdminDeal(updated), outstandingCouponsAffected: 0 });
-      return;
-    }
-
-    // policy === 'expire' — atomic cascade (first admin-route transaction).
-    const result = await db.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(deals)
-        .set({ is_active: false, updated_at: new Date() })
-        .where(eq(deals.id, id))
-        .returning();
-      if (!updated) {
-        // Throwing rolls the transaction back — nothing is committed (AC9).
-        throw new AdminApiError(404, 'Deal not found');
-      }
-      // Derive the affected count from RETURNING.length INSIDE the tx (E1) — no
-      // separate pre-count query, provably consistent with what was mutated.
-      const expired = await tx
-        .update(coupons)
-        .set({ status: 'expired' })
-        .where(and(eq(coupons.deal_id, id), eq(coupons.status, 'available')))
-        .returning({ id: coupons.id });
-      return { deal: updated, affected: expired.length };
-    });
-
-    res.json({
-      deal: serializeAdminDeal(result.deal),
-      outstandingCouponsAffected: result.affected,
-    });
-  } catch (err) {
-    handleAdminError(err, res, 'deactivating deal');
-  }
-});
-
-// ─── Product junction (deal_products) ─────────────────────────────────────────
-
-// POST /:id/products — attach a product. FK-pre-check → insert → 409 on duplicate.
-adminDealsRouter.post('/:id/products', async (req, res) => {
-  try {
-    const dealId = String(req.params.id);
-    if (!uuidSchema.safeParse(dealId).success) {
-      throw new AdminApiError(404, 'Deal not found');
-    }
-
-    const parsed = attachProductSchema.safeParse(req.body);
+    const parsed = attachComponentSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid attach payload', details: parsed.error.issues });
       return;
     }
-    const { productId } = parsed.data;
+    const { componentProductId, quantity } = parsed.data;
 
-    await attachRef({
-      dealId,
-      refId: productId,
-      refExists: async () => {
-        const [p] = await db
-          .select({ id: products.id })
-          .from(products)
-          .where(eq(products.id, productId));
-        return Boolean(p);
-      },
-      refNotFoundMessage: 'Product not found',
-      insertRow: () => db.insert(dealProducts).values({ deal_id: dealId, product_id: productId }),
-      duplicateMessage: 'Product already attached to this deal',
-    });
+    // The deal-product must exist AND actually be a deal.
+    const [deal] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(eq(products.id, dealProductId), eq(products.is_deal, true)));
+    if (!deal) {
+      throw new AdminApiError(404, 'Deal not found');
+    }
+
+    // Self-reference guard (Decision 3) — a deal cannot contain itself.
+    if (componentProductId === dealProductId) {
+      throw new AdminApiError(400, 'A deal cannot contain itself');
+    }
+
+    // FK-existence read (clean 404 instead of a raw FK 500) — the same read also
+    // carries `is_deal` for the deal-of-deals guard (no extra query).
+    const [component] = await db
+      .select({ id: products.id, isDeal: products.is_deal })
+      .from(products)
+      .where(eq(products.id, componentProductId));
+    if (!component) {
+      throw new AdminApiError(404, 'Component product not found');
+    }
+    if (component.isDeal) {
+      throw new AdminApiError(400, 'A deal cannot contain another deal');
+    }
+
+    try {
+      await db.insert(dealComponents).values({
+        deal_product_id: dealProductId,
+        component_product_id: componentProductId,
+        ...(quantity === undefined ? {} : { quantity }),
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new AdminApiError(409, 'Component already attached to this deal');
+      }
+      throw err;
+    }
 
     res.status(201).json({ attached: true });
   } catch (err) {
-    handleAdminError(err, res, 'attaching product to deal');
+    handleAdminError(err, res, 'attaching component to deal');
   }
 });
 
-// DELETE /:id/products/:productId — detach a product. 204, or 404 if not attached.
-adminDealsRouter.delete('/:id/products/:productId', async (req, res) => {
+// DELETE /:id/components/:componentProductId — detach a component. 204, or 404 if
+// the pair isn't currently attached. Removes only the LINK row, never a product.
+adminDealsRouter.delete('/:id/components/:componentProductId', async (req, res) => {
   try {
-    const dealId = String(req.params.id);
-    const productId = String(req.params.productId);
-    if (!uuidSchema.safeParse(dealId).success || !uuidSchema.safeParse(productId).success) {
+    const dealProductId = String(req.params.id);
+    const componentProductId = String(req.params.componentProductId);
+    if (
+      !uuidSchema.safeParse(dealProductId).success ||
+      !uuidSchema.safeParse(componentProductId).success
+    ) {
       throw new AdminApiError(404, 'Attachment not found');
     }
 
     const deleted = await db
-      .delete(dealProducts)
-      .where(and(eq(dealProducts.deal_id, dealId), eq(dealProducts.product_id, productId)))
-      .returning({ id: dealProducts.id });
+      .delete(dealComponents)
+      .where(
+        and(
+          eq(dealComponents.deal_product_id, dealProductId),
+          eq(dealComponents.component_product_id, componentProductId),
+        ),
+      )
+      .returning({ id: dealComponents.id });
     if (deleted.length === 0) {
       throw new AdminApiError(404, 'Attachment not found');
     }
 
     res.status(204).send();
   } catch (err) {
-    handleAdminError(err, res, 'detaching product from deal');
-  }
-});
-
-// ─── Branch junction (deal_branches) ──────────────────────────────────────────
-
-// POST /:id/branches — attach a branch. FK-pre-check → insert → 409 on duplicate.
-adminDealsRouter.post('/:id/branches', async (req, res) => {
-  try {
-    const dealId = String(req.params.id);
-    if (!uuidSchema.safeParse(dealId).success) {
-      throw new AdminApiError(404, 'Deal not found');
-    }
-
-    const parsed = attachBranchSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid attach payload', details: parsed.error.issues });
-      return;
-    }
-    const { branchId } = parsed.data;
-
-    await attachRef({
-      dealId,
-      refId: branchId,
-      refExists: async () => {
-        const [b] = await db
-          .select({ id: branches.id })
-          .from(branches)
-          .where(eq(branches.id, branchId));
-        return Boolean(b);
-      },
-      refNotFoundMessage: 'Branch not found',
-      insertRow: () => db.insert(dealBranches).values({ deal_id: dealId, branch_id: branchId }),
-      duplicateMessage: 'Branch already attached to this deal',
-    });
-
-    res.status(201).json({ attached: true });
-  } catch (err) {
-    handleAdminError(err, res, 'attaching branch to deal');
-  }
-});
-
-// DELETE /:id/branches/:branchId — detach a branch. 204, or 404 if not attached.
-adminDealsRouter.delete('/:id/branches/:branchId', async (req, res) => {
-  try {
-    const dealId = String(req.params.id);
-    const branchId = String(req.params.branchId);
-    if (!uuidSchema.safeParse(dealId).success || !uuidSchema.safeParse(branchId).success) {
-      throw new AdminApiError(404, 'Attachment not found');
-    }
-
-    const deleted = await db
-      .delete(dealBranches)
-      .where(and(eq(dealBranches.deal_id, dealId), eq(dealBranches.branch_id, branchId)))
-      .returning({ id: dealBranches.id });
-    if (deleted.length === 0) {
-      throw new AdminApiError(404, 'Attachment not found');
-    }
-
-    res.status(204).send();
-  } catch (err) {
-    handleAdminError(err, res, 'detaching branch from deal');
+    handleAdminError(err, res, 'detaching component from deal');
   }
 });
 

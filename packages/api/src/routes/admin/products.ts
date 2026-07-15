@@ -83,6 +83,12 @@ async function assertActiveCategory(categoryId: string): Promise<void> {
 // ─── Products ────────────────────────────────────────────────────────────────
 
 // GET / — ALL products (active + inactive), optionally filtered by ?categoryId=.
+// ADM-004 deals-as-products filter (site c): by DEFAULT this list EXCLUDES
+// deal-products (is_deal=true) so the Products admin screen never shows deals
+// mixed into the regular catalog. `?isDeal=true` overrides to show ONLY
+// deal-products (mirrors the existing ?categoryId= precedent, for admin
+// debugging); the dedicated Deals admin screen (`admin/deals.ts`) is the
+// authoritative deal-management surface.
 adminProductsRouter.get('/', async (req, res) => {
   const categoryId = req.query.categoryId ? String(req.query.categoryId) : undefined;
   if (categoryId !== undefined && !uuidSchema.safeParse(categoryId).success) {
@@ -90,13 +96,18 @@ adminProductsRouter.get('/', async (req, res) => {
     return;
   }
 
-  const rows = categoryId
-    ? await db
-        .select()
-        .from(products)
-        .where(eq(products.category_id, categoryId))
-        .orderBy(asc(products.name))
-    : await db.select().from(products).orderBy(asc(products.name));
+  const isDealFilter = req.query.isDeal === 'true';
+
+  const conditions = [eq(products.is_deal, isDealFilter)];
+  if (categoryId !== undefined) {
+    conditions.push(eq(products.category_id, categoryId));
+  }
+
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(...conditions))
+    .orderBy(asc(products.name));
 
   res.json({ products: rows.map(serializeAdminProduct) });
 });

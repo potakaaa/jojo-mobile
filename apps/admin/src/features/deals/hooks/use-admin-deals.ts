@@ -1,25 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  attachBranch,
-  attachProduct,
+  attachComponent,
   createDeal,
-  deactivateDeal,
-  detachBranch,
-  detachProduct,
+  detachComponent,
   getDeal,
   listDeals,
   updateDeal,
-  type CouponPolicy,
   type DealCreateInput,
   type DealUpdateInput,
 } from '../lib/admin-deals-api';
 
 /**
- * react-query hooks over the ADM-004 deals API. Mutations invalidate the
- * affected query keys on success (same 30s `staleTime`/refetch-on-focus model as
- * branches/products). Junction attach/detach and deactivate invalidate the single
- * deal detail so its `productIds`/`branchIds`/`outstandingCoupons` refresh.
+ * react-query hooks over the ADM-004 deals-as-products API. Mutations invalidate
+ * the affected query keys on success (same 30s `staleTime`, refetch-on-focus
+ * staleness model as products/branches). Component attach/detach invalidate the
+ * specific deal's detail key so the "what's inside" editor refreshes.
  */
 const DEALS_KEY = ['admin', 'deals'] as const;
 const dealKey = (id: string) => ['admin', 'deal', id] as const;
@@ -58,46 +54,24 @@ export function useUpdateDeal() {
   });
 }
 
-export function useDeactivateDeal() {
+export function useAttachComponent(dealId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, couponPolicy }: { id: string; couponPolicy: CouponPolicy }) =>
-      deactivateDeal(id, couponPolicy),
-    onSuccess: (result) => {
-      void qc.invalidateQueries({ queryKey: DEALS_KEY });
-      void qc.invalidateQueries({ queryKey: dealKey(result.deal.id) });
-    },
-  });
-}
-
-export function useAttachProduct(dealId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (productId: string) => attachProduct(dealId, productId),
+    mutationFn: ({
+      componentProductId,
+      quantity,
+    }: {
+      componentProductId: string;
+      quantity?: number;
+    }) => attachComponent(dealId, componentProductId, quantity),
     onSuccess: () => qc.invalidateQueries({ queryKey: dealKey(dealId) }),
   });
 }
 
-export function useDetachProduct(dealId: string) {
+export function useDetachComponent(dealId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (productId: string) => detachProduct(dealId, productId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dealKey(dealId) }),
-  });
-}
-
-export function useAttachBranch(dealId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (branchId: string) => attachBranch(dealId, branchId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dealKey(dealId) }),
-  });
-}
-
-export function useDetachBranch(dealId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (branchId: string) => detachBranch(dealId, branchId),
+    mutationFn: (componentProductId: string) => detachComponent(dealId, componentProductId),
     onSuccess: () => qc.invalidateQueries({ queryKey: dealKey(dealId) }),
   });
 }

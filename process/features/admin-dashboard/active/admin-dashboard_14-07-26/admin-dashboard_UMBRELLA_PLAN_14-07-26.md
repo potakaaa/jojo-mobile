@@ -354,25 +354,37 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 15-07-26 (Phase 3 UPDATE PROCESS closeout)
+Last updated: 15-07-26 (Phase 4 RE-PLAN — deals-as-products pivot)
 Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
   14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26); Phase 3 — Products/Categories CRUD
   (✅ VERIFIED, 15-07-26)
 Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
-Current phase N of total: 4 of 8 (Phase 4 — Deals CRUD, ADM-004)
-Phase N name: Phase 4 — Deals CRUD (ADM-004, #42)
-Phase N status: ⏳ PLANNED (per-phase plan file exists — `phase-04-deals_PLAN_14-07-26.md` — Phase
-  Loop Progress Step 1 RESEARCH has not started; depth is FULL-PICTURE-BUT-FLEXIBLE per the Phase
-  Plan Index, so RESEARCH finalizes the line-level EXECUTE checklist)
-Phase N EVL: not applicable yet (no EXECUTE has run)
-Phase N report: not written yet
-Next phase: Phase 4 — Deals CRUD, Step 0 (RESEARCH). RESEARCH must (1) re-evaluate the deferred
-  `data-table`/`form-dialog` shared composites against the `deal_products`/`deal_branches`
-  junction-table UI — Phase 3 confirmed this is now the live re-eval trigger point; (2) resolve the
-  coupon-cascade-on-deactivation open question flagged in the Phase Plan Index (3 options, needs
-  sign-off at P4 INNOVATE); (3) apply the Phase 3 TanStack Start nested-detail-route `<Outlet/>`
-  lesson from the start for any deal detail screen, rather than discovering it via a broken
-  walkthrough again.
+Current phase N of total: 4 of 8 (Phase 4a — Deals-as-Products, ADM-004 RE-PLAN)
+Phase N name: Phase 4a — Deals-as-Products (ADM-004 RE-PLAN; supersedes the discount-shaped
+  "Phase 4 — Deals CRUD" model)
+Phase N status: 🔨 RE-PLANNED (15-07-26) — Phase 4 PIVOTED. The original discount-object deals model
+  (a standalone `deals` table + `deal_products`/`deal_branches` junctions + a coupon-cascade
+  deactivate flow) was fully EXECUTEd on commit `d5070d8` (31/31 new tests, 214/214 full API suite,
+  Gate: PASS) and is now SUPERSEDED — its code is discarded (not deleted from git history; the
+  `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant, preserved for ADM-008).
+  The new model: a "Deal" is a `products` row with `is_deal = true`, described by a
+  `deal_components` junction (member products + quantity), priced at its own `base_price` — reusing
+  the entire existing product → menu → cart → checkout → order_items pipeline with zero new
+  pricing/cart/order code. `phase-04-deals_PLAN_14-07-26.md` has been REWRITTEN IN FULL for this new
+  model (RE-PLAN complete — Phase Loop Progress Steps 1-3 done); its prior Gate: PASS
+  validate-contract is STALE and does not carry forward — a fresh Step 4 (PVL) run is required
+  before EXECUTE.
+Phase N EVL: not applicable yet (no EXECUTE has run against the new deals-as-products model; the
+  discarded discount-model's EVL — see `phase-04-deals_REPORT_15-07-26.md` — is void)
+Phase N report: `phase-04-deals_REPORT_15-07-26.md` documents the now-discarded discount-model
+  EXECUTE pass; a new report will be written once the deals-as-products EXECUTE completes
+Companion (non-executed) artifact: `deals-mobile-repoint_HANDOFF_15-07-26.md` — a standalone,
+  plain-language handoff spec for a different (non-RIPER-aware) teammate to repoint the mobile Deals
+  tab onto the new `?isDeal=true` menu-read contract once Phase 4a ships. This is NOT part of this
+  program's own EXECUTE scope and is never routed through this program's phase loop.
+Next phase: Phase 4a — Deals-as-Products, Step 4 (PVL). Run vc-validate-agent fresh against the
+  rewritten `phase-04-deals_PLAN_14-07-26.md` — do not reuse the prior discount-model contract as
+  evidence for this pivot.
 
 **Phase 3 closeout summary (15-07-26):** Full real vertical slice for the product catalog surface —
 `packages/api/src/routes/admin/{products,categories}.ts` (new), mounted on the existing append-only
@@ -404,6 +416,17 @@ and the parent rendered no `<Outlet/>`. Fixed same session (commit `79df222`) by
 re-walked and passed after the fix. This nested-route Outlet gotcha is now the reference pattern for
 any future admin list→detail screen (P4-P7). Report:
 `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-products_REPORT_14-07-26.md`.
+
+**Phase 4 pivot note (15-07-26):** the discount-shaped "Deals CRUD" delivered on commit `d5070d8`
+(coupon-cascade deactivation, `deals`/`deal_products`/`deal_branches` junctions) is SUPERSEDED by a
+deals-as-products model — see the `Current Execution State` block above for the full rationale.
+The legacy `deals`/`deal_products`/`deal_branches`/`coupons.deal_id`/`orders.deal_id` schema and the
+public `GET /deals`/`GET /deals/:id` read routes are left dormant and untouched, preserved for
+ADM-008 (the coupon domain — Promotion→Offer→Coupon) to potentially resume in a modified form; the
+legacy deals-table rename/split question is explicitly deferred to ADM-008, not resolved here. The
+mobile Deals tab keeps reading the OLD `GET /deals` route in the interim (no regression — that route
+is untouched) until the standalone `deals-mobile-repoint_HANDOFF_15-07-26.md` handoff is picked up
+by a separate mobile workstream.
 
 Program Net Gate: 4/8 phases VERIFIED — PENDING overall
 Latest validator run: 15-07-26 — this UPDATE PROCESS pass (see phase report + this session's

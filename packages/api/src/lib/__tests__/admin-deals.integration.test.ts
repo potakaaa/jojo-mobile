@@ -3,28 +3,27 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
- * Integration tests for the admin deals surface (ADM-004, Phase 4) — deals CRUD
- * plus the `deal_products`/`deal_branches` junctions and the D1 coupon-cascade
- * deactivate — run against a real local Postgres, mirroring
- * `admin-products.integration.test.ts`'s hermetic self-seeding (`makeUser(role)`,
- * reused a fourth time).
+ * Integration tests for the admin deals surface (ADM-004 — deals-as-products) —
+ * is_deal=true products + the `deal_components` junction — run against a real
+ * local Postgres, mirroring `admin-products.integration.test.ts`'s hermetic
+ * self-seeding (`makeUser(role)`).
  *
  * Requires a running Postgres reachable via DATABASE_URL with migrations applied:
  *   docker compose up -d           # (or the machine's native Postgres, see all-tests.md)
  *   pnpm --filter @jojopotato/api db:migrate
  *
- * Covers validate-contract Test Gates AC1-AC10 (AC11 is Agent-Probe UI, no runner):
- *   AC1  — create with valid deal_type / date range / conditional discount_value → 201
- *   AC2  — end_at <= start_at → 400
- *   AC3  — invalid deal_type string → 400 (Zod before Postgres)
- *   AC4  — attach product writes deal_products; duplicate attach → 409
- *   AC5  — attach branch writes deal_branches; duplicate attach → 409
- *   AC6  — detach product/branch → 204; detach non-attached pair → 404
- *   AC7  — staff/customer roles → 403 on all /api/admin/deals/* write routes
- *   AC8  — couponPolicy 'leave' (or omitted) toggles is_active only, zero coupon writes
- *   AC9  — couponPolicy 'expire' atomically flips is_active + expires available coupons;
- *          correct count; zero-outstanding → 0; forced mid-tx failure leaves both unchanged
- *   AC10 — PATCH partial start_at/end_at validated against the MERGED row
+ * Covers validate-contract Test Gates AC1-AC11 (AC12 is Agent-Probe UI, no runner):
+ *   AC1  — migration 0007 additive: is_deal defaults false, no regular row mutated
+ *   AC2  — create deal-product (isDeal true), server-pinned Deals category → 201
+ *   AC3  — attach component + quantity; duplicate attach → 409
+ *   AC4  — self-reference → 400; deal-of-deals (component is_deal=true) → 400
+ *   AC5  — detach component → 204; non-attached pair → 404
+ *   AC6  — staff/customer roles → 403 on all /api/admin/deals/* write routes
+ *   AC7  — GET /branches/:id/menu excludes deals by default; ?isDeal=true = deals only
+ *   AC8  — admin products list excludes deals by default; admin deals list = deals only
+ *   AC9  — [HARD] base_price edit after order placement never mutates order_items snapshot
+ *   AC10 — a deal-product is orderable via normal POST /orders (no is_deal rejection)
+ *   AC11 — staff can toggle a deal-product's per-branch availability like any product
  */
 
 process.env.DATABASE_URL ??= 'postgres://jojo:jojo@localhost:5432/jojopotato';
@@ -51,7 +50,6 @@ const unique = () => Math.random().toString(36).slice(2, 10);
 let adminCookies: string[];
 let staffCookies: string[];
 let customerCookies: string[];
-let customerId: string;
 
 async function signUpAndGetCookie(email: string, password: string): Promise<string[]> {
   await auth.api.signUpEmail({ body: { email, password, name: 'Test User' } });
@@ -80,34 +78,7 @@ async function makeUser(
   return { email, cookies, id: row.id };
 }
 
-// ── Deal payload + create helper ──
-function dealPayload(overrides: Record<string, unknown> = {}) {
-  const now = Date.now();
-  return {
-    title: `Deal ${unique()}`,
-    dealType: 'percentage_discount',
-    discountValueCents: 2000,
-    startAt: new Date(now).toISOString(),
-    endAt: new Date(now + 7 * 24 * 3600 * 1000).toISOString(),
-    ...overrides,
-  };
-}
-
-function createDeal(overrides: Record<string, unknown> = {}) {
-  return request(app)
-    .post('/api/admin/deals')
-    .set('Cookie', adminCookies.join('; '))
-    .send(dealPayload(overrides))
-    .set('Content-Type', 'application/json');
-}
-
-async function seedDeal(overrides: Record<string, unknown> = {}): Promise<string> {
-  const res = await createDeal(overrides);
-  expect(res.status).toBe(201);
-  return res.body.deal.id as string;
-}
-
-// ── Product + branch seeding (for junction tests) ──
+// ── Regular-product + category + branch helpers (for components / ordering) ──
 async function seedCategory(): Promise<string> {
   const suffix = unique();
   const res = await request(app)
@@ -119,7 +90,7 @@ async function seedCategory(): Promise<string> {
   return res.body.category.id as string;
 }
 
-async function seedProduct(): Promise<string> {
+async function seedRegularProduct(overrides: Record<string, unknown> = {}): Promise<string> {
   const categoryId = await seedCategory();
   const suffix = unique();
   const res = await request(app)
@@ -130,6 +101,7 @@ async function seedProduct(): Promise<string> {
       name: `Product ${suffix}`,
       slug: `product-${suffix}`,
       basePriceCents: 10000,
+      ...overrides,
     })
     .set('Content-Type', 'application/json');
   expect(res.status).toBe(201);
@@ -156,20 +128,46 @@ async function seedBranch(): Promise<string> {
   return res.body.branch.id as string;
 }
 
-async function seedCoupon(
-  dealId: string,
-  status: 'available' | 'used' | 'expired' = 'available',
-): Promise<string> {
-  const [row] = await db
-    .insert(schema.coupons)
-    .values({
-      user_id: customerId,
-      deal_id: dealId,
-      code: `CPN-${unique()}`,
-      status,
-    })
-    .returning({ id: schema.coupons.id });
-  return row!.id;
+/** Admin availability upsert — works for any product (regular or deal). */
+function setAvailability(productId: string, branchId: string, isAvailable: boolean) {
+  return request(app)
+    .patch(`/api/admin/products/${productId}/availability/${branchId}`)
+    .set('Cookie', adminCookies.join('; '))
+    .send({ isAvailable })
+    .set('Content-Type', 'application/json');
+}
+
+// ── Deal payload + create helper ──
+function dealPayload(overrides: Record<string, unknown> = {}) {
+  const suffix = unique();
+  return {
+    name: `Deal ${suffix}`,
+    slug: `deal-${suffix}`,
+    basePriceCents: 15000,
+    ...overrides,
+  };
+}
+
+function createDeal(overrides: Record<string, unknown> = {}) {
+  return request(app)
+    .post('/api/admin/deals')
+    .set('Cookie', adminCookies.join('; '))
+    .send(dealPayload(overrides))
+    .set('Content-Type', 'application/json');
+}
+
+async function seedDeal(overrides: Record<string, unknown> = {}): Promise<string> {
+  const res = await createDeal(overrides);
+  expect(res.status).toBe(201);
+  return res.body.deal.id as string;
+}
+
+function attachComponent(dealId: string, componentProductId: string, quantity?: number) {
+  return request(app)
+    .post(`/api/admin/deals/${dealId}/components`)
+    .set('Cookie', adminCookies.join('; '))
+    .send(quantity === undefined ? { componentProductId } : { componentProductId, quantity })
+    .set('Content-Type', 'application/json');
 }
 
 beforeAll(async () => {
@@ -181,255 +179,236 @@ beforeAll(async () => {
 
   adminCookies = (await makeUser('admin')).cookies;
   staffCookies = (await makeUser('staff')).cookies;
-  const customer = await makeUser('customer');
-  customerCookies = customer.cookies;
-  customerId = customer.id;
+  customerCookies = (await makeUser('customer')).cookies;
 });
 
 afterAll(() => {
   logSpy?.mockRestore();
 });
 
-// ─── AC1: create happy path ──────────────────────────────────────────────────
+// ─── AC1: migration 0007 additive ────────────────────────────────────────────
 
-describe('AC1 — create deal (valid enum, date range, conditional discount)', () => {
-  it('creates a percentage_discount deal and returns 201 + correct shape', async () => {
-    const res = await createDeal({ dealType: 'percentage_discount', discountValueCents: 2500 });
+describe('AC1 — migration 0007 adds is_deal defaulting false without mutating existing rows', () => {
+  it('a regular product created via the admin API is is_deal=false', async () => {
+    const productId = await seedRegularProduct();
+
+    const [row] = await db.select().from(schema.products).where(eq(schema.products.id, productId));
+    expect(row!.is_deal).toBe(false);
+
+    const detail = await request(app)
+      .get(`/api/admin/products/${productId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.product.isDeal).toBe(false);
+  });
+
+  it('creating a deal does not flip any existing regular product to is_deal=true', async () => {
+    const regularId = await seedRegularProduct();
+    await seedDeal();
+
+    const [row] = await db.select().from(schema.products).where(eq(schema.products.id, regularId));
+    expect(row!.is_deal).toBe(false);
+  });
+});
+
+// ─── AC2: create deal-product ────────────────────────────────────────────────
+
+describe('AC2 — create deal-product (isDeal true), server-pinned Deals category', () => {
+  it('creates a deal-product with isDeal true and returns 201', async () => {
+    const res = await createDeal({ basePriceCents: 19900 });
     expect(res.status).toBe(201);
     const deal = res.body.deal;
     expect(deal.id).toBeTruthy();
-    expect(deal.dealType).toBe('percentage_discount');
-    expect(deal.discountValue).toBe(2500);
+    expect(deal.isDeal).toBe(true);
+    expect(deal.basePriceCents).toBe(19900);
     expect(deal.isActive).toBe(true);
-    expect(deal.productIds).toEqual([]);
-    expect(deal.branchIds).toEqual([]);
-    expect(deal.outstandingCoupons).toBe(0);
+    expect(deal.components).toEqual([]);
   });
 
-  it('creates a fixed_discount deal round-tripping discountValue cents', async () => {
-    const res = await createDeal({ dealType: 'fixed_discount', discountValueCents: 5000 });
-    expect(res.status).toBe(201);
-    expect(res.body.deal.discountValue).toBe(5000);
-
-    // Persisted numeric is cents/100 with no drift.
-    const [row] = await db.select().from(schema.deals).where(eq(schema.deals.id, res.body.deal.id));
-    expect(row!.discount_value).toBe('50.00');
-  });
-
-  it('allows a null discount_value for a complex deal type (bundle)', async () => {
-    const res = await createDeal({ dealType: 'bundle', discountValueCents: null });
-    expect(res.status).toBe(201);
-    expect(res.body.deal.discountValue).toBeNull();
-  });
-
-  it('rejects a percentage_discount create with a missing discount_value (400)', async () => {
-    const res = await createDeal({ dealType: 'percentage_discount', discountValueCents: null });
-    expect(res.status).toBe(400);
-  });
-
-  it('GET / lists the created deal; GET /:id returns detail with empty junctions', async () => {
+  it('server-pins the deal to the reserved "deals" category (admin never supplies it)', async () => {
     const dealId = await seedDeal();
-    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
-    expect(list.status).toBe(200);
-    expect((list.body.deals as { id: string }[]).some((d) => d.id === dealId)).toBe(true);
-
     const detail = await request(app)
       .get(`/api/admin/deals/${dealId}`)
       .set('Cookie', adminCookies.join('; '));
     expect(detail.status).toBe(200);
-    expect(detail.body.deal.id).toBe(dealId);
-    expect(detail.body.deal.outstandingCoupons).toBe(0);
+
+    const [category] = await db
+      .select()
+      .from(schema.categories)
+      .where(eq(schema.categories.id, detail.body.deal.categoryId));
+    expect(category!.slug).toBe('deals');
   });
 
-  it('GET / ?isActive=false returns only inactive deals', async () => {
-    const activeId = await seedDeal();
-    const toDeactivate = await seedDeal();
-    await request(app)
-      .post(`/api/admin/deals/${toDeactivate}/deactivate`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({})
-      .set('Content-Type', 'application/json');
-
+  it('rejects a create with a missing name (400, Zod before Postgres)', async () => {
     const res = await request(app)
-      .get('/api/admin/deals?isActive=false')
-      .set('Cookie', adminCookies.join('; '));
-    expect(res.status).toBe(200);
-    const ids = (res.body.deals as { id: string }[]).map((d) => d.id);
-    expect(ids).toContain(toDeactivate);
-    expect(ids).not.toContain(activeId);
-  });
-});
-
-// ─── AC2: date-range validation ──────────────────────────────────────────────
-
-describe('AC2 — reject end_at <= start_at', () => {
-  it('rejects end_at before start_at with 400', async () => {
-    const now = Date.now();
-    const res = await createDeal({
-      startAt: new Date(now).toISOString(),
-      endAt: new Date(now - 1000).toISOString(),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects end_at equal to start_at with 400', async () => {
-    const when = new Date().toISOString();
-    const res = await createDeal({ startAt: when, endAt: when });
-    expect(res.status).toBe(400);
-  });
-});
-
-// ─── AC3: deal_type enum validation ──────────────────────────────────────────
-
-describe('AC3 — reject invalid deal_type', () => {
-  it('rejects an unknown deal_type string with 400 (Zod before Postgres)', async () => {
-    const res = await createDeal({ dealType: 'mega_discount' });
-    expect(res.status).toBe(400);
-  });
-});
-
-// ─── AC4/AC5: junction attach + duplicate reject ─────────────────────────────
-
-describe('AC4 — attach product + duplicate reject', () => {
-  it('attaches a product (writes deal_products) and rejects a duplicate with 409', async () => {
-    const dealId = await seedDeal();
-    const productId = await seedProduct();
-
-    const first = await request(app)
-      .post(`/api/admin/deals/${dealId}/products`)
+      .post('/api/admin/deals')
       .set('Cookie', adminCookies.join('; '))
-      .send({ productId })
+      .send({ slug: `deal-${unique()}`, basePriceCents: 1000 })
       .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a duplicate slug with 409', async () => {
+    const slug = `deal-${unique()}`;
+    const first = await createDeal({ slug });
+    expect(first.status).toBe(201);
+    const dup = await createDeal({ slug });
+    expect(dup.status).toBe(409);
+  });
+
+  it('PATCH updates a deal field and round-trips base_price', async () => {
+    const dealId = await seedDeal();
+    const res = await request(app)
+      .patch(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ name: 'Renamed Deal', basePriceCents: 12345 })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.deal.name).toBe('Renamed Deal');
+    expect(res.body.deal.basePriceCents).toBe(12345);
+  });
+
+  it('PATCH on a regular product id (not a deal) returns 404', async () => {
+    const regularId = await seedRegularProduct();
+    const res = await request(app)
+      .patch(`/api/admin/deals/${regularId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ name: 'x' })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /:id on a regular product id (not a deal) returns 404', async () => {
+    const regularId = await seedRegularProduct();
+    const res = await request(app)
+      .get(`/api/admin/deals/${regularId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── AC3: component attach + quantity + duplicate reject ──────────────────────
+
+describe('AC3 — attach a component with quantity; duplicate attach → 409', () => {
+  it('attaches a component (writes deal_components) with quantity and rejects a duplicate with 409', async () => {
+    const dealId = await seedDeal();
+    const componentId = await seedRegularProduct();
+
+    const first = await attachComponent(dealId, componentId, 3);
     expect(first.status).toBe(201);
     expect(first.body.attached).toBe(true);
 
     const rows = await db
       .select()
-      .from(schema.dealProducts)
+      .from(schema.dealComponents)
       .where(
-        and(eq(schema.dealProducts.deal_id, dealId), eq(schema.dealProducts.product_id, productId)),
+        and(
+          eq(schema.dealComponents.deal_product_id, dealId),
+          eq(schema.dealComponents.component_product_id, componentId),
+        ),
       );
     expect(rows).toHaveLength(1);
+    expect(rows[0]!.quantity).toBe(3);
 
-    const dup = await request(app)
-      .post(`/api/admin/deals/${dealId}/products`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ productId })
-      .set('Content-Type', 'application/json');
+    const dup = await attachComponent(dealId, componentId, 1);
     expect(dup.status).toBe(409);
 
-    // Detail response reflects the attachment.
+    // Detail response surfaces the component with its name + quantity.
     const detail = await request(app)
       .get(`/api/admin/deals/${dealId}`)
       .set('Cookie', adminCookies.join('; '));
-    expect(detail.body.deal.productIds).toContain(productId);
+    expect(detail.status).toBe(200);
+    const comp = (
+      detail.body.deal.components as { componentProductId: string; quantity: number }[]
+    ).find((c) => c.componentProductId === componentId);
+    expect(comp).toBeTruthy();
+    expect(comp!.quantity).toBe(3);
   });
 
-  it('404s attaching a non-existent product', async () => {
+  it('defaults quantity to 1 when omitted', async () => {
     const dealId = await seedDeal();
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/products`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ productId: '00000000-0000-0000-0000-000000000000' })
-      .set('Content-Type', 'application/json');
+    const componentId = await seedRegularProduct();
+    const res = await attachComponent(dealId, componentId);
+    expect(res.status).toBe(201);
+
+    const [row] = await db
+      .select()
+      .from(schema.dealComponents)
+      .where(eq(schema.dealComponents.deal_product_id, dealId));
+    expect(row!.quantity).toBe(1);
+  });
+
+  it('404s attaching a non-existent component product', async () => {
+    const dealId = await seedDeal();
+    const res = await attachComponent(dealId, '00000000-0000-0000-0000-000000000000');
+    expect(res.status).toBe(404);
+  });
+
+  it('404s attaching to a non-existent deal', async () => {
+    const componentId = await seedRegularProduct();
+    const res = await attachComponent('00000000-0000-0000-0000-000000000000', componentId);
     expect(res.status).toBe(404);
   });
 });
 
-describe('AC5 — attach branch + duplicate reject', () => {
-  it('attaches a branch (writes deal_branches) and rejects a duplicate with 409', async () => {
+// ─── AC4: self-reference + deal-of-deals reject ──────────────────────────────
+
+describe('AC4 — self-reference and deal-of-deals attachment rejected with 400', () => {
+  it('rejects a self-reference (component === deal) with 400', async () => {
     const dealId = await seedDeal();
-    const branchId = await seedBranch();
+    const res = await attachComponent(dealId, dealId);
+    expect(res.status).toBe(400);
+  });
 
-    const first = await request(app)
-      .post(`/api/admin/deals/${dealId}/branches`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ branchId })
-      .set('Content-Type', 'application/json');
-    expect(first.status).toBe(201);
+  it('rejects attaching a component whose product is itself a deal (deal-of-deals) with 400', async () => {
+    const dealId = await seedDeal();
+    const otherDealId = await seedDeal();
+    const res = await attachComponent(dealId, otherDealId);
+    expect(res.status).toBe(400);
 
+    // Nothing was written.
     const rows = await db
       .select()
-      .from(schema.dealBranches)
-      .where(
-        and(eq(schema.dealBranches.deal_id, dealId), eq(schema.dealBranches.branch_id, branchId)),
-      );
-    expect(rows).toHaveLength(1);
-
-    const dup = await request(app)
-      .post(`/api/admin/deals/${dealId}/branches`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ branchId })
-      .set('Content-Type', 'application/json');
-    expect(dup.status).toBe(409);
-  });
-
-  it('404s attaching a non-existent branch', async () => {
-    const dealId = await seedDeal();
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/branches`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ branchId: '00000000-0000-0000-0000-000000000000' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(404);
+      .from(schema.dealComponents)
+      .where(eq(schema.dealComponents.deal_product_id, dealId));
+    expect(rows).toHaveLength(0);
   });
 });
 
-// ─── AC6: detach + not-found ─────────────────────────────────────────────────
+// ─── AC5: detach + not-found ─────────────────────────────────────────────────
 
-describe('AC6 — detach product/branch (204) + 404 on non-attached', () => {
-  it('detaches an attached product with 204 and 404s a second detach', async () => {
+describe('AC5 — detach a component (204) + 404 on a non-attached pair', () => {
+  it('detaches an attached component with 204 and 404s a second detach', async () => {
     const dealId = await seedDeal();
-    const productId = await seedProduct();
-    await request(app)
-      .post(`/api/admin/deals/${dealId}/products`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ productId })
-      .set('Content-Type', 'application/json');
+    const componentId = await seedRegularProduct();
+    await attachComponent(dealId, componentId);
 
     const del = await request(app)
-      .delete(`/api/admin/deals/${dealId}/products/${productId}`)
+      .delete(`/api/admin/deals/${dealId}/components/${componentId}`)
       .set('Cookie', adminCookies.join('; '));
     expect(del.status).toBe(204);
 
     const rows = await db
       .select()
-      .from(schema.dealProducts)
+      .from(schema.dealComponents)
       .where(
-        and(eq(schema.dealProducts.deal_id, dealId), eq(schema.dealProducts.product_id, productId)),
+        and(
+          eq(schema.dealComponents.deal_product_id, dealId),
+          eq(schema.dealComponents.component_product_id, componentId),
+        ),
       );
     expect(rows).toHaveLength(0);
 
     const again = await request(app)
-      .delete(`/api/admin/deals/${dealId}/products/${productId}`)
-      .set('Cookie', adminCookies.join('; '));
-    expect(again.status).toBe(404);
-  });
-
-  it('detaches an attached branch with 204 and 404s a non-attached branch', async () => {
-    const dealId = await seedDeal();
-    const branchId = await seedBranch();
-    await request(app)
-      .post(`/api/admin/deals/${dealId}/branches`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ branchId })
-      .set('Content-Type', 'application/json');
-
-    const del = await request(app)
-      .delete(`/api/admin/deals/${dealId}/branches/${branchId}`)
-      .set('Cookie', adminCookies.join('; '));
-    expect(del.status).toBe(204);
-
-    const again = await request(app)
-      .delete(`/api/admin/deals/${dealId}/branches/${branchId}`)
+      .delete(`/api/admin/deals/${dealId}/components/${componentId}`)
       .set('Cookie', adminCookies.join('; '));
     expect(again.status).toBe(404);
   });
 });
 
-// ─── AC7: requireAdmin authz ─────────────────────────────────────────────────
+// ─── AC6: requireAdmin authz ─────────────────────────────────────────────────
 
-describe('AC7 — requireAdmin guard on /api/admin/deals/*', () => {
+describe('AC6 — requireAdmin guard on /api/admin/deals/*', () => {
   it('rejects an unauthenticated request with 403', async () => {
     const res = await request(app).get('/api/admin/deals');
     expect(res.status).toBe(403);
@@ -449,217 +428,235 @@ describe('AC7 — requireAdmin guard on /api/admin/deals/*', () => {
     expect(res.status).toBe(403);
   });
 
-  it('rejects a customer-role session on POST deactivate with 403', async () => {
+  it('rejects a customer-role session on PATCH with 403', async () => {
     const dealId = await seedDeal();
     const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/deactivate`)
+      .patch(`/api/admin/deals/${dealId}`)
       .set('Cookie', customerCookies.join('; '))
-      .send({ couponPolicy: 'expire' })
+      .send({ name: 'x' })
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(403);
   });
 
-  it('rejects a staff-role session on junction attach with 403', async () => {
+  it('rejects a staff-role session on component attach with 403', async () => {
     const dealId = await seedDeal();
     const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/products`)
+      .post(`/api/admin/deals/${dealId}/components`)
       .set('Cookie', staffCookies.join('; '))
-      .send({ productId: '00000000-0000-0000-0000-000000000000' })
+      .send({ componentProductId: '00000000-0000-0000-0000-000000000000' })
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(403);
   });
 });
 
-// ─── AC8: deactivate 'leave' (or omitted) ────────────────────────────────────
+// ─── AC7: menu ?isDeal filter both directions ────────────────────────────────
 
-describe("AC8 — deactivate couponPolicy 'leave' (default): is_active only, no coupon writes", () => {
-  it('flips is_active with an omitted body and never mutates coupons', async () => {
-    const dealId = await seedDeal();
-    const availableCoupon = await seedCoupon(dealId, 'available');
+describe('AC7 — GET /branches/:id/menu excludes deals by default; ?isDeal=true returns only deals', () => {
+  it('default menu excludes deal-products; ?isDeal=true returns only deal-products', async () => {
+    const branchId = await seedBranch();
 
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/deactivate`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({})
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(res.body.deal.isActive).toBe(false);
-    expect(res.body.outstandingCouponsAffected).toBe(0);
+    // A regular product and a deal-product, both available at the branch.
+    const regularId = await seedRegularProduct();
+    await setAvailability(regularId, branchId, true);
 
-    // Coupon stays available (zero coupon writes on 'leave').
-    const [coupon] = await db
-      .select()
-      .from(schema.coupons)
-      .where(eq(schema.coupons.id, availableCoupon));
-    expect(coupon!.status).toBe('available');
-  });
+    const dealRes = await createDeal();
+    const dealId = dealRes.body.deal.id as string;
+    await setAvailability(dealId, branchId, true);
 
-  it("explicit couponPolicy 'leave' is also a coupon no-op", async () => {
-    const dealId = await seedDeal();
-    const availableCoupon = await seedCoupon(dealId, 'available');
+    // Default menu: regular product present, deal absent.
+    const menu = await request(app).get(`/branches/${branchId}/menu`);
+    expect(menu.status).toBe(200);
+    const menuProductIds = (menu.body.categories as { products: { id: string }[] }[]).flatMap((c) =>
+      c.products.map((p) => p.id),
+    );
+    expect(menuProductIds).toContain(regularId);
+    expect(menuProductIds).not.toContain(dealId);
 
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/deactivate`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ couponPolicy: 'leave' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(res.body.outstandingCouponsAffected).toBe(0);
-
-    const [coupon] = await db
-      .select()
-      .from(schema.coupons)
-      .where(eq(schema.coupons.id, availableCoupon));
-    expect(coupon!.status).toBe('available');
-  });
-
-  it('404s deactivating a non-existent deal', async () => {
-    const res = await request(app)
-      .post('/api/admin/deals/00000000-0000-0000-0000-000000000000/deactivate')
-      .set('Cookie', adminCookies.join('; '))
-      .send({})
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(404);
+    // ?isDeal=true: deal present, regular absent.
+    const dealsMenu = await request(app).get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(dealsMenu.status).toBe(200);
+    const dealsMenuIds = (dealsMenu.body.categories as { products: { id: string }[] }[]).flatMap(
+      (c) => c.products.map((p) => p.id),
+    );
+    expect(dealsMenuIds).toContain(dealId);
+    expect(dealsMenuIds).not.toContain(regularId);
   });
 });
 
-// ─── AC9: deactivate 'expire' atomic cascade ─────────────────────────────────
+// ─── AC8: admin products/deals lists mutually exclusive ──────────────────────
 
-describe("AC9 — deactivate couponPolicy 'expire': atomic flip + expire available coupons", () => {
-  it('flips is_active AND expires only available coupons, returning the correct count', async () => {
+describe('AC8 — admin products list excludes deals by default; deals list is deals-only', () => {
+  it('products list excludes deals by default and includes them only with ?isDeal=true', async () => {
+    const regularId = await seedRegularProduct();
     const dealId = await seedDeal();
-    const available1 = await seedCoupon(dealId, 'available');
-    const available2 = await seedCoupon(dealId, 'available');
-    const used = await seedCoupon(dealId, 'used');
-    const alreadyExpired = await seedCoupon(dealId, 'expired');
 
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/deactivate`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ couponPolicy: 'expire' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(res.body.deal.isActive).toBe(false);
-    expect(res.body.outstandingCouponsAffected).toBe(2);
+    const products = await request(app)
+      .get('/api/admin/products')
+      .set('Cookie', adminCookies.join('; '));
+    expect(products.status).toBe(200);
+    const productIds = (products.body.products as { id: string }[]).map((p) => p.id);
+    expect(productIds).toContain(regularId);
+    expect(productIds).not.toContain(dealId);
 
-    const rows = await db.select().from(schema.coupons).where(eq(schema.coupons.deal_id, dealId));
-    const byId = new Map(rows.map((r) => [r.id, r.status]));
-    expect(byId.get(available1)).toBe('expired');
-    expect(byId.get(available2)).toBe('expired');
-    expect(byId.get(used)).toBe('used'); // untouched — not 'available'
-    expect(byId.get(alreadyExpired)).toBe('expired'); // untouched
+    const productsAsDeals = await request(app)
+      .get('/api/admin/products?isDeal=true')
+      .set('Cookie', adminCookies.join('; '));
+    const asDealIds = (productsAsDeals.body.products as { id: string }[]).map((p) => p.id);
+    expect(asDealIds).toContain(dealId);
+    expect(asDealIds).not.toContain(regularId);
   });
 
-  it('returns outstandingCouponsAffected 0 with no error when the deal has no outstanding coupons', async () => {
+  it('deals list returns only deal-products (never a regular product)', async () => {
+    const regularId = await seedRegularProduct();
     const dealId = await seedDeal();
-    const res = await request(app)
-      .post(`/api/admin/deals/${dealId}/deactivate`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ couponPolicy: 'expire' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(res.body.deal.isActive).toBe(false);
-    expect(res.body.outstandingCouponsAffected).toBe(0);
+
+    const deals = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    expect(deals.status).toBe(200);
+    const dealIds = (deals.body.deals as { id: string; isDeal: boolean }[]).map((d) => d.id);
+    expect(dealIds).toContain(dealId);
+    expect(dealIds).not.toContain(regularId);
+    expect((deals.body.deals as { isDeal: boolean }[]).every((d) => d.isDeal === true)).toBe(true);
   });
 
-  it('is all-or-nothing: a forced mid-transaction failure leaves BOTH tables unchanged', async () => {
-    // Reproduces the route's exact two writes (deals.is_active flip + coupon
-    // expire) inside db.transaction — the same primitive the deactivate handler
-    // uses — then throws, proving the transaction rolls both back atomically.
-    const dealId = await seedDeal();
-    const couponId = await seedCoupon(dealId, 'available');
+  it('deals ?isActive=false returns only inactive deals', async () => {
+    const activeId = await seedDeal();
+    const toDeactivate = await seedDeal();
+    await request(app)
+      .patch(`/api/admin/deals/${toDeactivate}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ isActive: false })
+      .set('Content-Type', 'application/json');
 
-    await expect(
-      db.transaction(async (tx) => {
-        await tx
-          .update(schema.deals)
-          .set({ is_active: false, updated_at: new Date() })
-          .where(eq(schema.deals.id, dealId));
-        await tx
-          .update(schema.coupons)
-          .set({ status: 'expired' })
-          .where(and(eq(schema.coupons.deal_id, dealId), eq(schema.coupons.status, 'available')));
-        throw new Error('forced mid-transaction failure');
-      }),
-    ).rejects.toThrow('forced mid-transaction failure');
-
-    const [deal] = await db.select().from(schema.deals).where(eq(schema.deals.id, dealId));
-    expect(deal!.is_active).toBe(true); // rolled back
-
-    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.id, couponId));
-    expect(coupon!.status).toBe('available'); // rolled back
+    const res = await request(app)
+      .get('/api/admin/deals?isActive=false')
+      .set('Cookie', adminCookies.join('; '));
+    expect(res.status).toBe(200);
+    const ids = (res.body.deals as { id: string }[]).map((d) => d.id);
+    expect(ids).toContain(toDeactivate);
+    expect(ids).not.toContain(activeId);
   });
 });
 
-// ─── AC10: PATCH partial-date merge validation ───────────────────────────────
+// ─── AC9: snapshot integrity (HARD, Known-Gap banned) ────────────────────────
 
-describe('AC10 — PATCH partial start_at/end_at validated against the MERGED row', () => {
-  it('rejects a lone end_at that predates the existing start_at (400)', async () => {
-    const now = Date.now();
-    const dealId = await seedDeal({
-      startAt: new Date(now).toISOString(),
-      endAt: new Date(now + 7 * 24 * 3600 * 1000).toISOString(),
-    });
+describe('AC9 — editing a deal-product base_price after order placement never mutates order_items snapshot', () => {
+  it('does not mutate order_items.unit_price/total_price when a deal-product base_price is edited after placement', async () => {
+    const branchId = await seedBranch();
+    const dealRes = await createDeal({ basePriceCents: 10000 });
+    const dealId = dealRes.body.deal.id as string;
+    await setAvailability(dealId, branchId, true);
 
-    // A lone end_at BEFORE the existing start_at looks internally consistent as a
-    // partial payload but is invalid once merged → 400.
-    const res = await request(app)
+    // Place an order containing the deal-product (snapshots price at placement).
+    const orderRes = await request(app)
+      .post('/orders')
+      .set('Cookie', customerCookies.join('; '))
+      .send({
+        branchId,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: dealId, quantity: 2, selectedOptions: [] }],
+      })
+      .set('Content-Type', 'application/json');
+    expect(orderRes.status).toBe(201);
+    const orderId = orderRes.body.order.id as string;
+
+    const before = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.order_id, orderId));
+    expect(before).toHaveLength(1);
+    expect(before[0]!.unit_price).toBe('100.00');
+    expect(before[0]!.total_price).toBe('200.00');
+
+    // Edit the deal-product's base_price via the admin deals route (₱100 → ₱250).
+    const patchRes = await request(app)
       .patch(`/api/admin/deals/${dealId}`)
       .set('Cookie', adminCookies.join('; '))
-      .send({ endAt: new Date(now - 24 * 3600 * 1000).toISOString() })
+      .send({ basePriceCents: 25000 })
       .set('Content-Type', 'application/json');
-    expect(res.status).toBe(400);
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.deal.basePriceCents).toBe(25000);
+
+    // Historical snapshot MUST be unchanged.
+    const after = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.order_id, orderId));
+    expect(after).toHaveLength(1);
+    expect(after[0]!.unit_price).toBe('100.00');
+    expect(after[0]!.total_price).toBe('200.00');
+    expect(after[0]!.unit_price).toBe(before[0]!.unit_price);
+    expect(after[0]!.total_price).toBe(before[0]!.total_price);
+
+    // The live deal-product row DID change (proves the edit really happened).
+    const [product] = await db.select().from(schema.products).where(eq(schema.products.id, dealId));
+    expect(product!.base_price).toBe('250.00');
   });
+});
 
-  it('rejects a lone start_at that postdates the existing end_at (400)', async () => {
-    const now = Date.now();
-    const dealId = await seedDeal({
-      startAt: new Date(now).toISOString(),
-      endAt: new Date(now + 24 * 3600 * 1000).toISOString(),
-    });
+// ─── AC10: deal-product orderable via normal checkout ────────────────────────
 
-    const res = await request(app)
-      .patch(`/api/admin/deals/${dealId}`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ startAt: new Date(now + 48 * 3600 * 1000).toISOString() })
+describe('AC10 — a deal-product is orderable via normal POST /orders with no is_deal rejection', () => {
+  it('places an order containing a deal-product like any other product', async () => {
+    const branchId = await seedBranch();
+    const dealRes = await createDeal({ basePriceCents: 5000 });
+    const dealId = dealRes.body.deal.id as string;
+    await setAvailability(dealId, branchId, true);
+
+    const orderRes = await request(app)
+      .post('/orders')
+      .set('Cookie', customerCookies.join('; '))
+      .send({
+        branchId,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: dealId, quantity: 1, selectedOptions: [] }],
+      })
       .set('Content-Type', 'application/json');
-    expect(res.status).toBe(400);
+    expect(orderRes.status).toBe(201);
+    expect(orderRes.body.order.items).toHaveLength(1);
+    expect(orderRes.body.order.items[0].productId).toBe(dealId);
+    expect(orderRes.body.order.totalCents).toBe(5000);
   });
+});
 
-  it('accepts a valid lone end_at extension and updates the field', async () => {
-    const now = Date.now();
-    const dealId = await seedDeal({
-      startAt: new Date(now).toISOString(),
-      endAt: new Date(now + 24 * 3600 * 1000).toISOString(),
-    });
+// ─── AC11: staff can toggle a deal-product's availability ─────────────────────
 
-    const newEnd = new Date(now + 30 * 24 * 3600 * 1000).toISOString();
-    const res = await request(app)
-      .patch(`/api/admin/deals/${dealId}`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ endAt: newEnd })
+describe('AC11 — staff can toggle a deal-product per-branch availability like any product', () => {
+  it('lists the deal-product for staff and toggles its availability with 200', async () => {
+    const branchId = await seedBranch();
+    const branchStaff = await makeUser('staff');
+    await db
+      .update(schema.users)
+      .set({ assignedBranchId: branchId })
+      .where(eq(schema.users.id, branchStaff.id));
+
+    const dealRes = await createDeal();
+    const dealId = dealRes.body.deal.id as string;
+
+    // Staff product list includes the deal-product (is_deal-blind, as required).
+    const list = await request(app)
+      .get('/api/staff/products')
+      .set('Cookie', branchStaff.cookies.join('; '));
+    expect(list.status).toBe(200);
+    const staffProductIds = (list.body.products as { id: string }[]).map((p) => p.id);
+    expect(staffProductIds).toContain(dealId);
+
+    // Staff can toggle its per-branch availability.
+    const toggle = await request(app)
+      .patch(`/api/staff/products/${dealId}/availability`)
+      .set('Cookie', branchStaff.cookies.join('; '))
+      .send({ isAvailable: true })
       .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(new Date(res.body.deal.endAt).getTime()).toBe(new Date(newEnd).getTime());
-  });
+    expect(toggle.status).toBe(200);
 
-  it('updates a non-date field (title) without touching dates', async () => {
-    const dealId = await seedDeal();
-    const res = await request(app)
-      .patch(`/api/admin/deals/${dealId}`)
-      .set('Cookie', adminCookies.join('; '))
-      .send({ title: 'Renamed Deal' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(200);
-    expect(res.body.deal.title).toBe('Renamed Deal');
-  });
-
-  it('404s a PATCH to a non-existent deal', async () => {
-    const res = await request(app)
-      .patch('/api/admin/deals/00000000-0000-0000-0000-000000000000')
-      .set('Cookie', adminCookies.join('; '))
-      .send({ title: 'x' })
-      .set('Content-Type', 'application/json');
-    expect(res.status).toBe(404);
+    const [row] = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(
+        and(
+          eq(schema.branchProductAvailability.branch_id, branchId),
+          eq(schema.branchProductAvailability.product_id, dealId),
+        ),
+      );
+    expect(row!.is_available).toBe(true);
   });
 });

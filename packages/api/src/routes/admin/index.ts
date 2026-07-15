@@ -28,8 +28,8 @@ adminRouter.use('/branches', branchesRouter);
 adminRouter.use('/categories', categoriesRouter);
 adminRouter.use('/products', productsRouter);
 
-// Deals CRUD (ADM-004) — deals + deal_products/deal_branches junctions. Same
-// inherited guard; append-only, never restructure.
+// Deals CRUD (ADM-004 — deals-as-products) — is_deal=true products + the
+// deal_components junction. Same inherited guard; append-only, never restructure.
 adminRouter.use('/deals', dealsRouter);
 
 export default adminRouter;

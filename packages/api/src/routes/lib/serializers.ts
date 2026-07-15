@@ -101,6 +101,9 @@ export interface AdminProduct {
   basePriceCents: number;
   isActive: boolean;
   isRewardEligible: boolean;
+  // ADM-004 deals-as-products: true for a deal-product (surfaced by the dedicated
+  // Deals admin screen), false for a regular catalog product. Additive.
+  isDeal: boolean;
 }
 
 export interface AdminProductOption {
@@ -141,6 +144,7 @@ export function serializeAdminProduct(product: ProductRow): AdminProduct {
     basePriceCents: numericToCents(product.base_price),
     isActive: product.is_active,
     isRewardEligible: product.is_reward_eligible,
+    isDeal: product.is_deal,
   };
 }
 
@@ -457,76 +461,43 @@ export function serializeDeal(
   };
 }
 
-// ─── Admin deal serializer (ADM-004) ────────────────────────────────────────
+// ─── Admin deal-product serializer (ADM-004 deals-as-products) ───────────────
 //
-// Admin-facing deal shape. Declared LOCALLY here (never in `packages/types`)
-// matching the `AdminBranch`/`AdminProduct` local-declaration convention — the
-// admin dashboard is the only consumer, and there is no second cross-boundary
-// consumer yet to justify promoting it to the shared types package.
+// A "deal" is a `products` row with `is_deal = true`, so the admin deal shape is
+// the SAME as `AdminProduct` (reusing `serializeAdminProduct` verbatim — DRY)
+// plus a `components` array describing "what's inside" (the `deal_components`
+// junction, resolved with each component product's display name). Declared
+// LOCALLY here matching the `AdminBranch`/`AdminProduct` convention.
 //
-// Deliberately DIFFERENT from the PUBLIC `ApiDeal`/`serializeDeal` above:
-//  - `discountValue` is the RAW stored value converted UNCONDITIONALLY via
-//    `numericToCents` (no per-`deal_type` polymorphic collapsing, no
-//    `discountLabel`) so the admin edit form pre-fills the actual stored number.
-//  - Carries `isActive` (the admin list is a management view that shows
-//    deactivated/out-of-window deals; the public route hides them).
-//  - `productIds`/`branchIds`/`outstandingCoupons` are OPTIONAL extras populated
-//    only on the DETAIL response (they require separate queries); the list route
-//    omits them to avoid N+1 joins.
+// `components` is populated only on the DETAIL response (it needs a junction
+// join); the list route passes `[]` to avoid N+1 joins. NB: the discount-shaped
+// `AdminDeal`/`AdminDealExtras`/`serializeAdminDeal` that lived here (ADM-004
+// discount model, commit d5070d8) were DISCARDED by the deals-as-products pivot —
+// their only consumer was the now-rewritten `admin/deals.ts`. The PUBLIC
+// `ApiDeal`/`serializeDeal` above are KEPT (dormant, still consumed by the live
+// `routes/deals.ts` read routes).
 
-export interface AdminDeal {
-  id: string;
-  title: string;
-  description: string | null;
-  imageUrl: string | null;
-  dealType: DealType;
-  discountValue: number | null; // cents (numericToCents), unconditional — null allowed
-  minimumOrderAmount: number; // cents
-  startAt: string; // ISO
-  endAt: string; // ISO
-  usageLimitPerUser: number | null;
-  totalUsageLimit: number | null;
-  isActive: boolean;
-  createdAt: string; // ISO
-  updatedAt: string; // ISO
-  productIds: string[]; // attached deal_products (detail only; [] on list)
-  branchIds: string[]; // attached deal_branches (detail only; [] on list)
-  outstandingCoupons: number; // status='available' coupons for this deal (detail only; 0 on list)
+export interface AdminDealComponent {
+  componentProductId: string;
+  componentName: string;
+  quantity: number;
 }
 
-interface AdminDealExtras {
-  productIds: string[];
-  branchIds: string[];
-  outstandingCoupons: number;
+export interface AdminDealProduct extends AdminProduct {
+  components: AdminDealComponent[];
 }
 
 /**
- * Serialize a `deals` row to the admin `AdminDeal` shape. Pure row→DTO mapper —
- * the `extras` (attached id arrays + outstanding-coupon count) are fetched by the
- * route handler and passed in, keeping the serializer free of DB-query duties
- * (matching every other admin serializer). Omit `extras` on the list route so it
- * never triggers per-row junction/coupon queries.
+ * Serialize a deal-product (`products` row with `is_deal = true`) to the admin
+ * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
+ * and appends the resolved `components` list (fetched by the route handler; `[]`
+ * on the list route to avoid per-row junction joins).
  */
-export function serializeAdminDeal(deal: DealRow, extras?: AdminDealExtras): AdminDeal {
-  return {
-    id: deal.id,
-    title: deal.title,
-    description: deal.description,
-    imageUrl: deal.image_url,
-    dealType: deal.deal_type,
-    discountValue: deal.discount_value === null ? null : numericToCents(deal.discount_value),
-    minimumOrderAmount: numericToCents(deal.minimum_order_amount),
-    startAt: deal.start_at.toISOString(),
-    endAt: deal.end_at.toISOString(),
-    usageLimitPerUser: deal.usage_limit_per_user,
-    totalUsageLimit: deal.total_usage_limit,
-    isActive: deal.is_active,
-    createdAt: deal.created_at.toISOString(),
-    updatedAt: deal.updated_at.toISOString(),
-    productIds: extras?.productIds ?? [],
-    branchIds: extras?.branchIds ?? [],
-    outstandingCoupons: extras?.outstandingCoupons ?? 0,
-  };
+export function serializeAdminDealProduct(
+  product: ProductRow,
+  components: AdminDealComponent[] = [],
+): AdminDealProduct {
+  return { ...serializeAdminProduct(product), components };
 }
 
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────

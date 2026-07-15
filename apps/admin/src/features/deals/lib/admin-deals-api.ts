@@ -1,62 +1,46 @@
 import { env } from '@/config/env';
 
 /**
- * Fetch wrapper for the ADM-004 `/api/admin/deals` surface — deals CRUD plus the
- * `deal_products`/`deal_branches` junction attach/detach and the coupon-cascade
- * deactivate. Mirrors P2/P3's `admin-branches-api.ts`/`admin-products-api.ts`
- * (`credentials: 'include'` for the HttpOnly session cookie). All money fields
- * are integer CENTS at the boundary, matching the server.
+ * Fetch wrapper for the ADM-004 `/api/admin/deals` surface (deals-as-products) —
+ * a "deal" is a `products` row with `is_deal = true`, plus a `deal_components`
+ * junction describing "what's inside". Mirrors P2/P3's `admin-branches-api.ts`/
+ * `admin-products-api.ts` (`credentials: 'include'` for the HttpOnly session
+ * cookie). All money fields are integer CENTS at the boundary, matching the
+ * server. Supersedes the discount-shaped ADM-004 client (commit d5070d8).
  */
 
-export type DealType =
-  | 'percentage_discount'
-  | 'fixed_discount'
-  | 'buy_one_take_one'
-  | 'free_item'
-  | 'free_upgrade'
-  | 'bundle';
+export interface AdminDealComponent {
+  componentProductId: string;
+  componentName: string;
+  quantity: number;
+}
 
-export type CouponPolicy = 'leave' | 'expire';
-
-export interface AdminDeal {
+export interface AdminDealProduct {
   id: string;
-  title: string;
+  categoryId: string;
+  name: string;
+  slug: string;
   description: string | null;
   imageUrl: string | null;
-  dealType: DealType;
-  discountValue: number | null; // cents (unconditional) — null for complex types
-  minimumOrderAmount: number; // cents
-  startAt: string; // ISO
-  endAt: string; // ISO
-  usageLimitPerUser: number | null;
-  totalUsageLimit: number | null;
+  basePriceCents: number;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  productIds: string[];
-  branchIds: string[];
-  outstandingCoupons: number;
+  isRewardEligible: boolean;
+  isDeal: boolean;
+  /** Populated on the detail response; `[]` on the list response. */
+  components: AdminDealComponent[];
 }
 
 export interface DealCreateInput {
-  title: string;
+  name: string;
+  slug: string;
   description?: string | null;
   imageUrl?: string | null;
-  dealType: DealType;
-  discountValueCents?: number | null;
-  minimumOrderAmountCents?: number;
-  startAt: string;
-  endAt: string;
-  usageLimitPerUser?: number | null;
-  totalUsageLimit?: number | null;
+  basePriceCents: number;
+  isActive?: boolean;
+  isRewardEligible?: boolean;
 }
 
-export type DealUpdateInput = Partial<DealCreateInput>;
-
-export interface DeactivateResult {
-  deal: AdminDeal;
-  outstandingCouponsAffected: number;
-}
+export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };
 
 /** Carries the HTTP status alongside the server's error message (e.g. 409 dup). */
 export class AdminApiError extends Error {
@@ -89,61 +73,49 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new AdminApiError(res.status, message);
   }
 
-  // 204 No Content (junction detach) has no body to parse.
+  // 204 No Content (component detach) has no body to parse.
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
-// ── Deals ──
-export function listDeals(isActive?: boolean): Promise<AdminDeal[]> {
+// ── Deals (is_deal=true products) ──
+export function listDeals(isActive?: boolean): Promise<AdminDealProduct[]> {
   const query = isActive === undefined ? '' : `?isActive=${isActive}`;
-  return request<{ deals: AdminDeal[] }>(query).then((r) => r.deals);
+  return request<{ deals: AdminDealProduct[] }>(query).then((r) => r.deals);
 }
 
-export function getDeal(id: string): Promise<AdminDeal> {
-  return request<{ deal: AdminDeal }>(`/${id}`).then((r) => r.deal);
+export function getDeal(id: string): Promise<AdminDealProduct> {
+  return request<{ deal: AdminDealProduct }>(`/${id}`).then((r) => r.deal);
 }
 
-export function createDeal(input: DealCreateInput): Promise<AdminDeal> {
-  return request<{ deal: AdminDeal }>('', {
+export function createDeal(input: DealCreateInput): Promise<AdminDealProduct> {
+  return request<{ deal: AdminDealProduct }>('', {
     method: 'POST',
     body: JSON.stringify(input),
   }).then((r) => r.deal);
 }
 
-export function updateDeal(id: string, input: DealUpdateInput): Promise<AdminDeal> {
-  return request<{ deal: AdminDeal }>(`/${id}`, {
+export function updateDeal(id: string, input: DealUpdateInput): Promise<AdminDealProduct> {
+  return request<{ deal: AdminDealProduct }>(`/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   }).then((r) => r.deal);
 }
 
-export function deactivateDeal(id: string, couponPolicy: CouponPolicy): Promise<DeactivateResult> {
-  return request<DeactivateResult>(`/${id}/deactivate`, {
+// ── Components junction ──
+export function attachComponent(
+  dealId: string,
+  componentProductId: string,
+  quantity?: number,
+): Promise<void> {
+  return request<void>(`/${dealId}/components`, {
     method: 'POST',
-    body: JSON.stringify({ couponPolicy }),
+    body: JSON.stringify(
+      quantity === undefined ? { componentProductId } : { componentProductId, quantity },
+    ),
   });
 }
 
-// ── Junctions ──
-export function attachProduct(dealId: string, productId: string): Promise<void> {
-  return request<void>(`/${dealId}/products`, {
-    method: 'POST',
-    body: JSON.stringify({ productId }),
-  });
-}
-
-export function detachProduct(dealId: string, productId: string): Promise<void> {
-  return request<void>(`/${dealId}/products/${productId}`, { method: 'DELETE' });
-}
-
-export function attachBranch(dealId: string, branchId: string): Promise<void> {
-  return request<void>(`/${dealId}/branches`, {
-    method: 'POST',
-    body: JSON.stringify({ branchId }),
-  });
-}
-
-export function detachBranch(dealId: string, branchId: string): Promise<void> {
-  return request<void>(`/${dealId}/branches/${branchId}`, { method: 'DELETE' });
+export function detachComponent(dealId: string, componentProductId: string): Promise<void> {
+  return request<void>(`/${dealId}/components/${componentProductId}`, { method: 'DELETE' });
 }

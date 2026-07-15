@@ -1,52 +1,47 @@
 import { DataTable, type DataTableColumn } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 
-import { DEAL_TYPE_LABELS } from './deal-form';
-import type { AdminDeal } from '../lib/admin-deals-api';
+import type { AdminDealProduct } from '../lib/admin-deals-api';
 
 /**
- * Deal management table (ADM-004) — the umbrella's real second consumer of the
- * shared `DataTable` composite (Decision 4). Column defs + per-row action slot;
- * loading/error/empty delegate to `DataTable` → `QueryStates`. Inactive deals
- * stay visible (dimmed). No "Reactivate" action — the ADM-004 contract has no
- * reactivate route (PATCH excludes `is_active`; deactivation is one-way this phase).
- * Deactivate lives on the detail screen (D1) where the deal's outstanding-coupon
- * count is already loaded for the confirm dialog — Manage navigates there.
+ * Deal management table (ADM-004 deals-as-products) — a consumer of the shared
+ * `DataTable` composite (Decision 4). A deal is a product, so the columns mirror
+ * the product list (name/price/status) minus category (deals are all in the
+ * reserved Deals category). Inactive deals stay visible (dimmed) with a
+ * "Reactivate" action; deactivation reuses the products `is_active` toggle
+ * (PATCH isActive) — no dedicated deactivate route. Manage navigates to the
+ * detail screen where the "what's inside" component editor lives.
  */
 interface DealListProps {
-  deals: AdminDeal[] | undefined;
+  deals: AdminDealProduct[] | undefined;
   isLoading: boolean;
   error: unknown;
-  onManage: (deal: AdminDeal) => void;
-  onEdit: (deal: AdminDeal) => void;
+  onManage: (deal: AdminDealProduct) => void;
+  onEdit: (deal: AdminDealProduct) => void;
+  onDeactivate: (deal: AdminDealProduct) => void;
+  onReactivate: (deal: AdminDealProduct) => void;
 }
 
-function formatDiscount(deal: AdminDeal): string {
-  if (deal.discountValue === null) return '—';
-  if (deal.dealType === 'percentage_discount') return `${deal.discountValue / 100}%`;
-  if (deal.dealType === 'fixed_discount') return `₱${(deal.discountValue / 100).toFixed(2)}`;
-  return '—';
+function formatPeso(cents: number): string {
+  return `₱${(cents / 100).toFixed(2)}`;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
-}
-
-export function DealList({ deals, isLoading, error, onManage, onEdit }: DealListProps) {
-  const columns: DataTableColumn<AdminDeal>[] = [
-    { key: 'title', header: 'Title', cell: (d) => d.title },
-    { key: 'type', header: 'Type', cell: (d) => DEAL_TYPE_LABELS[d.dealType] },
+export function DealList({
+  deals,
+  isLoading,
+  error,
+  onManage,
+  onEdit,
+  onDeactivate,
+  onReactivate,
+}: DealListProps) {
+  const columns: DataTableColumn<AdminDealProduct>[] = [
+    { key: 'name', header: 'Name', cell: (d) => d.name },
     {
-      key: 'discount',
-      header: 'Discount',
-      cell: (d) => formatDiscount(d),
+      key: 'price',
+      header: 'Price',
+      cell: (d) => formatPeso(d.basePriceCents),
       className: 'font-mono text-xs',
-    },
-    {
-      key: 'window',
-      header: 'Window',
-      cell: (d) => `${formatDate(d.startAt)} → ${formatDate(d.endAt)}`,
-      className: 'text-xs',
     },
     { key: 'status', header: 'Status', cell: (d) => (d.isActive ? 'Active' : 'Inactive') },
     {
@@ -60,6 +55,15 @@ export function DealList({ deals, isLoading, error, onManage, onEdit }: DealList
           <Button size="sm" variant="secondary" onClick={() => onEdit(d)}>
             Edit
           </Button>
+          {d.isActive ? (
+            <Button size="sm" variant="destructive" onClick={() => onDeactivate(d)}>
+              Deactivate
+            </Button>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={() => onReactivate(d)}>
+              Reactivate
+            </Button>
+          )}
         </div>
       ),
     },

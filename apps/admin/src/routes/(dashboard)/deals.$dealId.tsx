@@ -1,71 +1,57 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 import { Button } from '@/components/ui/button';
-import { useAdminBranches } from '@/features/branches/hooks/use-admin-branches';
-import { DEAL_TYPE_LABELS } from '@/features/deals/components/deal-form';
-import { DeactivateDealDialog } from '@/features/deals/components/deactivate-deal-dialog';
-import { JunctionChipEditor } from '@/features/deals/components/junction-chip-editor';
-import {
-  useAdminDeal,
-  useAttachBranch,
-  useAttachProduct,
-  useDeactivateDeal,
-  useDetachBranch,
-  useDetachProduct,
-} from '@/features/deals/hooks/use-admin-deals';
-import type { CouponPolicy } from '@/features/deals/lib/admin-deals-api';
-import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
+import { Input } from '@/components/ui/input';
+import { DealComponentEditor } from '@/features/deals/components/deal-component-editor';
+import { useAdminDeal, useUpdateDeal } from '@/features/deals/hooks/use-admin-deals';
 
 export const Route = createFileRoute('/(dashboard)/deals/$dealId')({
   component: DealDetailPage,
 });
 
 /**
- * Deal detail screen (ADM-004) — hosts the feature-local product/branch junction
- * chip editors and the D1 deactivate flow (its `DeactivateDealDialog` reads the
- * already-loaded `outstandingCoupons` count, so no extra round trip). Sibling
- * child route of `(dashboard)`, admin-guarded.
+ * Deal detail screen (ADM-004 deals-as-products) — hosts the quantity-aware
+ * "what's inside" component editor plus a base-price editor that gates the price
+ * change behind a `ConfirmDialog` (historical orders keep their snapshot prices —
+ * AC9). A deal is a product, so it reuses the same detail shape as the product
+ * detail screen. Sibling child route of `(dashboard)`, admin-guarded.
  */
 function DealDetailPage() {
   const { dealId } = useParams({ from: '/(dashboard)/deals/$dealId' });
   const navigate = useNavigate();
   const dealQuery = useAdminDeal(dealId);
-  const productsQuery = useAdminProducts();
-  const branchesQuery = useAdminBranches();
+  const updateMutation = useUpdateDeal();
 
-  const attachProduct = useAttachProduct(dealId);
-  const detachProduct = useDetachProduct(dealId);
-  const attachBranch = useAttachBranch(dealId);
-  const detachBranch = useDetachBranch(dealId);
-  const deactivateMutation = useDeactivateDeal();
-
+  const [priceInput, setPriceInput] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [policy, setPolicy] = useState<CouponPolicy>('leave');
 
   const deal = dealQuery.data;
 
-  function openDeactivate() {
-    deactivateMutation.reset();
-    setPolicy('leave');
+  function openPriceConfirm() {
+    updateMutation.reset();
     setConfirmOpen(true);
   }
 
-  function handleDeactivateConfirm() {
-    deactivateMutation.mutate(
-      { id: dealId, couponPolicy: policy },
-      { onSuccess: () => setConfirmOpen(false) },
+  function handlePriceConfirm() {
+    const php = Number(priceInput);
+    if (!Number.isFinite(php) || php < 0) return;
+    updateMutation.mutate(
+      { id: dealId, input: { basePriceCents: Math.round(php * 100) } },
+      {
+        onSuccess: () => {
+          setConfirmOpen(false);
+          setPriceInput('');
+        },
+      },
     );
   }
 
-  const productError =
-    (attachProduct.error instanceof Error ? attachProduct.error.message : null) ??
-    (detachProduct.error instanceof Error ? detachProduct.error.message : null);
-  const branchError =
-    (attachBranch.error instanceof Error ? attachBranch.error.message : null) ??
-    (detachBranch.error instanceof Error ? detachBranch.error.message : null);
+  const priceValid =
+    priceInput.trim().length > 0 && Number.isFinite(Number(priceInput)) && Number(priceInput) >= 0;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-background p-8 text-foreground">
@@ -82,64 +68,50 @@ function DealDetailPage() {
         {deal ? (
           <>
             <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h1 className="font-display text-h2 font-bold text-primary">{deal.title}</h1>
-                  <p className="text-sm text-muted-foreground">
-                    {DEAL_TYPE_LABELS[deal.dealType]} · {deal.isActive ? 'Active' : 'Inactive'} ·{' '}
-                    {deal.outstandingCoupons} outstanding coupon
-                    {deal.outstandingCoupons === 1 ? '' : 's'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(deal.startAt).toLocaleString()} →{' '}
-                    {new Date(deal.endAt).toLocaleString()}
-                  </p>
-                </div>
-                {deal.isActive ? (
-                  <Button variant="destructive" onClick={openDeactivate}>
-                    Deactivate
-                  </Button>
-                ) : null}
+              <h1 className="font-display text-h2 font-bold text-primary">{deal.name}</h1>
+              <p className="text-sm text-muted-foreground">
+                Slug <span className="font-mono">{deal.slug}</span> · Base price ₱
+                {(deal.basePriceCents / 100).toFixed(2)} · {deal.isActive ? 'Active' : 'Inactive'}
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  New base price (₱)
+                  <Input
+                    inputMode="decimal"
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    placeholder={(deal.basePriceCents / 100).toFixed(2)}
+                  />
+                </label>
+                <Button disabled={!priceValid} onClick={openPriceConfirm}>
+                  Change price
+                </Button>
               </div>
             </section>
 
-            <JunctionChipEditor
-              heading="Products"
-              items={(productsQuery.data ?? []).map((p) => ({ id: p.id, label: p.name }))}
-              attachedIds={deal.productIds}
-              onAttach={(id) => attachProduct.mutate(id)}
-              onDetach={(id) => detachProduct.mutate(id)}
-              attaching={attachProduct.isPending}
-              detaching={detachProduct.isPending}
-              error={productError}
-              emptyLabel="No products attached — this deal applies to all products."
-            />
-
-            <JunctionChipEditor
-              heading="Branches"
-              items={(branchesQuery.data ?? []).map((b) => ({ id: b.id, label: b.name }))}
-              attachedIds={deal.branchIds}
-              onAttach={(id) => attachBranch.mutate(id)}
-              onDetach={(id) => detachBranch.mutate(id)}
-              attaching={attachBranch.isPending}
-              detaching={detachBranch.isPending}
-              error={branchError}
-              emptyLabel="No branches attached — this deal is branch-agnostic."
-            />
+            <DealComponentEditor dealId={dealId} components={deal.components} />
           </>
         ) : null}
       </QueryStates>
 
-      <DeactivateDealDialog
-        deal={confirmOpen ? (deal ?? null) : null}
-        policy={policy}
-        onPolicyChange={setPolicy}
-        pending={deactivateMutation.isPending}
-        error={deactivateMutation.error instanceof Error ? deactivateMutation.error.message : null}
-        onConfirm={handleDeactivateConfirm}
-        onOpenChange={(open) => {
-          if (!open) setConfirmOpen(false);
-        }}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Change base price"
+        description={
+          deal && priceValid
+            ? `Change “${deal.name}” base price from ₱${(deal.basePriceCents / 100).toFixed(
+                2,
+              )} to ₱${Number(priceInput).toFixed(2)}? Existing orders keep their original prices — only new orders use the new price.`
+            : ''
+        }
+        confirmLabel="Change price"
+        pendingLabel="Saving…"
+        destructive={false}
+        pending={updateMutation.isPending}
+        error={updateMutation.error instanceof Error ? updateMutation.error.message : null}
+        onOpenChange={setConfirmOpen}
+        onConfirm={handlePriceConfirm}
       />
     </main>
   );
