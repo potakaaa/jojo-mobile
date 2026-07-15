@@ -115,7 +115,9 @@ describe('RewardsScreen', () => {
     const confirm = buttons.find((b) => b.text === 'Redeem');
     confirm?.onPress?.();
 
-    expect(mutateSpy).toHaveBeenCalledWith('r1');
+    // Called with the reward id plus an onError handler (surfaces a friendly
+    // Alert on redeem failure — e.g. 409 insufficient stars or a race).
+    expect(mutateSpy).toHaveBeenCalledWith('r1', { onError: expect.any(Function) });
   });
 
   test('shows a loading state while the balance query is pending', async () => {
