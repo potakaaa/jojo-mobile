@@ -51,6 +51,8 @@ export interface ApiBranch {
   openingHours: string;
   estimatedPrepMinutes: number;
   isAcceptingPickup: boolean;
+  /** Display sort weight (ascending) for the no-location branch list order. */
+  priority: number;
   /** Great-circle distance in km from a query point, when lat/lng were supplied. */
   distanceKm?: number;
 }
@@ -259,6 +261,7 @@ export function serializeBranch(branch: BranchRow, distanceKm?: number): ApiBran
     openingHours: branch.opening_hours,
     estimatedPrepMinutes: branch.estimated_prep_minutes,
     isAcceptingPickup: branch.is_accepting_pickup,
+    priority: branch.priority,
     ...(distanceKm === undefined ? {} : { distanceKm }),
   };
 }

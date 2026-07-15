@@ -275,7 +275,14 @@ Known shared-surface notes for the orchestrator to resolve:
 | 03 — Home Tab Rewire | ✅ VERIFIED |
 | 04 — Rewards Tab + Coupon Wallet UI | ✅ VERIFIED |
 | 05 — Account / Profile Screen | ✅ VERIFIED |
-| 06 — Cross-Tab UX Polish | ⏳ PLANNED |
+| 06 — Cross-Tab UX Polish | ✅ VERIFIED |
+
+**PROGRAM COMPLETE (15-07-26): all 6 phases ✅ VERIFIED.** Program Goal Charter definition-of-done
+items 1-6 all delivered: real stars accrual + rewards balance/redeem, real coupon wallet + redeem,
+real Home tab (no mock-home.ts in render path), real Account profile view/edit, and consistent
+friendly loading/empty/error states across all tabs (Phase 6 closed the last gap — Branches
+react-query migration + dev-link cleanup + pay-at-branch copy + a11y pass). Payment stayed
+pay-at-branch only throughout (no processor added, `payment_status` never left `unpaid`).
 
 Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧 BLOCKED | ✅ COMPLETE
 
@@ -367,9 +374,19 @@ Mobile-screen UX (Home/Rewards/Wallet/Account render + redeem round-trip) is Age
 
 ## Current Execution State
 
-Last updated: 15-07-26 (Phase 5 closeout)
-Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED), Phase 3 (Home Tab Rewire — ✅ VERIFIED), Phase 4 (Rewards Tab + Coupon Wallet UI — ✅ VERIFIED), Phase 5 (Account / Profile Screen — ✅ VERIFIED)
-Phase 5 status: ✅ VERIFIED
+Last updated: 15-07-26 (Phase 6 closeout — PROGRAM COMPLETE)
+Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED), Phase 3 (Home Tab Rewire — ✅ VERIFIED), Phase 4 (Rewards Tab + Coupon Wallet UI — ✅ VERIFIED), Phase 5 (Account / Profile Screen — ✅ VERIFIED), Phase 6 (Cross-Tab UX Polish — ✅ VERIFIED)
+Phase 6 status: ✅ VERIFIED
+Phase 6 EVL: PASS — confirmed independently: mobile vitest 44/44 + jest 23/23 (19 baseline + 4 new branches tests) green; api 189/189 green (orders.test.ts 41/41 order-flow regression guard, branches.test.ts 7/7 proving the B1a `priority` passthrough didn't break anything); mobile typecheck/lint/format:check all green; 0 `"Dev:"` nav-link occurrences remain in `(tabs)`. C3 (optional checkout jest test) skipped honestly — non-blocking, reanimated-mock gap recorded in Test Infra Gaps Found.
+Phase 6 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-06-ux-polish_REPORT_14-07-26.md`
+Phase 6 known state (not a blocker): C3 optional checkout jest regression test deferred — shared `test-utils/jest-setup.ts` reanimated mock lacks layout-animation exports (`FadeIn`/`FadeOut`/`SlideInDown`/`SlideOutDown`/`Easing`/`cancelAnimation`) needed to render checkout under jest; extending that mock is a cross-cutting test-infra change out of this bounded phase's scope. Recommended backlog item, not a program blocker — `orders.test.ts` remains the hard order-flow regression gate.
+
+**PROGRAM STATUS: COMPLETE.** All 6 phases ✅ VERIFIED. See Program Status Table above for the
+program-completion summary. Next action for this feature line: none required — future adjacent work
+(e.g. extending the reanimated jest mock, adding a native-restart persistence harness, notifications
+backend) belongs in new, separate feature/plan folders, not a reopened phase of this program.
+
+Phase 5 status: ✅ VERIFIED (unchanged this pass)
 Phase 5 EVL: PASS — all gates confirmed independently: mobile typecheck clean, mobile test vitest 44/44 + jest 19/19 (5 suites), ui regression 47/47, lint clean, format:check clean, role-scope grep clean (no `role` field anywhere in `edit-profile.tsx`); jest suite content confirmed to assert real render/interaction behavior including explicit assertion that Save calls `updateProfile` with EXACTLY `{name,birthday,address}` — no `role`, no `onboardedAt` — not smoke-only placeholders
 Phase 5 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-05-account-profile_REPORT_14-07-26.md`
 Phase 5 known state (not a blocker): AC7 (native-restart persistence round-trip) is Agent-Probe/Known-Gap, irreducible — no process-restart harness exists project-wide (same standing gap noted by every prior UI phase). No follow-up plan stub created — this is a project-wide infra gap already tracked, not a Phase-5-specific miss.
@@ -386,12 +403,12 @@ Phase 2 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order
 Phase 1 status: ✅ VERIFIED (unchanged this pass)
 Phase 1 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-01-rewards-backend_REPORT_14-07-26.md`
 Phase 1 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-01-rewards-backend/` (`mustStopBeforeFinalize:false`, `humanApprovalRequired:true` — carried forward)
-Current phase: Phase 6 — Cross-Tab UX Polish
-Current loop step: 1a-research (not started)
-Validate-contract status: pending
-Program Net Gate: PENDING
-Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 5 Learnings below)
-Outstanding non-blocking item (carried, unresolved this pass — inter-phase bookkeeping scope only): Phase 2/3/4/5's execution changes remain UNCOMMITTED as of this pass — orchestrator should invoke `vc-git-manager` for the Phase 2/3/4/5 execution commit(s) before or alongside process-artifact commits, per the umbrella's "commit each phase before advancing" global constraint. `apps/mobile/src/features/auth/hooks/use-auth.ts` is now MODIFIED BY Phase 5 itself (additive `updateProfile`) — the prior note flagging it as "unrelated to this program" is SUPERSEDED; it is now correctly part of Phase 5's blast radius and should be included in the Phase 5 execution commit.
+Current phase: Phase 6 — Cross-Tab UX Polish (COMPLETE — program's final phase)
+Current loop step: 7-update-process (complete)
+Validate-contract status: CONDITIONAL (written 15-07-26; 1 concern — B1a priority-field regression — resolved via direct plan fix; see Phase 6 plan's `## Validate Contract`)
+Program Net Gate: PASS — all 6 phases ✅ VERIFIED, program complete
+Latest validator run: 15-07-26 (this UPDATE PROCESS pass) — `validate-context-discovery.mjs` + `validate-plan-inventory.mjs` run post-context-edit and post-archival; results in the Phase 6 UPDATE PROCESS report
+Outstanding non-blocking item (carried forward, orchestrator-owned — NOT resolved by this UPDATE PROCESS pass, commit intentionally deferred to orchestrator per task instruction): Phase 1-6's execution changes (commits 04effb1/f9dc60e/7dae7f2/3e9d246/be7e6d2 plus Phase 6's still-uncommitted working-tree diff) need a final execution commit + PR before this program can be considered fully closed out at the repo level. `apps/mobile/src/features/auth/hooks/use-auth.ts` was modified by Phase 5 (additive `updateProfile`) — part of Phase 5's blast radius, not unrelated.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE, PLAN-SUPPLEMENT, or PVL.

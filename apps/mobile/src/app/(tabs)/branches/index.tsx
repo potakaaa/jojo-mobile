@@ -3,8 +3,9 @@ import type { PickupBranch } from '@jojopotato/types';
 import { BranchListItem, Button, Input, Palette, Radii, Shadows } from '@jojopotato/ui';
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,12 +19,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
-import { ApiBranch, mapApiBranch } from '@/features/branches/api';
 import { BranchMap, type BranchMapHandle } from '@/features/branches/components/branch-map';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
-import { apiFetch } from '@/lib/api-fetch';
+import { getBranches } from '@/lib/api-client';
 
 /**
  * Branch Locator (Branches tab root). Fetches active branches, shows open/closed
@@ -42,46 +42,27 @@ export default function BranchLocatorScreen() {
   const insets = useSafeAreaInsets();
   const { coords, status: locationStatus } = useUserLocation();
 
-  const [branches, setBranches] = useState<PickupBranch[]>([]);
   const [query, setQuery] = useState('');
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+
+  // Branch list via react-query (matches the rest of the app's data layer). Uses
+  // the canonical, UNFILTERED `/branches` endpoint directly — NOT `useBranch()`'s
+  // exposed list, which is pre-filtered to open branches and would silently drop
+  // closed/pickup-unavailable branches this screen must still show (with a badge).
+  const {
+    data: branches = [],
+    isPending,
+    isError: fetchError,
+    refetch,
+  } = useQuery({ queryKey: ['branches', 'all'], queryFn: getBranches });
 
   // Native-only imperative handles: the map camera and the bottom sheet. Unused
   // on web (the web branch renders neither the map nor the sheet).
   const mapRef = useRef<BranchMapHandle>(null);
   const sheetRef = useRef<BottomSheet>(null);
 
-  // Bumped by the Retry button to re-run the fetch effect below.
-  const [reloadToken, setReloadToken] = useState(0);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const data = await apiFetch<{ branches: ApiBranch[] }>('/api/branches');
-        if (!mounted) return;
-        setBranches(data.branches.map(mapApiBranch));
-        setFetchError(false);
-      } catch {
-        if (!mounted) return;
-        setFetchError(true);
-      } finally {
-        if (mounted) setIsFetching(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [reloadToken]);
-
-  // Retry from the error state: reset to the loading state, then re-run the fetch
-  // effect by bumping the token. Runs from a button press (event handler), so the
-  // synchronous setState is fine here.
+  // Retry from the error state: re-run the branches query.
   const onRetry = () => {
-    setIsFetching(true);
-    setFetchError(false);
-    setReloadToken((t) => t + 1);
+    void refetch();
   };
 
   const showDistance = locationStatus === 'granted' && coords !== null;
@@ -124,7 +105,7 @@ export default function BranchLocatorScreen() {
     return nearest?.id ?? null;
   }, [showDistance, filteredBranches]);
 
-  const isLoading = isFetching || locationStatus === 'loading';
+  const isLoading = isPending || locationStatus === 'loading';
 
   const onOrderPress = (id: string) => {
     router.push({
@@ -179,7 +160,7 @@ export default function BranchLocatorScreen() {
 
           {isLoading ? (
             <View style={styles.centered}>
-              <ActivityIndicator color={theme.accent} />
+              <ActivityIndicator testID="branches-loading" color={theme.accent} />
             </View>
           ) : fetchError ? (
             <View style={styles.centered}>
@@ -278,7 +259,7 @@ export default function BranchLocatorScreen() {
 
         {isLoading ? (
           <View style={styles.sheetCentered}>
-            <ActivityIndicator color={theme.accent} />
+            <ActivityIndicator testID="branches-loading" color={theme.accent} />
           </View>
         ) : fetchError ? (
           <View style={styles.sheetCentered}>

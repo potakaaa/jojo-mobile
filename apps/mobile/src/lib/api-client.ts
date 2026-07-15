@@ -71,6 +71,8 @@ interface BranchResponse {
   openingHours: string;
   estimatedPrepMinutes: number;
   isAcceptingPickup: boolean;
+  /** Display sort weight (ascending) for the no-location branch list order. */
+  priority: number;
   distanceKm?: number;
 }
 

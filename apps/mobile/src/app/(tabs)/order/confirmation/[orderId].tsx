@@ -107,6 +107,10 @@ export default function OrderConfirmationScreen() {
             <Row label="Payment" value={PAYMENT_METHOD_LABELS[order.paymentMethod]} theme={theme} />
           </View>
 
+          <Text style={[styles.payNote, { color: theme.textSecondary }]}>
+            Pay when you pick up — settle your order in cash or card at the branch counter.
+          </Text>
+
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.text }]}>Items</Text>
             {order.items.map((item) => (
@@ -245,6 +249,11 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.bodySmall,
+  },
+  payNote: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    textAlign: 'center',
   },
   section: {
     gap: Spacing.two,
