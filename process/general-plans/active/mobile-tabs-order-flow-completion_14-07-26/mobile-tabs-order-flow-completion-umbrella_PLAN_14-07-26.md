@@ -273,7 +273,7 @@ Known shared-surface notes for the orchestrator to resolve:
 | 01 — Rewards/Stars Backend + Type Reconcile | ✅ VERIFIED |
 | 02 — Coupons Backend | ✅ VERIFIED |
 | 03 — Home Tab Rewire | ✅ VERIFIED |
-| 04 — Rewards Tab + Coupon Wallet UI | ⏳ PLANNED |
+| 04 — Rewards Tab + Coupon Wallet UI | ✅ VERIFIED |
 | 05 — Account / Profile Screen | ⏳ PLANNED |
 | 06 — Cross-Tab UX Polish | ⏳ PLANNED |
 
@@ -367,10 +367,13 @@ Mobile-screen UX (Home/Rewards/Wallet/Account render + redeem round-trip) is Age
 
 ## Current Execution State
 
-Last updated: 15-07-26 (Phase 3 closeout)
-Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED), Phase 3 (Home Tab Rewire — ✅ VERIFIED)
-Phase 3 status: ✅ VERIFIED
-Phase 3 EVL: PASS — all mobile gates green independently: typecheck clean, lint clean (7/7 tasks; 3 pre-existing unrelated `dev-with-tunnel.mjs` warnings, not Phase 3 regressions), `apps/mobile` test 22/22 (incl. new `menu-to-home-view.test.ts` adapter 9/9), `format:check` clean, mock-home production-import grep clean (scope: `apps/mobile/src/app` + `features/home/components`), dead-file (`rewards-teaser-card.tsx`) deletion confirmed
+Last updated: 15-07-26 (Phase 4 closeout)
+Completed phases: Phase 0 (Planning), Phase 1 (Rewards/Stars Backend + Type Reconcile — ✅ VERIFIED), Phase 2 (Coupons Backend — ✅ VERIFIED), Phase 3 (Home Tab Rewire — ✅ VERIFIED), Phase 4 (Rewards Tab + Coupon Wallet UI — ✅ VERIFIED)
+Phase 4 status: ✅ VERIFIED
+Phase 4 EVL: PASS — all gates confirmed independently: mobile typecheck clean, mobile test vitest 32/32 + jest 12/12 (3 suites), ui regression 47/47, root lint 0 errors (3 pre-existing unrelated `dev-with-tunnel.mjs` warnings, not Phase 4 regressions), format:check clean; jest suite content confirmed to assert real render/interaction behavior (not smoke-only placeholders)
+Phase 4 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-04-rewards-coupon-ui_REPORT_14-07-26.md`
+Phase 4 test-infra milestone (durable, read before Phase 5/6 RESEARCH): `apps/mobile` now has its FIRST RN component test runner (jest-expo). `test` script = `vitest run --passWithNoTests && jest` (vitest owns `*.test.ts`, jest owns `*.test.tsx`). Reusable helpers: `apps/mobile/src/test-utils/render.tsx` (ASYNC `renderWithProviders()` — must be awaited) and `apps/mobile/src/test-utils/jest-setup.ts` (hand-rolled reanimated mock — the official `/mock` crashes on this repo's reanimated 4.5.0/worklets pin; global `expo-router` stub; global `@/features/auth/lib/auth-client` mock — required because `api-client.ts` imports pull in `@better-auth` ESM jest cannot transform). `SafeAreaProvider` needs fixed `initialMetrics` (`TEST_SAFE_AREA_METRICS`) to render in jest. Per the user's standing mandate, Phase 5 (Account/profile) and Phase 6 (UX polish) MUST reuse these helpers and write real jest component tests for their screens — Agent-Probe-only deferral is not acceptable where a screen can be mechanically covered by this runner.
+Phase 3 status: ✅ VERIFIED (unchanged this pass)
 Phase 3 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-03-home-rewire_REPORT_14-07-26.md`
 Phase 3 known state (not a blocker): `apps/mobile/src/features/home/mock-home.ts` was NOT fully deleted from disk — it is demoted to showcase-only (still imported transitively by `features/cart/mock-cart.ts`, the `component-showcase.tsx` demo seed), removed from the production render path only. This matches the plan's C1 explicit exclusion of `mock-cart.ts`, not a deviation from plan intent — recorded here as a durable known state for any future full-cleanup pass.
 Phase 3 Agent-Probe owed (Known-Gap, non-blocking): on-device Home render + friendliness walkthrough (branch/menu/deals/rewards render from live data; loading/empty/error+retry across all 4 queries; branch↔cart sync; navigation) — no RN runner exists (project-wide gap), never claimed as automated coverage.
@@ -380,17 +383,72 @@ Phase 2 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order
 Phase 1 status: ✅ VERIFIED (unchanged this pass)
 Phase 1 report: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-01-rewards-backend_REPORT_14-07-26.md`
 Phase 1 high-risk evidence pack: `process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/harness/phase-01-rewards-backend/` (`mustStopBeforeFinalize:false`, `humanApprovalRequired:true` — carried forward)
-Current phase: Phase 4 — Rewards Tab + Coupon Wallet UI
-Current loop step: RESEARCH (not started)
+Current phase: Phase 5 — Account / Profile Screen
+Current loop step: 1a-research (not started)
 Validate-contract status: pending
 Program Net Gate: PENDING
-Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 3 Learnings below)
-Outstanding non-blocking item (carried, unresolved this pass — inter-phase bookkeeping scope only): Phase 2's execution changes remain UNCOMMITTED as of this pass — orchestrator should invoke `vc-git-manager` for the Phase 2 (and now Phase 3) execution commit(s) before or alongside process-artifact commits, per the umbrella's "commit each phase before advancing" global constraint. `apps/mobile/src/features/auth/hooks/use-auth.ts` remains modified in the working tree and is UNRELATED to this program — do not fold it into any program execution commit; flag to orchestrator separately.
+Latest validator run: 15-07-26 — none run this pass (no harness/agent/skill files touched by this UPDATE PROCESS session; only plan-file bookkeeping edits — see Phase 4 Learnings below)
+Outstanding non-blocking item (carried, unresolved this pass — inter-phase bookkeeping scope only): Phase 2/3/4's execution changes remain UNCOMMITTED as of this pass — orchestrator should invoke `vc-git-manager` for the Phase 2/3/4 execution commit(s) before or alongside process-artifact commits, per the umbrella's "commit each phase before advancing" global constraint. `apps/mobile/src/features/auth/hooks/use-auth.ts` remains modified in the working tree and is UNRELATED to this program — do not fold it into any program execution commit; flag to orchestrator separately.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE, PLAN-SUPPLEMENT, or PVL.
 
 Note: The Stable Program Goal above is fixed. This section is the only part that changes — update-process-agent rewrites it after every phase closeout (overwrite, not append).
+
+---
+
+## Phase 4 Learnings for Downstream Phases
+
+Captured at Phase 4's UPDATE PROCESS closeout (15-07-26). Read this before starting Phase 5
+(Account/Profile) or Phase 6 (UX Polish) RESEARCH — Phase 4 established `apps/mobile`'s first RN
+component test runner, and per the user's standing mandate, Phase 5 and Phase 6 MUST reuse it.
+
+1. **`apps/mobile` now has a real RN component test runner (jest-expo) — this is the biggest
+   durable change from Phase 4.** `apps/mobile/package.json`'s `test` script is now
+   `vitest run --passWithNoTests && jest` — vitest owns pure-TS `*.test.ts` files, jest owns
+   component `*.test.tsx` files. Both run sequentially under `pnpm --filter @jojopotato/mobile test`.
+   `apps/mobile/jest.config.js` mirrors `packages/ui`'s existing jest-expo setup (same pinned dep
+   versions, same pnpm-aware `transformIgnorePatterns`).
+2. **Reuse `apps/mobile/src/test-utils/render.tsx` and `apps/mobile/src/test-utils/jest-setup.ts`
+   verbatim — do not re-derive.** `render.tsx` exports an ASYNC `renderWithProviders()` (must be
+   `await`ed — RTL render is wrapped to flush the QueryClientProvider tree) plus `spyOnAlert()`.
+   `jest-setup.ts` carries 3 empirically-proven gotcha fixes:
+   (a) a hand-rolled `react-native-reanimated` mock — the official `/mock` export crashes on this
+   repo's reanimated 4.5.0 + worklets 0.10.0 pin;
+   (b) a `SafeAreaProvider` `initialMetrics` fixture (`TEST_SAFE_AREA_METRICS`) — without fixed
+   metrics the provider does not resolve synchronously in jest;
+   (c) a global `expo-router` stub AND a global `jest.mock('@/features/auth/lib/auth-client')` —
+   the auth-client mock is REQUIRED whenever a screen (even transitively) imports
+   `@/lib/api-client`, because that module pulls in `@better-auth/*` ESM that jest cannot transform.
+   Any screen touching `api-client.ts` (directly or via a hook) needs this mock already active —
+   it's global in `jest-setup.ts`, so new test files get it for free.
+3. **Per the user's standing mandate: Phase 5 (Account/profile) and Phase 6 (UX polish) MUST write
+   real jest component tests for their screens, not Agent-Probe deferrals.** Phase 4 proved this is
+   mechanically tractable (AC1/AC2 moved from Agent-Probe to Fully-Automated) — treat that as the
+   now-expected bar, not an optional stretch goal. Agent-Probe should be narrowed to ONLY
+   real-device gesture/navigation-stack confirmation that no runner can substitute for.
+4. **Session-authed mobile fetches use the `authedJson` helper (`apps/mobile/src/lib/api-client.ts`),
+   which attaches `Cookie: authClient.getCookie()` and throws a typed `ApiError` (carries HTTP
+   status) on non-2xx.** `getRewardsBalance`, `getRewardsCatalog`, `redeemReward`, `getCoupons`,
+   `redeemCoupon` all use it. Phase 5's Account/profile fetch (if it adds a new authed GET) should
+   reuse `authedJson` rather than hand-rolling another cookie-attachment fetch wrapper.
+5. **Pure adapter/eligibility logic pattern reconfirmed:** `features/coupons/lib/to-coupon-display.ts`
+   (API shape → `CouponDisplay` UI shape) and `features/rewards/lib/redeem-eligibility.ts`
+   (affordability check) are both pure functions with dedicated vitest unit suites — the same
+   extract-to-pure-function-plus-unit-test pattern Phase 3 established with
+   `menu-to-home-view.ts`. Phase 5/6 should follow this for any non-trivial reshape/eligibility logic
+   inside a screen.
+6. **Process observation (non-blocking):** Phase 2/3/4's execution changes remain uncommitted at
+   this UPDATE PROCESS closeout (see Current Execution State's "Outstanding non-blocking item"
+   above) — the orchestrator, not this agent, owns invoking `vc-git-manager`. Flagging so Phase 5's
+   RESEARCH does not assume a clean working tree.
+7. **Recommended (not required) context delta, still deferred to program-end UPDATE PROCESS:**
+   `process/context/all-context.md` should eventually gain (a) a bullet for the full
+   rewards+coupons+Home-rewire+Rewards-UI delivery once the program ships, and (b) a note in the
+   Technology Stack / Testing section that `apps/mobile` now has jest-expo alongside vitest (the
+   FIRST RN component-test-runner precedent in this repo, mirroring `packages/ui`'s jest-expo setup
+   and `apps/admin`'s earlier vitest+RTL precedent). Not written this pass by explicit task
+   instruction (program-end task) — recommendation captured here so it isn't lost.
 
 ---
 
