@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fetch/supertest JSON
    bodies are loosely typed at the test boundary; assertions narrow them. */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -196,6 +196,10 @@ afterAll(async () => {
     await db.delete(schema.orderItems).where(inArray(schema.orderItems.order_id, createdOrderIds));
     await db.delete(schema.orders).where(inArray(schema.orders.id, createdOrderIds));
   }
+  // PUSH-004: notifyCustomer now writes real notification rows referencing the
+  // customer — delete them before the user (notifications_user_id_users_id_fk).
+  await db.delete(schema.notifications).where(eq(schema.notifications.user_id, customerId));
+  await db.delete(schema.deviceTokens).where(eq(schema.deviceTokens.user_id, customerId));
   // Detach all staff from both branches before deleting (users.assignedBranchId FK).
   const { inArray: inArrayCleanup } = await import('drizzle-orm');
   await db
@@ -431,5 +435,126 @@ describe('PATCH /api/staff/orders/:orderId — AC-6 ETA on accept', () => {
     const TOLERANCE_MS = 5_000;
     expect(eta).toBeGreaterThanOrEqual(expectedEta - TOLERANCE_MS);
     expect(eta).toBeLessThanOrEqual(expectedEta + TOLERANCE_MS);
+  });
+});
+
+// ─── AC-2 (PUSH-004): notifyCustomer 4-event coverage ────────────────────────
+//
+// Exactly 4 transitions (accepted/preparing/ready/cancelled) each fire exactly
+// 1 notification row + 1 push-send attempt; completed/rejected/pending fire
+// zero customer pushes. EXPO_ACCESS_TOKEN is unset in the test env, so the push
+// provider takes its log-fallback path — each send attempt emits exactly one
+// `[push] would send` console.log line, which `logSpy` observes.
+
+const EVENT_TO_TYPE = {
+  accepted: 'order_accepted',
+  preparing: 'order_preparing',
+  ready: 'order_ready',
+  cancelled: 'order_cancelled',
+} as const;
+
+/** Count `[push] would send` log lines observed since the last mockClear(). */
+function countPushSends(): number {
+  return logSpy.mock.calls.filter(
+    (call) => typeof call[0] === 'string' && (call[0] as string).includes('[push] would send'),
+  ).length;
+}
+
+async function notificationRowsFor(orderId: string, type: string) {
+  const rows = await db
+    .select()
+    .from(schema.notifications)
+    .where(and(eq(schema.notifications.user_id, customerId), eq(schema.notifications.type, type)));
+  return rows.filter(
+    (row) => (row.target_params as { orderId?: string } | null)?.orderId === orderId,
+  );
+}
+
+describe('PATCH /api/staff/orders/:orderId — AC-2 push notification dispatch', () => {
+  it('each notifiable step (accepted/preparing/ready) fires exactly 1 row + 1 push-send; flavoring fires none', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+
+    // Walk the real state machine: pending→accepted→preparing→flavoring→ready.
+    // `flavoring` is a valid, NON-notifiable intermediate step.
+    const steps = [
+      { status: 'accepted', notifies: true, type: 'order_accepted' },
+      { status: 'preparing', notifies: true, type: 'order_preparing' },
+      { status: 'flavoring', notifies: false },
+      { status: 'ready', notifies: true, type: 'order_ready' },
+    ] as const;
+
+    for (const step of steps) {
+      logSpy.mockClear();
+      const res = await request(app)
+        .patch(`/api/staff/orders/${orderId}`)
+        .set('Cookie', staff1Cookies.join('; '))
+        .send({ status: step.status });
+      expect(res.status).toBe(200);
+
+      if (step.notifies) {
+        // Exactly one push-send attempt + one notification row for this transition.
+        expect(countPushSends()).toBe(1);
+        const rows = await notificationRowsFor(orderId, step.type);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.target_screen).toBe('order_tracking');
+      } else {
+        // flavoring is not one of the 4 transactional events → no push.
+        expect(countPushSends()).toBe(0);
+      }
+    }
+  });
+
+  it('cancelled fires exactly 1 notification row + 1 push-send', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(1);
+    const rows = await notificationRowsFor(orderId, 'order_cancelled');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('completed fires ZERO customer pushes (only creditStarsForOrder)', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'ready' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'completed' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(0);
+    // No notification row of ANY order type carries this order id.
+    for (const type of Object.values(EVENT_TO_TYPE)) {
+      expect(await notificationRowsFor(orderId, type)).toHaveLength(0);
+    }
+  });
+
+  it('rejected fires ZERO customer pushes', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'rejected' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(0);
+    for (const type of Object.values(EVENT_TO_TYPE)) {
+      expect(await notificationRowsFor(orderId, type)).toHaveLength(0);
+    }
+  });
+
+  it('re-PATCHing the same transition is idempotent — no duplicate row/send', async () => {
+    // pending → cancelled once; a second identical PATCH 409s (compare-and-swap)
+    // AND even a direct re-dispatch would dedupe on (type, orderId).
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    const rows = await notificationRowsFor(orderId, 'order_cancelled');
+    expect(rows).toHaveLength(1);
   });
 });

@@ -30,7 +30,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { requestNotificationPermission } from '@/features/notifications/lib/notification-permission';
+import {
+  registerDeviceToken,
+  requestNotificationPermission,
+} from '@/features/notifications/lib/notification-permission';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -104,10 +107,16 @@ export default function CheckoutScreen() {
     if (order) {
       // First-order notification permission seam (fire-and-forget; the seam's
       // own once-guard ensures it only prompts on the first successful order).
-      // Never awaited — it must not delay the confirmation redirect.
-      requestNotificationPermission().catch((err) => {
-        console.error('Failed to request notification permission:', err);
-      });
+      // Never awaited — it must not delay the confirmation redirect. On grant,
+      // register this device's real Expo push token (PUSH-004).
+      requestNotificationPermission()
+        .then((result) => {
+          if (result === 'granted') return registerDeviceToken();
+          return undefined;
+        })
+        .catch((err) => {
+          console.error('Failed to set up notifications:', err);
+        });
       clearCart();
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',

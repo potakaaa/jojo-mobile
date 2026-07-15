@@ -44,6 +44,8 @@ export const authClient = createAuthClient({
         birthday: { type: 'string', input: true },
         address: { type: 'string', input: true },
         onboardedAt: { type: 'date', input: true },
+        // Marketing push opt-in (PUSH-004) — self-owned, mirrors the server.
+        marketingOptIn: { type: 'boolean', input: true },
       },
     }),
   ],

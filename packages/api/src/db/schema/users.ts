@@ -26,6 +26,11 @@ export const users = pgTable('users', {
   birthday: date('birthday'),
   address: varchar('address'),
   onboardedAt: timestamp('onboarded_at'),
+  // Marketing push opt-in (PUSH-004 / #75). Backing column for the better-auth
+  // `marketingOptIn` additionalField (self-owned, input: true — same trust
+  // boundary as birthday/address/onboardedAt). Nullable: a null value is treated
+  // as opted-IN at read-time by the notification dispatcher.
+  marketingOptIn: boolean('marketing_opt_in'),
   favoriteBranchId: uuid('favorite_branch_id').references(() => branches.id),
   // Staff-only: the single branch a staff member is scoped to (STAFF-001). Nullable
   // — customers and unassigned staff have no branch. Separate from

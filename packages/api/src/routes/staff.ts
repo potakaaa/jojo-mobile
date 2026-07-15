@@ -13,6 +13,10 @@ import {
   products,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
+import {
+  dispatchOrderNotification,
+  type OrderNotificationEvent,
+} from './lib/notification-dispatch';
 import { canTransition } from './lib/order-state-machine';
 import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
 
@@ -43,15 +47,19 @@ function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
 }
 
 /**
- * TODO(PUSH-002): dispatch a push notification for the given order event.
- * Replace with real push dispatch once the notifications system is built.
+ * Dispatch a customer push notification for an order transition (PUSH-004 / #75).
+ *
+ * A thin wrapper over `dispatchOrderNotification` — scoped to exactly the 4
+ * transactional events (`accepted`/`preparing`/`ready`/`cancelled`). Awaited at
+ * the call site so the notification row is persisted before the PATCH response
+ * (deterministic in-app list consistency); `dispatchOrderNotification` never
+ * throws, so a push failure can never break the status transition.
  */
-function notifyCustomer(
-  _order: typeof orders.$inferSelect,
-  _event: 'completed' | 'rejected' | 'cancelled',
-): void {
-  void _order;
-  void _event; // TODO(PUSH-002): replace with real push dispatch
+async function notifyCustomer(
+  order: typeof orders.$inferSelect,
+  event: OrderNotificationEvent,
+): Promise<void> {
+  await dispatchOrderNotification(order, event);
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -284,15 +292,20 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
     return;
   }
 
-  // 8. Call side-effect stubs at the correct transition sites.
+  // 8. Call side-effect handlers at the correct transition sites. Customer push
+  //    notifications fire for exactly the 4 transactional events
+  //    (accepted/preparing/ready/cancelled) — NOT completed/rejected (PUSH-004).
   const updatedOrder = { ...order, ...patch } as typeof order;
   if (targetStatus === 'completed') {
     creditStarsForOrder(updatedOrder);
-    notifyCustomer(updatedOrder, 'completed');
-  } else if (targetStatus === 'rejected') {
-    notifyCustomer(updatedOrder, 'rejected');
+  } else if (targetStatus === 'accepted') {
+    await notifyCustomer(updatedOrder, 'accepted');
+  } else if (targetStatus === 'preparing') {
+    await notifyCustomer(updatedOrder, 'preparing');
+  } else if (targetStatus === 'ready') {
+    await notifyCustomer(updatedOrder, 'ready');
   } else if (targetStatus === 'cancelled') {
-    notifyCustomer(updatedOrder, 'cancelled');
+    await notifyCustomer(updatedOrder, 'cancelled');
   }
 
   // 9. Re-select the updated order for the response.

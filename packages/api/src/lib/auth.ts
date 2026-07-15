@@ -85,6 +85,12 @@ export const auth = betterAuth({
       birthday: { type: 'string', required: false, input: true }, // 'YYYY-MM-DD'
       address: { type: 'string', required: false, input: true },
       onboardedAt: { type: 'date', required: false, input: true },
+      // Marketing push opt-in (PUSH-004 / #75). Self-owned like the profile
+      // fields above (input: true) — a client may flip its OWN flag via
+      // `updateUser`; never a privilege surface. Gates all 5 marketing
+      // notification types (never the 4 transactional types). A null value is
+      // treated as opted-IN at read-time (see notification-dispatch default).
+      marketingOptIn: { type: 'boolean', required: false, input: true },
     },
   },
   trustedOrigins: [

@@ -14,9 +14,11 @@ import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
+import { requireSession } from './middleware/require-session';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { dealsRouter } from './routes/deals';
+import { notificationsRouter } from './routes/notifications';
 import { ordersRouter } from './routes/orders';
 import staffRouter from './routes/staff';
 
@@ -200,6 +202,9 @@ app.get('/api/branches/:id', async (req, res) => {
 app.use('/branches', branchesRouter);
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
+// Customer notifications (PUSH-004) — session-gated at mount, same posture as
+// /orders. Isolated single-line insertion (merge-conflict minimization).
+app.use('/notifications', requireSession, notificationsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

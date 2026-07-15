@@ -1,15 +1,22 @@
 /**
- * First-order notification-permission seam — LOCAL STUB (plan A2).
+ * Notification permission + device-token registration (PUSH-004 / #75).
  *
- * This deliberately does NOT add `expo-notifications` and does NOT register a
- * push token: it returns a mock permission result and guards a fire-once flag so
- * the prompt only "fires" on the customer's first successful order and never
- * re-prompts within a session. #75 (PUSH-004) swaps the body for the real
- * `expo-notifications` permission call — see TODO below.
+ * `requestNotificationPermission` now calls the real `expo-notifications`
+ * `requestPermissionsAsync()` in a production build; in Expo dev and in the
+ * node vitest env it returns a SIMULATED result (`devMockResult`) so the
+ * fire-once + decline walkthroughs are exercisable without a real OS dialog and
+ * so the pure-TS test suite can import this module without loading native code.
+ *
+ * `registerDeviceToken` is a SEPARATE, net-new call site: it fetches the real
+ * Expo push token and upserts it to `POST /notifications/device-tokens` keyed by
+ * a stable per-device id. All native/auth imports inside it are DYNAMIC so the
+ * module top-level stays free of React Native / better-auth imports (node vitest
+ * imports this file transitively via `notification-factory.test.ts`).
  *
  * The once-flag is session-scoped (module-level in-memory): it resets on a full
- * reload. Real cross-launch persistence is #75's job (documented Known Gap).
+ * reload. Real cross-launch persistence is a documented Known Gap.
  */
+import type { DeviceTokenRegistration } from '@jojopotato/types';
 
 export type PermissionResult = 'granted' | 'denied' | 'undetermined';
 
@@ -38,14 +45,85 @@ export function __resetPermissionSeam(mock: PermissionResult = 'granted'): void 
 }
 
 /**
- * Request notification permission (STUB). Fires at most once per session; every
- * call after the first returns 'undetermined' without re-prompting. Never throws
- * — decline/undetermined are normal returns, so no caller flow can be blocked.
+ * True in Expo dev and in the node test env (no real OS dialog is available).
+ * Production builds (`__DEV__ === false`) take the real `expo-notifications` path.
+ */
+function useSimulatedPermission(): boolean {
+  return typeof __DEV__ === 'undefined' || __DEV__ === true;
+}
+
+/**
+ * Request notification permission. Fires at most once per session; every call
+ * after the first returns 'undetermined' without re-prompting. Never throws —
+ * decline/undetermined are normal returns, so no caller flow can be blocked.
  */
 export async function requestNotificationPermission(): Promise<PermissionResult> {
   if (!shouldPromptPermission(alreadyAsked)) return 'undetermined';
   alreadyAsked = true;
-  // TODO(#75): replace with `expo-notifications` requestPermissionsAsync()
-  // (permission only — token registration stays out of scope).
-  return devMockResult;
+
+  // Dev / test: simulate (no real OS dialog).
+  if (useSimulatedPermission()) return devMockResult;
+
+  try {
+    const Notifications = await import('expo-notifications');
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status === 'granted') return 'granted';
+    if (status === 'denied') return 'denied';
+    return 'undetermined';
+  } catch {
+    return 'undetermined';
+  }
+}
+
+/**
+ * Register (or refresh) this device's Expo push token with the backend. Best
+ * effort — never throws; a failure just leaves the device unregistered. Safe to
+ * call after `requestNotificationPermission()` returns 'granted'.
+ *
+ * All imports are DYNAMIC so the module top-level stays node-loadable for the
+ * pure-TS vitest suite (this function is never invoked during tests). Runtime
+ * behavior (real token + POST) is covered by the AC-7 Agent-Probe walkthrough.
+ */
+export async function registerDeviceToken(): Promise<void> {
+  try {
+    const [Notifications, Application, ReactNative, ConstantsModule, ApiRequestModule] =
+      await Promise.all([
+        import('expo-notifications'),
+        import('expo-application'),
+        import('react-native'),
+        import('expo-constants'),
+        import('@/features/shared/lib/api-request'),
+      ]);
+
+    const { Platform } = ReactNative;
+    const projectId = ConstantsModule.default?.expoConfig?.extra?.eas?.projectId as
+      string | undefined;
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined,
+    );
+    const pushToken = tokenResponse.data;
+
+    // Stable per-device identifier: iOS identifierForVendor / Android SSAID. The
+    // server's `device_id` column accepts any string, so this is a call-site
+    // detail only (the (user_id, device_id) upsert key stays independent of the
+    // rotating push token).
+    const deviceId =
+      Platform.OS === 'ios'
+        ? ((await Application.getIosIdForVendorAsync()) ?? 'ios-unknown')
+        : Application.getAndroidId();
+
+    const registration: DeviceTokenRegistration = {
+      deviceId,
+      pushToken,
+      platform: Platform.OS,
+    };
+
+    await ApiRequestModule.apiRequest('/notifications/device-tokens', {
+      method: 'POST',
+      body: registration,
+    });
+  } catch (err) {
+    console.warn('[push] device token registration failed', err);
+  }
 }

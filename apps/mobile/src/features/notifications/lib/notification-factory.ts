@@ -16,6 +16,13 @@ import {
   type OrderStatus,
 } from '@jojopotato/types';
 
+/**
+ * Documented default: marketing opt-in is ON. Lives in this PURE module (not the
+ * `useNotifications` hook) so it stays importable by the node-env vitest suite
+ * without pulling in the React/auth/native module graph.
+ */
+export const DEFAULT_MARKETING_OPT_IN = true;
+
 /** Only these 4 order statuses produce a transactional notification. */
 const STATUS_TO_ORDER_TYPE: Partial<Record<OrderStatus, OrderNotificationType>> = {
   accepted: 'order_accepted',

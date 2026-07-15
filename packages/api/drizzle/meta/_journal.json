@@ -50,6 +50,13 @@
       "when": 1784001558019,
       "tag": "0006_legal_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784017078705,
+      "tag": "0007_wet_ser_duncan",
+      "breakpoints": true
     }
   ]
 }

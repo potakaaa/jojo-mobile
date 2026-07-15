@@ -82,6 +82,7 @@ const config: ExpoConfig = {
         locationPermission: 'Jojo Potato uses your location to show you the nearest branches.',
       },
     ],
+    'expo-notifications',
   ],
   experiments: {
     typedRoutes: true,

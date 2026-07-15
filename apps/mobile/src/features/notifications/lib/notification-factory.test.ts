@@ -9,6 +9,7 @@ import {
 import { describe, expect, test } from 'vitest';
 
 import {
+  DEFAULT_MARKETING_OPT_IN,
   buildMarketingNotifications,
   buildOrderNotification,
   filterMarketingByOptIn,
@@ -95,8 +96,7 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
 });
 
 // AC#3 — documented default + filter.
-test('should return the documented default for marketingOptIn and filter marketing when off', async () => {
-  const { DEFAULT_MARKETING_OPT_IN } = await import('../hooks/use-notifications');
+test('should return the documented default for marketingOptIn and filter marketing when off', () => {
   expect(DEFAULT_MARKETING_OPT_IN).toBe(true);
 
   const mixed = [
