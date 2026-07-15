@@ -1,21 +1,41 @@
-import { Badge, BranchCard, Button, Card, Palette, RewardProgressCard } from '@jojopotato/ui';
-import { router } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
 import type { Order, OrderStatus } from '@jojopotato/types';
+import {
+  Badge,
+  BranchCard,
+  DealCard,
+  EmptyState,
+  RewardProgressCard,
+  StarProgressBar,
+} from '@jojopotato/ui';
+import { useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
+import { useEffect, useMemo } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { Colors, FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { fetchOrderHistory } from '@/features/orders/lib/api-client';
-import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
+import { useDeals } from '@/features/deals/hooks/use-deals';
 import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
-import { MOCK_BRANCH, MOCK_CATEGORIES, MOCK_PRODUCTS } from '@/features/home/mock-home';
+import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
+import { useMenu } from '@/features/menu/hooks/use-menu';
+import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
+import { fetchOrderHistory } from '@/features/orders/lib/api-client';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 const BANNER_COPY: Record<OrderStatus, string> = {
@@ -29,6 +49,7 @@ const BANNER_COPY: Record<OrderStatus, string> = {
   rejected: 'Order rejected',
 };
 
+/** Live active-order banner (from feat/live-001-order-tracking) — taps through to tracking. */
 function ActiveOrderBanner({ order, onPress }: { order: Order; onPress: () => void }) {
   const etaTime =
     order.estimatedReadyAt != null
@@ -66,40 +87,79 @@ function ActiveOrderBanner({ order, onPress }: { order: Order; onPress: () => vo
 }
 
 /**
- * Home browse screen. Composes the six `features/home` section components,
- * top to bottom, inside a single `ScrollView`, backed by local mock data.
- * The branch card and product grid are wired into the real order flow.
+ * Home browse screen. Composes the `features/home` section components inside a
+ * single `ScrollView`, backed by REAL data: `useBranch` (selected pickup branch),
+ * `useMenu` (branch menu → flattened via `flattenMenuForHome`), `useDeals` (live
+ * deals strip), and `useRewardsSummary` (star balance). Each data section renders
+ * its own friendly loading / empty / error-with-retry state so a slow or failed
+ * query never blanks the whole screen.
  */
 export default function HomeScreen() {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
-  const { setBranch } = useCart();
-  // Real star count — the teaser must agree with the Rewards tab, not the mock.
-  const { data: rewardsSummary } = useRewardsSummary();
 
-  // Focus-refetch only (no polling) — global refetchOnWindowFocus:true handles re-sync on return.
+  const {
+    selectedBranch,
+    isLoading: branchLoading,
+    isError: branchError,
+    refetch: refetchBranch,
+  } = useBranch();
+  const { setBranch } = useCart();
+  const menuQuery = useMenu();
+  const dealsQuery = useDeals();
+  const rewardsQuery = useRewardsSummary();
+
+  // Focus-refetch only (no polling) — global refetchOnWindowFocus:true re-syncs on return.
   const { data: orders } = useQuery({
     queryKey: ['orders'],
     queryFn: fetchOrderHistory,
   });
-
   // Most-recent non-terminal order (list is newest-first from the API).
   const activeOrder = orders?.find((o) => !isTerminalStatus(o.status)) ?? null;
 
+  const branchId = selectedBranch?.id;
+
+  // Keep the cart's pickup branch in sync with the selected branch. `useDeals`
+  // sources its branch id from `useCart().cart.pickupBranchId` (not `useBranch`),
+  // so without this the Home deals strip would only show branch-agnostic deals
+  // until the user manually opened a branch. `setBranch` is a no-op when the id
+  // is unchanged, so this does not clobber the cart on re-render.
+  useEffect(() => {
+    if (branchId) setBranch(branchId);
+  }, [branchId, setBranch]);
+
+  const menuView = useMemo(
+    () => (menuQuery.data ? flattenMenuForHome(menuQuery.data) : { categories: [], products: [] }),
+    [menuQuery.data],
+  );
+
   const openBranch = () => {
-    setBranch(MOCK_BRANCH.id);
+    if (!branchId) return;
     router.push({
       pathname: '/(tabs)/branches/[branchId]',
-      params: { branchId: MOCK_BRANCH.id },
+      params: { branchId },
     });
   };
 
   const openProduct = (productId: string) => {
+    if (!branchId) return;
     router.push({
       pathname: '/(tabs)/order/product/[productId]',
-      params: { productId, branchId: MOCK_BRANCH.id },
+      params: { productId, branchId },
     });
   };
+
+  const openDeal = (dealId: string) => {
+    router.push({
+      pathname: '/(tabs)/deals/deal/[dealId]',
+      params: { dealId },
+    });
+  };
+
+  const deals = dealsQuery.data ?? [];
+  const menuLoading = branchLoading || (Boolean(branchId) && menuQuery.isPending);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -118,6 +178,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <HomeHeader />
+
           {activeOrder != null && (
             <ActiveOrderBanner
               order={activeOrder}
@@ -129,33 +190,151 @@ export default function HomeScreen() {
               }
             />
           )}
-          <BranchCard branch={MOCK_BRANCH} onPress={openBranch} />
-          <PromoBanner />
-          <RewardProgressCard
-            rewards={{
-              currentStars: rewardsSummary?.currentStars ?? 0,
-              requiredStars: rewardsSummary?.requiredStars ?? 5,
-            }}
-            onPress={() => router.push('/(tabs)/rewards')}
-          />
-          <Card style={styles.dealsCard}>
-            {/* The Card defaults to the light/cream surface, so its text must use
-                the light-mode tokens (not the device-scheme `theme`, which is
-                light-colored in dark mode and vanishes on the cream card). */}
-            <Text style={[styles.dealsHeading, { color: Colors.light.text }]}>Deals & offers</Text>
-            <Text style={[styles.dealsSubtitle, { color: Colors.light.textSecondary }]}>
-              Save on your next order with active deals at your branch.
-            </Text>
-            <Button label="View deals" size="sm" onPress={() => router.push('/(tabs)/deals')} />
-          </Card>
-          <CategorySelector categories={MOCK_CATEGORIES} />
+
+          {/* Selected pickup branch */}
+          {branchLoading ? (
+            <SectionLoader />
+          ) : branchError ? (
+            <EmptyState
+              iconName="cloud-offline-outline"
+              title="Couldn't load branches"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={refetchBranch}
+              mode={mode}
+            />
+          ) : selectedBranch ? (
+            <BranchCard branch={selectedBranch} onPress={openBranch} mode={mode} />
+          ) : (
+            <EmptyState
+              iconName="storefront-outline"
+              title="No branches available"
+              description="There are no branches accepting pickup right now."
+              mode={mode}
+            />
+          )}
+
+          <PromoBanner onPress={branchId ? openBranch : undefined} />
+
+          {/* Rewards balance */}
+          {rewardsQuery.isPending ? (
+            <SectionLoader />
+          ) : rewardsQuery.isError ? (
+            <EmptyState
+              iconName="cloud-offline-outline"
+              title="Couldn't load rewards"
+              description="Your star balance is unavailable right now."
+              actionLabel="Retry"
+              onAction={rewardsQuery.refetch}
+              mode={mode}
+            />
+          ) : rewardsQuery.data ? (
+            <View style={styles.rewardsSection}>
+              <RewardProgressCard
+                rewards={{
+                  currentStars: rewardsQuery.data.currentStars,
+                  requiredStars: rewardsQuery.data.requiredStars,
+                }}
+                onPress={() => router.push('/(tabs)/rewards')}
+                mode={mode}
+              />
+              <StarProgressBar
+                progress={{
+                  currentStars: rewardsQuery.data.currentStars,
+                  requiredStars: rewardsQuery.data.requiredStars,
+                }}
+                mode={mode}
+              />
+            </View>
+          ) : null}
+
+          {/* Deals strip */}
           <View style={styles.sectionTitleRow}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
-            <Badge label="Popular" />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Deals & offers</Text>
+            <Badge label="Save" />
           </View>
-          <ProductGrid products={MOCK_PRODUCTS} onProductPress={openProduct} />
+          {dealsQuery.isPending ? (
+            <SectionLoader />
+          ) : dealsQuery.isError ? (
+            <EmptyState
+              iconName="cloud-offline-outline"
+              title="Couldn't load deals"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={dealsQuery.refetch}
+              mode={mode}
+            />
+          ) : deals.length === 0 ? (
+            <EmptyState
+              iconName="pricetag-outline"
+              title="No deals right now"
+              description="Check back soon for new offers at your branch."
+              mode={mode}
+            />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.dealsStrip}
+            >
+              {deals.map((deal) => (
+                <DealCard
+                  key={deal.id}
+                  deal={deal}
+                  mode={mode}
+                  style={styles.dealCard}
+                  onPress={() => openDeal(deal.id)}
+                />
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Menu (categories + products) */}
+          {menuLoading ? (
+            <SectionLoader />
+          ) : !selectedBranch ? (
+            <EmptyState
+              iconName="restaurant-outline"
+              title="Select a branch to see the menu"
+              mode={mode}
+            />
+          ) : menuQuery.isError ? (
+            <EmptyState
+              iconName="cloud-offline-outline"
+              title="Couldn't load the menu"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={() => void menuQuery.refetch()}
+              mode={mode}
+            />
+          ) : menuView.products.length === 0 ? (
+            <EmptyState
+              iconName="restaurant-outline"
+              title="Menu coming soon"
+              description="This branch has no items available right now."
+              mode={mode}
+            />
+          ) : (
+            <>
+              <CategorySelector categories={menuView.categories} />
+              <View style={styles.sectionTitleRow}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
+                <Badge label="Popular" />
+              </View>
+              <ProductGrid products={menuView.products} onProductPress={openProduct} />
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
+    </View>
+  );
+}
+
+/** Small centered spinner for a pending data section (ActivityIndicator precedent, B1). */
+function SectionLoader() {
+  return (
+    <View style={styles.sectionLoader}>
+      <ActivityIndicator color={Palette.jorange} />
     </View>
   );
 }
@@ -178,6 +357,9 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
     gap: Spacing.three,
   },
+  rewardsSection: {
+    gap: Spacing.two,
+  },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -188,16 +370,17 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },
-  dealsCard: {
-    gap: Spacing.two,
+  dealsStrip: {
+    gap: Spacing.three,
+    paddingVertical: Spacing.one,
   },
-  dealsHeading: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h3,
+  dealCard: {
+    width: 260,
   },
-  dealsSubtitle: {
-    fontFamily: FontFamily.body.regular,
-    fontSize: TypeScale.bodySmall,
+  sectionLoader: {
+    paddingVertical: Spacing.six,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

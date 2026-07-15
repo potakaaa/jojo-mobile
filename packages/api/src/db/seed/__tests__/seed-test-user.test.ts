@@ -30,7 +30,11 @@ let seedTestUser: SeedModule['seedTestUser'];
 let auth: AuthModule['auth'];
 let db: DbModule['db'];
 let users: SchemaModule['users'];
-let schema: SchemaModule;
+let coupons: SchemaModule['coupons'];
+let orders: SchemaModule['orders'];
+let orderItems: SchemaModule['orderItems'];
+let userStars: SchemaModule['userStars'];
+let starTransactions: SchemaModule['starTransactions'];
 
 const TEST_EMAIL = 'jojo@test.com';
 // 8-char minimum enforced by better-auth (SPEC's jojo123 is 7 chars); mirrors seed.ts TEST_USER.
@@ -38,16 +42,28 @@ const TEST_PASSWORD = 'jojo1234';
 
 const rowsForTestUser = () => db.select().from(users).where(eq(users.email, TEST_EMAIL));
 
-// STAR-004: the seed now mints an `available` reward coupon for jojo@test.com, so
-// a bare `DELETE FROM users` would violate the coupons.user_id FK. Delete the
-// user's coupons + star_transactions first so this test can still clear the row.
+// Delete jojo@test.com AND the dependent rows a full runSeed() attaches to it
+// (coupons, orders + their items, star ledger + balance). These FKs are NO ACTION
+// (unlike account/session, which cascade), so they must be cleared before the users
+// row can be removed. Ordered to respect FK edges: star_transactions (refs orders +
+// users) → order_items (refs orders) → orders → coupons → user_stars → users.
 const deleteTestUser = async () => {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, TEST_EMAIL));
   if (row) {
-    await db.delete(schema.coupons).where(eq(schema.coupons.user_id, row.id));
-    await db.delete(schema.starTransactions).where(eq(schema.starTransactions.user_id, row.id));
+    const userId = row.id;
+    const orderRows = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.user_id, userId));
+    await db.delete(starTransactions).where(eq(starTransactions.user_id, userId));
+    for (const order of orderRows) {
+      await db.delete(orderItems).where(eq(orderItems.order_id, order.id));
+    }
+    await db.delete(orders).where(eq(orders.user_id, userId));
+    await db.delete(coupons).where(eq(coupons.user_id, userId));
+    await db.delete(userStars).where(eq(userStars.user_id, userId));
   }
-  await db.delete(users).where(eq(users.email, TEST_EMAIL));
+  return db.delete(users).where(eq(users.email, TEST_EMAIL));
 };
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -56,8 +72,8 @@ beforeAll(async () => {
   ({ seedTestUser } = await import('../seed'));
   ({ auth } = await import('../../../lib/auth'));
   ({ db } = await import('../../client'));
-  schema = await import('../../schema/index');
-  ({ users } = schema);
+  ({ users, coupons, orders, orderItems, userStars, starTransactions } =
+    await import('../../schema/index'));
   // Clean slate so a leftover row from a previous run can't mask a failure.
   await deleteTestUser();
 });

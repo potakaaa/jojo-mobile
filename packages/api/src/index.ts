@@ -3,6 +3,8 @@
 // evaluation). A side-effect import is hoisted, so this stays the first statement.
 import 'dotenv/config';
 
+import path from 'node:path';
+
 import { toNodeHandler } from 'better-auth/node';
 import cors from 'cors';
 import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
@@ -68,6 +70,13 @@ app.use(express.json());
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
 });
+
+// Public static food images. Stored in packages/api/public/images and referenced
+// by RELATIVE paths in products.image_url / deals.image_url (e.g.
+// '/images/fries-large.webp'); the mobile app resolves them against its API origin
+// at render time (tunnel-proof). No auth — public brand assets. __dirname is
+// packages/api/src, so the images live one level up under public/images.
+app.use('/images', express.static(path.join(__dirname, '../public/images')));
 
 // Public branch locator endpoint. Returns only active branches, ordered by
 // priority ascending (server-side fallback ordering; the mobile client re-sorts

@@ -1,0 +1,12 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 1 — Rewards/Stars backend",
+  "reviewer": "vc-execute-agent (self-review against approved inner-PVL PASS validate-contract)",
+  "decision": "approved",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "GET /rewards is a public catalog with no per-user fields — acceptable, matches /deals convention.",
+    "Coupon issue on redeem uses a random code with a collision-safe unique constraint; on the astronomically-unlikely duplicate the insert throws and the whole redeem transaction rolls back (no partial spend). Not retried — acceptable for MVP volume."
+  ],
+  "notes": "All money-adjacent invariants proven by passing Fully-Automated tests: server-derived star amounts (no client amount path), idempotent accrual (terminal completed + earned-tx guard), row-locked redeem proven race-safe by a concurrent-redeem test (exactly one 201, non-negative final balance), insufficient→400 with zero mutation, decrement-by-cost (lifetime untouched). Type reconciliation (tier removal) leaves the whole monorepo green. Recommend human sign-off on this pack before production deploy of the rewards surface (standard for credits logic). humanApprovalRequired=true.",
+  "timestamp": "2026-07-15T00:24:00Z"
+}

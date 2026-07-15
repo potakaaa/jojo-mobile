@@ -283,21 +283,31 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
-  // 7. Apply the update — compare-and-swap: also guard on current status so a
-  //    concurrent PATCH that already advanced the order results in 0 rows matched → 409.
-  const [updatedRow] = await db
-    .update(orders)
-    .set(patch)
-    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
-    .returning({ id: orders.id });
+  // 7. Apply the update inside a transaction — compare-and-swap on current status
+  //    so a concurrent PATCH that already advanced the order results in 0 rows
+  //    matched → 409. The star credit for a completion runs OUTSIDE this tx via the
+  //    idempotent `creditStarForCompletedOrder` service (which owns its own
+  //    transaction + STAR-003 reward unlock), so a credit failure never rolls back
+  //    the status flip (`completed` is terminal; the service is DB-idempotent).
+  const updatedOrder = { ...order, ...patch } as typeof order;
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+      .returning({ id: orders.id });
+    if (!updatedRow) return false;
 
-  if (!updatedRow) {
+    return true;
+  });
+
+  if (!committed) {
     res.status(409).json({ error: 'Concurrent modification detected; please retry' });
     return;
   }
 
-  // 8. Call side-effect stubs at the correct transition sites.
-  const updatedOrder = { ...order, ...patch } as typeof order;
+  // 8. Non-transactional side effects (push stub) run OUTSIDE the tx, only after
+  //    the status flip (and any star credit) has durably committed.
   if (targetStatus === 'completed') {
     await creditStarsForOrder(updatedOrder);
     notifyCustomer(updatedOrder, 'completed');
@@ -324,13 +334,9 @@ const patchProductAvailabilitySchema = z.object({
 
 const patchBranchSettingsSchema = z
   .object({
-    isAcceptingPickup: z.boolean().optional(),
-    estimatedPrepMinutes: z.number().int().min(1).max(120).optional(),
+    estimatedPrepMinutes: z.number().int().min(1).max(120),
   })
-  .refine(
-    (data) => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined,
-    { message: 'At least one field required' },
-  );
+  .strict();
 
 /**
  * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
@@ -487,13 +493,15 @@ staffRouter.get('/branch', async (req, res) => {
 /**
  * `PATCH /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
  *
- * Updates operational settings for the staff member's assigned branch.
- * Cross-branch writes are structurally impossible — branch is always session-derived.
+ * Updates the estimated prep time for the staff member's assigned branch.
+ * Pickup acceptance (`is_accepting_pickup`) is admin-only — use the admin branches
+ * API to change it. Cross-branch writes are structurally impossible (branch is
+ * always session-derived).
  *
  * Status codes:
  *   200 — settings updated; returns updated values.
  *   403 — unassigned staff.
- *   422 — empty body or invalid field values.
+ *   422 — missing or invalid `estimatedPrepMinutes`.
  */
 staffRouter.patch('/branch', async (req, res) => {
   const branchId = await resolveBranchScope(db, req.staffSession!.userId);
@@ -507,12 +515,12 @@ staffRouter.patch('/branch', async (req, res) => {
     res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
     return;
   }
-  const { isAcceptingPickup, estimatedPrepMinutes } = parseResult.data;
+  const { estimatedPrepMinutes } = parseResult.data;
 
-  // Build update patch with only the provided fields.
-  const patch: Partial<typeof branches.$inferInsert> = { updated_at: new Date() };
-  if (isAcceptingPickup !== undefined) patch.is_accepting_pickup = isAcceptingPickup;
-  if (estimatedPrepMinutes !== undefined) patch.estimated_prep_minutes = estimatedPrepMinutes;
+  const patch: Partial<typeof branches.$inferInsert> = {
+    updated_at: new Date(),
+    estimated_prep_minutes: estimatedPrepMinutes,
+  };
 
   await db.update(branches).set(patch).where(eq(branches.id, branchId));
 
