@@ -1,4 +1,4 @@
-import { LayoutDashboard, Store, Users, TestTube, FolderTree, Package } from 'lucide-react';
+import { LayoutDashboard, Store, Users, TestTube, FolderTree, Package, Tag } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface NavItem {
@@ -48,6 +48,12 @@ export const navConfig: NavGroup[] = [
         label: 'Products',
         icon: Package,
         to: '/products',
+      },
+      {
+        id: 'deals',
+        label: 'Deals',
+        icon: Tag,
+        to: '/deals',
       },
       {
         id: 'users',

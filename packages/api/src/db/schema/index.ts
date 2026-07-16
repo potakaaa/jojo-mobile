@@ -18,6 +18,9 @@ export * from './deals';
 export * from './deal_products';
 export * from './deal_branches';
 
+// 5b. Depends on products (self-referential — ADM-004 deals-as-products)
+export * from './deal_components';
+
 // 6. Depends on products
 export * from './rewards';
 
