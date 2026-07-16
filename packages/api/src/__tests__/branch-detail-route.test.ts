@@ -163,4 +163,29 @@ describe('GET /api/branches/:id query logic', () => {
     // SM Downtown is open but pickup-paused (is_accepting_pickup: false).
     expect(branchRow!.is_accepting_pickup).toBe(false);
   });
+
+  // AC10b wire-freeze (Locked Decision 7B): the GET /api/branches/:id
+  // `{ branch, deals: [...] }` array items are the source rows spread verbatim
+  // (`...d`), so the ADM-008 deals→offers TABLE rename must NOT rename the row's
+  // public column fields. Assert the frozen deal-item field set still surfaces on
+  // a returned row post-rename — the offers table kept its `deal_*` column names.
+  it('deals array items expose the frozen public field set after the offers rename (AC10b)', async () => {
+    if (!dbAvailable) return;
+    const centrioId = await branchIdBySlug('jojo-centrio');
+    expect(centrioId).not.toBeNull();
+    const dealsForBranch = await visibleDealsForBranch(centrioId!);
+    const sample = dealsForBranch[0];
+    expect(sample).toBeDefined();
+    for (const key of [
+      'id',
+      'title',
+      'deal_type',
+      'discount_value',
+      'is_active',
+      'start_at',
+      'end_at',
+    ]) {
+      expect(sample).toHaveProperty(key);
+    }
+  });
 });
