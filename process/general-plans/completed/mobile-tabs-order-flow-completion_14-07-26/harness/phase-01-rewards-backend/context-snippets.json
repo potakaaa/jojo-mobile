@@ -1,0 +1,35 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 1 — Rewards/Stars backend",
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "56-88",
+      "description": "creditStarsForOrder — server-derived star amount (numericToCents(order.subtotal) → computeStarsEarned), never client-sent. Idempotency guard skips crediting if an 'earned' star_transactions row already exists for the order. Runs in its own transaction; upserts user_stars (current + lifetime) and inserts the earned row.",
+      "content": "async function creditStarsForOrder(order): const subtotalCents = numericToCents(order.subtotal); const stars = computeStarsEarned(subtotalCents); if (stars <= 0) return; db.transaction: [existing earned tx?] -> return; upsert user_stars +stars; insert star_transactions earned."
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "289-291",
+      "description": "Sole accrual trigger site: awaited inside PATCH /orders/:orderId only on the terminal 'completed' transition. 'completed' is terminal in order-state-machine.ts, so re-PATCH returns 409 — accrual cannot fire twice per order.",
+      "content": "if (targetStatus === 'completed') { await creditStarsForOrder(updatedOrder); notifyCustomer(updatedOrder, 'completed'); }"
+    },
+    {
+      "file": "packages/api/src/routes/rewards.ts",
+      "lines": "80-118",
+      "description": "POST /rewards/:id/redeem transaction: SELECT ... FOR UPDATE the caller's user_stars row FIRST (serializes concurrent redeems), then server-side check current_stars >= reward.required_stars, decrement current_stars by required_stars (lifetime untouched), insert 'redeemed' star_transactions, create coupon (status 'available', reward_id set, generated code, expires_at). Insufficient → 400, whole tx rolls back.",
+      "content": "const [stars] = await tx.select().from(userStars).where(eq(userStars.user_id, userId)).for('update'); if (currentStars < reward.required_stars) throw RewardError(400); update current_stars = currentStars - reward.required_stars; insert redeemed tx; insert coupon."
+    },
+    {
+      "file": "packages/api/src/routes/lib/star-accrual.ts",
+      "lines": "17-31",
+      "description": "computeStarsEarned — count-based (NOT peso ratio): returns 1 when subtotalCents >= config.minOrderSubtotalCents (default 10000 = ₱100), else 0. Amount is a gate, never a multiplier.",
+      "content": "export function computeStarsEarned(subtotalCents, config = DEFAULT): return subtotalCents >= config.minOrderSubtotalCents ? 1 : 0;"
+    },
+    {
+      "file": "packages/api/src/routes/rewards.ts",
+      "lines": "42-58",
+      "description": "GET /rewards/balance — session-gated via requireSession (per-route, mirrors orders.ts); returns server-computed { currentStars, lifetimeStars, rewardThreshold: 5, starsToNextReward }. No client-writable balance.",
+      "content": "rewardsRouter.get('/balance', requireSession, ...) -> read user_stars, compute starsToNextReward = currentStars >= REWARD_THRESHOLD ? 0 : REWARD_THRESHOLD - currentStars."
+    }
+  ]
+}

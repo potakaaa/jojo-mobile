@@ -1,5 +1,7 @@
 export * from './async';
 export * from './currency';
+export * from './deals-catalog';
+export * from './discount';
 export * from './geo';
 export * from './hours';
 export * from './maps';

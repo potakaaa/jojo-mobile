@@ -14,7 +14,7 @@
     "build": "expo export",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests && jest",
     "clean": "rm -rf .expo dist node_modules",
     "build:ios:development:local": "npx eas-cli@latest build --platform ios --profile development --local --output ./builds/development/jojo-potato-development.ipa",
     "build:ios:preview:local": "npx eas-cli@latest build --platform ios --profile preview --local --output ./builds/preview/jojo-potato-preview.ipa",
@@ -61,9 +61,15 @@
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",
+    "@jest/globals": "^29.7.0",
     "@jojopotato/config": "workspace:*",
+    "@testing-library/react-native": "^14.0.0",
+    "@types/jest": "^29.5.0",
     "@types/react": "~19.2.2",
     "eslint": "^9.39.4",
+    "jest": "^29.7.0",
+    "jest-expo": "~57.0.1",
+    "react-test-renderer": "19.2.3",
     "typescript": "~6.0.3",
     "vitest": "^3.2.4"
   }

@@ -10,7 +10,8 @@
  * Typed against the real shared domain shapes in `@jojopotato/types` so the
  * Home screen renders against the same contracts the eventual API will satisfy.
  */
-import type { MenuCategory, MenuItem, PickupBranch, RewardsAccount } from '@jojopotato/types';
+import type { RewardProgress } from '@jojopotato/ui';
+import type { MenuCategory, MenuItem, PickupBranch } from '@jojopotato/types';
 
 export const MOCK_CATEGORIES: MenuCategory[] = [
   { id: 'classic', name: 'Classic', sortOrder: 1 },
@@ -110,8 +111,7 @@ export const MOCK_BRANCH: PickupBranch = {
   isOpen: true,
 };
 
-export const MOCK_REWARDS: RewardsAccount = {
-  userId: 'mock-user',
-  points: 1240,
-  tier: 'silver',
+export const MOCK_REWARDS: RewardProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };

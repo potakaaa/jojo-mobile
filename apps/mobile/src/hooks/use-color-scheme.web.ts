@@ -1,24 +1,27 @@
 import { useEffect, useState } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+import type { ColorSchemeName } from 'react-native';
+import { useColorScheme as useOSColorScheme } from 'react-native';
+
+import { useThemePreference } from '@/features/theme/theme-preference';
 
 /**
- * To support static rendering, this value needs to be re-calculated on the client side for web
+ * Resolved app color scheme (web). Mirrors the native hook — an explicit
+ * `'light'`/`'dark'` preference wins, `'system'` follows the OS — but defers the
+ * OS read until after hydration so static/SSR web output ('light') doesn't cause
+ * a hydration mismatch. See CLAUDE.md §Theming.
  */
-export function useColorScheme() {
+export function useColorScheme(): ColorSchemeName {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
-    // Intentional: flips once after mount so static/SSR web output matches
-    // the client's actual color scheme instead of causing a hydration mismatch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHasHydrated(true);
   }, []);
 
-  const colorScheme = useRNColorScheme();
+  const preference = useThemePreference();
+  const osScheme = useOSColorScheme();
 
-  if (hasHydrated) {
-    return colorScheme;
-  }
-
+  if (preference === 'light' || preference === 'dark') return preference;
+  if (hasHydrated) return osScheme ?? 'light';
   return 'light';
 }

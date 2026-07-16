@@ -68,12 +68,37 @@ export interface AuthContextValue {
     birthday: string;
     address: string;
   }) => Promise<SignInResult>;
+  /**
+   * Save the editable profile fields for an already-onboarded user WITHOUT
+   * touching `onboardedAt`. Deliberately separate from `completeProfile`, which
+   * re-stamps `onboardedAt` — reusing that here would corrupt onboarding state
+   * and re-trigger the onboarding nav gate. `role` is server-owned and never
+   * sent. Refreshes the session so the profile view reflects the change.
+   */
+  updateProfile: (info: {
+    name: string;
+    birthday: string;
+    address: string;
+  }) => Promise<SignInResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function toResult(error: { message?: string } | null | undefined): SignInResult {
-  return error ? { ok: false, error: error.message ?? 'Something went wrong' } : { ok: true };
+function toResult(
+  error: { message?: string; status?: number; statusText?: string } | null | undefined,
+): SignInResult {
+  if (!error) {
+    return { ok: true };
+  }
+  // better-fetch's error branch spreads the parsed JSON body into `error`, but a
+  // non-JSON response (e.g. a proxy/tunnel serving an HTML error page instead of
+  // proxying through, or any unexpected upstream shape) leaves `message` empty —
+  // `status`/`statusText` still survive since they're always attached separately.
+  // Surfacing them keeps a failure diagnosable instead of a dead-end generic string.
+  const fallback = error.status
+    ? `Something went wrong (${error.status}${error.statusText ? ` ${error.statusText}` : ''}). Please try again.`
+    : 'Something went wrong. Please try again.';
+  return { ok: false, error: error.message || fallback };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -91,44 +116,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void tryDevAutoLogin();
   }, [isPending, data]);
 
-  const signIn = useCallback(async (input: SignInInput): Promise<SignInResult> => {
-    switch (input.method) {
-      case 'google': {
-        const { error } = await authClient.signIn.social({
-          provider: 'google',
-          callbackURL: APP_CALLBACK_URL,
-        });
-        return toResult(error);
+  const signIn = useCallback(
+    async (input: SignInInput): Promise<SignInResult> => {
+      switch (input.method) {
+        case 'google': {
+          const { error } = await authClient.signIn.social({
+            provider: 'google',
+            callbackURL: APP_CALLBACK_URL,
+          });
+          return toResult(error);
+        }
+        case 'magic-link': {
+          const { error } = await authClient.signIn.magicLink({
+            email: input.email,
+            callbackURL: APP_CALLBACK_URL,
+          });
+          return toResult(error);
+        }
+        case 'phone-send': {
+          const { error } = await authClient.phoneNumber.sendOtp({
+            phoneNumber: input.phoneNumber,
+          });
+          return toResult(error);
+        }
+        case 'phone-verify': {
+          const { error } = await authClient.phoneNumber.verify({
+            phoneNumber: input.phoneNumber,
+            code: input.code,
+          });
+          // Establishes the session in-app (no redirect round-trip), so force a
+          // session refetch — `useSession()` does not reliably auto-refresh on
+          // Expo (same reason completeProfile refetches). Without it the nav gate
+          // never flips and the user stays on the login screen.
+          if (!error) await refetch();
+          return toResult(error);
+        }
+        case 'email-password': {
+          const { error } = await authClient.signIn.email({
+            email: input.email,
+            password: input.password,
+          });
+          // Same as phone-verify: refetch so the freshly-established session
+          // propagates and the nav gate flips without an app restart.
+          if (!error) await refetch();
+          return toResult(error);
+        }
       }
-      case 'magic-link': {
-        const { error } = await authClient.signIn.magicLink({
-          email: input.email,
-          callbackURL: APP_CALLBACK_URL,
-        });
-        return toResult(error);
-      }
-      case 'phone-send': {
-        const { error } = await authClient.phoneNumber.sendOtp({
-          phoneNumber: input.phoneNumber,
-        });
-        return toResult(error);
-      }
-      case 'phone-verify': {
-        const { error } = await authClient.phoneNumber.verify({
-          phoneNumber: input.phoneNumber,
-          code: input.code,
-        });
-        return toResult(error);
-      }
-      case 'email-password': {
-        const { error } = await authClient.signIn.email({
-          email: input.email,
-          password: input.password,
-        });
-        return toResult(error);
-      }
-    }
-  }, []);
+    },
+    [refetch],
+  );
 
   const signOut = useCallback(async () => {
     await authClient.signOut();
@@ -150,6 +186,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Force a server round-trip so the freshly-stamped `onboardedAt`
       // propagates and the nav gate flips to `(tabs)` without an app restart,
       // regardless of whether `useSession()` auto-refreshes.
+      await refetch();
+      return toResult(null);
+    },
+    [refetch],
+  );
+
+  const updateProfile = useCallback(
+    async (info: { name: string; birthday: string; address: string }): Promise<SignInResult> => {
+      // Explicit field-by-field payload — never spread a form-state object, so a
+      // server-owned field like `role` can never ride along. `onboardedAt` is
+      // intentionally omitted (that is `completeProfile`'s job, not this one).
+      const { error } = await authClient.updateUser({
+        name: info.name,
+        birthday: info.birthday,
+        address: info.address,
+      });
+      if (error) {
+        return toResult(error);
+      }
+      // Force a server round-trip so the edited values propagate to the session
+      // and the profile view updates without an app restart.
       await refetch();
       return toResult(null);
     },
@@ -198,8 +255,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       completeOnboarding,
       completeProfile,
+      updateProfile,
     };
-  }, [data, isPending, hasOnboarded, signIn, signOut, completeOnboarding, completeProfile]);
+  }, [
+    data,
+    isPending,
+    hasOnboarded,
+    signIn,
+    signOut,
+    completeOnboarding,
+    completeProfile,
+    updateProfile,
+  ]);
 
   return createElement(AuthContext.Provider, { value }, children);
 }

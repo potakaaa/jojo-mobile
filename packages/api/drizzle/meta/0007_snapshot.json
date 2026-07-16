@@ -1,5 +1,5 @@
 {
-  "id": "1cbf7690-1b95-41ea-98ed-476cd796c965",
+  "id": "4f81ff30-7caa-4c36-8bd4-5b199ace3638",
   "prevId": "64e55a9b-dda8-438d-ad4f-eb30763f86bb",
   "version": "7",
   "dialect": "postgresql",
@@ -258,13 +258,6 @@
         },
         "is_reward_eligible": {
           "name": "is_reward_eligible",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "is_deal": {
-          "name": "is_deal",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -718,86 +711,6 @@
           "tableFrom": "deal_branches",
           "tableTo": "branches",
           "columnsFrom": ["branch_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.deal_components": {
-      "name": "deal_components",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "deal_product_id": {
-          "name": "deal_product_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "component_product_id": {
-          "name": "component_product_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {
-        "deal_components_deal_component_idx": {
-          "name": "deal_components_deal_component_idx",
-          "columns": [
-            {
-              "expression": "deal_product_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "component_product_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "deal_components_deal_product_id_products_id_fk": {
-          "name": "deal_components_deal_product_id_products_id_fk",
-          "tableFrom": "deal_components",
-          "tableTo": "products",
-          "columnsFrom": ["deal_product_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "deal_components_component_product_id_products_id_fk": {
-          "name": "deal_components_component_product_id_products_id_fk",
-          "tableFrom": "deal_components",
-          "tableTo": "products",
-          "columnsFrom": ["component_product_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1829,6 +1742,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "star_transactions_order_type_unique": {
+          "name": "star_transactions_order_type_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

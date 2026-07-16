@@ -7,10 +7,9 @@ import type {
   OrderStatus,
   PickupBranch,
   PickupTime,
-  RewardsAccount,
-  RewardsTierProgress,
   Size,
 } from '@jojopotato/types';
+import type { RewardProgress, StarProgress } from '@jojopotato/ui';
 import {
   Badge,
   BranchCard,
@@ -114,16 +113,14 @@ const SAMPLE_BRANCH_CLOSED: PickupBranch = {
   isOpen: false,
 };
 
-const SAMPLE_REWARDS: RewardsAccount = {
-  userId: 'user-1',
-  points: 340,
-  tier: 'silver',
+const SAMPLE_REWARDS: RewardProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };
 
-const SAMPLE_PROGRESS: RewardsTierProgress = {
-  currentPoints: 340,
-  pointsToNextTier: 160,
-  nextTier: 'gold',
+const SAMPLE_PROGRESS: StarProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };
 
 const SAMPLE_COUPON: Coupon = {
@@ -295,9 +292,7 @@ export default function ComponentShowcaseScreen() {
 
           <Section title="StarProgressBar">
             <StarProgressBar progress={SAMPLE_PROGRESS} />
-            <StarProgressBar
-              progress={{ currentPoints: 900, pointsToNextTier: 0, nextTier: null }}
-            />
+            <StarProgressBar progress={{ currentStars: 5, requiredStars: 5 }} />
           </Section>
 
           <Section title="OrderStatusBadge">

@@ -3,6 +3,8 @@
 // evaluation). A side-effect import is hoisted, so this stays the first statement.
 import 'dotenv/config';
 
+import path from 'node:path';
+
 import { toNodeHandler } from 'better-auth/node';
 import cors from 'cors';
 import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
@@ -14,10 +16,13 @@ import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
+import { requireSession } from './middleware/require-session';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
+import { couponsRouter } from './routes/coupons';
 import { dealsRouter } from './routes/deals';
 import { ordersRouter } from './routes/orders';
+import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
 
 // ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
@@ -65,6 +70,13 @@ app.use(express.json());
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'jojopotato-api' });
 });
+
+// Public static food images. Stored in packages/api/public/images and referenced
+// by RELATIVE paths in products.image_url / deals.image_url (e.g.
+// '/images/fries-large.webp'); the mobile app resolves them against its API origin
+// at render time (tunnel-proof). No auth — public brand assets. __dirname is
+// packages/api/src, so the images live one level up under public/images.
+app.use('/images', express.static(path.join(__dirname, '../public/images')));
 
 // Public branch locator endpoint. Returns only active branches, ordered by
 // priority ascending (server-side fallback ordering; the mobile client re-sorts
@@ -200,6 +212,15 @@ app.get('/api/branches/:id', async (req, res) => {
 app.use('/branches', branchesRouter);
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
+
+// Rewards routes (STAR-002) — read-only, session-gated ONCE at mount. Every
+// handler in rewardsRouter assumes `req.user!.id` (the server-owned session user).
+app.use('/rewards', requireSession, rewardsRouter);
+
+// Coupon routes (STAR-004) — session-gated ONCE at mount. Every handler in
+// couponsRouter assumes `req.user!.id`. `POST /coupons/apply` is zero-mutation
+// (preview only); coupon consumption happens exclusively in POST /orders.
+app.use('/coupons', requireSession, couponsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

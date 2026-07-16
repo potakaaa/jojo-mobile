@@ -1,0 +1,86 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 1 — Rewards/Stars backend",
+  "result": "PASS",
+  "commands": [
+    "pnpm typecheck",
+    "pnpm lint",
+    "pnpm --filter @jojopotato/ui test",
+    "pnpm --filter @jojopotato/mobile test",
+    "docker compose up -d && pnpm --filter @jojopotato/api db:migrate && pnpm --filter @jojopotato/api test"
+  ],
+  "manualChecks": [],
+  "steps": [
+    {
+      "step": "Accrual happy path: complete a ≥₱100 order via the real staff PATCH path → credits exactly 1 star (current + lifetime), inserts one earned star_transaction",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'credits exactly 1 star ...')",
+      "result": "PASS",
+      "notes": "Balance read-back asserts { currentStars:1, lifetimeStars:1, rewardThreshold:5, starsToNextReward:4 }."
+    },
+    {
+      "step": "Accrual boundary: below-₱100 order completion credits 0 stars (no user_stars row, no earned tx)",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'credits 0 stars when a below-₱100 order is completed')",
+      "result": "PASS",
+      "notes": "Failure/boundary case — ₱50.00 order earns nothing."
+    },
+    {
+      "step": "Accrual idempotency: re-PATCH a completed order → 409, star balance unchanged (never double-credit)",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > '... does not double-credit on re-PATCH')",
+      "result": "PASS",
+      "notes": "State machine makes 'completed' terminal; explicit earned-tx guard is belt-and-suspenders."
+    },
+    {
+      "step": "Accrual skipped for cancelled and rejected transitions",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'credits 0 stars when an order is cancelled/rejected')",
+      "result": "PASS",
+      "notes": "Only 'completed' triggers accrual."
+    },
+    {
+      "step": "Redeem success: current_stars decremented by cost, lifetime untouched, coupon issued (status available, reward_id set, code, expires_at)",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'redeems: decrements current_stars ...')",
+      "result": "PASS",
+      "notes": "Seeded current=10 lifetime=10, reward cost 5 → current=5 lifetime=10. One redeemed tx + one coupon row."
+    },
+    {
+      "step": "Redeem insufficient stars → 400 with NO mutation (no decrement, no coupon)",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'rejects insufficient stars with 400 and makes no mutation')",
+      "result": "PASS",
+      "notes": "Boundary/failure case — seeded current=2 < cost 5, balance unchanged, zero coupons."
+    },
+    {
+      "step": "Concurrent-redeem race: two simultaneous redeems against exactly-enough balance → exactly one 201, one 400; final current=0 (never negative); exactly one coupon",
+      "command": "pnpm --filter @jojopotato/api test (rewards.test.ts > 'serializes concurrent redeems via the row lock ...')",
+      "result": "PASS",
+      "notes": "SELECT ... FOR UPDATE serializes; proves no lost-update double-spend under Promise.all concurrency."
+    },
+    {
+      "step": "computeStarsEarned pure math (threshold, above/below, non-scaling, custom config)",
+      "command": "pnpm --filter @jojopotato/api test (star-accrual.test.ts, 6 tests)",
+      "result": "PASS",
+      "notes": "Count-based confirmed: huge subtotal still earns exactly 1."
+    },
+    {
+      "step": "Type reconciliation leaves the whole monorepo green (rewards/coupons tier removal cascade)",
+      "command": "pnpm typecheck && pnpm lint",
+      "result": "PASS",
+      "notes": "7 packages typecheck green; lint 0 errors (3 pre-existing unrelated warnings in apps/mobile/scripts/dev-with-tunnel.mjs)."
+    },
+    {
+      "step": "packages/ui component prop-shape cascade (RewardProgressCard/StarProgressBar/CouponCard + fixtures)",
+      "command": "pnpm --filter @jojopotato/ui test",
+      "result": "PASS",
+      "notes": "47/47 jest-expo tests pass against reshaped tier-free props."
+    },
+    {
+      "step": "apps/mobile notification-factory cascade against reconciled Coupon/CouponDisplay type",
+      "command": "pnpm --filter @jojopotato/mobile test",
+      "result": "PASS",
+      "notes": "13/13 vitest tests pass."
+    },
+    {
+      "step": "Full API suite regression (orders/deals/staff/auth/admin) after accrual wiring",
+      "command": "docker compose up -d && pnpm --filter @jojopotato/api db:migrate && pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "155/155 across 16 files; zero regressions in orders (25)/deals (13)/staff-order-status (17)."
+    }
+  ]
+}

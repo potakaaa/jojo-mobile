@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { applyDealById, isComplexDealType } from '@/features/deals/lib/apply-deal';
 import { useDeal } from '@/features/deals/hooks/use-deal';
@@ -88,15 +89,18 @@ export default function DealDetailsScreen() {
   // instead of an apply-then-checkout-400 dead-end (PVL C1).
   const isComplex = isComplexDealType(deal.dealType);
 
-  // Real apply (Phase 3): fetch + eligibility + complex-type guard live in
-  // `applyDealById`; on success store the discount in the cart and navigate there.
+  // Real apply: fetch + complex-type guard live in `applyDealById`, which resolves
+  // the deal's code and validates it through POST /coupons/apply (STAR-004 —
+  // deal + reward codes unified). On success store the discount in the cart,
+  // record the applied code for checkout threading, and navigate to the cart.
   const handleApply = async () => {
-    const result = await applyDealById(deal.id, cart, cart.pickupBranchId, usage);
+    const result = await applyDealById(deal.id, cart, cart.pickupBranchId);
     if (!result.ok) {
       Alert.alert('Cannot apply deal', result.message);
       return;
     }
     applyDiscount(result.discount);
+    setAppliedCouponCode(deal.code ?? null);
     router.push('/(tabs)/order/cart');
   };
 
