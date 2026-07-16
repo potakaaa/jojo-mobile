@@ -174,7 +174,7 @@ No developed backend behavior is assigned Known-Gap. The only Agent-Probe/Known-
 ## Resume and Execution Handoff
 
 1. **Selected plan file:** `process/features/staff-dashboard/active/staff-005-pickup-code_15-07-26/staff-005-pickup-code_PLAN_15-07-26.md`
-2. **Last completed step:** EXECUTE done, EVL independently confirmed green (see `staff-005-pickup-code_REPORT_15-07-26.md`). All 6 touchpoint files created/modified; API suite 191/191, both typechecks clean, mobile lint clean.
+2. **Last completed step:** EXECUTE done, EVL independently confirmed green (see `staff-005-pickup-code_REPORT_15-07-26.md`). All 6 touchpoint files created/modified; API suite 191/191, API typecheck clean, mobile typecheck passed with 0 errors (exceeds the "no NEW errors vs the 3-error BRN baseline" bar stated above), mobile lint clean.
 3. **Validate-contract status:** written 15-07-26 (Gate: PASS) — see `## Validate Contract` below.
 4. **Supporting context loaded:** `process/context/all-context.md`; `process/context/tests/all-tests.md`; SPEC (same folder); `packages/api/src/routes/staff.ts`; `staff-api.ts`; `(staff)/index.tsx` + `_layout.tsx`; `staff-order-status.integration.test.ts` (fixture pattern).
 5. **Next step for a fresh agent:** do NOT re-enter EXECUTE MODE — implementation is already done and gate-confirmed. The only remaining step is the user-confirmed Agent-Probe walkthrough (staff pickup-lookup screen + customer confirmation/tracking code visibility, see `## Verification Evidence`). Once confirmed, mark this plan `✅ VERIFIED` per `## Phase Completion Rules`.
@@ -282,7 +282,7 @@ Hard stop conditions / safety constraints:
 - Do NOT mark VERIFIED until the user confirms the Agent-Probe staff walkthrough passed (mobile UI has no automated coverage).
 Next phase: EXECUTE — process/features/staff-dashboard/active/staff-005-pickup-code_15-07-26/staff-005-pickup-code_PLAN_15-07-26.md
 Validate contract: inline in plan (## Validate Contract, Gate: PASS)
-Execute start: backend route + new staff-order-lookup.integration.test.ts first, then mobile (staff-api.ts -> pickup-lookup.tsx -> index.tsx NAV_CARDS -> _layout.tsx). Gates: pnpm --filter @jojopotato/api test | pnpm --filter @jojopotato/api typecheck | pnpm --filter @jojopotato/mobile typecheck (no new errors) | pnpm --filter @jojopotato/mobile lint | Agent-Probe staff+customer walkthrough. High-risk pack: no.
+Execute start: backend route + new staff-order-lookup.integration.test.ts first, then mobile (staff-api.ts -> pickup-lookup.tsx -> index.tsx NAV_CARDS -> _layout.tsx). Gates (run sequentially, fail-fast): pnpm --filter @jojopotato/api test && pnpm --filter @jojopotato/api typecheck && pnpm --filter @jojopotato/mobile typecheck (no new errors) && pnpm --filter @jojopotato/mobile lint, then Agent-Probe staff+customer walkthrough. High-risk pack: no.
 ```
 
 ## Next Step
