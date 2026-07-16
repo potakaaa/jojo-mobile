@@ -396,9 +396,10 @@ the source plan's single 18-row table, one AC-cluster per phase).
 
 **Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 now = full atomic mechanical rename (schema + migration + 7 consumer-file repoints, since the deals→offers rename breaks typecheck for those consumers otherwise); Phase 2 = logic only (resolver/burn/guard) on the already-renamed symbols; Phase 4 = public-contract verification only on the already-renamed symbols. Wire-freeze (Locked Decision 7B) unaffected.
 
-Last updated: 16-07-26 (UPDATE PROCESS — all 5 phases closed out)
+Last updated: 16-07-26 (UPDATE PROCESS — post-merge fix batch, Fixes 3+4 closed out)
 Completed phases: 1, 2, 3, 4, 5 (all 5/5 — program is CODE-COMPLETE)
-Current phase: none — all phases delivered; program held OPEN in `active/` (not archived)
+Current phase: none — all 5 phases delivered; program held OPEN in `active/` (not archived) for a
+  post-merge fix batch (see below)
 Current loop step: n/a — every phase reached UPDATE-PROCESS and is EVL-green
 Validate-contract status: confirmed via inner PVL per phase (all 5), EXECUTE + EVL green for all 5
 Program Net Gate: PASS (all phase exit gates green; full `pnpm --filter @jojopotato/api test`
@@ -406,7 +407,7 @@ Program Net Gate: PASS (all phase exit gates green; full `pnpm --filter @jojopot
   after Phase 5)
 Latest validator run: 16-07-26 — `validate-context-discovery.mjs` (see this UPDATE PROCESS report)
 
-**Delivered — commit ledger (branch `feat/adm-008-coupons`, NOT merged, PR pending):**
+**Delivered — commit ledger (branch `feat/adm-008-coupons`, superseded 16-07-26 — see below):**
 - Phase 1 (Schema migration): `502a01e` — migration `0011` (deals→offers atomic rename +
   `promotions` table), 271/271 tests.
 - Phase 2 (Resolver + burn + is_deal guard): `e55ee0a` — DB-backed offer-coupon resolver branch,
@@ -422,10 +423,49 @@ Latest validator run: 16-07-26 — `validate-context-discovery.mjs` (see this UP
   coupon-based types (percentage_discount, fixed_discount, free_item, free_upgrade); dropped
   buy_one_take_one + bundle (deal/bundle-style, non-discounting). UI-only, no test-count change.
 
-**Program status: CODE-COMPLETE, OPEN.** This task folder stays in `active/` — the user has
-explicit follow-up exploration work planned on ADM-008 (see backlog note filed this pass for the
-known free_item/free_upgrade redemption-math gap). Do NOT archive to `completed/` until that
-follow-up work concludes or the user explicitly closes the program.
+**Branch superseded (16-07-26):** the `feat/adm-008-coupons` PR is CLOSED. The ADM-008 commits
+merged into `feat/deals_unification` (merge commit `fdb2daf`, combining with PR #93
+kid-friendly-ui-deals-unification + push-notifications). A PR will be opened from
+`feat/deals_unification` once the post-merge fix batch below concludes.
+
+**Post-merge fix batch (found during live-testing the merge, tracked here — 4/6 done):**
+1. `d17d296` — DONE. Seed `branch_product_availability` rows for all active branches inside
+   `POST /api/admin/deals`'s existing create transaction (fix option (a) from the backlog note).
+2. `ea71c1b` — DONE. Added the missing drizzle snapshot for migration `0013` (rename migration,
+   renumbered during the PR #93 merge conflict resolution) so `drizzle-kit generate` no longer
+   produces a spurious diff.
+3. `878ecce` — DONE. Status/visibility indicators on Deals/Offers/Promotions (list+detail): API
+   gained additive `availableBranchCount`/`activeBranchCount` on admin deal serialization; new
+   shared `apps/admin` `components/status-badge.tsx` + pure `lib/entity-status.ts` derivations
+   (unit-tested). Deals badge combines `is_active` AND branch availability (catches the
+   invisible-deal trap); Offers = active + validity window; Promotions = window only. API
+   354→359 tests, admin +entity-status unit tests (29 total).
+4. `dd5312d` — DONE, user-verified. Availability + active toggles: new
+   `features/deals/components/deal-availability-editor.tsx` on the deal manage page (reuses the
+   existing `GET/PATCH /api/admin/products/:id/availability[/:branchId]` endpoints — a deal IS a
+   `products` row, no new route needed); deal create wizard gained a branch selector (`POST
+   /api/admin/deals` gained an OPTIONAL additive `branchIds: string[]` — omitted = seed all active
+   branches, unchanged Fix-1 default behavior; subset = seed only those; unknown/inactive id → 400
+   rolling back the whole create); offer manage page gained an Activate/Deactivate toggle
+   (`isActive` added additively to the offer create/PATCH Zod schema — column + serializer already
+   existed, only schema wiring was missing). API 359→364 tests, admin 29/29 (no new RTL tests —
+   network-hook-bound components, documented decision).
+5. NOT STARTED. Dev-DB reconciliation doc for teammates whose local migration cursor predates the
+   `0013` rename (manual SQL steps applied to this session's dev DB — see the
+   `deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` backlog note history and the
+   16-07-26 deals-unification-merge `all-context.md` delta for the exact statements run).
+6. NOT STARTED. `free_item`/`free_upgrade` Offer-mechanic redemption math — full RIPER-5 (schema/
+   pricing-adjacent; not a quick fix). See
+   `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md`.
+
+**Backlog note resolved this pass:**
+`deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` is now marked RESOLVED (Bug 1
+by Fixes 1+4, Bug 2 by Fix 3) — kept in place for history, not deleted.
+
+**Program status: CODE-COMPLETE, OPEN.** This task folder stays in `active/` — the post-merge fix
+batch above (items 5-6 remaining) is the user's explicit follow-up exploration work on ADM-008.
+Do NOT archive to `completed/` until that batch concludes or the user explicitly closes the
+program.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any

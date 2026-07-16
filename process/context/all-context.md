@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-16 (ADM-008 Coupons delta, merged with push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-16 (ADM-008 post-merge fix batch — Fixes 3+4, doc-only reconciliation; merged with ADM-008 Coupons delta, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -124,6 +124,44 @@ top of it later without re-plumbing the project.
   Delivered by: `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/
   adm-008-coupons_UMBRELLA_PLAN_16-07-26.md` (5-phase umbrella, all phases ✅ VERIFIED) + 5
   co-located per-phase plan/report file pairs in the same task folder.
+
+- **ADM-008 post-merge fix batch (`apps/admin` + `packages/api`, on `feat/deals_unification`,
+  4/6 done, delivered 16-07-26, user-UI-verified for Fixes 3+4):** live-testing the
+  `feat/deals_unification` merge (see the merge-delta bullet in Scan Metadata below) surfaced two
+  bugs, tracked and fixed as a 6-item follow-up batch — see
+  `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md`'s
+  `## Current Execution State` for the authoritative live ledger. **Fix 1** (`d17d296`) — admin
+  deal-create now seeds `branch_product_availability` rows for all active branches inside the
+  existing create transaction, so new deals are no longer invisible on mobile by default. **Fix 2**
+  (`ea71c1b`) — added the missing drizzle snapshot for migration `0013` (the renumbered rename
+  migration from the PR #93 merge), closing the spurious `drizzle-kit generate` diff. **Fix 3**
+  (`878ecce`) — status/visibility indicators: admin deal serialization gained ADDITIVE
+  `availableBranchCount`/`activeBranchCount` fields (public wire-frozen routes untouched); new
+  shared `apps/admin` `components/status-badge.tsx` (4-tone brutalist chip) + pure
+  `lib/entity-status.ts` derivations (`windowPhase`/`dealStatus`/`offerStatus`/`promotionStatus`,
+  unit-tested) render badges on deals/offers/promotions list+detail. Deals combine `is_active` AND
+  branch availability (the only entity with an "invisible everywhere" trap — Offers/Promotions
+  don't, since `offer_branches` empty = valid everywhere, a documented asymmetry). API 354→359
+  tests, admin +entity-status unit tests. **Fix 4** (`dd5312d`, 11 files, user-verified) —
+  availability + active toggles: new `deal-availability-editor.tsx` on the deal manage page
+  **reuses the existing `GET/PATCH /api/admin/products/:id/availability[/:branchId]` endpoints**
+  (durable API fact: a deal IS a `products` row and these endpoints never filtered `is_deal` — no
+  new route needed); deal create wizard gained a branch selector, `POST /api/admin/deals` gained
+  an OPTIONAL additive `branchIds: string[]` (omitted = seed all active branches, unchanged Fix-1
+  default; subset = seed only those; unknown/inactive id → 400 rolling back the whole create); the
+  offer manage page gained an Activate/Deactivate toggle (`isActive` added additively to the offer
+  create/PATCH Zod schema — the column and serializer already existed, only schema wiring was
+  missing). API 359→364 tests, admin 29/29 (no new RTL tests — network-hook-bound components,
+  documented decision). **Remaining (not started):** Fix 5 — a dev-DB reconciliation doc for
+  teammates whose local migration cursor predates the `0013` rename (manual SQL steps run this
+  session, see the Scan Metadata merge-delta bullet); Fix 6 — `free_item`/`free_upgrade` Offer
+  redemption math, requires full RIPER-5 (schema/pricing-adjacent), see
+  `process/features/admin-dashboard/backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md`.
+  **Backlog note resolved:**
+  `process/features/admin-dashboard/backlog/deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md`
+  is now marked RESOLVED (Bug 1 by Fixes 1+4, Bug 2 by Fix 3) and kept in place for history.
+  **Branch/PR state unchanged:** still on `feat/deals_unification`, not yet merged/PR'd — program
+  stays CODE-COMPLETE, OPEN in `active/` pending Fixes 5-6.
 
 - **Admin dashboard Deals-as-Products (`apps/admin` + `packages/api`, Phase 4a — ADM-004 RE-PLAN,
   delivered 15/16-07-26, branch `feat/adm-004-deals` — MERGED via PR #92 (commit `fedcfcb`)):**
@@ -1052,7 +1090,20 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-16 (deals-unification merge — `6a0de21` (PR #93: kid-friendly-ui deals
+- Last delta: 2026-07-16 (ADM-008 post-merge fix batch, Fixes 3+4 UPDATE PROCESS — doc-only
+  reconciliation, no archival, no source changes this pass. Fix 3 `878ecce` (status/visibility
+  indicators: additive `availableBranchCount`/`activeBranchCount` on admin deal serialization;
+  shared `StatusBadge`/`entity-status.ts` in `apps/admin`, badges on deals/offers/promotions
+  list+detail; API 354→359, admin +entity-status unit tests) and Fix 4 `dd5312d` (availability +
+  active toggles: deal-manage availability editor reusing the existing products-availability
+  endpoints — no new route; optional `branchIds[]` on deal create; offer `isActive` toggle via
+  additive schema wiring; API 359→364, admin 29/29) are both DONE and user-UI-verified. The
+  `deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` backlog note is now RESOLVED
+  (kept for history). ADM-008 umbrella plan's `## Current Execution State` updated with the full
+  6-item post-merge fix ledger (Fixes 1-4 done, 5-6 remaining: dev-DB doc, free_item/free_upgrade
+  redemption math). Program remains CODE-COMPLETE, OPEN in `active/`; not archived. HEAD unchanged
+  from the prior delta — see below.)
+- Previous delta: 2026-07-16 (deals-unification merge — `6a0de21` (PR #93: kid-friendly-ui deals
   unification + push-notifications API) merged into `feat/deals_unification` as commit `fdb2daf`.
   Conflicts hand-resolved: `serializers.ts` (union: `offers` aliases + `notifications`/
   `NotificationRow`), this file's header + delta history (interleaved), and a SILENT bad drizzle
@@ -1126,9 +1177,11 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 - Earlier delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
 - Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
 - Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
-- HEAD at last delta: branch `feat/deals_unification`, commit `d01de23` (backlog note) on top of
-  merge commit `fdb2daf` (= `d305e2b` ADM-008 coupons work × `6a0de21` PR #93 push-notifications +
-  kid-friendly-ui deals unification); drizzle migration set renumbered (rename migration →
-  `0013_rename_deals_to_offers`, journal idx 0–13 contiguous); untracked `UI_AUDIT.md` at repo root
-  (unrelated scratch file, not part of this delta)
+- HEAD at last delta: branch `feat/deals_unification`, commit `dd5312d` (Fix 4 — availability +
+  active toggles) on top of `878ecce` (Fix 3 — status/visibility indicators), `ea71c1b` (Fix 2 —
+  0013 snapshot), `d17d296` (Fix 1 — seed branch availability), `55fd6b3`/`d01de23` (process notes),
+  and merge commit `fdb2daf` (= `d305e2b` ADM-008 coupons work × `6a0de21` PR #93 push-notifications
+  + kid-friendly-ui deals unification); drizzle migration set renumbered (rename migration →
+  `0013_rename_deals_to_offers`, journal idx 0–13 contiguous); working tree clean except untracked
+  `UI_AUDIT.md` at repo root (unrelated scratch file, not part of this delta)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

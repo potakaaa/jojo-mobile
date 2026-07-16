@@ -1,5 +1,13 @@
 # NOTE — Deal availability seeding + active/visibility indicators (Deals, Promotions, Offers)
 
+**Status: RESOLVED (16-07-26).** Bug 1 fixed by Fix 1 (`d17d296` — seed branch-availability rows
+on deal create, option (a)) and further hardened by Fix 4 (`dd5312d` — branch-availability editor
+on the deal manage page, option (b); plus an optional `branchIds[]` param on
+`POST /api/admin/deals` for choosing availability at creation time). Bug 2 fixed by Fix 3
+(`878ecce` — `StatusBadge`/`entity-status.ts` shared surfaces; badges on deals/offers/promotions
+list+detail). See `process/context/all-context.md` (16-07-26 delta) for the full description.
+Kept in place for history — do not delete.
+
 Date: 16-07-26
 Feature: admin-dashboard
 Origin: found live on 16-07-26 while testing the `feat/deals_unification` merge — admin-created
