@@ -1,5 +1,6 @@
-import { Button, Card } from '@jojopotato/ui';
+import { Button, Card, ConfirmDialog } from '@jojopotato/ui';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +29,7 @@ export default function AccountScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
 
   const displayName = user?.name?.trim() ? user.name : 'Your account';
   const email = user?.email ?? '';
@@ -96,8 +98,28 @@ export default function AccountScreen() {
           <ThemeToggle />
         </Card>
 
-        <Button mode={mode} variant="outline" label="Log out" onPress={signOut} />
+        <Button
+          mode={mode}
+          variant="outline"
+          label="Log out"
+          onPress={() => setConfirmSignOut(true)}
+        />
       </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmSignOut}
+        title="Log out?"
+        message="You'll need to sign back in to place orders and see your rewards."
+        confirmLabel="Yes, log out"
+        cancelLabel="Stay signed in"
+        variant="destructive"
+        mode={mode}
+        onConfirm={() => {
+          setConfirmSignOut(false);
+          signOut();
+        }}
+        onCancel={() => setConfirmSignOut(false)}
+      />
     </SafeAreaView>
   );
 }

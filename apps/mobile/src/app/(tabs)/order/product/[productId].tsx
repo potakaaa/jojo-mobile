@@ -1,5 +1,6 @@
-import type { CartItemOption, ProductOption, ProductOptionType } from '@jojopotato/types';
+import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from '@jojopotato/types';
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
+import { ConfirmDialog } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -12,6 +13,7 @@ import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { AddToCartBar } from '@/features/menu/components/add-to-cart-bar';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 type SelectionState = Partial<Record<ProductOptionType, string[]>>;
@@ -21,6 +23,8 @@ const GROUP_ORDER: ProductOptionType[] = ['size', 'flavor', 'add_on'];
 
 export default function ProductDetailsScreen() {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const { productId } = useLocalSearchParams<{ productId: string }>();
   const { data: product, isLoading, isError } = useProductDetails(productId);
   const { cart, addItem, setBranch, clearCart } = useCart();
@@ -28,6 +32,10 @@ export default function ProductDetailsScreen() {
 
   const [selection, setSelection] = useState<SelectionState>({});
   const [addedNotice, setAddedNotice] = useState(false);
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    menuItem: MenuItem;
+    opts: CartItemOption[];
+  } | null>(null);
 
   // The backend already returns options grouped by type (a `Record`), so build
   // the display groups inline in fixed order — no client-side `groupOptions()`
@@ -106,23 +114,9 @@ export default function ProductDetailsScreen() {
 
     const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
     if (isSwitchingBranch) {
-      Alert.alert(
-        'Switch branch?',
-        `Your cart has items from a different branch. Clear it and start a new order at ${selectedBranch.name}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Clear and switch',
-            style: 'destructive',
-            onPress: () => {
-              clearCart();
-              setBranch(selectedBranch.id);
-              addItem(menuItem, opts);
-              setAddedNotice(true);
-            },
-          },
-        ],
-      );
+      // Friendly confirm instead of a raw system alert (AC-A4). The underlying
+      // clear-and-switch action is unchanged — it just runs on confirm.
+      setPendingSwitch({ menuItem, opts });
       return;
     }
 
@@ -130,6 +124,16 @@ export default function ProductDetailsScreen() {
       setBranch(selectedBranch.id);
     }
     addItem(menuItem, opts);
+    setAddedNotice(true);
+  };
+
+  const confirmBranchSwitch = () => {
+    const pending = pendingSwitch;
+    setPendingSwitch(null);
+    if (!pending || !selectedBranch) return;
+    clearCart();
+    setBranch(selectedBranch.id);
+    addItem(pending.menuItem, pending.opts);
     setAddedNotice(true);
   };
 
@@ -201,6 +205,18 @@ export default function ProductDetailsScreen() {
         canAdd={canAdd}
         isAvailable={product.isAvailable}
         onAdd={handleAdd}
+      />
+
+      <ConfirmDialog
+        visible={pendingSwitch !== null}
+        title="Switch branch?"
+        message={`Your cart has items from a different branch. Clear it and start a new order at ${selectedBranch?.name ?? 'this branch'}?`}
+        confirmLabel="Clear and switch"
+        cancelLabel="Cancel"
+        variant="destructive"
+        mode={mode}
+        onConfirm={confirmBranchSwitch}
+        onCancel={() => setPendingSwitch(null)}
       />
     </View>
   );

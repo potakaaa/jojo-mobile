@@ -1,6 +1,15 @@
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  MinTouchTarget,
+  Palette,
+  Radii,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 
 export interface AddOnOption {
   id: string;
@@ -69,7 +78,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   chip: {
-    paddingVertical: Spacing.one,
+    // Kid-friendly touch-target floor (AC-A1): chips are interactive rows, so
+    // they meet the same 48dp minimum as buttons. Centered content keeps the
+    // pill visually compact while the tappable area grows.
+    minHeight: MinTouchTarget,
+    justifyContent: 'center',
+    paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Radii.full,
     borderWidth: 2,

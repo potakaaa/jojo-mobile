@@ -107,6 +107,17 @@ export const Spacing = {
 } as const;
 
 /**
+ * Minimum tappable-target size (dp) for interactive controls.
+ *
+ * Added in the kid-friendly UI pass (Phase A, 16-07-26) as an explicit,
+ * flagged addition to the locked design-token table — NOT a reopening of the
+ * `jojopotato-design-system_08-07-26` token set. It encodes the AC-A1 48×48
+ * touch-target floor once so buttons/chips/rows can reference a single source
+ * instead of hardcoding `48`.
+ */
+export const MinTouchTarget = 48;
+
+/**
  * Named border-radius step scale (dp). Derived from the observed radius scale
  * (10/12/14/16/18/20/24/26/34/40 + 999 pill).
  *
