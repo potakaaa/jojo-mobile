@@ -1,0 +1,4 @@
+cycle	date	loop	gate	fails	concerns	notes
+0	2026-07-15	PVL	CONDITIONAL	0	2	First-pass V1-V6: infra/breaking-changes/security PASS; test-coverage CONCERN (AC-3 assertion approach ambiguous DB-seed vs mock); implementation-checklist CONCERN (token-to-ticket index correlation gap, partially self-patched as plan Risk #6 + instruction E1/E2 during VALIDATE, not yet folded into formal checklist)
+1	2026-07-15	PVL	SUPPLEMENT_APPLIED	0	0	Cycle 1: vc-plan-agent supplement folded both concerns into formal checklist (#8a AC-3 real-DB-seed assertion locked, #5a ticket-token correlation rule locked). Re-running VALIDATE from V1. See real-push-delivery-pvl-iteration-001_REPORT_15-07-26.md
+2	2026-07-15	PVL	PASS	0	0	Cycle 2: independent fresh re-check (not rubber-stamp) against installed SDK type defs + current source; both concerns confirmed genuinely resolved, no new gaps. loop_status: HALTED_SUCCESS

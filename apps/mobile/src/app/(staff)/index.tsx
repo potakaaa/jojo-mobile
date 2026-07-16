@@ -33,6 +33,11 @@ const NAV_CARDS = [
     subtitle: 'Configure pickup settings',
     navigateTo: '/(staff)/branch-pickup-settings' as const,
   },
+  {
+    title: 'Enter Pickup Code',
+    subtitle: 'Look up an order by code',
+    navigateTo: '/(staff)/pickup-lookup' as const,
+  },
 ] as const;
 
 /**

@@ -21,6 +21,7 @@ import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { couponsRouter } from './routes/coupons';
 import { dealsRouter } from './routes/deals';
+import { notificationsRouter } from './routes/notifications';
 import { ordersRouter } from './routes/orders';
 import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
@@ -212,6 +213,9 @@ app.get('/api/branches/:id', async (req, res) => {
 app.use('/branches', branchesRouter);
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
+// Customer notifications (PUSH-004) — session-gated at mount, same posture as
+// /orders. Isolated single-line insertion (merge-conflict minimization).
+app.use('/notifications', requireSession, notificationsRouter);
 
 // Rewards routes (STAR-002) — read-only, session-gated ONCE at mount. Every
 // handler in rewardsRouter assumes `req.user!.id` (the server-owned session user).
