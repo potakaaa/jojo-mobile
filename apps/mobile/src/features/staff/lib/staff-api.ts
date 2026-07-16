@@ -84,6 +84,21 @@ export async function fetchStaffOrderDetail(orderId: string): Promise<StaffOrder
 }
 
 /**
+ * Look up a single order by its pickup code (`order_number`) at the staff
+ * member's branch (`GET /api/staff/orders/lookup?code=`, STAFF-005/PUP-002).
+ *
+ * Returns `null` for a 404 (no matching order at this branch — the expected
+ * "not found" state the lookup screen renders inline). Throws for any other
+ * non-OK response so the caller can surface an error state.
+ */
+export async function fetchStaffOrderByCode(code: string): Promise<StaffOrderDetail | null> {
+  const res = await staffFetch(`/api/staff/orders/lookup?code=${encodeURIComponent(code)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to look up order by code: ${res.status}`);
+  return (await res.json()) as StaffOrderDetail;
+}
+
+/**
  * Transition an order to the given status (`PATCH /api/staff/orders/:orderId`, STAFF-003).
  *
  * Throws an Error on non-OK responses. The error message carries the HTTP status

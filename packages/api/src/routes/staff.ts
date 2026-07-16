@@ -176,6 +176,59 @@ staffRouter.get('/orders/completed', async (req, res) => {
 });
 
 /**
+ * `GET /api/staff/orders/lookup?code=<pickup-code>` → `StaffOrderDetail` (STAFF-005/PUP-002).
+ *
+ * Finds an order by its `order_number` (the pickup code the customer speaks
+ * aloud), scoped to the caller's branch. Returns the full `StaffOrderDetail`
+ * INCLUDING the real `status` (terminal or not) — completion handling is left to
+ * the existing detail screen's state-machine actions.
+ *
+ * SECURITY (SPEC US-3/AC4/AC5 — LOCKED): the lookup is a SINGLE combined WHERE
+ * filter on `(branch_id, order_number)` with ONE `!order → 404` branch. A
+ * wrong-branch code simply fails the branch filter → identical not-found path as
+ * a nonexistent code, so the 404 body is byte-identical for both. Do NOT copy the
+ * adjacent `/orders/:orderId` load-then-403 pattern — that leaks order existence
+ * across branches.
+ *
+ * IMPORTANT: This static route MUST be registered BEFORE `/orders/:orderId` —
+ * Express matches top-down and would otherwise treat "lookup" as an orderId param.
+ *
+ * Status codes:
+ *   200 — flat `StaffOrderDetail` (same serializer as `/orders/:orderId`).
+ *   400 — missing/empty `code` after normalization.
+ *   403 — unassigned/no-branch staff.
+ *   404 — no order matches this code at the caller's branch (byte-identical for
+ *         wrong-branch and nonexistent codes).
+ */
+staffRouter.get('/orders/lookup', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const code = String(req.query.code ?? '')
+    .trim()
+    .toUpperCase();
+  if (!code) {
+    res.status(400).json({ error: 'Missing code' });
+    return;
+  }
+
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.branch_id, branchId), eq(orders.order_number, code)));
+  if (!order) {
+    res.status(404).json({ error: 'No matching order found for your branch' });
+    return;
+  }
+
+  const items = await db.select().from(orderItems).where(eq(orderItems.order_id, order.id));
+  res.json(serializeStaffOrderDetail(order, items));
+});
+
+/**
  * `GET /api/staff/orders/:orderId` → `StaffOrderDetail` (flat, no envelope).
  *
  * Read-only order detail (STAFF-002). Branch isolation is enforced: an order
