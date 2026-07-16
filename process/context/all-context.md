@@ -62,9 +62,11 @@ top of it later without re-plumbing the project.
 ## Current Implementation State (as of 16-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Admin dashboard Coupons system (`apps/admin` + `packages/api`, ADM-008, GitHub issue #86,
-  sub-issue of ADM-004 — delivered 16-07-26, branch `feat/adm-008-coupons`, 5/5 phases CODE-COMPLETE
-  + EVL-green — NOT YET MERGED, program held OPEN in `active/` for planned follow-up exploration,
-  do NOT treat as archived):** a real, database-backed admin authoring surface for promotional
+  sub-issue of ADM-004 — delivered 16-07-26, 5/5 phases CODE-COMPLETE + EVL-green. BRANCH/PR
+  STRATEGY CHANGED 16-07-26: the `feat/adm-008-coupons` PR is CLOSED — the work now ships via
+  **`feat/deals_unification`** (= ADM-008 commits + resolved merge `fdb2daf` of PR #93), from which
+  a PR will be opened once post-merge issues are fixed. Program held OPEN in `active/` for planned
+  follow-up exploration, do NOT treat as archived):** a real, database-backed admin authoring surface for promotional
   coupon codes — Promotion → Offer → Coupon — replacing the previously-static
   `deals-catalog.ts` promo-code list with real burnable `coupons` rows reusing the same
   redemption/burn mechanism reward coupons already use. **The legacy discount-object `deals` table
@@ -115,7 +117,8 @@ top of it later without re-plumbing the project.
   `deal_components` schema — a fully separate, unrelated feature that continues to work
   unmodified); extending `POST /coupons/apply`'s preview payload with cart-line context (the
   `is_deal` guard is enforced only at `POST /orders` placement time). **Branch state:
-  `feat/adm-008-coupons`, NOT merged — a PR is pending. Program status: CODE-COMPLETE, OPEN — the
+  superseded by `feat/deals_unification` (ADM-008 commits + merge `fdb2daf` of PR #93); the old
+  `feat/adm-008-coupons` PR is closed. Program status: CODE-COMPLETE, OPEN — the
   task folder stays in `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` (NOT
   archived to `completed/`); the user has explicit follow-up exploration work planned on ADM-008.**
   Delivered by: `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/
@@ -192,7 +195,7 @@ top of it later without re-plumbing the project.
   `products.is_deal` for the menu/admin filter queries (deferred as premature until a real scale
   problem appears). The malformed-`components[]`-payload 400-vs-422 status-code question remains open
   (currently 400, matching existing codebase convention — leaning toward leaving it as-is).
-  **Branch state: `feat/adm-004-deals`, NOT merged — a PR is pending review.** Delivered by:
+  **Branch state: `feat/adm-004-deals` MERGED via PR #92 (commit `fedcfcb`).** Delivered by:
   `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-04-deals_PLAN_14-07-26.md`
   (RE-PLANNED in full for the pivot) + co-located
   `phase-04a-deals-as-products_REPORT_15-07-26.md` (the current, authoritative EXECUTE report — the
@@ -1049,7 +1052,26 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-16 (admin-dashboard ADM-008 Coupons UPDATE PROCESS — mid-program
+- Last delta: 2026-07-16 (deals-unification merge — `6a0de21` (PR #93: kid-friendly-ui deals
+  unification + push-notifications API) merged into `feat/deals_unification` as commit `fdb2daf`.
+  Conflicts hand-resolved: `serializers.ts` (union: `offers` aliases + `notifications`/
+  `NotificationRow`), this file's header + delta history (interleaved), and a SILENT bad drizzle
+  auto-merge git never flagged — duplicate migration `0011` fixed by renumbering the rename
+  migration to `0013_rename_deals_to_offers` (journal idx 0–13 contiguous). Verified: API
+  typecheck clean, 354/354 API tests on a fresh DB migrated 0000→0013, zero conflict markers.
+  BRANCH/PR STRATEGY: the `feat/adm-008-coupons` PR is CLOSED; a PR will be opened from
+  `feat/deals_unification` once post-merge issues are fixed. Post-merge live-testing found + fixed
+  (local dev DB only): timestamp-skipped migrations applied manually (0007/0008 push, 0009
+  `orders.coupon_id`, 0010/0011 unique indexes — any teammate DB whose migration cursor predates
+  the rename timestamp needs the same); deal-products created via admin have NO
+  `branch_product_availability` rows so they are invisible on mobile at every branch — dev
+  workaround applied by SQL, real fix filed as
+  `backlog/deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` (commit `d01de23`,
+  also requests Active/visibility indicators on Deals/Promotions/Offers screens and documents the
+  deals-vs-offers scoping asymmetry: empty `offer_branches` = valid everywhere, missing bpa row =
+  visible nowhere). Known gaps carried: missing `0013` snapshot (spurious next `drizzle-kit
+  generate` diff).)
+- Previous delta: 2026-07-16 (admin-dashboard ADM-008 Coupons UPDATE PROCESS — mid-program
   reconciliation, program held OPEN, NOT archived: 5-phase sub-program (Promotion→Offer→Coupon)
   CODE-COMPLETE + EVL-green on branch `feat/adm-008-coupons`. The legacy discount-object `deals`
   table — dormant since ADM-004's Phase 4a pivot — is now RENAMED to `offers` (migration `0011`,
@@ -1104,9 +1126,9 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 - Earlier delta: 2026-07-14 (admin-dashboard Phase 1 RE-CLOSE UPDATE PROCESS — post-AC8 CORS fix: shared `adminCors` mounted on both `/api/auth/*` and `/api/admin`, API suite 75→78, AC8 browser walkthrough re-verified PASS for all 3 roles)
 - Previous delta: 2026-07-14 (admin-dashboard Phase 1 UPDATE PROCESS — requireAdmin + first browser-cookie session flow, packages/types/src/admin.ts, super_admin role-management route, TODO(STAFF-ADM) resolved, apps/admin login + (dashboard) shell, MFA/TOTP structural seam)
 - Prior delta: 2026-07-14 (admin-dashboard Phase 0 UPDATE PROCESS — apps/admin scaffold, admin-dashboard feature, first web-app Vitest runner precedent)
-- HEAD at last delta: branch `feat/deals_unification` — merge of `d305e2b` (ADM-008 coupons work,
-  `deals`→`offers` rename) with `6a0de21` (PR #93 — push-notifications API + kid-friendly-ui deals
-  unification); merge commit pending user review; drizzle migration set renumbered (rename migration
-  → `0013_rename_deals_to_offers`, journal idx 0–13 contiguous); untracked `UI_AUDIT.md` at repo root
+- HEAD at last delta: branch `feat/deals_unification`, commit `d01de23` (backlog note) on top of
+  merge commit `fdb2daf` (= `d305e2b` ADM-008 coupons work × `6a0de21` PR #93 push-notifications +
+  kid-friendly-ui deals unification); drizzle migration set renumbered (rename migration →
+  `0013_rename_deals_to_offers`, journal idx 0–13 contiguous); untracked `UI_AUDIT.md` at repo root
   (unrelated scratch file, not part of this delta)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)
