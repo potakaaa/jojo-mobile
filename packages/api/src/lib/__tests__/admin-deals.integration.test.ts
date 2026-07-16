@@ -239,6 +239,25 @@ describe('AC2 — create deal-product (isDeal true), server-pinned Deals categor
     expect(category!.slug).toBe('deals');
   });
 
+  it('reactivates the reserved Deals category if it was deactivated (menu filters by is_active)', async () => {
+    // Seed once so the category exists, then deactivate it directly.
+    await seedDeal();
+    await db
+      .update(schema.categories)
+      .set({ is_active: false })
+      .where(eq(schema.categories.slug, 'deals'));
+
+    // Next create must self-heal the category back to active.
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+
+    const [category] = await db
+      .select()
+      .from(schema.categories)
+      .where(eq(schema.categories.slug, 'deals'));
+    expect(category!.is_active).toBe(true);
+  });
+
   it('rejects a create with a missing name (400, Zod before Postgres)', async () => {
     const res = await request(app)
       .post('/api/admin/deals')

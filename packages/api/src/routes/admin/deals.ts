@@ -93,10 +93,21 @@ const attachComponentSchema = z.object({
  */
 async function resolveDealsCategoryId(): Promise<string> {
   const [existing] = await db
-    .select({ id: categories.id })
+    .select({ id: categories.id, isActive: categories.is_active })
     .from(categories)
     .where(eq(categories.slug, DEALS_CATEGORY_SLUG));
-  if (existing) return existing.id;
+  if (existing) {
+    // The reserved Deals category must stay active — the customer menu filters
+    // categories by is_active, so an inactive one hides every deal-product. If an
+    // admin deactivated it via categories CRUD, self-heal before pinning here.
+    if (!existing.isActive) {
+      await db
+        .update(categories)
+        .set({ is_active: true, updated_at: new Date() })
+        .where(eq(categories.id, existing.id));
+    }
+    return existing.id;
+  }
 
   const [created] = await db
     .insert(categories)

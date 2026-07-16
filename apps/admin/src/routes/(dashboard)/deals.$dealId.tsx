@@ -46,7 +46,9 @@ function DealDetailPage() {
     : (deal?.basePriceCents ?? 0);
 
   const { savings, lineItems } = useMemo(() => {
-    if (!deal) return { savings: null, lineItems: [] };
+    // Wait for product prices — an empty priceById would make every unit 0 and
+    // briefly flash a false "costs more" warning.
+    if (!deal || !productsQuery.data) return { savings: null, lineItems: [] };
     const priceById = new Map(
       (productsQuery.data ?? []).map((p) => [p.id, p.basePriceCents] as const),
     );
