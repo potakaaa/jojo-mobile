@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { products } from './products';
 import { promotions } from './promotions';
 
 export const dealTypeEnum = pgEnum('deal_type', [
@@ -44,6 +45,13 @@ export const offers = pgTable('offers', {
   total_usage_limit: integer('total_usage_limit'),
   is_active: boolean('is_active').default(true).notNull(),
   promotion_id: uuid('promotion_id').references(() => promotions.id),
+  // ADM-008 Fix 6 (free-mechanic redemption): the product a `free_item` /
+  // `free_upgrade` offer's benefit applies to. Nullable + additive (migration
+  // 0014): legacy free-mechanic offers created before this fix carry NULL and are
+  // rejected at redemption by the permanent resolver guard (never a mis-discount).
+  // Lazy FK callback mirrors `promotion_id` (avoids circular-init on the products
+  // import); NO ACTION on delete (default) — matches the existing FK convention.
+  benefit_product_id: uuid('benefit_product_id').references(() => products.id),
   created_at: timestamp('created_at').defaultNow().notNull(),
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });

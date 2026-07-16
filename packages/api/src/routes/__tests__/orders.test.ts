@@ -985,3 +985,91 @@ describe('POST /orders — offer coupon + is_deal guard (ADM-008)', () => {
     expect(coupon!.user_id).toBe(winner);
   });
 });
+
+// ─── ADM-008 Fix 6 (P1): unconfigured free-mechanic offer coupons at placement ──
+// A free_item/free_upgrade offer with no benefit_product_id has no real redemption
+// meaning. The permanent resolver guard rejects it at placement BEFORE any burn or
+// order write (single resolver, symmetric with the apply-preview reject) — killing
+// the legacy cheapest-line mis-discount. The coupon stays available; no order lands.
+describe('POST /orders — unconfigured free-mechanic offer coupon reject (ADM-008 Fix 6 P1)', () => {
+  let freeItemOfferId: string;
+  let freeUpgradeOfferId: string;
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  beforeAll(async () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [fi] = await db
+      .insert(schema.offers)
+      .values({
+        title: `FreeItemUnconfig ${uid()}`,
+        deal_type: 'free_item',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    freeItemOfferId = fi!.id;
+    const [fu] = await db
+      .insert(schema.offers)
+      .values({
+        title: `FreeUpgradeUnconfig ${uid()}`,
+        deal_type: 'free_upgrade',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    freeUpgradeOfferId = fu!.id;
+  });
+
+  it('rejects (400) an unconfigured free_item offer coupon; coupon not burned, no order placed', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrFiUnconfig');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: freeItemOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+
+    // No burn (still available, no used_at) and the whole placement rolled back.
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('rejects (400) an unconfigured free_upgrade offer coupon; coupon not burned, no order placed', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrFuUnconfig');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: freeUpgradeOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+});

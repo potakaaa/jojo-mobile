@@ -243,6 +243,27 @@ export async function resolveCouponDiscount(
     if (!result.eligible) {
       return { ok: false, status: 400, reason: result.reason, message: result.message };
     }
+
+    // ADM-008 Fix 6 (P1 permanent guard, D4). A `free_item`/`free_upgrade` offer
+    // with no configured `benefit_product_id` has no real redemption meaning —
+    // legacy such offers (all created before this fix) would otherwise route to
+    // `computeDealDiscountCents`'s cheapest-eligible-line branch and silently make
+    // the cheapest cart line free. Reject here instead, AFTER eligibility so the
+    // reason ordering is deterministic and BEFORE any discount math. Runs on BOTH
+    // preview and placement (single resolver); the coupon is NEVER burned on this
+    // reject (apply is zero-mutation; placement throws before the burn UPDATE).
+    // Permanent legacy safety net — stays even after P2 lands the real semantics.
+    if (
+      (offer.deal_type === 'free_item' || offer.deal_type === 'free_upgrade') &&
+      offer.benefit_product_id === null
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        reason: 'no_eligible_product',
+        message: 'This offer is not configured for redemption.',
+      };
+    }
     return {
       ok: true,
       rewardCouponId: coupon.id,

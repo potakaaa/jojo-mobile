@@ -57,12 +57,19 @@ const REWARD_CODE_B = `JP-RWD-B${uid().slice(0, 3).toUpperCase()}`; // userB's, 
 // in afterAll by offer_id, then the parent offers.
 let activeOfferId: string;
 let expiredOfferId: string;
+// ADM-008 Fix 6 (P1): free-mechanic offers with NO benefit_product_id (the legacy
+// unconfigured state) — coupons against them must be rejected at apply, not burned.
+let unconfiguredFreeItemOfferId: string;
+let unconfiguredFreeUpgradeOfferId: string;
 const seededOfferIds: string[] = [];
 const OFFER_BULK = `JP-OFR-B${uid().slice(0, 3).toUpperCase()}`; // user_id NULL
 const OFFER_TARGETED = `JP-OFR-T${uid().slice(0, 3).toUpperCase()}`; // user_id = userA (LD1 fix)
 const OFFER_EXPIRED = `JP-OFR-E${uid().slice(0, 3).toUpperCase()}`; // status expired
 const OFFER_USED = `JP-OFR-U${uid().slice(0, 3).toUpperCase()}`; // status used
 const OFFER_WINDOW = `JP-OFR-W${uid().slice(0, 3).toUpperCase()}`; // offer out of window
+// Targeted to userA against unconfigured free_item / free_upgrade offers (P1 guard).
+const OFFER_FI_UNCONFIG = `JP-OFR-FI${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_FU_UNCONFIG = `JP-OFR-FU${uid().slice(0, 2).toUpperCase()}`;
 
 async function post(
   path: string,
@@ -227,7 +234,41 @@ beforeAll(async () => {
     })
     .returning();
   expiredOfferId = expiredOffer!.id;
-  seededOfferIds.push(activeOfferId, expiredOfferId);
+
+  // ADM-008 Fix 6 (P1): free_item / free_upgrade offers with benefit_product_id
+  // left NULL (the legacy unconfigured state). In-window + branch-agnostic +
+  // no minimum, so checkDealEligibility PASSES for a cart holding the seeded
+  // product — the P1 guard is what rejects them, proving it fires AFTER
+  // eligibility rather than the coupon slipping through to the cheapest-line
+  // mis-discount.
+  const [freeItemOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FreeItemUnconfig ${suffix}`,
+      deal_type: 'free_item',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  unconfiguredFreeItemOfferId = freeItemOffer!.id;
+  const [freeUpgradeOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FreeUpgradeUnconfig ${suffix}`,
+      deal_type: 'free_upgrade',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  unconfiguredFreeUpgradeOfferId = freeUpgradeOffer!.id;
+  seededOfferIds.push(
+    activeOfferId,
+    expiredOfferId,
+    unconfiguredFreeItemOfferId,
+    unconfiguredFreeUpgradeOfferId,
+  );
 
   await db.insert(schema.coupons).values([
     // Bulk (user_id NULL) — claimable by anyone at apply preview.
@@ -240,6 +281,10 @@ beforeAll(async () => {
     { user_id: userA, offer_id: activeOfferId, code: OFFER_USED, status: 'used' },
     // Targeted, but the OFFER itself is out of window (not_in_window).
     { user_id: userA, offer_id: expiredOfferId, code: OFFER_WINDOW },
+    // ADM-008 Fix 6 (P1): targeted coupons against the two unconfigured
+    // free-mechanic offers — must be rejected at apply and stay available.
+    { user_id: userA, offer_id: unconfiguredFreeItemOfferId, code: OFFER_FI_UNCONFIG },
+    { user_id: userA, offer_id: unconfiguredFreeUpgradeOfferId, code: OFFER_FU_UNCONFIG },
   ]);
 });
 
@@ -433,6 +478,57 @@ describe('POST /coupons/apply — AC5/AC7 (offer coupon, ADM-008)', () => {
     });
     expect(res.status).toBe(400);
     expect(res.json.reason).toBe('not_in_window');
+  });
+});
+
+// ADM-008 Fix 6 (P1): the interim + permanent guard. An offer coupon whose offer
+// mechanic is free_item/free_upgrade but has no benefit product configured is
+// rejected at apply — the legacy cheapest-line mis-discount can no longer occur,
+// and (apply being zero-mutation) the coupon is never burned.
+describe('POST /coupons/apply — AC1 unconfigured free-mechanic guard (ADM-008 Fix 6 P1)', () => {
+  it('rejects an unconfigured free_item offer coupon (no_eligible_product), coupon untouched', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FI_UNCONFIG,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 2 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_eligible_product');
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+    // No discount leaked (the cheapest-line mis-discount never runs).
+    expect(res.json.discount).toBeUndefined();
+
+    const [coupon] = await db
+      .select()
+      .from(schema.coupons)
+      .where(eq(schema.coupons.code, OFFER_FI_UNCONFIG));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+  });
+
+  it('rejects an unconfigured free_upgrade offer coupon (no_eligible_product), coupon untouched', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FU_UNCONFIG,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 2 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_eligible_product');
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+    expect(res.json.discount).toBeUndefined();
+
+    const [coupon] = await db
+      .select()
+      .from(schema.coupons)
+      .where(eq(schema.coupons.code, OFFER_FU_UNCONFIG));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
   });
 });
 
