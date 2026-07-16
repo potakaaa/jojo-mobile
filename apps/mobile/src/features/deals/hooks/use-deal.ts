@@ -4,15 +4,12 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { getDeal } from '@/lib/api-client';
 
 /**
- * Single-deal query for the Deal Details screen (#23). A GENUINE per-deal
- * `useQuery` against `GET /deals/:id` — NOT a derive-from-cached-list. Deals now
- * have a per-deal endpoint (Phase 1+2), and the details screen must fetch the
- * deal regardless of the current pickup branch (so a branch-scoped deal absent
- * from the current-branch list still resolves and the eligibility engine can
- * render `branch_ineligible`). The derive-from-list pattern used by
- * `use-product-details.ts` exists only because menu has no per-product endpoint;
- * it does not apply here. Takes an explicit `dealId` (no inheritance of
- * `useDeals()`'s parameterless branch-from-cart pattern).
+ * Single-deal query (OLD discount model, `GET /deals/:id`). RETAINED because
+ * `(tabs)/order/cart.tsx` — a frozen Phase-A-in-flight file — still consumes it
+ * for its applied-discount (coupon/STAR-004) cart-line display path. The Deals
+ * TAB detail screen was migrated to the new `products.is_deal` model via
+ * `use-deal-products.ts`'s `useDealProduct()`; this hook is left untouched so the
+ * cart's OLD-model path keeps working. Takes an explicit `dealId`.
  */
 export function useDeal(dealId: string): UseQueryResult<Deal> {
   return useQuery({

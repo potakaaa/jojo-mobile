@@ -1,4 +1,4 @@
-import type { MenuItem, PickupTime } from '@jojopotato/types';
+import type { MenuItem, PickupBranch, PickupTime } from '@jojopotato/types';
 import {
   Badge,
   BranchCard,
@@ -6,6 +6,7 @@ import {
   Card,
   CartItem,
   CartSummary,
+  ConfirmDialog,
   CouponCard,
   EmptyState,
   Input,
@@ -93,6 +94,10 @@ export default function CartScreen() {
 
   const [couponCode, setCouponCode] = useState('');
   const [applying, setApplying] = useState(false);
+  // Destructive-confirm state (AC-A4): a pending coupon code awaiting a
+  // replace-confirm, and a pending next branch awaiting a change-confirm.
+  const [pendingReplaceCode, setPendingReplaceCode] = useState<string | null>(null);
+  const [pendingBranchSwitch, setPendingBranchSwitch] = useState<PickupBranch | null>(null);
 
   const { user } = useAuth();
   const usage = useDealUsage();
@@ -161,48 +166,41 @@ export default function CartScreen() {
     rewardBaselineSigRef.current = null;
   };
 
+  // Server round-trip (STAR-004): deal + reward codes are validated + priced by
+  // POST /coupons/apply (zero DB mutation — the coupon is only consumed at
+  // checkout). On success we stash the raw code so checkout can thread it to
+  // POST /orders, where it is re-validated and actually consumed. If the eligible
+  // item is later removed from the cart, the server recompute at placement
+  // rejects the order with a clear message (never a silent full-price charge).
+  const runApply = async (code: string) => {
+    setApplying(true);
+    try {
+      const result = await resolveAndApplyDeal(code, cart, cart.pickupBranchId);
+      if (!result.ok) {
+        // Keep couponCode on failure so the user can see what they typed.
+        Alert.alert('Cannot apply code', result.message);
+        return;
+      }
+      applyDiscount(result.discount);
+      setAppliedCouponCode(code);
+      rewardBaselineSigRef.current = result.discount.source === 'reward' ? itemsSignature : null;
+      setCouponCode('');
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const handleApplyCoupon = () => {
     const code = couponCode.trim();
     if (!code || applying) return;
 
-    // Server round-trip (STAR-004): deal + reward codes are validated + priced by
-    // POST /coupons/apply (zero DB mutation — the coupon is only consumed at
-    // checkout). On success we stash the raw code so checkout can thread it to
-    // POST /orders, where it is re-validated and actually consumed. If the eligible
-    // item is later removed from the cart, the server recompute at placement
-    // rejects the order with a clear message (never a silent full-price charge).
-    const doApply = async () => {
-      setApplying(true);
-      try {
-        const result = await resolveAndApplyDeal(code, cart, cart.pickupBranchId);
-        if (!result.ok) {
-          // Keep couponCode on failure so the user can see what they typed.
-          Alert.alert('Cannot apply code', result.message);
-          return;
-        }
-        applyDiscount(result.discount);
-        setAppliedCouponCode(code);
-        rewardBaselineSigRef.current = result.discount.source === 'reward' ? itemsSignature : null;
-        setCouponCode('');
-      } finally {
-        setApplying(false);
-      }
-    };
-
-    // One-discount-per-cart: replace-with-confirmation (mirrors this file's
-    // branch-switch confirmation UX; deals-screens plan step 11).
+    // One-discount-per-cart: replace-with-confirmation (friendly ConfirmDialog,
+    // AC-A4; underlying apply action unchanged).
     if (cart.appliedDiscount) {
-      Alert.alert(
-        'Replace applied discount?',
-        `This cart already has '${cart.appliedDiscount.label}' applied.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Replace', onPress: () => void doApply() },
-        ],
-      );
+      setPendingReplaceCode(code);
       return;
     }
-    void doApply();
+    void runApply(code);
   };
 
   // Switch pickup to the next real branch (cyclic). If the cart has items,
@@ -216,22 +214,18 @@ export default function CartScreen() {
       setBranch(nextBranch.id);
       return;
     }
-    Alert.alert(
-      'Change branch?',
-      `Switching to ${nextBranch.name} will clear your current cart from ${branch?.name ?? 'this branch'}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Change & clear',
-          style: 'destructive',
-          onPress: () => {
-            clearConflicts();
-            clearCart();
-            setBranch(nextBranch.id);
-          },
-        },
-      ],
-    );
+    // Friendly confirm instead of a raw system alert (AC-A4). The clear-and-switch
+    // action is unchanged — it just runs on confirm.
+    setPendingBranchSwitch(nextBranch);
+  };
+
+  const confirmBranchSwitch = () => {
+    const next = pendingBranchSwitch;
+    setPendingBranchSwitch(null);
+    if (!next) return;
+    clearConflicts();
+    clearCart();
+    setBranch(next.id);
   };
 
   const canChangeBranch = branches.length > 1;
@@ -430,6 +424,34 @@ export default function CartScreen() {
             </View>
           </>
         )}
+
+        <ConfirmDialog
+          visible={pendingReplaceCode !== null}
+          title="Replace applied discount?"
+          message={`This cart already has '${cart.appliedDiscount?.label ?? ''}' applied.`}
+          confirmLabel="Replace"
+          cancelLabel="Cancel"
+          variant="destructive"
+          mode={mode}
+          onConfirm={() => {
+            const code = pendingReplaceCode;
+            setPendingReplaceCode(null);
+            if (code) void runApply(code);
+          }}
+          onCancel={() => setPendingReplaceCode(null)}
+        />
+
+        <ConfirmDialog
+          visible={pendingBranchSwitch !== null}
+          title="Change branch?"
+          message={`Switching to ${pendingBranchSwitch?.name ?? ''} will clear your current cart from ${branch?.name ?? 'this branch'}.`}
+          confirmLabel="Change & clear"
+          cancelLabel="Cancel"
+          variant="destructive"
+          mode={mode}
+          onConfirm={confirmBranchSwitch}
+          onCancel={() => setPendingBranchSwitch(null)}
+        />
       </SafeAreaView>
     </View>
   );
