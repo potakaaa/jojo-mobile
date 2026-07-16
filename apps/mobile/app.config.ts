@@ -16,6 +16,13 @@ import type { ExpoConfig } from 'expo/config';
 
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY ?? '';
 
+// EAS project + owner default to the team's shared `jojo-potato` Expo project. A
+// developer with their own Expo account + Firebase project can override both via
+// apps/mobile/.env.local (gitignored, auto-loaded by Expo CLI per the note above)
+// to build/test push notifications against their own project instead of the shared one.
+const easProjectId = process.env.EAS_PROJECT_ID ?? 'a89a764c-ce21-4fa6-a6ab-071b87092350';
+const easOwner = process.env.EAS_OWNER ?? 'jojo-potato';
+
 const config: ExpoConfig = {
   name: 'Jojo Potato',
   slug: 'jojo-potato',
@@ -82,6 +89,16 @@ const config: ExpoConfig = {
         locationPermission: 'Jojo Potato uses your location to show you the nearest branches.',
       },
     ],
+    [
+      'expo-notifications',
+      {
+        // Wires the `remote-notification` UIBackgroundModes entitlement on iOS so
+        // a killed/backgrounded app can still be woken to process a push. No
+        // secret/credential file needs to exist in the repo for this to
+        // typecheck/lint/build (SPEC AC-4).
+        enableBackgroundRemoteNotifications: true,
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
@@ -89,10 +106,10 @@ const config: ExpoConfig = {
   extra: {
     router: {},
     eas: {
-      projectId: 'a89a764c-ce21-4fa6-a6ab-071b87092350',
+      projectId: easProjectId,
     },
   },
-  owner: 'jojo-potato',
+  owner: easOwner,
 };
 
 export default config;

@@ -1,0 +1,53 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 2 — Coupons backend",
+  "snippets": [
+    {
+      "file": "packages/api/src/db/schema/orders.ts",
+      "lines": "34-38",
+      "description": "Additive nullable coupon_id FK on orders, mirroring deal_id (NO ACTION on delete).",
+      "content": "coupon_id: uuid('coupon_id').references(() => coupons.id),"
+    },
+    {
+      "file": "packages/api/drizzle/0007_round_menace.sql",
+      "lines": "1-2",
+      "description": "drizzle-kit-generated migration (never hand-written): additive column + NO ACTION FK.",
+      "content": "ALTER TABLE \"orders\" ADD COLUMN \"coupon_id\" uuid; ALTER TABLE \"orders\" ADD CONSTRAINT \"orders_coupon_id_coupons_id_fk\" FOREIGN KEY (\"coupon_id\") REFERENCES \"public\".\"coupons\"(\"id\") ON DELETE no action ON UPDATE no action;"
+    },
+    {
+      "file": "packages/api/src/routes/orders.ts",
+      "lines": "44-47",
+      "description": "couponId is the ONLY coupon input accepted (optional uuid). No discount amount is ever accepted from the client.",
+      "content": "// Optional applied coupon (Phase 2). Same server-authority rule: only an id is accepted; the real discount is derived from the coupon's linked reward/deal. couponId: z.string().uuid().optional(),"
+    },
+    {
+      "file": "packages/api/src/routes/orders.ts",
+      "lines": "coupon-block",
+      "description": "Coupon lock+validate: FOR UPDATE lock acquired AFTER the deal lock (consistent lock ordering); owner 403, status!=available 409, expired 409; discount derived server-side from linked reward (fixed/percentage/free_item base-price) or deal (computeDealDiscountCents), each individually clamped to [0, subtotal].",
+      "content": "const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, body.couponId)).for('update'); ... couponDiscountCents = Math.max(0, Math.min(couponDiscountCents, subtotalCents));"
+    },
+    {
+      "file": "packages/api/src/routes/orders.ts",
+      "lines": "stacking",
+      "description": "Sum-clamp invariant: combined = min(deal + coupon, subtotal); discount_total AND total both derive from the SAME clamped value → subtotal - discount_total === total always holds in the persisted row.",
+      "content": "const combinedDiscountCents = Math.min(discountCents + couponDiscountCents, subtotalCents);"
+    },
+    {
+      "file": "packages/api/src/routes/orders.ts",
+      "lines": "CAS-mark-used",
+      "description": "Coupon consumed exactly once: CAS UPDATE coupons SET status='used' WHERE id=? AND status='available', AFTER the order insert in the SAME transaction; 0 rows → throw 409 → whole tx (order + coupon) rolls back.",
+      "content": "const marked = await tx.update(coupons).set({ status: 'used', used_at: new Date() }).where(and(eq(coupons.id, body.couponId), eq(coupons.status, 'available'))).returning(); if (marked.length === 0) { throw new OrderError(409, 'Coupon is no longer available'); }"
+    },
+    {
+      "file": "packages/api/src/routes/coupons.ts",
+      "lines": "redeem-CAS",
+      "description": "POST /coupons/:id/redeem uses an atomic CAS (no SELECT-then-UPDATE TOCTOU): WHERE id AND user_id AND status='available' AND not-expired; 0 rows → follow-up reads distinguish 404/403/409.",
+      "content": "await db.update(coupons).set({ status: 'used', used_at: now }).where(and(eq(coupons.id, couponId), eq(coupons.user_id, userId), eq(coupons.status, 'available'), or(isNull(coupons.expires_at), gt(coupons.expires_at, now)))).returning();"
+    },
+    {
+      "file": "packages/api/src/routes/lib/serializers.ts",
+      "lines": "serializeCouponWithLabel + serializeCoupon",
+      "description": "serializeCoupon signature UNCHANGED (still consumed by POST /rewards/:id/redeem). New serializeCouponWithLabel wraps it additively with a derived displayLabel from the joined deal/reward.",
+      "content": "export function serializeCouponWithLabel(coupon, deal, reward): ApiCouponWithLabel { return { ...serializeCoupon(coupon), displayLabel }; }"
+    }
+  ]
+}

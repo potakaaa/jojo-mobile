@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "star_transactions_order_type_unique" ON "star_transactions" USING btree ("order_id","type") WHERE "star_transactions"."order_id" IS NOT NULL;

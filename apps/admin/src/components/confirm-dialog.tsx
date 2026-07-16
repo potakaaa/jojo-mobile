@@ -1,4 +1,5 @@
 import { Dialog } from 'radix-ui';
+import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -21,6 +22,9 @@ interface ConfirmDialogProps {
   error: string | null;
   /** When true, the confirm button uses the `destructive` variant. Default true. */
   destructive?: boolean;
+  /** Optional extra body content between the description and the actions (e.g. a
+   *  policy radio group). Additive — existing callers pass none. */
+  children?: ReactNode;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }
@@ -34,6 +38,7 @@ export function ConfirmDialog({
   pending,
   error,
   destructive = true,
+  children,
   onOpenChange,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -54,6 +59,8 @@ export function ConfirmDialog({
           <Dialog.Description className="mt-2 text-sm text-muted-foreground">
             {description}
           </Dialog.Description>
+
+          {children ? <div className="mt-4">{children}</div> : null}
 
           {error ? (
             <p role="alert" className="mt-3 text-sm text-destructive">

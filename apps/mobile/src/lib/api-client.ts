@@ -1,6 +1,22 @@
 import type { Deal, MenuResponse, PickupBranch } from '@jojopotato/types';
 
 import { env } from '@/config/env';
+import { resolveImageUrl } from '@/lib/image-url';
+
+/**
+ * Error carrying the HTTP status of a failed API response, so callers (e.g. the
+ * coupon-redeem mutation) can distinguish a 409 "already used/expired" from other
+ * failures and render a friendly inline message instead of crashing.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 /**
  * Typed fetch wrapper for the menu/branch API. Targets THIS branch's real
@@ -47,6 +63,8 @@ interface BranchResponse {
   openingHours: string;
   estimatedPrepMinutes: number;
   isAcceptingPickup: boolean;
+  /** Display sort weight (ascending) for the no-location branch list order. */
+  priority: number;
   distanceKm?: number;
 }
 
@@ -66,8 +84,21 @@ export async function getBranches(): Promise<PickupBranch[]> {
  * `GET /branches/:branchId/menu` → unwrapped `{ branchId, categories }` (Gap G —
  * no wrapper key, already the `MenuResponse` shape).
  */
-export function getMenu(branchId: string): Promise<MenuResponse> {
-  return getJson<MenuResponse>(`/branches/${encodeURIComponent(branchId)}/menu`);
+export async function getMenu(branchId: string): Promise<MenuResponse> {
+  const menu = await getJson<MenuResponse>(`/branches/${encodeURIComponent(branchId)}/menu`);
+  // Resolve relative product image paths (e.g. `/images/fries-large.webp`) to
+  // absolute URLs against the current API origin (tunnel-proof). Idempotent for
+  // already-absolute URLs.
+  return {
+    ...menu,
+    categories: menu.categories.map((category) => ({
+      ...category,
+      products: category.products.map((product) => ({
+        ...product,
+        imageUrl: resolveImageUrl(product.imageUrl),
+      })),
+    })),
+  };
 }
 
 /**
@@ -79,7 +110,8 @@ export function getMenu(branchId: string): Promise<MenuResponse> {
 export async function getDeals(branchId?: string): Promise<Deal[]> {
   const path = branchId ? `/deals?branchId=${encodeURIComponent(branchId)}` : '/deals';
   const body = await getJson<{ deals: Deal[] }>(path);
-  return body.deals;
+  // Resolve relative image paths to absolute URLs (tunnel-proof); idempotent.
+  return body.deals.map((deal) => ({ ...deal, imageUrl: resolveImageUrl(deal.imageUrl) }));
 }
 
 /**
@@ -90,5 +122,6 @@ export async function getDeals(branchId?: string): Promise<Deal[]> {
  */
 export async function getDeal(dealId: string): Promise<Deal> {
   const body = await getJson<{ deal: Deal }>(`/deals/${encodeURIComponent(dealId)}`);
-  return body.deal;
+  // Resolve the relative image path to an absolute URL (tunnel-proof); idempotent.
+  return { ...body.deal, imageUrl: resolveImageUrl(body.deal.imageUrl) };
 }

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { MenuItem } from '@jojopotato/types';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   BranchCard,
   Button,
@@ -29,8 +30,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { getAppliedCouponCode, setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { requestNotificationPermission } from '@/features/notifications/lib/notification-permission';
+import {
+  registerDeviceToken,
+  requestNotificationPermission,
+} from '@/features/notifications/lib/notification-permission';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
 import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -82,6 +87,7 @@ export default function CheckoutScreen() {
   const { branches } = useBranch();
   const { placeOrder, submitting, error } = useCheckout();
   const { paymentMethod } = useOrder();
+  const queryClient = useQueryClient();
 
   const branch = branches.find((b) => b.id === cart.pickupBranchId) ?? null;
   const isBranchUnavailable = !branch && !!cart.pickupBranchId;
@@ -90,6 +96,10 @@ export default function CheckoutScreen() {
   const isEmpty = cart.items.length === 0;
 
   const submitOrder = async () => {
+    // Only send couponCode when a discount is actually applied (STAR-004) — the
+    // raw code is stashed out-of-band at apply time. The server re-validates and
+    // consumes it; a recompute-drop is rejected there, never silently ignored.
+    const couponCode = cart.appliedDiscount ? (getAppliedCouponCode() ?? undefined) : undefined;
     const order = await placeOrder({
       branchId: cart.pickupBranchId,
       paymentMethod,
@@ -98,17 +108,38 @@ export default function CheckoutScreen() {
         quantity: line.quantity,
         selectedOptions: line.selectedOptions.map((opt) => ({ optionId: opt.id })),
       })),
-      // Only a deal-sourced discount carries a real dealId the server can revalidate.
-      dealId: cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
+      ...(couponCode ? { couponCode } : {}),
+      // A code-applied deal is re-resolved server-side from `couponCode`; its
+      // `refId` is a catalog id (e.g. "deal-welcome-20"), not a UUID, so sending
+      // it as `dealId` would fail placement (UUID validation + the single-discount
+      // guard rejects dealId+couponCode together). Only send `dealId` for a deal
+      // applied by id with no code.
+      dealId:
+        !couponCode && cart.appliedDiscount?.source === 'deal'
+          ? cart.appliedDiscount.refId
+          : undefined,
     });
     if (order) {
+      // Clear the out-of-band applied code once the order is placed (STAR-004).
+      setAppliedCouponCode(null);
       // First-order notification permission seam (fire-and-forget; the seam's
       // own once-guard ensures it only prompts on the first successful order).
-      // Never awaited — it must not delay the confirmation redirect.
-      requestNotificationPermission().catch((err) => {
-        console.error('Failed to request notification permission:', err);
-      });
+      // Never awaited — it must not delay the confirmation redirect. On grant,
+      // register this device's real Expo push token (PUSH-004).
+      requestNotificationPermission()
+        .then((result) => {
+          if (result === 'granted') return registerDeviceToken();
+          return undefined;
+        })
+        .catch((err) => {
+          console.error('Failed to set up notifications:', err);
+        });
       clearCart();
+      // Refresh coupon + rewards caches so a consumed reward coupon no longer
+      // shows as "Available" — refetchOnWindowFocus doesn't fire on RN in-app
+      // tab nav. Invalidate by key PREFIX so all sub-keys refresh; don't await.
+      void queryClient.invalidateQueries({ queryKey: ['coupons'] });
+      void queryClient.invalidateQueries({ queryKey: ['rewards'] });
       router.replace({
         pathname: '/(tabs)/order/confirmation/[orderId]',
         params: { orderId: order.id },
@@ -276,6 +307,9 @@ export default function CheckoutScreen() {
                 onPress={() => router.push('/(tabs)/order/payment-method')}
               />
             </View>
+            <Text style={[styles.paymentNote, { color: theme.textSecondary }]}>
+              Pay when you pick up — settle your order in cash or card at the branch counter.
+            </Text>
           </Card>
 
           {error ? <Text style={[styles.errorText, { color: theme.accent }]}>{error}</Text> : null}
@@ -309,7 +343,12 @@ export default function CheckoutScreen() {
           exiting={FadeOut.duration(150)}
           style={styles.sheetBackdrop}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={dismissConfirm} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={dismissConfirm}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss order confirmation"
+          />
           <Animated.View
             entering={SlideInDown.duration(300)}
             exiting={SlideOutDown.duration(200)}
@@ -431,6 +470,10 @@ const styles = StyleSheet.create({
   paymentValue: {
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.body,
+  },
+  paymentNote: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
   },
   errorText: {
     fontFamily: FontFamily.body.semibold,

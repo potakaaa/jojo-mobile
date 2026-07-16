@@ -13,6 +13,11 @@ import {
   products,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
+import { creditStarForCompletedOrder } from '../lib/star-earning';
+import {
+  dispatchOrderNotification,
+  type OrderNotificationEvent,
+} from './lib/notification-dispatch';
 import { canTransition } from './lib/order-state-machine';
 import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
 
@@ -35,23 +40,38 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
 // ─── Side-effect stubs (STAFF-003) ───────────────────────────────────────────
 
 /**
- * TODO(STAR-001): credit stars when an order is completed.
- * Replace with real star-crediting logic once the rewards system is built.
+ * Credit a Jojo Star for a completed order (wired as of the dev/star merge —
+ * resolves the STAFF-003 star-earn dependency). Delegates to the idempotent
+ * `creditStarForCompletedOrder` service (DB-enforced single credit per order; also
+ * triggers STAR-003 reward unlock + coupon generation on threshold crossing).
+ *
+ * Best-effort and fire-and-forget: the order status transition is already committed
+ * by the time this runs, so a credit failure must NOT fail the 200 response. We
+ * still `await` so any error is caught and logged here rather than surfacing as an
+ * unhandled rejection.
  */
-function creditStarsForOrder(_order: typeof orders.$inferSelect): void {
-  void _order; // TODO(STAR-001): replace with real star-crediting logic
+async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<void> {
+  try {
+    await creditStarForCompletedOrder(order.id);
+  } catch (err) {
+    console.error(`[staff] failed to credit star for completed order ${order.id}`, err);
+  }
 }
 
 /**
- * TODO(PUSH-002): dispatch a push notification for the given order event.
- * Replace with real push dispatch once the notifications system is built.
+ * Dispatch a customer push notification for an order transition (PUSH-004 / #75).
+ *
+ * A thin wrapper over `dispatchOrderNotification` — scoped to exactly the 4
+ * transactional events (`accepted`/`preparing`/`ready`/`cancelled`). Awaited at
+ * the call site so the notification row is persisted before the PATCH response
+ * (deterministic in-app list consistency); `dispatchOrderNotification` never
+ * throws, so a push failure can never break the status transition.
  */
-function notifyCustomer(
-  _order: typeof orders.$inferSelect,
-  _event: 'completed' | 'rejected' | 'cancelled',
-): void {
-  void _order;
-  void _event; // TODO(PUSH-002): replace with real push dispatch
+async function notifyCustomer(
+  order: typeof orders.$inferSelect,
+  event: OrderNotificationEvent,
+): Promise<void> {
+  await dispatchOrderNotification(order, event);
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -324,28 +344,45 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
-  // 7. Apply the update — compare-and-swap: also guard on current status so a
-  //    concurrent PATCH that already advanced the order results in 0 rows matched → 409.
-  const [updatedRow] = await db
-    .update(orders)
-    .set(patch)
-    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
-    .returning({ id: orders.id });
+  // 7. Apply the update inside a transaction — compare-and-swap on current status
+  //    so a concurrent PATCH that already advanced the order results in 0 rows
+  //    matched → 409. The star credit for a completion runs OUTSIDE this tx via the
+  //    idempotent `creditStarForCompletedOrder` service (which owns its own
+  //    transaction + STAR-003 reward unlock), so a credit failure never rolls back
+  //    the status flip (`completed` is terminal; the service is DB-idempotent).
+  const updatedOrder = { ...order, ...patch } as typeof order;
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+      .returning({ id: orders.id });
+    if (!updatedRow) return false;
 
-  if (!updatedRow) {
+    return true;
+  });
+
+  if (!committed) {
     res.status(409).json({ error: 'Concurrent modification detected; please retry' });
     return;
   }
 
-  // 8. Call side-effect stubs at the correct transition sites.
-  const updatedOrder = { ...order, ...patch } as typeof order;
-  if (targetStatus === 'completed') {
-    creditStarsForOrder(updatedOrder);
-    notifyCustomer(updatedOrder, 'completed');
-  } else if (targetStatus === 'rejected') {
-    notifyCustomer(updatedOrder, 'rejected');
+  // 8. Star credit for `completed` + customer push notifications run OUTSIDE the
+  //    tx, only after the status flip has durably committed. Push notifications
+  //    fire for the 4 transactional events (accepted/preparing/ready/cancelled) —
+  //    NOT completed/rejected (PUSH-004; `OrderNotificationEvent` has no
+  //    'completed'/'rejected' member, so those are deliberately unpushed, not an
+  //    oversight — see the deferred-rejected-notification backlog note).
+  if (targetStatus === 'accepted') {
+    await notifyCustomer(updatedOrder, 'accepted');
+  } else if (targetStatus === 'preparing') {
+    await notifyCustomer(updatedOrder, 'preparing');
+  } else if (targetStatus === 'ready') {
+    await notifyCustomer(updatedOrder, 'ready');
+  } else if (targetStatus === 'completed') {
+    await creditStarsForOrder(updatedOrder);
   } else if (targetStatus === 'cancelled') {
-    notifyCustomer(updatedOrder, 'cancelled');
+    await notifyCustomer(updatedOrder, 'cancelled');
   }
 
   // 9. Re-select the updated order for the response.
@@ -365,13 +402,9 @@ const patchProductAvailabilitySchema = z.object({
 
 const patchBranchSettingsSchema = z
   .object({
-    isAcceptingPickup: z.boolean().optional(),
-    estimatedPrepMinutes: z.number().int().min(1).max(120).optional(),
+    estimatedPrepMinutes: z.number().int().min(1).max(120),
   })
-  .refine(
-    (data) => data.isAcceptingPickup !== undefined || data.estimatedPrepMinutes !== undefined,
-    { message: 'At least one field required' },
-  );
+  .strict();
 
 /**
  * `GET /api/staff/products` → `{ products: StaffProduct[] }` (STAFF-004).
@@ -528,13 +561,15 @@ staffRouter.get('/branch', async (req, res) => {
 /**
  * `PATCH /api/staff/branch` → `{ isAcceptingPickup, estimatedPrepMinutes }` (STAFF-004).
  *
- * Updates operational settings for the staff member's assigned branch.
- * Cross-branch writes are structurally impossible — branch is always session-derived.
+ * Updates the estimated prep time for the staff member's assigned branch.
+ * Pickup acceptance (`is_accepting_pickup`) is admin-only — use the admin branches
+ * API to change it. Cross-branch writes are structurally impossible (branch is
+ * always session-derived).
  *
  * Status codes:
  *   200 — settings updated; returns updated values.
  *   403 — unassigned staff.
- *   422 — empty body or invalid field values.
+ *   422 — missing or invalid `estimatedPrepMinutes`.
  */
 staffRouter.patch('/branch', async (req, res) => {
   const branchId = await resolveBranchScope(db, req.staffSession!.userId);
@@ -548,12 +583,12 @@ staffRouter.patch('/branch', async (req, res) => {
     res.status(422).json({ error: 'Invalid body', details: parseResult.error.issues });
     return;
   }
-  const { isAcceptingPickup, estimatedPrepMinutes } = parseResult.data;
+  const { estimatedPrepMinutes } = parseResult.data;
 
-  // Build update patch with only the provided fields.
-  const patch: Partial<typeof branches.$inferInsert> = { updated_at: new Date() };
-  if (isAcceptingPickup !== undefined) patch.is_accepting_pickup = isAcceptingPickup;
-  if (estimatedPrepMinutes !== undefined) patch.estimated_prep_minutes = estimatedPrepMinutes;
+  const patch: Partial<typeof branches.$inferInsert> = {
+    updated_at: new Date(),
+    estimated_prep_minutes: estimatedPrepMinutes,
+  };
 
   await db.update(branches).set(patch).where(eq(branches.id, branchId));
 

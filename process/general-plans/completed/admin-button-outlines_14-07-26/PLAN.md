@@ -1,7 +1,7 @@
 # Admin App: Universal Button Outlines
 
-**Date:** 14-07-26  
-**Complexity:** Simple  
+**Date:** 14-07-26
+**Complexity:** Simple
 **Status:** ⏳ PLANNED
 
 ## Overview

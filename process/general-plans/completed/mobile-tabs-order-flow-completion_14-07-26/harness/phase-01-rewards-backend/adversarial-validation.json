@@ -1,0 +1,39 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Client inflates the star reward by sending a large amount in the request body (accrual)",
+      "ruled_out": true,
+      "rationale": "creditStarsForOrder takes no client input — the star count is computed from order.subtotal (a server-persisted column) via computeStarsEarned. There is no request-body field for star amount on any endpoint."
+    },
+    {
+      "scenario": "Double-spend via concurrent redeem: two simultaneous requests both read a passing balance and both decrement, driving current_stars negative",
+      "ruled_out": true,
+      "rationale": "The redeem transaction locks the caller's user_stars row with SELECT ... FOR UPDATE before the balance check. The second concurrent request blocks until the first commits, then reads the already-decremented balance and is rejected with 400. Proven by the 'serializes concurrent redeems' test (statuses sorted [201, 400], final current=0, one coupon)."
+    },
+    {
+      "scenario": "Double-credit by replaying the order-completion transition",
+      "ruled_out": true,
+      "rationale": "'completed' is terminal in order-state-machine.ts, so a repeat PATCH returns 409 before accrual runs. Additionally an explicit guard skips crediting when an 'earned' star_transactions row already exists for the order id. Proven by the re-PATCH idempotency test."
+    },
+    {
+      "scenario": "Redeem more stars than owned to obtain a free coupon",
+      "ruled_out": true,
+      "rationale": "Server-side check current_stars >= reward.required_stars runs inside the locked transaction; insufficient balance throws RewardError(400) and rolls back the whole transaction (no partial decrement, no coupon). Proven by the insufficient-stars test asserting unchanged balance and zero coupons."
+    },
+    {
+      "scenario": "Redeem an inactive/nonexistent reward to mint a coupon or crash the endpoint",
+      "ruled_out": true,
+      "rationale": "The reward is loaded with is_active = true filter; missing/inactive → 404. Malformed :id fails the uuid guard → 404 (not a 500). Proven by the '404s an unknown reward and a malformed id' test."
+    },
+    {
+      "scenario": "Unauthenticated caller reads another user's balance or redeems on their behalf",
+      "ruled_out": true,
+      "rationale": "GET /rewards/balance and POST /rewards/:id/redeem are gated by requireSession per-route; userId is taken from req.user!.id (the session), never from a client-supplied id. Unauthenticated requests get 401 (proven by the two 401 tests). GET /rewards is intentionally public catalog data with no per-user fields."
+    },
+    {
+      "scenario": "Redeem resets the full balance (losing spendable stars beyond the reward cost) or corrupts lifetime accounting",
+      "ruled_out": true,
+      "rationale": "Redeem decrements current_stars by exactly reward.required_stars (not a reset to 0) and never touches lifetime_stars. Proven by the redeem-success test asserting current 10→5 and lifetime staying 10."
+    }
+  ]
+}

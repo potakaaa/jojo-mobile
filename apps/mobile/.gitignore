@@ -14,6 +14,13 @@ builds/
 .env.*.local
 app.json.bak
 
-android/app/google-services.json
+# Firebase per-project config (per-project, not app source; EAS Build/credentials
+# manage these remotely — must stay OUT of git per the push-delivery credential runbook)
 google-services.json
+GoogleService-Info.plist
+
+# Firebase Admin SDK / FCM v1 service account key — a LIVE private key with
+# Cloud Messaging send authority. Never commit; provision via EAS credentials.
+# Glob (not the exact filename) because the suffix is random per regeneration
+# (e.g. {project}-firebase-adminsdk-{random}.json).
 *firebase-adminsdk*.json

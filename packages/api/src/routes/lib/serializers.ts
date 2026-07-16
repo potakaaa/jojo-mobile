@@ -1,15 +1,24 @@
-import type { StaffOrderDetail, StaffOrderSummary } from '@jojopotato/types';
+import type {
+  AppNotification,
+  NotificationTargetScreen,
+  NotificationType,
+  StaffOrderDetail,
+  StaffOrderSummary,
+} from '@jojopotato/types';
 import type { InferSelectModel } from 'drizzle-orm';
 
 import type {
   branchProductAvailability,
   branches,
   categories,
+  coupons,
   deals,
+  notifications,
   orderItems,
   orders,
   productOptions,
   products,
+  rewards,
 } from '../../db/schema/index';
 
 type BranchRow = InferSelectModel<typeof branches>;
@@ -20,6 +29,9 @@ type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailab
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
 type DealRow = InferSelectModel<typeof deals>;
+type NotificationRow = InferSelectModel<typeof notifications>;
+type RewardRow = InferSelectModel<typeof rewards>;
+type CouponRow = InferSelectModel<typeof coupons>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
 type DealType = DealRow['deal_type'];
@@ -47,6 +59,8 @@ export interface ApiBranch {
   openingHours: string;
   estimatedPrepMinutes: number;
   isAcceptingPickup: boolean;
+  /** Display sort weight (ascending) for the no-location branch list order. */
+  priority: number;
   /** Great-circle distance in km from a query point, when lat/lng were supplied. */
   distanceKm?: number;
 }
@@ -101,6 +115,9 @@ export interface AdminProduct {
   basePriceCents: number;
   isActive: boolean;
   isRewardEligible: boolean;
+  // ADM-004 deals-as-products: true for a deal-product (surfaced by the dedicated
+  // Deals admin screen), false for a regular catalog product. Additive.
+  isDeal: boolean;
 }
 
 export interface AdminProductOption {
@@ -141,6 +158,7 @@ export function serializeAdminProduct(product: ProductRow): AdminProduct {
     basePriceCents: numericToCents(product.base_price),
     isActive: product.is_active,
     isRewardEligible: product.is_reward_eligible,
+    isDeal: product.is_deal,
   };
 }
 
@@ -217,6 +235,7 @@ export interface ApiOrder {
   estimatedReadyAt: string | null;
   placedAt: string;
   dealId: string | null;
+  couponId: string | null;
   items: ApiOrderItem[];
 }
 
@@ -254,6 +273,7 @@ export function serializeBranch(branch: BranchRow, distanceKm?: number): ApiBran
     openingHours: branch.opening_hours,
     estimatedPrepMinutes: branch.estimated_prep_minutes,
     isAcceptingPickup: branch.is_accepting_pickup,
+    priority: branch.priority,
     ...(distanceKm === undefined ? {} : { distanceKm }),
   };
 }
@@ -353,6 +373,7 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     placedAt: order.placed_at.toISOString(),
     dealId: order.deal_id,
+    couponId: order.coupon_id,
     items: items.map(serializeOrderItem),
   };
 }
@@ -457,6 +478,45 @@ export function serializeDeal(
   };
 }
 
+// ─── Admin deal-product serializer (ADM-004 deals-as-products) ───────────────
+//
+// A "deal" is a `products` row with `is_deal = true`, so the admin deal shape is
+// the SAME as `AdminProduct` (reusing `serializeAdminProduct` verbatim — DRY)
+// plus a `components` array describing "what's inside" (the `deal_components`
+// junction, resolved with each component product's display name). Declared
+// LOCALLY here matching the `AdminBranch`/`AdminProduct` convention.
+//
+// `components` is populated only on the DETAIL response (it needs a junction
+// join); the list route passes `[]` to avoid N+1 joins. NB: the discount-shaped
+// `AdminDeal`/`AdminDealExtras`/`serializeAdminDeal` that lived here (ADM-004
+// discount model, commit d5070d8) were DISCARDED by the deals-as-products pivot —
+// their only consumer was the now-rewritten `admin/deals.ts`. The PUBLIC
+// `ApiDeal`/`serializeDeal` above are KEPT (dormant, still consumed by the live
+// `routes/deals.ts` read routes).
+
+export interface AdminDealComponent {
+  componentProductId: string;
+  componentName: string;
+  quantity: number;
+}
+
+export interface AdminDealProduct extends AdminProduct {
+  components: AdminDealComponent[];
+}
+
+/**
+ * Serialize a deal-product (`products` row with `is_deal = true`) to the admin
+ * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
+ * and appends the resolved `components` list (fetched by the route handler; `[]`
+ * on the list route to avoid per-row junction joins).
+ */
+export function serializeAdminDealProduct(
+  product: ProductRow,
+  components: AdminDealComponent[] = [],
+): AdminDealProduct {
+  return { ...serializeAdminProduct(product), components };
+}
+
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────
 
 /**
@@ -521,4 +581,159 @@ export function serializeStaffOrderDetail(
     totalCents: numericToCents(order.total),
     items: items.map(serializeStaffOrderItem),
   };
+}
+
+// ─── Notification serializer (PUSH-004) ─────────────────────────────────────
+
+/**
+ * Serialize a `notifications` row to the mobile `AppNotification` shape
+ * (camelCase boundary, ISO timestamps, `targetParams` jsonb passthrough).
+ * `type`/`targetScreen` are stored as plain varchars but only ever written with
+ * valid union values, so they are cast at the boundary. Optional fields
+ * (`targetParams`/`readAt`) are omitted when null, matching the `AppNotification`
+ * contract's optionality.
+ */
+export function serializeNotification(row: NotificationRow): AppNotification {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type as NotificationType,
+    title: row.title,
+    body: row.body,
+    targetScreen: (row.target_screen ?? 'order_tracking') as NotificationTargetScreen,
+    ...(row.target_params === null
+      ? {}
+      : { targetParams: row.target_params as Record<string, string> }),
+    createdAt: row.created_at.toISOString(),
+    ...(row.read_at === null ? {} : { readAt: row.read_at.toISOString() }),
+  };
+}
+
+// ─── Rewards / coupons serializers (Phase 1 — rewards backend) ───────────────
+
+/**
+ * A reward at the HTTP boundary. Mirrors `@jojopotato/types` `Reward` (declared
+ * locally to keep the no-cross-dependency boundary convention). `rewardValue` is
+ * cents (`reward_value` is a pg numeric decimal-peso string), or null.
+ */
+export interface ApiReward {
+  id: string;
+  name: string;
+  requiredStars: number;
+  rewardType: string;
+  rewardValue: number | null;
+  eligibleProductId: string | null;
+  isActive: boolean;
+}
+
+/** Serialize a `rewards` row to `ApiReward` (money → cents at the boundary). */
+export function serializeReward(reward: RewardRow): ApiReward {
+  return {
+    id: reward.id,
+    name: reward.name,
+    requiredStars: reward.required_stars,
+    rewardType: reward.reward_type,
+    rewardValue: reward.reward_value === null ? null : numericToCents(reward.reward_value),
+    eligibleProductId: reward.eligible_product_id,
+    isActive: reward.is_active,
+  };
+}
+
+/**
+ * An issued coupon at the HTTP boundary. Mirrors `@jojopotato/types` `Coupon`
+ * (schema-based — no display `title`/`discountLabel`). Timestamps are ISO strings.
+ */
+export interface ApiCoupon {
+  id: string;
+  userId: string;
+  code: string;
+  status: CouponRow['status'];
+  dealId: string | null;
+  rewardId: string | null;
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+/** Serialize a `coupons` row to `ApiCoupon`. */
+export function serializeCoupon(coupon: CouponRow): ApiCoupon {
+  return {
+    id: coupon.id,
+    userId: coupon.user_id,
+    code: coupon.code,
+    status: coupon.status,
+    dealId: coupon.deal_id,
+    rewardId: coupon.reward_id,
+    expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
+    usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
+    createdAt: coupon.created_at.toISOString(),
+  };
+}
+
+/**
+ * Human-readable label for a REWARD-issued coupon, analogous to
+ * `dealDiscountLabel`. `rewardType` is an unconstrained `varchar` (no DB enum),
+ * so the `default` branch is mandatory: any unrecognized type falls back to the
+ * reward's own name (never throws, never returns undefined).
+ *  - `fixed_discount`      → `"₱X OFF"` (X = whole-peso reward_value)
+ *  - `percentage_discount` → `"X% OFF"`
+ *  - `free_item`           → the reward's `name` (or `"Free item"` if empty)
+ *  - anything else         → the reward's `name` (or `"Reward"` if empty)
+ */
+export function rewardDiscountLabel(
+  rewardType: string,
+  rewardValue: string | null,
+  rewardName: string,
+): string {
+  switch (rewardType) {
+    case 'fixed_discount':
+      return `₱${Number(rewardValue ?? '0').toFixed(0)} OFF`;
+    case 'percentage_discount':
+      return `${Number(rewardValue ?? '0')}% OFF`;
+    case 'free_item':
+      return rewardName.trim().length > 0 ? rewardName : 'Free item';
+    default:
+      return rewardName.trim().length > 0 ? rewardName : 'Reward';
+  }
+}
+
+/**
+ * An issued coupon at the HTTP boundary WITH a derived, human-readable
+ * `displayLabel` (so the coupon-wallet card has renderable text). Used only by
+ * `GET /coupons`, which LEFT JOINs the linked deal/reward to build the label.
+ * `serializeCoupon` (no label) stays untouched for `POST /rewards/:id/redeem`.
+ */
+export interface ApiCouponWithLabel extends ApiCoupon {
+  displayLabel: string;
+}
+
+/**
+ * Serialize a `coupons` row PLUS its (optional) joined deal/reward row into an
+ * `ApiCouponWithLabel`. The label source mirrors how the coupon was issued:
+ * a `deal_id`-linked coupon uses `dealDiscountLabel` (reusing `serializeDeal`'s
+ * polymorphic value rule); a `reward_id`-linked coupon uses `rewardDiscountLabel`.
+ * Falls back to `"Coupon"` when neither link resolves a row. NEVER modifies or
+ * re-implements `serializeCoupon` — it wraps its output additively.
+ */
+export function serializeCouponWithLabel(
+  coupon: CouponRow,
+  deal: DealRow | null,
+  reward: RewardRow | null,
+): ApiCouponWithLabel {
+  let displayLabel = 'Coupon';
+  if (coupon.deal_id !== null && deal !== null) {
+    let discountValue = 0;
+    if (deal.discount_value !== null) {
+      if (deal.deal_type === 'percentage_discount') {
+        discountValue = Number(deal.discount_value);
+      } else if (deal.deal_type === 'fixed_discount') {
+        discountValue = numericToCents(deal.discount_value);
+      }
+    }
+    displayLabel = dealDiscountLabel(deal.deal_type, discountValue);
+  } else if (coupon.reward_id !== null && reward !== null) {
+    displayLabel = rewardDiscountLabel(reward.reward_type, reward.reward_value, reward.name);
+  }
+
+  return { ...serializeCoupon(coupon), displayLabel };
 }

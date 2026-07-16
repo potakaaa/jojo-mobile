@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+import { isNestedTabRoute } from './floating-tab-bar.helpers';
+
 // Cross-tree signal: lets a screen hide the floating tab bar while a full-screen
 // overlay (e.g. the checkout confirm drawer) is open, so the bar doesn't paint over
 // it. ponytail: tiny external store, not a context provider — one flag, one consumer.
@@ -53,6 +55,15 @@ export function useHideTabBarWhile(active: boolean) {
 interface TabBarRoute {
   key: string;
   name: string;
+  /**
+   * OPTIONAL nested navigation state of this tab's Stack. React Navigation
+   * populates it once the tab's nested navigator has history; `index > 0`
+   * means a screen is pushed above the tab root. Consumed via `isNestedTabRoute`
+   * (Fix A) to hide the floating bar on nested screens. Undefined at root /
+   * before the nested navigator initializes; `index` is itself optional to stay
+   * assignable from React Navigation's `PartialState` (both treated as "at root").
+   */
+  state?: { index?: number };
 }
 
 interface TabBarDescriptor {
@@ -72,7 +83,10 @@ interface BottomTabBarProps {
     emit: (event: { type: 'tabPress'; target: string; canPreventDefault: true }) => {
       defaultPrevented: boolean;
     };
-    navigate: (name: string) => void;
+    // Optional 2nd param (`{ screen: 'index' }`) is additive, needed for Fix B's
+    // reset-to-root call. The real React Navigation `navigate` already accepts a
+    // nested-screen params object; this file-internal type just widens to match.
+    navigate: (name: string, params?: { screen: string }) => void;
   };
 }
 
@@ -237,19 +251,27 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const colors = Colors[mode];
   const hidden = useSyncExternalStore(subscribeTabBar, getTabBarHidden);
 
-  // Fade the bar out/in when a full-screen overlay (e.g. the checkout confirm
-  // drawer) toggles it, instead of popping. pointerEvents blocks taps while hidden.
+  // Fix A: hide the whole floating bar when the focused tab is showing a pushed
+  // (nested) screen, so the bar paints only on the 5 tab-root screens. Composed
+  // (OR) with the external-store `hidden` flag so the checkout overlay case
+  // (`useHideTabBarWhile`) still hides the bar even at a tab root.
+  const focusedTab = state.routes[state.index];
+  const isFocusedTabNested = focusedTab != null && isNestedTabRoute(focusedTab);
+  const isHidden = hidden || isFocusedTabNested;
+
+  // Fade the bar out/in when it should hide (overlay toggle or a nested screen)
+  // instead of popping. pointerEvents blocks taps while hidden.
   const barOpacity = useSharedValue(1);
   useEffect(() => {
-    barOpacity.value = withTiming(hidden ? 0 : 1, { duration: 200 });
-  }, [hidden, barOpacity]);
+    barOpacity.value = withTiming(isHidden ? 0 : 1, { duration: 200 });
+  }, [isHidden, barOpacity]);
   const barFadeStyle = useAnimatedStyle(() => ({ opacity: barOpacity.value }));
 
   return (
     <Animated.View
-      pointerEvents={hidden ? 'none' : 'auto'}
-      accessibilityElementsHidden={hidden}
-      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+      pointerEvents={isHidden ? 'none' : 'auto'}
+      accessibilityElementsHidden={isHidden}
+      importantForAccessibility={isHidden ? 'no-hide-descendants' : 'auto'}
       style={[
         styles.bar,
         {
@@ -283,7 +305,16 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             canPreventDefault: true,
           });
 
-          if (!isActive && !event.defaultPrevented) {
+          if (event.defaultPrevented) return;
+
+          if (isActive) {
+            // Fix B: re-tapping the already-active tab resets that tab's stack
+            // to its root (`index`) screen. React Navigation's navigate-to-
+            // existing semantics pop back to `index` when it is already in the
+            // nested stack, freeing the user from a cross-tab push (e.g. the
+            // Home "Active Order" banner → order/tracking trap).
+            navigation.navigate(route.name, { screen: 'index' });
+          } else {
             navigation.navigate(route.name);
           }
         };

@@ -45,6 +45,27 @@ export interface Product {
   imageUrl?: string;
   basePriceCents: number;
   options: Record<ProductOptionType, ProductOption[]>;
+  /**
+   * ADM-004 deals-as-products: true when this product is a "deal" (priced at its
+   * own base_price, its contents described by `components`). Optional/additive —
+   * a regular menu product omits it (or sends false). The mobile Deals tab reads
+   * `GET /branches/:id/menu?isDeal=true` to list these (4b handoff).
+   */
+  isDeal?: boolean;
+  /** The deal's "what's inside" list — present only on deal-products (4b display). */
+  components?: DealComponent[];
+}
+
+/**
+ * One line of a deal-product's contents (the `deal_components` junction, ADM-004).
+ * Mirrors the admin `AdminDealComponent` boundary shape: which product is included
+ * and how many. Metadata for the "what's inside" display only — never used for
+ * pricing (a deal is priced at its own `basePriceCents`).
+ */
+export interface DealComponent {
+  componentProductId: string;
+  componentName: string;
+  quantity: number;
 }
 
 /** A menu category with its branch-available, active products. Mirrors `ApiMenuCategory`. */

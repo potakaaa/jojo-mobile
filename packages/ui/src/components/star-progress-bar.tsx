@@ -1,27 +1,37 @@
-import type { RewardsTierProgress } from '@jojopotato/types';
 import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode } from '../theme';
 
+/** Star-based progress toward the next reward (STAR-002 stars/threshold model). */
+export interface StarProgress {
+  currentStars: number;
+  requiredStars: number;
+}
+
 export interface StarProgressBarProps {
-  progress: RewardsTierProgress;
+  progress: StarProgress;
   mode?: ThemeMode;
   style?: ViewStyle;
 }
 
 /**
- * Horizontal progress bar toward the next rewards tier. Pure `View`/`StyleSheet`
- * (no external progress library). Width fraction is
- * `currentPoints / (currentPoints + pointsToNextTier)`, clamped to [0, 1].
+ * Horizontal progress bar toward the next reward. Pure `View`/`StyleSheet` (no
+ * external progress library). Width fraction is `currentStars / requiredStars`,
+ * clamped to [0, 1] (a `requiredStars` of 0 renders an empty bar). At or above
+ * the threshold the caption flips to "Reward unlocked" (AC2); otherwise it shows
+ * how many stars remain (AC1).
  */
 export function StarProgressBar({ progress, mode = 'light', style }: StarProgressBarProps) {
   const theme = Colors[mode];
-  const { currentPoints, pointsToNextTier, nextTier } = progress;
-  const total = currentPoints + pointsToNextTier;
-  const fraction = total > 0 ? Math.min(1, Math.max(0, currentPoints / total)) : 1;
+  const { currentStars, requiredStars } = progress;
+  const fraction = requiredStars > 0 ? Math.min(1, Math.max(0, currentStars / requiredStars)) : 0;
   const percentLabel = `${Math.round(fraction * 100)}%` as `${number}%`;
 
-  const caption = nextTier ? `${pointsToNextTier} points to ${nextTier}` : 'Top tier reached';
+  const isUnlocked = currentStars >= requiredStars;
+  const starsRemaining = Math.max(0, requiredStars - currentStars);
+  const caption = isUnlocked
+    ? 'Reward unlocked'
+    : `${starsRemaining} ${starsRemaining === 1 ? 'star' : 'stars'} to your reward`;
 
   return (
     <View style={[styles.wrap, style]}>
@@ -31,7 +41,10 @@ export function StarProgressBar({ progress, mode = 'light', style }: StarProgres
           { backgroundColor: theme.backgroundSelected, borderColor: theme.border },
         ]}
       >
-        <View style={[styles.fill, { width: percentLabel, backgroundColor: Palette.jgold }]} />
+        <View
+          testID="star-progress-fill"
+          style={[styles.fill, { width: percentLabel, backgroundColor: Palette.jgold }]}
+        />
       </View>
       <Text style={[styles.caption, { color: theme.textSecondary }]}>{caption}</Text>
     </View>

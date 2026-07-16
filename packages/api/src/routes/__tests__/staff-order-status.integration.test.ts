@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fetch/supertest JSON
    bodies are loosely typed at the test boundary; assertions narrow them. */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +28,12 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000';
 process.env.GOOGLE_CLIENT_ID ??= 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET ??= 'test-google-client-secret';
 process.env.VITEST = 'true';
+// AC-2 precondition (see below): creds are unset → the push provider's
+// log-fallback path, so `[push] would send` log-line assertions are stable
+// regardless of ambient developer/CI credentials. Saved/restored, not just
+// deleted, so this suite doesn't pollute process.env for the rest of the run.
+const originalExpoToken = process.env.EXPO_ACCESS_TOKEN;
+delete process.env.EXPO_ACCESS_TOKEN;
 
 type AuthModule = typeof import('../../lib/auth');
 type DbModule = typeof import('../../db/client');
@@ -107,6 +113,11 @@ beforeAll(async () => {
   ({ db } = await import('../../db/client'));
   schema = await import('../../db/schema/index');
   ({ app } = await import('../../index'));
+  // `../../index` pulls in `dotenv/config`, which re-populates any env var this
+  // file deleted above (line 36) if the developer's real `.env` defines it —
+  // re-delete AFTER the dynamic imports so the AC-2 log-fallback precondition
+  // holds regardless of ambient dev credentials, as the module docstring promises.
+  delete process.env.EXPO_ACCESS_TOKEN;
 
   // Branch-1 (staff1's branch) with a known prep time for AC-6.
   const [b1] = await db
@@ -191,11 +202,22 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Star-earning side effects (wired into the completion transition) write
+  // star_transactions / user_stars / coupons rows for the shared customer. None
+  // of these FKs cascade, so they must be cleared BEFORE the orders and the
+  // customer user are deleted.
+  await db.delete(schema.starTransactions).where(eq(schema.starTransactions.user_id, customerId));
+  await db.delete(schema.coupons).where(eq(schema.coupons.user_id, customerId));
+  await db.delete(schema.userStars).where(eq(schema.userStars.user_id, customerId));
   if (createdOrderIds.length > 0) {
     const { inArray } = await import('drizzle-orm');
     await db.delete(schema.orderItems).where(inArray(schema.orderItems.order_id, createdOrderIds));
     await db.delete(schema.orders).where(inArray(schema.orders.id, createdOrderIds));
   }
+  // PUSH-004: notifyCustomer now writes real notification rows referencing the
+  // customer — delete them before the user (notifications_user_id_users_id_fk).
+  await db.delete(schema.notifications).where(eq(schema.notifications.user_id, customerId));
+  await db.delete(schema.deviceTokens).where(eq(schema.deviceTokens.user_id, customerId));
   // Detach all staff from both branches before deleting (users.assignedBranchId FK).
   const { inArray: inArrayCleanup } = await import('drizzle-orm');
   await db
@@ -208,6 +230,8 @@ afterAll(async () => {
   await db.delete(schema.branches).where(eq(schema.branches.id, branch1Id));
   await db.delete(schema.branches).where(eq(schema.branches.id, branch2Id));
   logSpy?.mockRestore();
+  if (originalExpoToken === undefined) delete process.env.EXPO_ACCESS_TOKEN;
+  else process.env.EXPO_ACCESS_TOKEN = originalExpoToken;
 });
 
 // ─── AC-1: valid transitions → 200, new status, correct timestamp non-null ───
@@ -431,5 +455,185 @@ describe('PATCH /api/staff/orders/:orderId — AC-6 ETA on accept', () => {
     const TOLERANCE_MS = 5_000;
     expect(eta).toBeGreaterThanOrEqual(expectedEta - TOLERANCE_MS);
     expect(eta).toBeLessThanOrEqual(expectedEta + TOLERANCE_MS);
+  });
+});
+
+// ─── AC-2 (PUSH-004): notifyCustomer 4-event coverage ────────────────────────
+//
+// Exactly 4 transitions (accepted/preparing/ready/cancelled) each fire exactly
+// 1 notification row + 1 push-send attempt; completed/rejected/pending fire
+// zero customer pushes. EXPO_ACCESS_TOKEN is unset in the test env, so the push
+// provider takes its log-fallback path — each send attempt emits exactly one
+// `[push] would send` console.log line, which `logSpy` observes.
+
+const EVENT_TO_TYPE = {
+  accepted: 'order_accepted',
+  preparing: 'order_preparing',
+  ready: 'order_ready',
+  cancelled: 'order_cancelled',
+} as const;
+
+/** Count `[push] would send` log lines observed since the last mockClear(). */
+function countPushSends(): number {
+  return logSpy.mock.calls.filter(
+    (call) => typeof call[0] === 'string' && (call[0] as string).includes('[push] would send'),
+  ).length;
+}
+
+async function notificationRowsFor(orderId: string, type: string) {
+  const rows = await db
+    .select()
+    .from(schema.notifications)
+    .where(and(eq(schema.notifications.user_id, customerId), eq(schema.notifications.type, type)));
+  return rows.filter(
+    (row) => (row.target_params as { orderId?: string } | null)?.orderId === orderId,
+  );
+}
+
+describe('PATCH /api/staff/orders/:orderId — AC-2 push notification dispatch', () => {
+  it('each notifiable step (accepted/preparing/ready) fires exactly 1 row + 1 push-send; flavoring fires none', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+
+    // Walk the real state machine: pending→accepted→preparing→flavoring→ready.
+    // `flavoring` is a valid, NON-notifiable intermediate step.
+    const steps = [
+      { status: 'accepted', notifies: true, type: 'order_accepted' },
+      { status: 'preparing', notifies: true, type: 'order_preparing' },
+      { status: 'flavoring', notifies: false },
+      { status: 'ready', notifies: true, type: 'order_ready' },
+    ] as const;
+
+    for (const step of steps) {
+      logSpy.mockClear();
+      const res = await request(app)
+        .patch(`/api/staff/orders/${orderId}`)
+        .set('Cookie', staff1Cookies.join('; '))
+        .send({ status: step.status });
+      expect(res.status).toBe(200);
+
+      if (step.notifies) {
+        // Exactly one push-send attempt + one notification row for this transition.
+        expect(countPushSends()).toBe(1);
+        const rows = await notificationRowsFor(orderId, step.type);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.target_screen).toBe('order_tracking');
+      } else {
+        // flavoring is not one of the 4 transactional events → no push.
+        expect(countPushSends()).toBe(0);
+      }
+    }
+  });
+
+  it('cancelled fires exactly 1 notification row + 1 push-send', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(1);
+    const rows = await notificationRowsFor(orderId, 'order_cancelled');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('completed fires ZERO customer pushes (only creditStarsForOrder)', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'ready' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'completed' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(0);
+    // No notification row of ANY order type carries this order id.
+    for (const type of Object.values(EVENT_TO_TYPE)) {
+      expect(await notificationRowsFor(orderId, type)).toHaveLength(0);
+    }
+  });
+
+  it('rejected fires ZERO customer pushes', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    logSpy.mockClear();
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'rejected' });
+    expect(res.status).toBe(200);
+    expect(countPushSends()).toBe(0);
+    for (const type of Object.values(EVENT_TO_TYPE)) {
+      expect(await notificationRowsFor(orderId, type)).toHaveLength(0);
+    }
+  });
+
+  it('re-PATCHing the same transition is idempotent — no duplicate row/send', async () => {
+    // pending → cancelled once; a second identical PATCH 409s (compare-and-swap)
+    // AND even a direct re-dispatch would dedupe on (type, orderId).
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'pending' });
+    logSpy.mockClear();
+    const first = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    expect(first.status).toBe(200);
+    expect(countPushSends()).toBe(1);
+
+    logSpy.mockClear();
+    const second = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'cancelled' });
+    // Terminal status — the state machine 409s a re-transition (compare-and-swap).
+    expect(second.status).toBe(409);
+    expect(countPushSends()).toBe(0);
+
+    const rows = await notificationRowsFor(orderId, 'order_cancelled');
+    expect(rows).toHaveLength(1);
+  });
+});
+
+// ─── Star earning on completion: ready → completed credits exactly one star ───
+
+describe('PATCH /api/staff/orders/:orderId — star earning on completion', () => {
+  it('ready → completed credits exactly one `earned` star to the order customer', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'ready' });
+
+    // Baseline the customer's counter — the customer is shared across the suite
+    // and other completions may already have credited stars, so assert a delta.
+    const [before] = await db
+      .select()
+      .from(schema.userStars)
+      .where(eq(schema.userStars.user_id, customerId));
+    const currentBefore = before?.current_stars ?? 0;
+    const lifetimeBefore = before?.lifetime_stars ?? 0;
+
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'completed' });
+    expect(res.status).toBe(200);
+    expect(res.body.order.status).toBe('completed');
+
+    // Exactly one `earned` star_transactions row for THIS order, owned by the customer.
+    const earned = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(
+          eq(schema.starTransactions.order_id, orderId),
+          eq(schema.starTransactions.type, 'earned'),
+        ),
+      );
+    expect(earned).toHaveLength(1);
+    expect(earned[0]!.user_id).toBe(customerId);
+    expect(earned[0]!.stars).toBe(1);
+
+    // Customer counter incremented by exactly 1 (current + lifetime).
+    const [after] = await db
+      .select()
+      .from(schema.userStars)
+      .where(eq(schema.userStars.user_id, customerId));
+    expect(after!.current_stars).toBe(currentBefore + 1);
+    expect(after!.lifetime_stars).toBe(lifetimeBefore + 1);
   });
 });
