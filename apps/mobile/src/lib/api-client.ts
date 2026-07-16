@@ -1,15 +1,6 @@
-import type {
-  Coupon,
-  CouponStatus,
-  Deal,
-  MenuResponse,
-  PickupBranch,
-  Reward,
-  RewardsProgress,
-} from '@jojopotato/types';
+import type { Deal, MenuResponse, PickupBranch } from '@jojopotato/types';
 
 import { env } from '@/config/env';
-import { authClient } from '@/features/auth/lib/auth-client';
 import { resolveImageUrl } from '@/lib/image-url';
 
 /**
@@ -133,98 +124,4 @@ export async function getDeal(dealId: string): Promise<Deal> {
   const body = await getJson<{ deal: Deal }>(`/deals/${encodeURIComponent(dealId)}`);
   // Resolve the relative image path to an absolute URL (tunnel-proof); idempotent.
   return { ...body.deal, imageUrl: resolveImageUrl(body.deal.imageUrl) };
-}
-
-/**
- * Session-gated typed fetch. Unlike the public `getJson`, this attaches the
- * persisted better-auth session cookie via `authClient.getCookie()` — the same
- * documented @better-auth/expo pattern `staffFetch` uses — so `requireSession`
- * routes (`/rewards/*`, `/coupons/*`) authenticate. Throws an `ApiError` carrying
- * the response status on a non-ok response so callers can branch on 409/403/404.
- */
-async function authedJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  // Only attach the Cookie header when a session cookie actually exists — an
-  // unauthenticated `getCookie()` returns null, which would otherwise be sent as
-  // the literal string "null".
-  const cookie = authClient.getCookie();
-  let res: Response;
-  try {
-    res = await fetch(`${env.apiUrl}${path}`, {
-      ...init,
-      headers: { ...commonHeaders, ...(cookie ? { Cookie: cookie } : {}), ...init?.headers },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-  if (!res.ok) {
-    throw new ApiError(res.status, `API request failed (${res.status}): ${path}`);
-  }
-  return (await res.json()) as T;
-}
-
-/** Star balance + tier-free reward progress (`GET /rewards/balance`). */
-export type RewardsBalance = RewardsProgress & { lifetimeStars: number };
-
-/**
- * `GET /rewards/balance` → returns the balance object DIRECTLY (no envelope
- * wrapper, mirroring `getMenu`'s shape — `{ currentStars, lifetimeStars,
- * rewardThreshold, starsToNextReward }`). Session-gated (`requireSession`).
- */
-export function getRewardsBalance(): Promise<RewardsBalance> {
-  return authedJson<RewardsBalance>('/rewards/balance');
-}
-
-/**
- * An issued coupon at the HTTP boundary WITH the server-derived human-readable
- * `displayLabel` (built from a LEFT JOIN to the linked deal/reward). Structural
- * mirror of `packages/api`'s `ApiCouponWithLabel` — declared locally so the mobile
- * bundle never imports server code. `GET /coupons` and `POST /coupons/:id/redeem`
- * both return this shape.
- */
-export type ApiCouponWithLabel = Coupon & { displayLabel: string };
-
-/** `GET /rewards` → `{ rewards }` envelope. Active redeemable rewards catalog. */
-export async function getRewardsCatalog(): Promise<Reward[]> {
-  const body = await authedJson<{ rewards: Reward[] }>('/rewards');
-  return body.rewards;
-}
-
-/**
- * `POST /rewards/:id/redeem` → `{ coupon }` (201). Server decrements stars and
- * issues a coupon atomically — the client sends only the reward id, never an
- * amount. Returns the issued coupon.
- */
-export async function redeemReward(rewardId: string): Promise<Coupon> {
-  const body = await authedJson<{ coupon: Coupon }>(
-    `/rewards/${encodeURIComponent(rewardId)}/redeem`,
-    { method: 'POST' },
-  );
-  return body.coupon;
-}
-
-/**
- * `GET /coupons` → `{ coupons }` envelope, newest-first, each with `displayLabel`.
- * Optional `status` scopes the list to the effective (read-time-expiry-relabeled)
- * status server-side.
- */
-export async function getCoupons(status?: CouponStatus): Promise<ApiCouponWithLabel[]> {
-  const path = status ? `/coupons?status=${encodeURIComponent(status)}` : '/coupons';
-  const body = await authedJson<{ coupons: ApiCouponWithLabel[] }>(path);
-  return body.coupons;
-}
-
-/**
- * `POST /coupons/:id/redeem` → `{ coupon }` (200) on success. A re-redeem of an
- * already-used/expired coupon returns 409, a non-owned coupon 403, a missing one
- * 404 — all surfaced as an `ApiError` with the matching `status`.
- */
-export async function redeemCoupon(couponId: string): Promise<ApiCouponWithLabel> {
-  const body = await authedJson<{ coupon: ApiCouponWithLabel }>(
-    `/coupons/${encodeURIComponent(couponId)}/redeem`,
-    { method: 'POST' },
-  );
-  return body.coupon;
 }

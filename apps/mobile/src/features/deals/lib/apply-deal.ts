@@ -1,16 +1,10 @@
 import type { AppliedDiscount, Cart, Deal } from '@jojopotato/types';
 
+import { applyCouponCode } from '@/features/deals/lib/coupon-api';
 import { getDeal } from '@/lib/api-client';
-import {
-  checkDealEligibility,
-  computeDealDiscountCents,
-  type DealUsageRecord,
-  type EligibilityFailReason,
-} from '@/features/deals/lib/eligibility';
 
 export type ApplyDealResult =
-  | { ok: true; discount: AppliedDiscount }
-  | { ok: false; reason: 'not_found' | EligibilityFailReason; message: string };
+  { ok: true; discount: AppliedDiscount } | { ok: false; reason: string; message: string };
 
 /**
  * Deal types that cannot be applied at checkout (no real server-side discount).
@@ -29,39 +23,34 @@ export function isComplexDealType(dealType: Deal['dealType']): boolean {
 }
 
 /**
- * Shared apply path: run eligibility for a resolved deal and, on pass, produce
- * the `AppliedDiscount` to hand to `useCart().applyDiscount`. Used by both the
- * cart code-input flow and the deal-details Apply CTA so there is one code path.
+ * Resolve + apply a typed coupon/deal `code` via the server (STAR-004). Entry
+ * point for the cart "Enter coupon code" input. Deal codes and reward codes are
+ * unified onto one server-backed endpoint (`POST /coupons/apply`) — this replaces
+ * the previous 100%-client-side matching. On success the returned
+ * `AppliedDiscount` is handed to `useCart().applyDiscount`.
  */
-function applyResolvedDeal(
-  deal: Deal,
+export async function resolveAndApplyDeal(
+  code: string,
   cart: Cart,
   pickupBranchId: string,
-  usage: DealUsageRecord[],
-): ApplyDealResult {
-  const result = checkDealEligibility(deal, cart, pickupBranchId, usage);
-  if (!result.eligible) {
-    return { ok: false, reason: result.reason, message: result.message };
-  }
-  const amountCents = computeDealDiscountCents(deal, cart);
-  return {
-    ok: true,
-    discount: { source: 'deal', refId: deal.id, label: deal.title, amountCents },
-  };
+): Promise<ApplyDealResult> {
+  return applyCouponCode(code.trim(), cart, pickupBranchId);
 }
 
 /**
- * Apply a deal directly by id — the ONLY real apply path (browse → Deal Details →
- * Apply CTA → cart). Fetches the real deal from `GET /deals/:id`, rejects the four
+ * Apply a deal directly by id — the deal-details "Apply" CTA. Fetches the real
+ * deal from `GET /deals/:id` (development's real-deal source), rejects the four
  * complex deal types (they compute no real discount — the server rejects them at
- * placement, so the client must not carry a guessed discount there), then runs
- * eligibility and produces the `AppliedDiscount`.
+ * placement, so the client must not carry a guessed discount there), then
+ * resolves the deal's `code` and validates + applies it through the unified
+ * server endpoint (`POST /coupons/apply`) — deal and reward codes share one
+ * server-backed path (STAR-004). A code-less deal has no server representation
+ * and cannot be applied this way (documented consequence of the unification).
  */
 export async function applyDealById(
   dealId: string,
   cart: Cart,
   pickupBranchId: string,
-  usage: DealUsageRecord[],
 ): Promise<ApplyDealResult> {
   let deal: Deal;
   try {
@@ -76,5 +65,12 @@ export async function applyDealById(
       message: "This deal can't be applied at checkout yet.",
     };
   }
-  return applyResolvedDeal(deal, cart, pickupBranchId, usage);
+  if (!deal.code) {
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: 'This deal can only be applied with a code.',
+    };
+  }
+  return applyCouponCode(deal.code, cart, pickupBranchId);
 }

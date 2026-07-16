@@ -1,35 +1,56 @@
 /**
- * Rewards / stars domain shapes, reconciled to the DB schema
- * (`rewards`/`user_stars` tables). Stars are a COUNT (integer), never a peso
- * amount. There is NO tier system — progress is expressed as "X / N stars to the
- * next reward" against a fixed reward threshold (PRD MVP: 5 stars).
+ * Jojo Stars shared domain types (STAR-001).
+ *
+ * Mirrors the DB `star_tx_type` enum and the `user_stars` counter table. Visible
+ * to all `@jojopotato/*` consumers. Replaces the earlier points/tier placeholder
+ * (no consumer relied on it — grep-confirmed safe overwrite).
  */
 
-/** A redeemable reward from the `rewards` catalog. `rewardValue` is in cents. */
+/** Mirrors the DB `star_tx_type` pgEnum verbatim. */
+export type StarTransactionType = 'earned' | 'redeemed' | 'adjusted' | 'expired';
+
+/** A user's star counters: redeemable balance + monotonic cumulative history. */
+export interface UserStars {
+  currentStars: number;
+  lifetimeStars: number;
+}
+
+/** A single star-ledger row. `orderId` is null for non-order-linked transactions. */
+export interface StarTransaction {
+  id: string;
+  userId: string;
+  orderId: string | null;
+  type: StarTransactionType;
+  stars: number;
+  description: string | null;
+  createdAt: string;
+}
+
+/**
+ * A reward configuration row (mirrors the DB `rewards` table). `rewardValue` is
+ * `numericToCents`-converted (integer cents) or `null` when the reward carries no
+ * monetary value. Added by STAR-002 for the Rewards screen's reward preview /
+ * available-rewards list.
+ */
 export interface Reward {
   id: string;
   name: string;
   requiredStars: number;
   rewardType: string;
   rewardValue: number | null;
-  eligibleProductId: string | null;
   isActive: boolean;
 }
 
-/** A member's star balance (`user_stars`). `current` is spendable; `lifetime` only grows. */
-export interface RewardsAccount {
-  userId: string;
+/**
+ * The caller's star state + the reward being progressed toward. Powers the
+ * Rewards screen's top progress tracker (STAR-002). `requiredStars` is the MIN
+ * active reward threshold; `reward` is that same reward (or `null` when none is
+ * active). `isUnlocked` = `currentStars >= requiredStars`.
+ */
+export interface RewardsSummary {
   currentStars: number;
   lifetimeStars: number;
-}
-
-/**
- * Progress toward the next reward. Tier-free: `rewardThreshold` is the fixed
- * number of stars a reward costs, `starsToNextReward` is how many more are
- * needed (0 once the balance can already redeem).
- */
-export interface RewardsProgress {
-  currentStars: number;
-  rewardThreshold: number;
-  starsToNextReward: number;
+  requiredStars: number;
+  isUnlocked: boolean;
+  reward: Reward | null;
 }

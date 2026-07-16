@@ -116,44 +116,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void tryDevAutoLogin();
   }, [isPending, data]);
 
-  const signIn = useCallback(async (input: SignInInput): Promise<SignInResult> => {
-    switch (input.method) {
-      case 'google': {
-        const { error } = await authClient.signIn.social({
-          provider: 'google',
-          callbackURL: APP_CALLBACK_URL,
-        });
-        return toResult(error);
+  const signIn = useCallback(
+    async (input: SignInInput): Promise<SignInResult> => {
+      switch (input.method) {
+        case 'google': {
+          const { error } = await authClient.signIn.social({
+            provider: 'google',
+            callbackURL: APP_CALLBACK_URL,
+          });
+          return toResult(error);
+        }
+        case 'magic-link': {
+          const { error } = await authClient.signIn.magicLink({
+            email: input.email,
+            callbackURL: APP_CALLBACK_URL,
+          });
+          return toResult(error);
+        }
+        case 'phone-send': {
+          const { error } = await authClient.phoneNumber.sendOtp({
+            phoneNumber: input.phoneNumber,
+          });
+          return toResult(error);
+        }
+        case 'phone-verify': {
+          const { error } = await authClient.phoneNumber.verify({
+            phoneNumber: input.phoneNumber,
+            code: input.code,
+          });
+          // Establishes the session in-app (no redirect round-trip), so force a
+          // session refetch — `useSession()` does not reliably auto-refresh on
+          // Expo (same reason completeProfile refetches). Without it the nav gate
+          // never flips and the user stays on the login screen.
+          if (!error) await refetch();
+          return toResult(error);
+        }
+        case 'email-password': {
+          const { error } = await authClient.signIn.email({
+            email: input.email,
+            password: input.password,
+          });
+          // Same as phone-verify: refetch so the freshly-established session
+          // propagates and the nav gate flips without an app restart.
+          if (!error) await refetch();
+          return toResult(error);
+        }
       }
-      case 'magic-link': {
-        const { error } = await authClient.signIn.magicLink({
-          email: input.email,
-          callbackURL: APP_CALLBACK_URL,
-        });
-        return toResult(error);
-      }
-      case 'phone-send': {
-        const { error } = await authClient.phoneNumber.sendOtp({
-          phoneNumber: input.phoneNumber,
-        });
-        return toResult(error);
-      }
-      case 'phone-verify': {
-        const { error } = await authClient.phoneNumber.verify({
-          phoneNumber: input.phoneNumber,
-          code: input.code,
-        });
-        return toResult(error);
-      }
-      case 'email-password': {
-        const { error } = await authClient.signIn.email({
-          email: input.email,
-          password: input.password,
-        });
-        return toResult(error);
-      }
-    }
-  }, []);
+    },
+    [refetch],
+  );
 
   const signOut = useCallback(async () => {
     await authClient.signOut();

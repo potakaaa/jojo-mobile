@@ -1,139 +1,140 @@
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import type { Reward, RewardsSummary, StarTransaction } from '@jojopotato/types';
+import { and, asc, desc, eq, lt } from 'drizzle-orm';
 import { Router } from 'express';
-import { z } from 'zod';
 
 import { db } from '../db/client';
-import { coupons, rewards, starTransactions, userStars } from '../db/schema/index';
-import { requireSession } from '../middleware/require-session';
-import { serializeCoupon, serializeReward } from './lib/serializers';
+import { rewards, starTransactions, userStars } from '../db/schema/index';
+import { numericToCents } from './lib/serializers';
 
+/**
+ * Rewards routes (STAR-002). Read-only, session-gated. `requireSession` is
+ * applied ONCE at mount in `index.ts` (`app.use('/rewards', requireSession,
+ * rewardsRouter)`), so every handler here can assume `req.user!.id` is the
+ * server-owned better-auth session user — never a client-supplied id. Cross-user
+ * reads are structurally impossible: every query scopes on `req.user!.id`.
+ */
 export const rewardsRouter: Router = Router();
 
-/** Stars needed to unlock the next reward (PRD MVP: fixed at 5). */
-export const REWARD_THRESHOLD = 5;
+const DEFAULT_HISTORY_LIMIT = 20;
+const MAX_HISTORY_LIMIT = 50;
 
-/** How long a redeemed reward coupon stays valid. */
-const COUPON_VALIDITY_DAYS = 30;
+type RewardRow = typeof rewards.$inferSelect;
 
-const uuidSchema = z.string().uuid();
-
-/** Carries an HTTP status through a thrown-inside-transaction rollback path. */
-class RewardError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'RewardError';
-  }
+/** Serialize a DB `rewards` row → the shared `Reward` shape (cents-native). */
+function serializeReward(row: RewardRow): Reward {
+  return {
+    id: row.id,
+    name: row.name,
+    requiredStars: row.required_stars,
+    rewardType: row.reward_type,
+    rewardValue: row.reward_value === null ? null : numericToCents(row.reward_value),
+    isActive: row.is_active,
+  };
 }
 
 /**
- * Generate a unique, human-readable reward coupon code. The random segment uses
- * `node:crypto` (cryptographically secure) rather than `Math.random`, since a
- * coupon code carries redeemable discount value and must not be guessable. Shape
- * stays `RWD-XXXXXXYYYY` — 6 secure-random hex chars + 4 base36 time chars — so
- * it still fits the human-readable, DB-unique `coupons.code` constraint.
+ * `GET /rewards/summary` → `RewardsSummary`.
+ *
+ * The caller's star counters + the reward being progressed toward (the MIN
+ * active reward by `required_stars`). A missing `user_stars` row reads as 0
+ * stars (STAR-001 creates the row lazily on first credit — new users legitimately
+ * have none). When NO active reward exists, `requiredStars` falls back to 0,
+ * `reward` is null, and `isUnlocked` is false (defensive; with the seeded 5-star
+ * reward one active reward always exists in seeded envs).
  */
-function generateCouponCode(): string {
-  const rand = randomBytes(4).toString('hex').slice(0, 6).toUpperCase();
-  const time = Date.now().toString(36).slice(-4).toUpperCase();
-  return `RWD-${rand}${time}`;
-}
+rewardsRouter.get('/summary', async (req, res) => {
+  const userId = req.user!.id;
 
-// GET /rewards — PUBLIC active rewards catalog (no session; mirrors /deals).
-rewardsRouter.get('/', async (_req, res) => {
-  const rows = await db.select().from(rewards).where(eq(rewards.is_active, true));
+  const [stars] = await db.select().from(userStars).where(eq(userStars.user_id, userId));
+
+  const currentStars = stars?.current_stars ?? 0;
+  const lifetimeStars = stars?.lifetime_stars ?? 0;
+
+  // The reward being progressed toward = the MIN active reward by required_stars.
+  const [targetReward] = await db
+    .select()
+    .from(rewards)
+    .where(eq(rewards.is_active, true))
+    .orderBy(asc(rewards.required_stars))
+    .limit(1);
+
+  const requiredStars = targetReward?.required_stars ?? 0;
+  const reward = targetReward ? serializeReward(targetReward) : null;
+  const isUnlocked = reward !== null && currentStars >= requiredStars;
+
+  const body: RewardsSummary = {
+    currentStars,
+    lifetimeStars,
+    requiredStars,
+    isUnlocked,
+    reward,
+  };
+  res.json(body);
+});
+
+/**
+ * `GET /rewards/available` → `{ rewards: Reward[] }`.
+ *
+ * All active rewards, ordered by `required_stars` ascending. Kept separate from
+ * `/summary` (the available-rewards list is a distinct screen concern from the
+ * top progress tracker; one endpoint per section, matching `staff.ts`).
+ */
+rewardsRouter.get('/available', async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(rewards)
+    .where(eq(rewards.is_active, true))
+    .orderBy(asc(rewards.required_stars));
+
   res.json({ rewards: rows.map(serializeReward) });
 });
 
-// GET /rewards/balance — session-gated star balance + tier-free progress.
-rewardsRouter.get('/balance', requireSession, async (req, res) => {
+/**
+ * `GET /rewards/history` → `{ transactions: StarTransaction[], nextCursor }`.
+ *
+ * The caller's `star_transactions` rows in reverse-chronological order
+ * (`desc(created_at)` — AC3), cursor-paginated (mirrors `orders.ts` history:
+ * `limit + 1` look-ahead, `nextCursor` = last row's `created_at` ISO string).
+ * Includes `adjusted` (refund reversal, -1) rows — nothing is filtered out.
+ */
+rewardsRouter.get('/history', async (req, res) => {
   const userId = req.user!.id;
-  const [row] = await db.select().from(userStars).where(eq(userStars.user_id, userId));
-  const currentStars = row?.current_stars ?? 0;
-  const lifetimeStars = row?.lifetime_stars ?? 0;
-  const starsToNextReward = currentStars >= REWARD_THRESHOLD ? 0 : REWARD_THRESHOLD - currentStars;
 
-  res.json({
-    currentStars,
-    lifetimeStars,
-    rewardThreshold: REWARD_THRESHOLD,
-    starsToNextReward,
-  });
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(Math.trunc(limitRaw), 1), MAX_HISTORY_LIMIT)
+    : DEFAULT_HISTORY_LIMIT;
+
+  const cursor = typeof req.query.cursor === 'string' ? new Date(req.query.cursor) : null;
+  const hasCursor = cursor !== null && !Number.isNaN(cursor.getTime());
+
+  const whereClause = hasCursor
+    ? and(eq(starTransactions.user_id, userId), lt(starTransactions.created_at, cursor))
+    : eq(starTransactions.user_id, userId);
+
+  const rows = await db
+    .select()
+    .from(starTransactions)
+    .where(whereClause)
+    .orderBy(desc(starTransactions.created_at))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const transactions: StarTransaction[] = page.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    orderId: row.order_id,
+    type: row.type,
+    stars: row.stars,
+    description: row.description,
+    createdAt: row.created_at.toISOString(),
+  }));
+
+  const nextCursor = hasMore ? page[page.length - 1]!.created_at.toISOString() : null;
+
+  res.json({ transactions, nextCursor });
 });
 
-// POST /rewards/:id/redeem — session-gated. Atomic + row-locked: decrement
-// current_stars by the reward cost, record a `redeemed` star_transaction, and
-// issue a coupon. Stars spent are ALWAYS server-derived from the reward row.
-rewardsRouter.post('/:id/redeem', requireSession, async (req, res) => {
-  const userId = req.user!.id;
-  const rewardId = String(req.params.id);
-  if (!uuidSchema.safeParse(rewardId).success) {
-    res.status(404).json({ error: 'Reward not found' });
-    return;
-  }
-
-  try {
-    const coupon = await db.transaction(async (tx) => {
-      const [reward] = await tx
-        .select()
-        .from(rewards)
-        .where(and(eq(rewards.id, rewardId), eq(rewards.is_active, true)));
-      if (!reward) {
-        throw new RewardError(404, 'Reward not found');
-      }
-
-      // Lock the caller's stars row FIRST (SELECT … FOR UPDATE) so two concurrent
-      // redeems serialize — the second reads the already-decremented balance and
-      // is rejected, instead of both passing the check and driving stars negative.
-      const [stars] = await tx
-        .select()
-        .from(userStars)
-        .where(eq(userStars.user_id, userId))
-        .for('update');
-
-      const currentStars = stars?.current_stars ?? 0;
-      if (currentStars < reward.required_stars) {
-        throw new RewardError(400, 'Insufficient stars');
-      }
-
-      // Decrement current_stars ONLY (lifetime_stars keeps accumulating).
-      await tx
-        .update(userStars)
-        .set({ current_stars: currentStars - reward.required_stars, updated_at: new Date() })
-        .where(eq(userStars.user_id, userId));
-
-      await tx.insert(starTransactions).values({
-        user_id: userId,
-        type: 'redeemed',
-        stars: reward.required_stars,
-        description: `Redeemed reward ${reward.name}`,
-      });
-
-      const expiresAt = new Date(Date.now() + COUPON_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
-      const [createdCoupon] = await tx
-        .insert(coupons)
-        .values({
-          user_id: userId,
-          reward_id: reward.id,
-          code: generateCouponCode(),
-          status: 'available',
-          expires_at: expiresAt,
-        })
-        .returning();
-      return createdCoupon!;
-    });
-
-    res.status(201).json({ coupon: serializeCoupon(coupon) });
-  } catch (err) {
-    if (err instanceof RewardError) {
-      res.status(err.status).json({ error: err.message });
-      return;
-    }
-    console.error('[rewards] unexpected error redeeming reward', err);
-    res.status(500).json({ error: 'Failed to redeem reward' });
-  }
-});
+export default rewardsRouter;

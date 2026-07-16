@@ -1,4 +1,4 @@
-import type { CouponDisplay } from '@jojopotato/types';
+import type { Coupon } from '@jojopotato/types';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import {
@@ -13,7 +13,7 @@ import {
 } from '../theme';
 
 export interface CouponCardProps {
-  coupon: CouponDisplay;
+  coupon: Coupon;
   onPress?: () => void;
   mode?: ThemeMode;
   style?: ViewStyle;

@@ -4,9 +4,14 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { splitBirthday } from '@/features/auth/lib/birthday';
+import {
+  setThemePreference,
+  useThemePreference,
+  type ThemePreference,
+} from '@/features/theme/theme-preference';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -87,6 +92,10 @@ export default function AccountScreen() {
           </View>
         </Card>
 
+        <Card mode={mode}>
+          <ThemeToggle />
+        </Card>
+
         <Button mode={mode} variant="outline" label="Log out" onPress={signOut} />
       </ScrollView>
     </SafeAreaView>
@@ -115,6 +124,47 @@ function DetailRow({
     <View style={styles.detailRow}>
       <Text style={[styles.detailLabel, { color: labelColor }]}>{label}</Text>
       <Text style={[styles.detailValue, { color: valueColor }]}>{value}</Text>
+    </View>
+  );
+}
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+/**
+ * Appearance selector. `System` (default) follows the OS scheme; `Light`/`Dark`
+ * override it. The choice persists across restarts (see theme-preference.ts).
+ */
+function ThemeToggle() {
+  const theme = useTheme();
+  const preference = useThemePreference();
+
+  return (
+    <View style={styles.themeSection}>
+      <Text style={[styles.themeLabel, { color: theme.textSecondary }]}>Appearance</Text>
+      <View style={[styles.segment, { borderColor: theme.border }]}>
+        {THEME_OPTIONS.map((option) => {
+          const active = preference === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => setThemePreference(option.value)}
+              style={[styles.segmentItem, active && { backgroundColor: theme.tint }]}
+            >
+              <Text
+                style={[styles.segmentText, { color: active ? theme.text : theme.textSecondary }]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -148,4 +198,17 @@ const styles = StyleSheet.create({
   linkList: { gap: Spacing.three },
   linkRow: { paddingVertical: Spacing.half },
   link: { fontFamily: FontFamily.body.semibold, fontSize: TypeScale.bodySmall },
+  themeSection: { gap: Spacing.one, alignItems: 'center' },
+  themeLabel: { fontFamily: FontFamily.body.medium, fontSize: TypeScale.caption },
+  segment: {
+    flexDirection: 'row',
+    borderWidth: 2,
+    borderRadius: Radii.full,
+    overflow: 'hidden',
+  },
+  segmentItem: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  segmentText: { fontFamily: FontFamily.body.bold, fontSize: TypeScale.bodySmall },
 });
