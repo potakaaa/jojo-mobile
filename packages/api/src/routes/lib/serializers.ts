@@ -191,6 +191,15 @@ export interface ApiMenuProduct {
   imageUrl: string | null;
   basePriceCents: number;
   options: Record<ProductOptionType, ApiMenuOption[]>;
+  // ADM-004 deals-as-products (mobile Deals-tab repoint). Populated ONLY on the
+  // `?isDeal=true` menu response: `isDeal` is the product's `is_deal` flag and
+  // `components` is its "what's inside" list (the `deal_components` junction,
+  // resolved to each component's display name). Reuses `AdminDealComponent`
+  // verbatim (byte-identical shape). Both are OMITTED entirely on the regular
+  // (non-deal) menu — a regular product carries neither key, so the existing
+  // menu response body is byte-unchanged for non-deal products. Additive.
+  isDeal?: boolean;
+  components?: AdminDealComponent[];
 }
 
 export interface ApiMenuCategory {
@@ -308,6 +317,7 @@ function serializeMenuOption(option: ProductOptionRow): ApiMenuOption {
 export function serializeMenuProduct(
   product: ProductRow,
   options: ProductOptionRow[],
+  components?: AdminDealComponent[],
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
     size: [],
@@ -318,7 +328,7 @@ export function serializeMenuProduct(
     grouped[toOptionType(option.option_type)].push(serializeMenuOption(option));
   }
 
-  return {
+  const base: ApiMenuProduct = {
     id: product.id,
     name: product.name,
     description: product.description,
@@ -326,6 +336,16 @@ export function serializeMenuProduct(
     basePriceCents: numericToCents(product.base_price),
     options: grouped,
   };
+
+  // Deal-menu case only: `components` is passed (possibly empty) by the
+  // `?isDeal=true` menu handler. Regular menu calls pass `undefined`, so both
+  // `isDeal`/`components` keys are OMITTED entirely — the regular response stays
+  // byte-identical to pre-ADM-004 output (chosen over `isDeal: false` so the
+  // existing menu contract is provably unchanged for non-deal products).
+  if (components !== undefined) {
+    return { ...base, isDeal: product.is_deal, components };
+  }
+  return base;
 }
 
 export function serializeMenuCategory(

@@ -10,6 +10,14 @@ import { getDeals } from '@/lib/api-client';
  * deals show even with no branch selected (empty `pickupBranchId` → agnostic-only,
  * server-side). Reads the branch from `useCart` (not `useBranch`) to preserve the
  * screen's existing branch source.
+ *
+ * NB (ADM-004 deals-as-products repoint, Phase B): this OLD-model hook (public
+ * `GET /deals`) is retained because the Home deals strip (`(tabs)/index.tsx`) —
+ * a frozen Phase-A-in-flight file — still consumes it. The Deals TAB (list +
+ * detail) was migrated to the new `products.is_deal` model via the sibling
+ * `use-deal-products.ts` hooks. Migrating the Home strip is a deferred follow-up
+ * (it requires editing the frozen Home screen). See
+ * `process/general-plans/backlog/home-deals-strip-repoint_NOTE_16-07-26.md`.
  */
 export function useDeals(): UseQueryResult<Deal[]> {
   const { cart } = useCart();
