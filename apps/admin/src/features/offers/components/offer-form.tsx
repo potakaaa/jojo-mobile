@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import type { AdminPromotion } from '@/features/promotions/lib/admin-promotions-api';
 
 import {
-  OFFER_TYPE_OPTIONS,
+  OFFER_TYPE_CREATE_OPTIONS,
   type AdminOffer,
   type OfferCreateInput,
   type OfferType,
@@ -153,7 +153,7 @@ export function OfferForm({
           value={offerType}
           onChange={(e) => setOfferType(e.target.value as OfferType)}
         >
-          {OFFER_TYPE_OPTIONS.map((o) => (
+          {OFFER_TYPE_CREATE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

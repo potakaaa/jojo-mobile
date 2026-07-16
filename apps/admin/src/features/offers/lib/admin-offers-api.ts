@@ -28,6 +28,21 @@ export const OFFER_TYPE_OPTIONS: { value: OfferType; label: string }[] = [
   { value: 'bundle', label: 'Bundle' },
 ];
 
+/** Mechanics an admin can CREATE an Offer with today. buy_one_take_one and
+ * bundle are deal/bundle-style (handled by the Deals product feature, not
+ * coupon Offers) and excluded. free_item/free_upgrade are coupon-based Offer
+ * mechanics — selectable, though their redemption discount math is not yet
+ * implemented (computeDealDiscountCents returns 0 for them today).
+ * The label map above stays full for display; only the creatable set narrows. */
+export const OFFER_TYPE_CREATE_OPTIONS: { value: OfferType; label: string }[] =
+  OFFER_TYPE_OPTIONS.filter(
+    (o) =>
+      o.value === 'percentage_discount' ||
+      o.value === 'fixed_discount' ||
+      o.value === 'free_item' ||
+      o.value === 'free_upgrade',
+  );
+
 /** Admin-facing offer shape — mirrors the server's `AdminOffer` (serializers.ts). */
 export interface AdminOffer {
   id: string;
