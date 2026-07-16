@@ -9,6 +9,7 @@ import {
   branchProductAvailability,
   branches,
   categories,
+  dealComponents,
   productOptions,
   products,
 } from '../db/schema/index';
@@ -16,6 +17,7 @@ import {
   serializeBranch,
   serializeMenuCategory,
   serializeMenuProduct,
+  type AdminDealComponent,
   type ApiMenuProduct,
 } from './lib/serializers';
 
@@ -145,6 +147,39 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
     optionsByProduct.set(option.product_id, list);
   }
 
+  // ADM-004 deals-as-products: only on the `?isDeal=true` menu, resolve each
+  // deal-product's `deal_components` ("what's inside") in ONE batch query. This
+  // is the batch-ified form of `admin/deals.ts`'s single-product
+  // `fetchComponents()` — same 3-column select + same inner-join to the
+  // component's own `products` row for its display name — widened from
+  // `eq(deal_product_id, X)` to `inArray(deal_product_id, productIds)`. The
+  // regular (non-deal) menu skips this query entirely, so its behavior/perf is
+  // provably unchanged (locked by the regression test on the regular menu path).
+  const componentsByProduct = new Map<string, AdminDealComponent[]>();
+  if (isDealMenu && productIds.length) {
+    const componentRows = await db
+      .select({
+        dealProductId: dealComponents.deal_product_id,
+        componentProductId: dealComponents.component_product_id,
+        componentName: products.name,
+        quantity: dealComponents.quantity,
+      })
+      .from(dealComponents)
+      .innerJoin(products, eq(products.id, dealComponents.component_product_id))
+      .where(inArray(dealComponents.deal_product_id, productIds))
+      .orderBy(asc(products.name));
+
+    for (const row of componentRows) {
+      const list = componentsByProduct.get(row.dealProductId) ?? [];
+      list.push({
+        componentProductId: row.componentProductId,
+        componentName: row.componentName,
+        quantity: row.quantity,
+      });
+      componentsByProduct.set(row.dealProductId, list);
+    }
+  }
+
   // Preserve first-seen category order (already sorted by category.sort_order).
   const categoryOrder: string[] = [];
   const categoryById = new Map<string, { id: string; name: string }>();
@@ -156,7 +191,14 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       categoryById.set(category.id, { id: category.id, name: category.name });
       productsByCategory.set(category.id, []);
     }
-    const apiProduct = serializeMenuProduct(product, optionsByProduct.get(product.id) ?? []);
+    const apiProduct = serializeMenuProduct(
+      product,
+      optionsByProduct.get(product.id) ?? [],
+      // Deal menu → pass the (possibly empty) components list so the serializer
+      // sets `isDeal`/`components`. Regular menu → pass `undefined` so both keys
+      // are omitted entirely (unchanged regular-menu response body).
+      isDealMenu ? (componentsByProduct.get(product.id) ?? []) : undefined,
+    );
     productsByCategory.get(category.id)!.push(apiProduct);
   }
 

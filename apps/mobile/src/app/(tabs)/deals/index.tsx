@@ -5,22 +5,24 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
-import { useDeals } from '@/features/deals/hooks/use-deals';
+import { useDealProducts } from '@/features/deals/hooks/use-deal-products';
+import { dealProductToCard } from '@/features/deals/lib/deal-product-to-card';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Deals list (#22). Renders active, in-window, branch-scoped deals from the real
- * `GET /deals` endpoint (the server does all active/window/branch filtering; the
- * client trusts the response). Reached via `router.push('/(tabs)/deals')`.
+ * Deals list (ADM-004 deals-as-products repoint). Renders deal-products
+ * (`products.is_deal = true`) from `GET /branches/:id/menu?isDeal=true` via
+ * `useDealProducts()`. Same UI shell (`DealCard`/`EmptyState`/`ScreenLoader`) as
+ * the old `GET /deals` list. Reached via `router.push('/(tabs)/deals')`.
  */
 export default function DealsListScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
-  const { data: deals = [], isLoading, isError, refetch } = useDeals();
+  const { data: deals = [], isLoading, isError, refetch } = useDealProducts();
 
   if (isLoading) return <ScreenLoader />;
   if (isError) {
@@ -59,7 +61,7 @@ export default function DealsListScreen() {
             deals.map((deal) => (
               <DealCard
                 key={deal.id}
-                deal={deal}
+                deal={dealProductToCard(deal)}
                 mode={mode}
                 onPress={() =>
                   router.push({

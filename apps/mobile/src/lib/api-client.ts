@@ -83,9 +83,21 @@ export async function getBranches(): Promise<PickupBranch[]> {
 /**
  * `GET /branches/:branchId/menu` → unwrapped `{ branchId, categories }` (Gap G —
  * no wrapper key, already the `MenuResponse` shape).
+ *
+ * `options.isDeal` appends `?isDeal=true` to flip the same route to the
+ * deal-products view (ADM-004 deals-as-products — mobile Deals tab). Mirrors the
+ * `getDeals(branchId?)` conditional-query-string pattern below. Omitting
+ * `options` (or passing `{ isDeal: false }`) returns the regular menu unchanged,
+ * so every existing single-arg caller is unaffected.
  */
-export async function getMenu(branchId: string): Promise<MenuResponse> {
-  const menu = await getJson<MenuResponse>(`/branches/${encodeURIComponent(branchId)}/menu`);
+export async function getMenu(
+  branchId: string,
+  options?: { isDeal?: boolean },
+): Promise<MenuResponse> {
+  const query = options?.isDeal ? '?isDeal=true' : '';
+  const menu = await getJson<MenuResponse>(
+    `/branches/${encodeURIComponent(branchId)}/menu${query}`,
+  );
   // Resolve relative product image paths (e.g. `/images/fries-large.webp`) to
   // absolute URLs against the current API origin (tunnel-proof). Idempotent for
   // already-absolute URLs.

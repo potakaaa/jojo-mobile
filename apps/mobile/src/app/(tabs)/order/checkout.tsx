@@ -14,18 +14,21 @@ import {
 import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
+import {
+  Animated as RNAnimated,
   Easing,
-  FadeIn,
-  FadeOut,
-  SlideInDown,
-  SlideOutDown,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+// Reanimated is retained ONLY for the confirm drawer's mount/unmount layout
+// animations (entering/exiting). The countdown timer bar below deliberately uses
+// plain RN `Animated` (not reanimated core) so it stays jest-testable despite the
+// shared reanimated jest-mock's missing layout-animation exports.
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
@@ -38,12 +41,19 @@ import {
 } from '@/features/notifications/lib/notification-permission';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Fallback prep estimate (minutes) when the branch's own value is unavailable. */
 const FALLBACK_PREP_MINUTES = 20;
+
+/**
+ * Cancelable grace window (seconds) before the order auto-submits. Extended from
+ * 5s → 10s in the kid-friendly pass (AC-A6) to give more time to back out; the
+ * auto-submit-on-timeout behavior itself is unchanged.
+ */
+const COUNTDOWN_SECONDS = 10;
 
 /** Build the display-only estimated pickup label (D-E): now + branch prep minutes. */
 function estimatedPickupLabel(prepMinutes: number): string {
@@ -149,10 +159,10 @@ export default function CheckoutScreen() {
     // is intentionally preserved so the user can retry.
   };
 
-  // 5-second cancelable grace window before the order actually submits, so the
-  // user can back out or change something. `countdown` null = idle; a number =
-  // seconds remaining. Navigating away unmounts the screen, the effect cleanup
-  // clears the timer, and the order never fires.
+  // Cancelable grace window before the order actually submits, so the user can
+  // back out or change something. `countdown` null = idle; a number = seconds
+  // remaining. Navigating away unmounts the screen, the effect cleanup clears the
+  // timer, and the order never fires.
   const [countdown, setCountdown] = useState<number | null>(null);
 
   // Hide the floating tab bar while the confirm drawer is open so it doesn't cover the drawer.
@@ -178,25 +188,45 @@ export default function CheckoutScreen() {
     return () => clearTimeout(id);
   }, [countdown]);
 
-  // Timer bar for the confirm drawer: depletes 1 → 0 over the 5s window.
-  const timerProgress = useSharedValue(1);
+  // Timer bar for the confirm drawer: depletes 1 → 0 over the countdown window.
+  // Plain RN `Animated` (not reanimated) so the drawer's timer stays testable.
+  // Held in state (lazy init) rather than a ref so the interpolated width can be
+  // derived during render without tripping the refs-during-render rule.
+  const [timerProgress] = useState(() => new RNAnimated.Value(1));
 
   const openConfirm = () => {
-    setCountdown(5);
-    timerProgress.value = 1;
-    timerProgress.value = withTiming(0, { duration: 5000, easing: Easing.linear });
+    setCountdown(COUNTDOWN_SECONDS);
+    timerProgress.setValue(1);
+    RNAnimated.timing(timerProgress, {
+      toValue: 0,
+      duration: COUNTDOWN_SECONDS * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
   };
   const dismissConfirm = () => {
-    cancelAnimation(timerProgress);
+    timerProgress.stopAnimation();
     setCountdown(null);
   };
   const confirmNow = () => {
-    cancelAnimation(timerProgress);
+    timerProgress.stopAnimation();
     setCountdown(null);
     void submitOrder();
   };
 
-  const timerBarStyle = useAnimatedStyle(() => ({ width: `${timerProgress.value * 100}%` }));
+  const timerBarWidth = timerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  // Color-coded urgency: calm green with lots of time, amber as it runs down,
+  // red in the final stretch (AC-A6). Derived from the ticking `countdown`.
+  const urgencyColor =
+    countdown != null && countdown <= 3
+      ? Palette.jred
+      : countdown != null && countdown <= 6
+        ? Palette.jgold
+        : Palette.green;
 
   if (isEmpty) {
     return (
@@ -382,8 +412,8 @@ export default function CheckoutScreen() {
                 { backgroundColor: theme.backgroundSelected, borderColor: theme.border },
               ]}
             >
-              <Animated.View
-                style={[styles.timerFill, { backgroundColor: theme.accent }, timerBarStyle]}
+              <RNAnimated.View
+                style={[styles.timerFill, { backgroundColor: urgencyColor, width: timerBarWidth }]}
               />
             </View>
 
@@ -393,7 +423,7 @@ export default function CheckoutScreen() {
                 variant="outline"
                 onPress={dismissConfirm}
                 mode={mode}
-                style={styles.sheetButton}
+                style={styles.sheetButtonModify}
               />
               <Button
                 label="Confirm order"
@@ -533,7 +563,8 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.body,
   },
   timerTrack: {
-    height: 12,
+    // Larger, easy-to-read progress bar for the kid-friendly countdown (AC-A6).
+    height: 20,
     borderRadius: Radii.full,
     borderWidth: 2,
     overflow: 'hidden',
@@ -548,5 +579,10 @@ const styles = StyleSheet.create({
   },
   sheetButton: {
     flex: 1,
+  },
+  // The "Modify" back-out button is given more width so it reads as the bigger,
+  // easier target to stop the auto-submit (AC-A6).
+  sheetButtonModify: {
+    flex: 1.4,
   },
 });

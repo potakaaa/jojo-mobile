@@ -4,6 +4,7 @@ export * from './components/button';
 export * from './components/google-button';
 export * from './components/card';
 export * from './components/badge';
+export * from './components/confirm-dialog';
 export * from './components/input';
 export * from './components/product-card';
 export * from './components/deal-card';

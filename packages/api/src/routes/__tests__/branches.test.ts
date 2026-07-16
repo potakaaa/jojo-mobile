@@ -39,6 +39,8 @@ let activeBranchId: string;
 let inactiveBranchId: string;
 let farBranchId: string;
 let productName: string;
+let regularProductId: string;
+let dealName: string;
 
 beforeAll(async () => {
   ({ db } = await import('../../db/client'));
@@ -113,6 +115,7 @@ beforeAll(async () => {
       base_price: '5.00',
     })
     .returning();
+  regularProductId = product!.id;
 
   await db.insert(schema.productOptions).values([
     {
@@ -135,6 +138,32 @@ beforeAll(async () => {
   await db
     .insert(schema.branchProductAvailability)
     .values({ branch_id: activeBranchId, product_id: product!.id, is_available: true });
+
+  // ADM-004 deals-as-products (Phase B): a deal-product (`is_deal = true`) whose
+  // "what's inside" is the regular Loaded Fries × 2, available at the near
+  // branch. Exercises the `?isDeal=true` menu filter + `deal_components`
+  // resolution. Reuses the regular product as the deal's single component.
+  dealName = `Combo Deal ${suffix}`;
+  const [deal] = await db
+    .insert(schema.products)
+    .values({
+      category_id: category!.id,
+      name: dealName,
+      slug: `combo-deal-${suffix}`,
+      base_price: '9.99',
+      is_deal: true,
+    })
+    .returning();
+
+  await db.insert(schema.dealComponents).values({
+    deal_product_id: deal!.id,
+    component_product_id: product!.id,
+    quantity: 2,
+  });
+
+  await db
+    .insert(schema.branchProductAvailability)
+    .values({ branch_id: activeBranchId, product_id: deal!.id, is_available: true });
 });
 
 afterAll(async () => {
@@ -203,5 +232,45 @@ describe('GET /branches/:branchId/menu', () => {
     expect(product.options.size[0].priceDeltaCents).toBe(150);
     expect(product.options.flavor).toHaveLength(1);
     expect(product.options.add_on).toEqual([]);
+  });
+
+  it('excludes deal-products and omits isDeal/components on the regular menu', async () => {
+    const { status, json } = await get(`/branches/${activeBranchId}/menu`);
+    expect(status).toBe(200);
+
+    const products = json.categories.flatMap((c: any) => c.products);
+
+    // The deal-product never appears mixed into the regular menu.
+    expect(products.find((p: any) => p.name === dealName)).toBeUndefined();
+
+    // Regular products carry NEITHER key (omitted entirely, not `isDeal: false`).
+    const regular = products.find((p: any) => p.name === productName);
+    expect(regular).toBeDefined();
+    expect(regular).not.toHaveProperty('isDeal');
+    expect(regular).not.toHaveProperty('components');
+  });
+});
+
+describe('GET /branches/:branchId/menu?isDeal=true', () => {
+  it('returns only deal-products with isDeal:true and populated components[]', async () => {
+    const { status, json } = await get(`/branches/${activeBranchId}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    expect(json.branchId).toBe(activeBranchId);
+
+    const products = json.categories.flatMap((c: any) => c.products);
+
+    const deal = products.find((p: any) => p.name === dealName);
+    expect(deal).toBeDefined();
+    expect(deal.isDeal).toBe(true);
+    expect(deal.basePriceCents).toBe(999);
+    expect(deal.components).toHaveLength(1);
+    expect(deal.components[0]).toMatchObject({
+      componentProductId: regularProductId,
+      componentName: productName,
+      quantity: 2,
+    });
+
+    // The regular (non-deal) product is filtered out of the deals menu.
+    expect(products.find((p: any) => p.name === productName)).toBeUndefined();
   });
 });

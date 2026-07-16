@@ -25,7 +25,8 @@ import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { useDeals } from '@/features/deals/hooks/use-deals';
+import { useDealProducts } from '@/features/deals/hooks/use-deal-products';
+import { dealProductToCard } from '@/features/deals/lib/deal-product-to-card';
 import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
@@ -89,8 +90,8 @@ function ActiveOrderBanner({ order, onPress }: { order: Order; onPress: () => vo
 /**
  * Home browse screen. Composes the `features/home` section components inside a
  * single `ScrollView`, backed by REAL data: `useBranch` (selected pickup branch),
- * `useMenu` (branch menu → flattened via `flattenMenuForHome`), `useDeals` (live
- * deals strip), and `useRewardsSummary` (star balance). Each data section renders
+ * `useMenu` (branch menu → flattened via `flattenMenuForHome`), `useDealProducts`
+ * (live deals strip), and `useRewardsSummary` (star balance). Each data section renders
  * its own friendly loading / empty / error-with-retry state so a slow or failed
  * query never blanks the whole screen.
  */
@@ -108,7 +109,7 @@ export default function HomeScreen() {
   } = useBranch();
   const { setBranch } = useCart();
   const menuQuery = useMenu();
-  const dealsQuery = useDeals();
+  const dealsQuery = useDealProducts();
   const rewardsQuery = useRewardsSummary();
 
   // Focus-refetch only (no polling) — global refetchOnWindowFocus:true re-syncs on return.
@@ -121,11 +122,12 @@ export default function HomeScreen() {
 
   const branchId = selectedBranch?.id;
 
-  // Keep the cart's pickup branch in sync with the selected branch. `useDeals`
-  // sources its branch id from `useCart().cart.pickupBranchId` (not `useBranch`),
-  // so without this the Home deals strip would only show branch-agnostic deals
-  // until the user manually opened a branch. `setBranch` is a no-op when the id
-  // is unchanged, so this does not clobber the cart on re-render.
+  // Keep the cart's pickup branch in sync with the selected branch.
+  // `useDealProducts` sources its branch id from `useCart().cart.pickupBranchId`
+  // (not `useBranch`) and is disabled until a branch is set, so without this the
+  // Home deals strip would stay empty until the user manually opened a branch.
+  // `setBranch` is a no-op when the id is unchanged, so this does not clobber the
+  // cart on re-render.
   useEffect(() => {
     if (branchId) setBranch(branchId);
   }, [branchId, setBranch]);
@@ -277,13 +279,13 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.dealsStrip}
             >
-              {deals.map((deal) => (
+              {deals.map((product) => (
                 <DealCard
-                  key={deal.id}
-                  deal={deal}
+                  key={product.id}
+                  deal={dealProductToCard(product)}
                   mode={mode}
                   style={styles.dealCard}
-                  onPress={() => openDeal(deal.id)}
+                  onPress={() => openDeal(product.id)}
                 />
               ))}
             </ScrollView>
@@ -355,7 +357,10 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
-    gap: Spacing.three,
+    // More breathing room between sections so the dominant top of the screen
+    // (active order + branch card) reads clearly and secondary content feels
+    // calmer, not competing (AC-A3 — visual hierarchy via spacing).
+    gap: Spacing.four,
   },
   rewardsSection: {
     gap: Spacing.two,
@@ -364,7 +369,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.half,
+    // Clear separation so the Deals / Menu sections read as distinctly secondary
+    // below the dominant branch + active-order area (AC-A3).
+    marginTop: Spacing.three,
   },
   sectionTitle: {
     fontFamily: FontFamily.display.bold,
