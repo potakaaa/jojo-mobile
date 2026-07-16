@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-15 (Phase 3 delta)
+Last updated: 2026-07-16 (ADM-008 Coupons delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,16 +59,80 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 16-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 16-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard Coupons system (`apps/admin` + `packages/api`, ADM-008, GitHub issue #86,
+  sub-issue of ADM-004 — delivered 16-07-26, branch `feat/adm-008-coupons`, 5/5 phases CODE-COMPLETE
+  + EVL-green — NOT YET MERGED, program held OPEN in `active/` for planned follow-up exploration,
+  do NOT treat as archived):** a real, database-backed admin authoring surface for promotional
+  coupon codes — Promotion → Offer → Coupon — replacing the previously-static
+  `deals-catalog.ts` promo-code list with real burnable `coupons` rows reusing the same
+  redemption/burn mechanism reward coupons already use. **The legacy discount-object `deals` table
+  (dormant since ADM-004's Phase 4a pivot) is now RENAMED to `offers`** (migration `0011`, hand-
+  authored, atomic: `deals`→`offers`, `deal_products`→`offer_products`, `deal_branches`→
+  `offer_branches`, `coupons.deal_id`→`offer_id`, `coupons.user_id` made nullable; new `promotions`
+  table with a nullable `offers.promotion_id` FK). This supersedes the "reserved for a future
+  ADM-008" framing in the Phase 4a entry below — ADM-008 has now landed and the legacy schema is
+  live again, under the new name. **Wire-frozen at the HTTP boundary:** `GET /deals`,
+  `GET /deals/:id`, `GET /api/branches/:id` response shapes, `POST /orders`'s `dealId` field, and
+  `GET /coupons`'s `dealId` field are all UNCHANGED — only their internal Drizzle table/column
+  symbols renamed; `orders.deal_id` (the order-side FK column) was NOT renamed. Delivered as a
+  5-phase program (commits in order): **P1** `502a01e` — the atomic rename + new `promotions`
+  table + mechanical repoint of all 7+ consumer files (271/271 tests). **P2** `e55ee0a` — extended
+  `resolveCouponDiscount()` with a new DB-backed offer-coupon branch; fixed a resolver Branch-1 bug
+  (existing reward-coupon lookup now requires `reward_id IS NOT NULL`, so a targeted offer-coupon
+  no longer wrongly matches it first and gets rejected); claim-on-redeem folded into the existing
+  atomic burn `UPDATE` via `COALESCE(user_id, $requester)` (nullable `user_id` = bulk-issued,
+  first-claimer wins atomically; non-null = pre-targeted to one customer); added an
+  `is_deal`×`couponCode` 400 guard in `POST /orders` (a cart containing an `is_deal` bundle product
+  cannot also apply a coupon); **retired the static `deals-catalog.ts`** (zero remaining importers)
+  (279/279 tests). **P3** `f14d887` — `packages/api/src/routes/admin/{promotions,offers,coupons}.ts`
+  (new), appended to the existing admin aggregator (4th confirmed consumer of the append-only
+  pattern, after P1/P2/P3-ADM-003/P4a-ADM-004): full Promotion/Offer CRUD + `POST
+  /api/admin/coupons/generate` (bulk N-code generation with zero-collision retry, or one targeted
+  code to a specific customer) + `GET /api/admin/coupons` list, plus 3 new serializers (313/313
+  tests, 34 new). **P4** `0001118` — verified (not modified — repoint already landed atomically in
+  P1) that the public `GET /deals`/`GET /deals/:id`/`GET /api/branches/:id` read routes are
+  wire-frozen post-rename; added 1 new assertion (AC10b) locking the full response shape
+  (314/314 tests). **P5** `cca6816` — `apps/admin` Promotions + Offers UI (list/create/detail
+  screens, following the P3/P4a `<Outlet/>`-split layout+index pattern), a Generate-Coupons panel
+  supporting both bulk and targeted issuance, and a coupon list sub-view under Offer detail
+  (typecheck 0 errors, 21/21 new component tests, build clean). **Follow-up UI fix** `ab53caf` — the
+  Offer create form's Mechanic dropdown was restricted to the 4 coupon-based, discount-capable
+  mechanics (`percentage_discount`, `fixed_discount`, `free_item`, `free_upgrade`); dropped
+  `buy_one_take_one`/`bundle` (deal/bundle-style, non-discounting, out of ADM-008's scope).
+  **Money-correctness ACs (percentage/fixed discount, resolver, is_deal guard, atomic burn) are ALL
+  proven by real passing Fully-Automated tests — Known-Gap is banned for these per the program's own
+  charter, and none were used.** **Known gap (filed this pass, not a regression):**
+  `free_item`/`free_upgrade` remain selectable Offer mechanics in the admin UI, but
+  `computeDealDiscountCents()` (`packages/utils/src/discount.ts`) has no case for them and silently
+  returns `0` — a coupon issued against either mechanic applies with zero monetary effect at
+  checkout (no error). See
+  `process/features/admin-dashboard/backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md`.
+  **Explicitly out of scope (per the program's own charter, zero changes made):**
+  `apps/mobile`'s coupon-consuming screens (`rewards/coupons.tsx`, `use-my-coupons.ts`,
+  `coupon-api.ts`); ADM-004's bundle-Deal CRUD (`routes/admin/deals.ts`, `is_deal`/
+  `deal_components` schema — a fully separate, unrelated feature that continues to work
+  unmodified); extending `POST /coupons/apply`'s preview payload with cart-line context (the
+  `is_deal` guard is enforced only at `POST /orders` placement time). **Branch state:
+  `feat/adm-008-coupons`, NOT merged — a PR is pending. Program status: CODE-COMPLETE, OPEN — the
+  task folder stays in `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` (NOT
+  archived to `completed/`); the user has explicit follow-up exploration work planned on ADM-008.**
+  Delivered by: `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/
+  adm-008-coupons_UMBRELLA_PLAN_16-07-26.md` (5-phase umbrella, all phases ✅ VERIFIED) + 5
+  co-located per-phase plan/report file pairs in the same task folder.
 
 - **Admin dashboard Deals-as-Products (`apps/admin` + `packages/api`, Phase 4a — ADM-004 RE-PLAN,
-  delivered 15/16-07-26, branch `feat/adm-004-deals`, EVL-green — NOT YET MERGED, PR pending review):**
+  delivered 15/16-07-26, branch `feat/adm-004-deals` — MERGED via PR #92 (commit `fedcfcb`)):**
   Phase 4 was PIVOTED mid-program. The original discount-object deals model (a standalone `deals`
   table + `deal_products`/`deal_branches` junctions + a coupon-cascade deactivate flow) was fully
   EXECUTEd on commit `d5070d8` (31/31 tests, 214/214 full suite, Gate: PASS) and is now **SUPERSEDED
   and discarded** — its code was replaced at the same file paths (not `git revert`), preserved only
-  in git history; the `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant,
-  untouched, reserved for a future ADM-008 (Promotion→Offer→Coupon). The new model: a "Deal" is a
+  in git history; the `deals`/`deal_products`/`deal_branches`/`coupons` schema stayed dormant after
+  ADM-004, then was RENAMED to `offers`/`offer_products`/`offer_branches`/`coupons` (unchanged name)
+  by ADM-008 (see the ADM-008 Coupons entry above) — the "reserved for a future ADM-008" plan noted
+  here has now been delivered. The `is_deal`/`deal_components` products-as-deals model below is a
+  fully separate, unrelated feature that ADM-008 explicitly left untouched. The new model: a "Deal" is a
   `products` row with `is_deal = true`, described by a new self-referential `deal_components`
   junction table (`deal_product_id`/`component_product_id` → `products.id`, `quantity`, unique on the
   pair) — this is the FIRST self-referential FK in the schema. A deal is priced at its own
@@ -680,13 +744,17 @@ Scanned against the canonical Context Group Detection Table
   delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED;
   Sidebar Navigation cross-cutting task delivered 15-07-26, ✅ COMPLETE; Phase 3 — Products/
   Categories CRUD delivered 15-07-26, ✅ VERIFIED; Phase 4a — Deals-as-Products (ADM-004 RE-PLAN)
-  delivered 15/16-07-26, EVL-green, on branch `feat/adm-004-deals`, PR pending review/merge).
+  delivered 15/16-07-26, EVL-green, MERGED via PR #92; ADM-008 Coupons (5-phase sub-program,
+  Promotion→Offer→Coupon) delivered 16-07-26, all 5 phases ✅ VERIFIED / CODE-COMPLETE, on branch
+  `feat/adm-008-coupons`, NOT yet merged — program held OPEN in `active/` for planned follow-up
+  exploration work, not archived).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
-  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; 3 Phase-2 backlog
-  notes remain, plus 2 new Phase-4a backlog notes filed this pass — see Deferred Hardening bullet
-  above). This is an 8-phase program (P0 scaffold through P7 analytics, ADM-001..007) — see the
-  umbrella plan's `## Current Execution State` for the current phase (Phase 4a delivered; Phase 5 —
-  Rewards CRUD, ADM-005, next, once Phase 4a merges).
+  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; the
+  `adm-008-coupons_16-07-26/` task folder stays in `active/`; 3 Phase-2 + 2 Phase-4a + 1 new
+  ADM-008 backlog note — see the Coupons entry above). This is an 8-phase program (P0 scaffold
+  through P7 analytics, ADM-001..007) with ADM-008 as an inserted sub-program between Phase 4 and
+  Phase 5 — see the umbrella plan's `## Current Execution State` for the current phase (ADM-008
+  delivered; Phase 5 — Rewards CRUD, ADM-005, next, once feat/adm-008-coupons merges).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -705,7 +773,8 @@ crossed — it will create the matching group automatically.
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
 | new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
-| admin dashboard work (Phase 5-7, ADM-005..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 new Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred) |
+| admin dashboard work (Phase 5-7, ADM-005..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred; 1 new ADM-008 note: `free_item`/`free_upgrade` redemption math not implemented) |
+| admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 
 ## Context Group Lifecycle
 
@@ -936,25 +1005,41 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-16 (admin-dashboard Phase 4a UPDATE PROCESS — Deals-as-Products ADM-004
+- Last delta: 2026-07-16 (admin-dashboard ADM-008 Coupons UPDATE PROCESS — mid-program
+  reconciliation, program held OPEN, NOT archived: 5-phase sub-program (Promotion→Offer→Coupon)
+  CODE-COMPLETE + EVL-green on branch `feat/adm-008-coupons`. The legacy discount-object `deals`
+  table — dormant since ADM-004's Phase 4a pivot — is now RENAMED to `offers` (migration `0011`,
+  atomic, non-destructive), plus a new `promotions` table. DB-backed offer-coupon redemption
+  replaces the static `deals-catalog.ts` promo-code list; resolver Branch-1 bug fixed
+  (`reward_id IS NOT NULL` scoping); claim-on-redeem atomic burn via `COALESCE(user_id,
+  $requester)`; `is_deal`×couponCode 400 guard added to `POST /orders`. Admin
+  Promotions/Offers/Coupons CRUD + bulk/targeted coupon issuance (4th append-only aggregator
+  consumer) + apps/admin UI (Promotions/Offers list/create/detail, Generate-Coupons panel).
+  Public `GET /deals`/`GET /deals/:id`/`GET /api/branches/:id` verified wire-frozen post-rename.
+  Money-correctness ACs all proven by real passing Fully-Automated tests, Known-Gap banned and
+  never used. Known gap filed: `free_item`/`free_upgrade` Offer mechanics are selectable but
+  `computeDealDiscountCents()` returns 0 for them (no redemption math yet) — backlog note filed.
+  This session ALSO corrected a stale ADM-004 "NOT YET MERGED" claim — `feat/adm-004-deals` in fact
+  merged via PR #92 (`fedcfcb`) before ADM-008 branched from it. Program status: CODE-COMPLETE,
+  OPEN — task folder stays in `active/`, user has follow-up exploration work planned.)
+- Previous delta: 2026-07-16 (admin-dashboard Phase 4a UPDATE PROCESS — Deals-as-Products ADM-004
   RE-PLAN, EVL-green: pivoted from a discarded discount-object deals model (commit `d5070d8`,
   superseded) to `products.is_deal` + a new self-referential `deal_components` junction, reusing the
   entire product→menu→cart→checkout pipeline with zero new pricing code; AC9 snapshot-integrity real
   passing regression test (Known-Gap never used); THREE filter sites actually modified, TWO
   explicitly verified as correctly unchanged; Enhancement E1 (transactional create-with-components +
-  2-step wizard) + this session's deal-manage price-comparison panel + 3 PR-review fixes layered on
-  top; branch `feat/adm-004-deals` NOT YET MERGED, PR pending review — do not treat Phase 4a as
-  archived to `completed/` until the PR lands)
-- Previous delta: 2026-07-15 (admin-dashboard Phase 3 UPDATE PROCESS — Products/Categories CRUD
+  2-step wizard) + a deal-manage price-comparison panel + 3 PR-review fixes layered on top; branch
+  `feat/adm-004-deals` later MERGED via PR #92, commit `fedcfcb`)
+- Prior delta: 2026-07-15 (admin-dashboard Phase 3 UPDATE PROCESS — Products/Categories CRUD
   ✅ VERIFIED: full real vertical slice, third confirmed consumer of the append-only admin
   aggregator pattern, AC1 snapshot-integrity real passing regression test (Known-Gap never used),
   AC8 Agent-Probe walkthrough actually performed — found + fixed a real TanStack Start
   nested-detail-route `<Outlet/>` gotcha (durable, affects P4-P7), first 3 shared composites
   extracted (query-states/confirm-dialog/page-header), `data-table`/`form-dialog` extraction
   re-eval trigger now live for Phase 4)
-- Prior delta: 2026-07-15 (admin-dashboard Sidebar Nav UPDATE PROCESS — cross-cutting sidebar navigation ✅ COMPLETE: nav-config.ts + AppSidebar + NavUser + shadcn sidebar/sheet/tooltip/separator/skeleton primitives; (dashboard)/route.tsx wrapped with SidebarProvider; old shell stripped from index.tsx; plan+report archived to completed/admin-dashboard_14-07-26/)
-- HEAD at last delta: branch `feat/adm-004-deals` (NOT merged, PR pending review), commits
-  `1ca08f7` (deal-manage live price comparison) / `680427f` (E1 2-step wizard + transactional create)
-  / `66f5536` (ADM-004 deals-as-products pivot) on top of `bfdc7b6` (merged ADM-003 PR #85); 3 files
-  staged uncommitted at UPDATE PROCESS time (PR-review fixes — user commits manually after this pass)
+- HEAD at last delta: branch `feat/adm-008-coupons` (NOT merged, PR pending), commits `ab53caf`
+  (Offer Mechanic dropdown restriction) / `cca6816` (P5 admin UI) / `0001118` (P4 public repoint
+  verification) / `f14d887` (P3 admin CRUD) / `e55ee0a` (P2 resolver+burn+guard) / `502a01e`
+  (P1 schema migration) on top of `fedcfcb` (merged ADM-004 PR #92); untracked `UI_AUDIT.md` at
+  repo root at UPDATE PROCESS time (unrelated scratch file, not part of this delta)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

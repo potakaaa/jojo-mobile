@@ -301,11 +301,11 @@ During /goal execution of this phase program:
 
 | Phase | Status |
 |---|---|
-| 01 — Schema migration | ⏳ PLANNED |
-| 02 — Resolver + burn + orders.ts guard | ⏳ PLANNED |
-| 03 — Admin CRUD routes | ⏳ PLANNED |
-| 04 — Public GET /deals repoint | ⏳ PLANNED |
-| 05 — apps/admin UI | ⏳ PLANNED |
+| 01 — Schema migration | ✅ VERIFIED (commit `502a01e`) |
+| 02 — Resolver + burn + orders.ts guard | ✅ VERIFIED (commit `e55ee0a`) |
+| 03 — Admin CRUD routes | ✅ VERIFIED (commit `f14d887`) |
+| 04 — Public GET /deals repoint | ✅ VERIFIED (commit `0001118`) |
+| 05 — apps/admin UI | ✅ VERIFIED (commit `cca6816`; follow-up fix `ab53caf`) |
 
 Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧 BLOCKED | ✅ COMPLETE
 
@@ -396,15 +396,36 @@ the source plan's single 18-row table, one AC-cluster per phase).
 
 **Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 now = full atomic mechanical rename (schema + migration + 7 consumer-file repoints, since the deals→offers rename breaks typecheck for those consumers otherwise); Phase 2 = logic only (resolver/burn/guard) on the already-renamed symbols; Phase 4 = public-contract verification only on the already-renamed symbols. Wire-freeze (Locked Decision 7B) unaffected.
 
-Last updated: 16-07-26
-Completed phases: none
-Current phase: Phase 1 — Schema migration
-Current loop step: PVL (validate-contract seeded CONDITIONAL from source plan; needs inner
-  re-confirmation before EXECUTE)
-Validate-contract status: seeded (all 5 phases) — pending inner PVL confirmation per phase
-Program Net Gate: PENDING
-Latest validator run: 16-07-26 — umbrella + phase-stub validators to be run immediately after this
-  plan set is written (see PLAN-phase completion check)
+Last updated: 16-07-26 (UPDATE PROCESS — all 5 phases closed out)
+Completed phases: 1, 2, 3, 4, 5 (all 5/5 — program is CODE-COMPLETE)
+Current phase: none — all phases delivered; program held OPEN in `active/` (not archived)
+Current loop step: n/a — every phase reached UPDATE-PROCESS and is EVL-green
+Validate-contract status: confirmed via inner PVL per phase (all 5), EXECUTE + EVL green for all 5
+Program Net Gate: PASS (all phase exit gates green; full `pnpm --filter @jojopotato/api test`
+  313/313 → 314/314 after Phase 4; `pnpm --filter @jojopotato/admin typecheck`+`test` 21/21 green
+  after Phase 5)
+Latest validator run: 16-07-26 — `validate-context-discovery.mjs` (see this UPDATE PROCESS report)
+
+**Delivered — commit ledger (branch `feat/adm-008-coupons`, NOT merged, PR pending):**
+- Phase 1 (Schema migration): `502a01e` — migration `0011` (deals→offers atomic rename +
+  `promotions` table), 271/271 tests.
+- Phase 2 (Resolver + burn + is_deal guard): `e55ee0a` — DB-backed offer-coupon resolver branch,
+  Branch-1 `reward_id IS NOT NULL` fix, claim-on-redeem atomic burn, `is_deal`×couponCode 400 guard;
+  retired static `deals-catalog.ts`, 279/279 tests.
+- Phase 3 (Admin CRUD): `f14d887` — `admin/{promotions,offers,coupons}.ts` + bulk/targeted coupon
+  issuance, 313/313 tests (34 new).
+- Phase 4 (Public repoint verification): `0001118` — confirmed `GET /deals` + `GET /api/branches/:id`
+  wire-frozen post-rename, +1 AC10b assertion, 314/314 tests.
+- Phase 5 (apps/admin UI): `cca6816` — Promotions + Offers UI, Generate-Coupons panel
+  (bulk+targeted), coupon list sub-view; typecheck 0, 21/21 component tests, build clean.
+- Follow-up UI fix: `ab53caf` — Offer create form Mechanic dropdown restricted to the 4
+  coupon-based types (percentage_discount, fixed_discount, free_item, free_upgrade); dropped
+  buy_one_take_one + bundle (deal/bundle-style, non-discounting). UI-only, no test-count change.
+
+**Program status: CODE-COMPLETE, OPEN.** This task folder stays in `active/` — the user has
+explicit follow-up exploration work planned on ADM-008 (see backlog note filed this pass for the
+known free_item/free_upgrade redemption-math gap). Do NOT archive to `completed/` until that
+follow-up work concludes or the user explicitly closes the program.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any
