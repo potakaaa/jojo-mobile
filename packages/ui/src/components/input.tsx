@@ -35,6 +35,11 @@ export interface InputProps {
   textAlign?: TextInputProps['textAlign'];
   /** Return-key variant for the on-screen keyboard. */
   returnKeyType?: TextInputProps['returnKeyType'];
+  /**
+   * Explicit accessibility label. Falls back to `label` when unset, so labelless
+   * fields (e.g. the MM/DD/YYYY birthday inputs) can still be announced distinctly.
+   */
+  accessibilityLabel?: string;
 }
 
 /**
@@ -58,6 +63,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     onKeyPress,
     textAlign,
     returnKeyType,
+    accessibilityLabel,
   },
   ref,
 ) {
@@ -82,7 +88,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           onKeyPress={onKeyPress}
           textAlign={textAlign}
           returnKeyType={returnKeyType}
-          accessibilityLabel={label}
+          accessibilityLabel={accessibilityLabel ?? label}
           style={[
             styles.input,
             secureTextEntry ? styles.inputWithToggle : null,
