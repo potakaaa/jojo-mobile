@@ -244,19 +244,36 @@ export async function resolveCouponDiscount(
       return { ok: false, status: 400, reason: result.reason, message: result.message };
     }
 
-    // ADM-008 Fix 6 (P1 permanent guard, D4). A `free_item`/`free_upgrade` offer
-    // with no configured `benefit_product_id` has no real redemption meaning —
-    // legacy such offers (all created before this fix) would otherwise route to
-    // `computeDealDiscountCents`'s cheapest-eligible-line branch and silently make
-    // the cheapest cart line free. Reject here instead, AFTER eligibility so the
-    // reason ordering is deterministic and BEFORE any discount math. Runs on BOTH
-    // preview and placement (single resolver); the coupon is NEVER burned on this
-    // reject (apply is zero-mutation; placement throws before the burn UPDATE).
-    // Permanent legacy safety net — stays even after P2 lands the real semantics.
-    if (
-      (offer.deal_type === 'free_item' || offer.deal_type === 'free_upgrade') &&
-      offer.benefit_product_id === null
-    ) {
+    // ADM-008 Fix 6 (P1b widened deny-guard, D4). Four of the six `deal_type`
+    // mechanics route through `computeDealDiscountCents`'s cheapest-eligible-line
+    // branch (discount.ts) — `buy_one_take_one`, `bundle`, `free_item`,
+    // `free_upgrade` — which silently makes the cheapest cart line free. None has
+    // real coupon-redemption semantics in this plan, so DENY all four here, AFTER
+    // eligibility (deterministic reason ordering) and BEFORE any discount math.
+    // Runs on BOTH preview and placement (single resolver); the coupon is NEVER
+    // burned on any reject (apply is zero-mutation; placement throws before the
+    // burn UPDATE). Both branches reuse the existing `no_eligible_product` reason
+    // value — no wire-shape change.
+
+    // (a) PERMANENT deny — `buy_one_take_one` / `bundle` have no coupon-redemption
+    //     semantics in this plan, ever. This branch stays after P2 lands the
+    //     free-mechanic math; do NOT swap it.
+    if (offer.deal_type === 'buy_one_take_one' || offer.deal_type === 'bundle') {
+      return {
+        ok: false,
+        status: 400,
+        reason: 'no_eligible_product',
+        message: 'This offer type cannot be redeemed with a coupon.',
+      };
+    }
+
+    // (b) P1b INTERIM deny — `free_item` / `free_upgrade` are denied
+    //     UNCONDITIONALLY, regardless of `benefit_product_id` (P1 checked null
+    //     only, leaving an out-of-band/SQL-configured window hole open). P2
+    //     REPLACES ONLY THIS BRANCH with the configured-path dispatch
+    //     (`checkFreeBenefit` → real discount math); the permanent (a) branch
+    //     above is untouched by that swap.
+    if (offer.deal_type === 'free_item' || offer.deal_type === 'free_upgrade') {
       return {
         ok: false,
         status: 400,

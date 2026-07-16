@@ -1073,3 +1073,128 @@ describe('POST /orders — unconfigured free-mechanic offer coupon reject (ADM-0
     expect(placed).toHaveLength(0);
   });
 });
+
+// ─── ADM-008 P1b: widened deny-guard at placement ───────────────────────────
+// ALL FOUR cheapest-line-vulnerable mechanics (buy_one_take_one / bundle /
+// free_item / free_upgrade) are denied at placement by the single shared resolver
+// — symmetric with the apply-preview deny. b1t1/bundle is a PERMANENT deny; the
+// free mechanics are P1b-interim and denied even when benefit_product_id is
+// CONFIGURED (non-null — the finding-2 window-hole lock). Two-line carts (finding
+// 5) prove no cheapest-line discount is persisted: absent the guard the order would
+// land with a 300c discount. Every reject leaves the coupon available, no order.
+describe('POST /orders — P1b widened deny-guard (ADM-008 Fix 6 P1b)', () => {
+  let b1t1OfferId: string;
+  let bundleOfferId: string;
+  let configFreeItemOfferId: string;
+  let configFreeUpgradeOfferId: string;
+  let cheapProductId: string; // 300c second line, available at branch20
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  const seedOffer = async (
+    values: Partial<typeof schema.offers.$inferInsert> &
+      Pick<typeof schema.offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(schema.offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  // Two-line cart: seeded product (650c w/ size) + cheaper product (300c). Absent
+  // the guard, the cheapest-line path would persist a 300c discount.
+  const twoLineBody = (branchId: string) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch',
+    items: [
+      { productId, quantity: 1, selectedOptions: [{ optionId: sizeOptionId }] },
+      { productId: cheapProductId, quantity: 1, selectedOptions: [] },
+    ],
+  });
+
+  beforeAll(async () => {
+    b1t1OfferId = await seedOffer({ title: `P1bBt1 ${uid()}`, deal_type: 'buy_one_take_one' });
+    bundleOfferId = await seedOffer({ title: `P1bBundle ${uid()}`, deal_type: 'bundle' });
+    // CONFIGURED free mechanics — non-null benefit_product_id (finding-2 lock).
+    configFreeItemOfferId = await seedOffer({
+      title: `P1bFiConfig ${uid()}`,
+      deal_type: 'free_item',
+      benefit_product_id: productId,
+    });
+    configFreeUpgradeOfferId = await seedOffer({
+      title: `P1bFuConfig ${uid()}`,
+      deal_type: 'free_upgrade',
+      benefit_product_id: productId,
+    });
+
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({ name: `P1bCat ${uid()}`, slug: `p1b-cat-${uid()}`, sort_order: 9 })
+      .returning();
+    const [cheap] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `P1bCheap ${uid()}`,
+        slug: `p1b-cheap-${uid()}`,
+        base_price: '3.00',
+      })
+      .returning();
+    cheapProductId = cheap!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: cheapProductId, is_available: true });
+  });
+
+  const expectDeniedAtPlacement = async (offerId: string, label: string): Promise<void> => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser(label);
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...twoLineBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+
+    // No burn + no order (the whole placement tx rolled back → no 300c leak lands).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  };
+
+  it('denies a buy_one_take_one offer coupon at placement (permanent)', async () => {
+    await expectDeniedAtPlacement(b1t1OfferId, 'p1bBt1');
+  });
+
+  it('denies a bundle offer coupon at placement (permanent)', async () => {
+    await expectDeniedAtPlacement(bundleOfferId, 'p1bBundle');
+  });
+
+  it('denies a CONFIGURED free_item offer coupon at placement (finding-2 lock)', async () => {
+    await expectDeniedAtPlacement(configFreeItemOfferId, 'p1bFiConfig');
+  });
+
+  it('denies a CONFIGURED free_upgrade offer coupon at placement (finding-2 lock)', async () => {
+    await expectDeniedAtPlacement(configFreeUpgradeOfferId, 'p1bFuConfig');
+  });
+});

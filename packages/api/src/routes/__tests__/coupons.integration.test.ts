@@ -70,6 +70,21 @@ const OFFER_WINDOW = `JP-OFR-W${uid().slice(0, 3).toUpperCase()}`; // offer out 
 // Targeted to userA against unconfigured free_item / free_upgrade offers (P1 guard).
 const OFFER_FI_UNCONFIG = `JP-OFR-FI${uid().slice(0, 2).toUpperCase()}`;
 const OFFER_FU_UNCONFIG = `JP-OFR-FU${uid().slice(0, 2).toUpperCase()}`;
+// ADM-008 P1b widened deny-guard fixtures (all targeted to userA): the two
+// permanently-denied mechanics (b1t1/bundle), the two CONFIGURED free mechanics
+// (non-null benefit_product_id — the finding-2 window-hole lock), and one
+// fixed_discount offer coupon (finding-4 exact-cents guard-restructure insurance).
+let cheapProductId: string; // 300c second line — proves no cheapest-line leak
+let b1t1OfferId: string;
+let bundleOfferId: string;
+let configuredFreeItemOfferId: string;
+let configuredFreeUpgradeOfferId: string;
+let fixedOfferId: string;
+const OFFER_B1T1 = `JP-OFR-BT${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_BUNDLE = `JP-OFR-BN${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_FI_CONFIG = `JP-OFR-FC${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_FU_CONFIG = `JP-OFR-UC${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_FIXED = `JP-OFR-FX${uid().slice(0, 2).toUpperCase()}`;
 
 async function post(
   path: string,
@@ -174,6 +189,23 @@ beforeAll(async () => {
     .insert(schema.branchProductAvailability)
     .values({ branch_id: branchId, product_id: productId, is_available: true });
 
+  // ADM-008 P1b: a cheaper (300c) second product available at the same branch, for
+  // TWO-LINE-cart deny fixtures (finding 5). Paired with the 500c seeded product,
+  // the cheapest-line mis-discount — absent the P1b guard — would leak 300c.
+  const [cheapProduct] = await db
+    .insert(schema.products)
+    .values({
+      category_id: category!.id,
+      name: `CpnCheap ${suffix}`,
+      slug: `cpn-cheap-${suffix}`,
+      base_price: '3.00',
+    })
+    .returning();
+  cheapProductId = cheapProduct!.id;
+  await db
+    .insert(schema.branchProductAvailability)
+    .values({ branch_id: branchId, product_id: cheapProductId, is_available: true });
+
   // Reward bound to the product (redeemable) + a reward with NO eligible product.
   const [rewardWithProduct] = await db
     .insert(schema.rewards)
@@ -263,11 +295,83 @@ beforeAll(async () => {
     })
     .returning();
   unconfiguredFreeUpgradeOfferId = freeUpgradeOffer!.id;
+
+  // ADM-008 P1b: the four cheapest-line-vulnerable mechanics as offer coupons —
+  // all in-window + branch-agnostic + no minimum so checkDealEligibility PASSES and
+  // the P1b guard is provably what rejects. b1t1/bundle are PERMANENTLY denied;
+  // the two free mechanics are CONFIGURED (non-null benefit_product_id) to lock the
+  // finding-2 window hole (P1 admitted a configured free offer; P1b denies it).
+  const [b1t1Offer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `B1T1 ${suffix}`,
+      deal_type: 'buy_one_take_one',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  b1t1OfferId = b1t1Offer!.id;
+  const [bundleOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `Bundle ${suffix}`,
+      deal_type: 'bundle',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  bundleOfferId = bundleOffer!.id;
+  const [configuredFreeItemOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FreeItemConfig ${suffix}`,
+      deal_type: 'free_item',
+      benefit_product_id: productId,
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  configuredFreeItemOfferId = configuredFreeItemOffer!.id;
+  const [configuredFreeUpgradeOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FreeUpgradeConfig ${suffix}`,
+      deal_type: 'free_upgrade',
+      benefit_product_id: productId,
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  configuredFreeUpgradeOfferId = configuredFreeUpgradeOffer!.id;
+  // fixed_discount offer — finding-4 exact-cents insurance (the guard restructure
+  // must NOT perturb the fixed_discount fall-through). ₱3.00 = 300c.
+  const [fixedOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FixedOffer ${suffix}`,
+      deal_type: 'fixed_discount',
+      discount_value: '3.00',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  fixedOfferId = fixedOffer!.id;
+
   seededOfferIds.push(
     activeOfferId,
     expiredOfferId,
     unconfiguredFreeItemOfferId,
     unconfiguredFreeUpgradeOfferId,
+    b1t1OfferId,
+    bundleOfferId,
+    configuredFreeItemOfferId,
+    configuredFreeUpgradeOfferId,
+    fixedOfferId,
   );
 
   await db.insert(schema.coupons).values([
@@ -285,6 +389,12 @@ beforeAll(async () => {
     // free-mechanic offers — must be rejected at apply and stay available.
     { user_id: userA, offer_id: unconfiguredFreeItemOfferId, code: OFFER_FI_UNCONFIG },
     { user_id: userA, offer_id: unconfiguredFreeUpgradeOfferId, code: OFFER_FU_UNCONFIG },
+    // ADM-008 P1b: targeted coupons against the widened-deny mechanics.
+    { user_id: userA, offer_id: b1t1OfferId, code: OFFER_B1T1 },
+    { user_id: userA, offer_id: bundleOfferId, code: OFFER_BUNDLE },
+    { user_id: userA, offer_id: configuredFreeItemOfferId, code: OFFER_FI_CONFIG },
+    { user_id: userA, offer_id: configuredFreeUpgradeOfferId, code: OFFER_FU_CONFIG },
+    { user_id: userA, offer_id: fixedOfferId, code: OFFER_FIXED },
   ]);
 });
 
@@ -529,6 +639,73 @@ describe('POST /coupons/apply — AC1 unconfigured free-mechanic guard (ADM-008 
       .where(eq(schema.coupons.code, OFFER_FU_UNCONFIG));
     expect(coupon!.status).toBe('available');
     expect(coupon!.used_at).toBeNull();
+  });
+});
+
+// ADM-008 P1b: the widened deny-guard. ALL FOUR cheapest-line-vulnerable offer
+// mechanics are rejected at the resolver — none has coupon-redemption semantics in
+// this plan. buy_one_take_one / bundle are a PERMANENT deny; free_item /
+// free_upgrade is a P1b-interim deny that fires even when benefit_product_id is
+// CONFIGURED (non-null — the finding-2 window-hole lock). Two-line carts (finding
+// 5) prove no cheapest-line discount leaks: absent the guard,
+// computeDealDiscountCents would return the cheaper line's 300c. Every reject
+// leaves the coupon `available` (apply is zero-mutation).
+describe('POST /coupons/apply — P1b widened deny-guard (ADM-008 Fix 6 P1b)', () => {
+  // Two-line cart: seeded product (500c) + cheaper product (300c). If the P1b guard
+  // were removed, the cheapest-eligible-line path would leak a 300c discount.
+  const twoLineCart = () => ({
+    pickupBranchId: branchId,
+    cartItems: [
+      { productId, quantity: 1 },
+      { productId: cheapProductId, quantity: 1 },
+    ],
+  });
+
+  async function expectDenied(code: string): Promise<{ status: number; json: any }> {
+    const res = await post('/coupons/apply', { user: userA, body: { ...twoLineCart(), code } });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_eligible_product');
+    // No discount object at all → no cheapest-line (300c) leak.
+    expect(res.json.discount).toBeUndefined();
+    // Coupon untouched (apply is zero-mutation).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    return res;
+  }
+
+  it('denies a buy_one_take_one offer coupon (permanent), no cheapest-line leak', async () => {
+    await expectDenied(OFFER_B1T1);
+  });
+
+  it('denies a bundle offer coupon (permanent), no cheapest-line leak', async () => {
+    await expectDenied(OFFER_BUNDLE);
+  });
+
+  it('denies a CONFIGURED free_item offer coupon (finding-2 window-hole lock), no leak', async () => {
+    // benefit_product_id is NON-NULL here — P1 admitted this; P1b denies it.
+    await expectDenied(OFFER_FI_CONFIG);
+  });
+
+  it('denies a CONFIGURED free_upgrade offer coupon (finding-2 window-hole lock), no leak', async () => {
+    await expectDenied(OFFER_FU_CONFIG);
+  });
+
+  // finding 4 — fixed_discount offer-coupon exact-cents insurance: the guard
+  // restructure must NOT perturb the fixed_discount fall-through path.
+  it('still applies a fixed_discount offer coupon at exact cents (guard-restructure insurance)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FIXED,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.discount.source).toBe('deal');
+    // subtotal 500; fixed ₱3.00 = 300c; min(300, 500) = 300.
+    expect(res.json.discount.amountCents).toBe(300);
   });
 });
 
