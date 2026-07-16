@@ -1,6 +1,6 @@
 {
-  "id": "dfec391e-44d6-4367-9baa-f40a3324fd68",
-  "prevId": "4d007abc-3a90-45cd-9a7d-6d9e4b4ff31c",
+  "id": "c7074761-cd6e-42c3-96e4-0b173f1d7f34",
+  "prevId": "6c91f0d3-4bc1-494c-9f34-8d212cc69563",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -258,6 +258,13 @@
         },
         "is_reward_eligible": {
           "name": "is_reward_eligible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_deal": {
+          "name": "is_deal",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -711,6 +718,86 @@
           "tableFrom": "deal_branches",
           "tableTo": "branches",
           "columnsFrom": ["branch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.deal_components": {
+      "name": "deal_components",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "deal_product_id": {
+          "name": "deal_product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "component_product_id": {
+          "name": "component_product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "deal_components_deal_component_idx": {
+          "name": "deal_components_deal_component_idx",
+          "columns": [
+            {
+              "expression": "deal_product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "component_product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "deal_components_deal_product_id_products_id_fk": {
+          "name": "deal_components_deal_product_id_products_id_fk",
+          "tableFrom": "deal_components",
+          "tableTo": "products",
+          "columnsFrom": ["deal_product_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "deal_components_component_product_id_products_id_fk": {
+          "name": "deal_components_component_product_id_products_id_fk",
+          "tableFrom": "deal_components",
+          "tableTo": "products",
+          "columnsFrom": ["component_product_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1270,6 +1357,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "coupons_user_reward_unique": {
+          "name": "coupons_user_reward_unique",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "reward_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"coupons\".\"reward_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1764,6 +1873,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "star_transactions_order_type_unique": {
+          "name": "star_transactions_order_type_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppNotification, NotificationType } from '@jojopotato/types';
 import { EmptyState, NotificationRow, Toggle } from '@jojopotato/ui';
 import { router, type Href } from 'expo-router';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
@@ -62,6 +62,13 @@ export default function NotificationsScreen() {
     router.push((r.params ? { pathname: r.pathname, params: r.params } : r.pathname) as Href);
   };
 
+  const onToggleMarketing = async (value: boolean) => {
+    const result = await setMarketingOptIn(value);
+    if (!result.ok) {
+      Alert.alert("Couldn't update preference", result.error ?? 'Please try again.');
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={[]}>
@@ -79,7 +86,7 @@ export default function NotificationsScreen() {
             <Toggle
               label="Marketing notifications"
               value={marketingOptIn}
-              onValueChange={setMarketingOptIn}
+              onValueChange={onToggleMarketing}
               mode={mode}
             />
             <Text style={[styles.settingsNote, { color: theme.textSecondary }]}>
