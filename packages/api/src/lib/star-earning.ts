@@ -54,12 +54,15 @@ const PG_UNIQUE_VIOLATION = '23505';
 const COUPON_CODE_CONSTRAINT = 'coupons_code_unique';
 
 function isCouponCodeCollision(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: string }).code === PG_UNIQUE_VIOLATION &&
-    (err as { constraint?: string }).constraint === COUPON_CODE_CONSTRAINT
-  );
+  // Drizzle wraps the pg driver error, so the SQLSTATE/constraint may sit on the
+  // top-level object OR on `err.cause`. Check both so the bounded retry loop
+  // recognizes the collision and mints a fresh code instead of failing the txn.
+  const matches = (e: unknown): boolean =>
+    typeof e === 'object' &&
+    e !== null &&
+    (e as { code?: string }).code === PG_UNIQUE_VIOLATION &&
+    (e as { constraint?: string }).constraint === COUPON_CODE_CONSTRAINT;
+  return matches(err) || matches((err as { cause?: unknown } | null)?.cause);
 }
 
 /**

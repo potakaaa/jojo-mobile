@@ -106,8 +106,15 @@ export default function CheckoutScreen() {
         selectedOptions: line.selectedOptions.map((opt) => ({ optionId: opt.id })),
       })),
       ...(couponCode ? { couponCode } : {}),
-      // Only a deal-sourced discount carries a real dealId the server can revalidate.
-      dealId: cart.appliedDiscount?.source === 'deal' ? cart.appliedDiscount.refId : undefined,
+      // A code-applied deal is re-resolved server-side from `couponCode`; its
+      // `refId` is a catalog id (e.g. "deal-welcome-20"), not a UUID, so sending
+      // it as `dealId` would fail placement (UUID validation + the single-discount
+      // guard rejects dealId+couponCode together). Only send `dealId` for a deal
+      // applied by id with no code.
+      dealId:
+        !couponCode && cart.appliedDiscount?.source === 'deal'
+          ? cart.appliedDiscount.refId
+          : undefined,
     });
     if (order) {
       // Clear the out-of-band applied code once the order is placed (STAR-004).

@@ -358,6 +358,9 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             user_id: userId,
             branch_id: body.branchId,
             deal_id: body.dealId ?? null,
+            // Persist the consumed reward coupon so the order keeps its audit link
+            // (serializeOrder returns couponId). null for non-coupon placements.
+            coupon_id: rewardCouponIdToConsume,
             order_number: orderNumber,
             subtotal: centsToNumeric(subtotalCents),
             discount_total: centsToNumeric(discountTotalCents),
