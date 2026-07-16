@@ -758,23 +758,23 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
   });
 
   // AC6
-  it('rejects a second placement using an already-used coupon (409), no double redeemed row', async () => {
+  it('rejects a concurrent double placement of the same coupon (exactly one 201, one 409)', async () => {
     const { and, eq } = await import('drizzle-orm');
     const u = await freshUser('rw6');
     const code = freshCode();
     await mintCoupon(u, rewardId, code);
 
-    const first = await post('/orders', {
-      user: u,
-      body: { ...singleItemBody(branch20Id), couponCode: code },
-    });
-    expect(first.status).toBe(201);
+    // Fire both placements concurrently: the optimistic status-guard UPDATE must
+    // let exactly one win (201) and force the other to roll back (409).
+    const [a, b] = await Promise.all([
+      post('/orders', { user: u, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+      post('/orders', { user: u, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+    ]);
+    expect([a.status, b.status].sort((x, y) => x - y)).toEqual([201, 409]);
 
-    const second = await post('/orders', {
-      user: u,
-      body: { ...singleItemBody(branch20Id), couponCode: code },
-    });
-    expect(second.status).toBe(409);
+    // Exactly one coupon-backed order persisted; the 409 loser rolled back its insert.
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(1);
 
     const redeemed = await db
       .select()

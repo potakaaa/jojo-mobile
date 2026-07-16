@@ -689,12 +689,18 @@ const JOJO_ORDERS: JojoOrderSpec[] = [
   },
 ];
 
-/** Sum item line totals (quantity × unitPrice) to a 2-decimal peso string. */
+/**
+ * Effective per-unit price in cents: the product base price plus the sum of the
+ * item's selected-option price deltas (e.g. the +₱30 Large size adjustment).
+ */
+function itemUnitPriceCents(item: JojoOrderItemSpec): number {
+  const optionDeltaCents = (item.options ?? []).reduce((sum, o) => sum + o.priceDeltaCents, 0);
+  return Math.round(Number(item.unitPrice) * 100) + optionDeltaCents;
+}
+
+/** Sum item line totals (effective unit price × quantity) to a 2-decimal peso string. */
 function orderSubtotal(items: JojoOrderItemSpec[]): string {
-  const cents = items.reduce(
-    (sum, item) => sum + Math.round(Number(item.unitPrice) * 100) * item.quantity,
-    0,
-  );
+  const cents = items.reduce((sum, item) => sum + itemUnitPriceCents(item) * item.quantity, 0);
   return (cents / 100).toFixed(2);
 }
 
@@ -786,13 +792,14 @@ async function seedJojoOrders(
             `Seed data error: jojo order item references unknown product "${item.slug}"`,
           );
         }
+        const perUnitCents = itemUnitPriceCents(item);
         return {
           order_id: orderRow.id,
           product_id: productId,
           product_name_snapshot: item.name,
           quantity: item.quantity,
-          unit_price: item.unitPrice,
-          total_price: (Number(item.unitPrice) * item.quantity).toFixed(2),
+          unit_price: (perUnitCents / 100).toFixed(2),
+          total_price: ((perUnitCents * item.quantity) / 100).toFixed(2),
           selected_options: item.options ?? [],
         };
       }),
