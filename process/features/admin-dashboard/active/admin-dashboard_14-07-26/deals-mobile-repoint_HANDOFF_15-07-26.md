@@ -9,6 +9,14 @@ metadata:
   phase: 4b
 ---
 
+> **SUPERSEDED — see `process/general-plans/active/kid-friendly-ui-deals-unification_16-07-26/kid-friendly-ui-deals-unification_PLAN_16-07-26.md` (Phase B).**
+> This handoff's schema/API background remains accurate and useful, but its "retire these
+> files outright" instruction is stale and unsafe: `apps/mobile/src/app/(tabs)/order/cart.tsx`
+> still imports `apply-deal.ts`, `eligibility.ts`, and `use-deal-usage.ts` for its OLD-model
+> cart-line display path, so those three files were RETIRED-BUT-NOT-DELETED (left in place,
+> unused by the new deal-product add-to-cart flow) rather than removed. The repoint was
+> executed by the Phase B plan above; read it for the authoritative, as-shipped disposition.
+
 # Mobile Deals Repoint — Handoff Doc (Phase 4b)
 
 **This is a handoff spec for a different teammate, not an execution plan we're running

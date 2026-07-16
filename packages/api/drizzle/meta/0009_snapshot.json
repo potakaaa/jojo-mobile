@@ -1,6 +1,6 @@
 {
-  "id": "be966756-bac9-4a73-97d3-10ecbb8687c0",
-  "prevId": "ee705c1a-e6a3-4394-8458-48ea8e3374ed",
+  "id": "dfec391e-44d6-4367-9baa-f40a3324fd68",
+  "prevId": "4d007abc-3a90-45cd-9a7d-6d9e4b4ff31c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -870,6 +870,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "marketing_opt_in": {
+          "name": "marketing_opt_in",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "favorite_branch_id": {
           "name": "favorite_branch_id",
           "type": "uuid",
@@ -1263,28 +1270,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "coupons_user_reward_unique": {
-          "name": "coupons_user_reward_unique",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "reward_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"coupons\".\"reward_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1353,6 +1338,12 @@
         },
         "deal_id": {
           "name": "deal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coupon_id": {
+          "name": "coupon_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -1454,12 +1445,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "coupon_id": {
-          "name": "coupon_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -1782,28 +1767,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "star_transactions_order_type_unique": {
-          "name": "star_transactions_order_type_unique",
-          "columns": [
-            {
-              "expression": "order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1873,6 +1836,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "target_params": {
+          "name": "target_params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "read_at": {
           "name": "read_at",
           "type": "timestamp",
@@ -1923,6 +1892,103 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.device_tokens": {
+      "name": "device_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "push_token": {
+          "name": "push_token",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "device_tokens_user_idx": {
+          "name": "device_tokens_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "device_tokens_user_id_users_id_fk": {
+          "name": "device_tokens_user_id_users_id_fk",
+          "tableFrom": "device_tokens",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "device_tokens_device_unique": {
+          "name": "device_tokens_device_unique",
+          "nullsNotDistinct": false,
+          "columns": ["device_id"]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

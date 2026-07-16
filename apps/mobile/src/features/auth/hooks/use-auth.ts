@@ -55,6 +55,14 @@ export interface AuthContextValue {
    * (per-account, server-owned — derived from `user.onboardedAt`).
    */
   hasCompletedProfile: boolean;
+  /**
+   * Marketing push opt-in (PUSH-004), derived from the session. Requires
+   * affirmative consent — only an explicit true reads as opted-IN, matching the
+   * server default.
+   */
+  marketingOptIn: boolean;
+  /** Persist the marketing opt-in flag and refresh the session. */
+  setMarketingOptIn: (value: boolean) => Promise<SignInResult>;
   signIn: (input: SignInInput) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   completeOnboarding: () => void;
@@ -172,6 +180,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeOnboarding = useCallback(() => setHasOnboarded(true), []);
 
+  const setMarketingOptIn = useCallback(
+    async (value: boolean): Promise<SignInResult> => {
+      const { error } = await authClient.updateUser({ marketingOptIn: value });
+      if (error) {
+        return toResult(error);
+      }
+      // Refetch so the new flag propagates to consumers reading `marketingOptIn`.
+      await refetch();
+      return toResult(null);
+    },
+    [refetch],
+  );
+
   const completeProfile = useCallback(
     async (info: { name: string; birthday: string; address: string }): Promise<SignInResult> => {
       const { error } = await authClient.updateUser({
@@ -224,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           birthday?: string | null;
           address?: string | null;
           onboardedAt?: string | Date | null;
+          marketingOptIn?: boolean | null;
         }
       | undefined;
     const user: AuthUser | null = sessionUser
@@ -244,6 +266,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : null;
     const role = user?.role ?? null;
     const isStaff = role !== null && STAFF_ROLES.includes(role as StaffRole);
+    // Requires affirmative consent — only an explicit true is opted IN.
+    const marketingOptIn = sessionUser?.marketingOptIn === true;
     return {
       user,
       role,
@@ -251,6 +275,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading: isPending,
       hasOnboarded,
       hasCompletedProfile: user?.onboardedAt != null,
+      marketingOptIn,
+      setMarketingOptIn,
       signIn,
       signOut,
       completeOnboarding,
@@ -261,6 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     data,
     isPending,
     hasOnboarded,
+    setMarketingOptIn,
     signIn,
     signOut,
     completeOnboarding,

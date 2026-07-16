@@ -14,6 +14,10 @@ import {
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
 import { creditStarForCompletedOrder } from '../lib/star-earning';
+import {
+  dispatchOrderNotification,
+  type OrderNotificationEvent,
+} from './lib/notification-dispatch';
 import { canTransition } from './lib/order-state-machine';
 import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
 
@@ -55,15 +59,19 @@ async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<v
 }
 
 /**
- * TODO(PUSH-002): dispatch a push notification for the given order event.
- * Replace with real push dispatch once the notifications system is built.
+ * Dispatch a customer push notification for an order transition (PUSH-004 / #75).
+ *
+ * A thin wrapper over `dispatchOrderNotification` — scoped to exactly the 4
+ * transactional events (`accepted`/`preparing`/`ready`/`cancelled`). Awaited at
+ * the call site so the notification row is persisted before the PATCH response
+ * (deterministic in-app list consistency); `dispatchOrderNotification` never
+ * throws, so a push failure can never break the status transition.
  */
-function notifyCustomer(
-  _order: typeof orders.$inferSelect,
-  _event: 'completed' | 'rejected' | 'cancelled',
-): void {
-  void _order;
-  void _event; // TODO(PUSH-002): replace with real push dispatch
+async function notifyCustomer(
+  order: typeof orders.$inferSelect,
+  event: OrderNotificationEvent,
+): Promise<void> {
+  await dispatchOrderNotification(order, event);
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -165,6 +173,59 @@ staffRouter.get('/orders/completed', async (req, res) => {
   );
 
   res.json({ orders: summaries });
+});
+
+/**
+ * `GET /api/staff/orders/lookup?code=<pickup-code>` → `StaffOrderDetail` (STAFF-005/PUP-002).
+ *
+ * Finds an order by its `order_number` (the pickup code the customer speaks
+ * aloud), scoped to the caller's branch. Returns the full `StaffOrderDetail`
+ * INCLUDING the real `status` (terminal or not) — completion handling is left to
+ * the existing detail screen's state-machine actions.
+ *
+ * SECURITY (SPEC US-3/AC4/AC5 — LOCKED): the lookup is a SINGLE combined WHERE
+ * filter on `(branch_id, order_number)` with ONE `!order → 404` branch. A
+ * wrong-branch code simply fails the branch filter → identical not-found path as
+ * a nonexistent code, so the 404 body is byte-identical for both. Do NOT copy the
+ * adjacent `/orders/:orderId` load-then-403 pattern — that leaks order existence
+ * across branches.
+ *
+ * IMPORTANT: This static route MUST be registered BEFORE `/orders/:orderId` —
+ * Express matches top-down and would otherwise treat "lookup" as an orderId param.
+ *
+ * Status codes:
+ *   200 — flat `StaffOrderDetail` (same serializer as `/orders/:orderId`).
+ *   400 — missing/empty `code` after normalization.
+ *   403 — unassigned/no-branch staff.
+ *   404 — no order matches this code at the caller's branch (byte-identical for
+ *         wrong-branch and nonexistent codes).
+ */
+staffRouter.get('/orders/lookup', async (req, res) => {
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  const code = String(req.query.code ?? '')
+    .trim()
+    .toUpperCase();
+  if (!code) {
+    res.status(400).json({ error: 'Missing code' });
+    return;
+  }
+
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.branch_id, branchId), eq(orders.order_number, code)));
+  if (!order) {
+    res.status(404).json({ error: 'No matching order found for your branch' });
+    return;
+  }
+
+  const items = await db.select().from(orderItems).where(eq(orderItems.order_id, order.id));
+  res.json(serializeStaffOrderDetail(order, items));
 });
 
 /**
@@ -306,15 +367,22 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
     return;
   }
 
-  // 8. Non-transactional side effects (push stub) run OUTSIDE the tx, only after
-  //    the status flip (and any star credit) has durably committed.
-  if (targetStatus === 'completed') {
+  // 8. Star credit for `completed` + customer push notifications run OUTSIDE the
+  //    tx, only after the status flip has durably committed. Push notifications
+  //    fire for the 4 transactional events (accepted/preparing/ready/cancelled) —
+  //    NOT completed/rejected (PUSH-004; `OrderNotificationEvent` has no
+  //    'completed'/'rejected' member, so those are deliberately unpushed, not an
+  //    oversight — see the deferred-rejected-notification backlog note).
+  if (targetStatus === 'accepted') {
+    await notifyCustomer(updatedOrder, 'accepted');
+  } else if (targetStatus === 'preparing') {
+    await notifyCustomer(updatedOrder, 'preparing');
+  } else if (targetStatus === 'ready') {
+    await notifyCustomer(updatedOrder, 'ready');
+  } else if (targetStatus === 'completed') {
     await creditStarsForOrder(updatedOrder);
-    notifyCustomer(updatedOrder, 'completed');
-  } else if (targetStatus === 'rejected') {
-    notifyCustomer(updatedOrder, 'rejected');
   } else if (targetStatus === 'cancelled') {
-    notifyCustomer(updatedOrder, 'cancelled');
+    await notifyCustomer(updatedOrder, 'cancelled');
   }
 
   // 9. Re-select the updated order for the response.

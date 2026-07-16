@@ -11,6 +11,7 @@ import {
 import {
   Colors,
   FontFamily,
+  MinTouchTarget,
   Palette,
   Radii,
   Shadows,
@@ -88,7 +89,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator size="small" color={labelColor} />
       ) : iconName ? (
-        <Ionicons name={iconName} size={20} color={labelColor} />
+        <Ionicons name={iconName} size={22} color={labelColor} />
       ) : null}
       <Text style={[styles.label, size === 'sm' && styles.labelSm, { color: labelColor }]}>
         {label}
@@ -103,6 +104,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    // 48dp kid-friendly touch-target floor (AC-A1). RN box-sizing is
+    // border-box, so `minHeight` is inclusive of the 2px border — both `md`
+    // and `sm` inherit this floor since `buttonSm` overrides padding only.
+    minHeight: MinTouchTarget,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: Radii.full,
@@ -110,7 +115,7 @@ const styles = StyleSheet.create({
   },
   buttonSm: {
     paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.four,
   },
   pressed: {
     transform: [{ translateX: 2 }, { translateY: 2 }],

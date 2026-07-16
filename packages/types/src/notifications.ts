@@ -39,6 +39,20 @@ export interface AppNotification {
   readAt?: string;
 }
 
+/**
+ * Wire shape for `POST /notifications/device-tokens` (PUSH-004 / #75). The client
+ * registers/refreshes its Expo push token keyed by a stable per-device id; the
+ * server upserts on `(user_id, device_id)`.
+ */
+export interface DeviceTokenRegistration {
+  /** Stable per-device identifier (Expo identifierForVendor / Android SSAID). */
+  deviceId: string;
+  /** Expo push token (`ExponentPushToken[...]`). */
+  pushToken: string;
+  /** `'ios' | 'android' | ...` — plain string, not enum-constrained server-side. */
+  platform: string;
+}
+
 /** Runtime array of every order notification type — used by opt-in filtering + exhaustiveness tests. */
 export const ORDER_NOTIFICATION_TYPES: readonly OrderNotificationType[] = [
   'order_accepted',
