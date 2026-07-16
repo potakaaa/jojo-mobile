@@ -113,6 +113,11 @@ beforeAll(async () => {
   ({ db } = await import('../../db/client'));
   schema = await import('../../db/schema/index');
   ({ app } = await import('../../index'));
+  // `../../index` pulls in `dotenv/config`, which re-populates any env var this
+  // file deleted above (line 36) if the developer's real `.env` defines it —
+  // re-delete AFTER the dynamic imports so the AC-2 log-fallback precondition
+  // holds regardless of ambient dev credentials, as the module docstring promises.
+  delete process.env.EXPO_ACCESS_TOKEN;
 
   // Branch-1 (staff1's branch) with a known prep time for AC-6.
   const [b1] = await db
@@ -197,6 +202,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Star-earning side effects (wired into the completion transition) write
+  // star_transactions / user_stars / coupons rows for the shared customer. None
+  // of these FKs cascade, so they must be cleared BEFORE the orders and the
+  // customer user are deleted.
+  await db.delete(schema.starTransactions).where(eq(schema.starTransactions.user_id, customerId));
+  await db.delete(schema.coupons).where(eq(schema.coupons.user_id, customerId));
+  await db.delete(schema.userStars).where(eq(schema.userStars.user_id, customerId));
   if (createdOrderIds.length > 0) {
     const { inArray } = await import('drizzle-orm');
     await db.delete(schema.orderItems).where(inArray(schema.orderItems.order_id, createdOrderIds));
@@ -577,5 +589,51 @@ describe('PATCH /api/staff/orders/:orderId — AC-2 push notification dispatch',
 
     const rows = await notificationRowsFor(orderId, 'order_cancelled');
     expect(rows).toHaveLength(1);
+  });
+});
+
+// ─── Star earning on completion: ready → completed credits exactly one star ───
+
+describe('PATCH /api/staff/orders/:orderId — star earning on completion', () => {
+  it('ready → completed credits exactly one `earned` star to the order customer', async () => {
+    const orderId = await insertOrder({ branchId: branch1Id, status: 'ready' });
+
+    // Baseline the customer's counter — the customer is shared across the suite
+    // and other completions may already have credited stars, so assert a delta.
+    const [before] = await db
+      .select()
+      .from(schema.userStars)
+      .where(eq(schema.userStars.user_id, customerId));
+    const currentBefore = before?.current_stars ?? 0;
+    const lifetimeBefore = before?.lifetime_stars ?? 0;
+
+    const res = await request(app)
+      .patch(`/api/staff/orders/${orderId}`)
+      .set('Cookie', staff1Cookies.join('; '))
+      .send({ status: 'completed' });
+    expect(res.status).toBe(200);
+    expect(res.body.order.status).toBe('completed');
+
+    // Exactly one `earned` star_transactions row for THIS order, owned by the customer.
+    const earned = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(
+          eq(schema.starTransactions.order_id, orderId),
+          eq(schema.starTransactions.type, 'earned'),
+        ),
+      );
+    expect(earned).toHaveLength(1);
+    expect(earned[0]!.user_id).toBe(customerId);
+    expect(earned[0]!.stars).toBe(1);
+
+    // Customer counter incremented by exactly 1 (current + lifetime).
+    const [after] = await db
+      .select()
+      .from(schema.userStars)
+      .where(eq(schema.userStars.user_id, customerId));
+    expect(after!.current_stars).toBe(currentBefore + 1);
+    expect(after!.lifetime_stars).toBe(lifetimeBefore + 1);
   });
 });

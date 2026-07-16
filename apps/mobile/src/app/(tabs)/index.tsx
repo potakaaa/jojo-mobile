@@ -232,9 +232,8 @@ export default function HomeScreen() {
             <View style={styles.rewardsSection}>
               <RewardProgressCard
                 rewards={{
-                  userId: '',
                   currentStars: rewardsQuery.data.currentStars,
-                  lifetimeStars: rewardsQuery.data.lifetimeStars,
+                  requiredStars: rewardsQuery.data.requiredStars,
                 }}
                 onPress={() => router.push('/(tabs)/rewards')}
                 mode={mode}
@@ -242,8 +241,7 @@ export default function HomeScreen() {
               <StarProgressBar
                 progress={{
                   currentStars: rewardsQuery.data.currentStars,
-                  rewardThreshold: rewardsQuery.data.rewardThreshold,
-                  starsToNextReward: rewardsQuery.data.starsToNextReward,
+                  requiredStars: rewardsQuery.data.requiredStars,
                 }}
                 mode={mode}
               />

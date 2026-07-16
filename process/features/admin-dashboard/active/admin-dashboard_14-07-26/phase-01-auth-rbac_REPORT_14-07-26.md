@@ -156,7 +156,7 @@ explicitly authorized by the plan + validate-contract.
 5-artifact pack written to
 `process/features/admin-dashboard/active/admin-dashboard_14-07-26/harness/`:
 `risk-gate.json` (mustStopBeforeFinalize + risk class), `context-snippets.json` (6 load-bearing
-citations), `verification.json` (12 verification steps incl. happy + boundary/failure), 
+citations), `verification.json` (12 verification steps incl. happy + boundary/failure),
 `adversarial-validation.json` (8 attack scenarios ruled out), `review-decision.json` (APPROVE).
 
 ## Closeout Packet

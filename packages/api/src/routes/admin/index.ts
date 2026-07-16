@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 
 import branchesRouter from './branches';
 import categoriesRouter from './categories';
+import dealsRouter from './deals';
 import productsRouter from './products';
 import usersRouter from './users';
 
@@ -26,5 +27,9 @@ adminRouter.use('/branches', branchesRouter);
 // per-branch availability). Same inherited guard; append-only, never restructure.
 adminRouter.use('/categories', categoriesRouter);
 adminRouter.use('/products', productsRouter);
+
+// Deals CRUD (ADM-004 — deals-as-products) — is_deal=true products + the
+// deal_components junction. Same inherited guard; append-only, never restructure.
+adminRouter.use('/deals', dealsRouter);
 
 export default adminRouter;

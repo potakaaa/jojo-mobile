@@ -19,6 +19,7 @@
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
     "@jojopotato/types": "workspace:*",
+    "@jojopotato/utils": "workspace:*",
     "better-auth": "^1.6.23",
     "cors": "^2.8.5",
     "drizzle-orm": "^0.45.2",

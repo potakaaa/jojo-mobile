@@ -1,5 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { auth } from '../../lib/auth';
+import { rewardCouponCodeGenerator } from '../../lib/reward-coupon-code';
 import { db } from '../client';
 import {
   branchProductAvailability,
@@ -18,7 +19,7 @@ import {
   userStars,
   users,
 } from '../schema/index';
-import { seedBranches, seedCategories, seedDeals, seedProducts, seedRewards } from './data';
+import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
 
 // Relative image paths (resolved against the API origin at render time by the
 // mobile app — see apps/mobile/src/lib/image-url.ts). Served statically from
@@ -456,53 +457,87 @@ async function seedSampleOrders(
   }
 }
 
-// Idempotent rewards catalog seed. `rewards` has no unique column, so idempotency
-// is app-level: find-by-name, then update or insert. free_item rewards resolve
-// their `eligible_product_id` from a seeded product slug; discount rewards leave it
-// null. Returns a name→id map so coupons can link a reward.
-async function seedRewardsTable(
-  productIdBySlug: Map<string, string>,
-): Promise<Map<string, string>> {
-  const idByName = new Map<string, string>();
-  for (const reward of seedRewards) {
-    let eligibleProductId: string | null = null;
-    if (reward.eligibleProductSlug) {
-      const resolved = productIdBySlug.get(reward.eligibleProductSlug);
-      if (!resolved) {
-        throw new Error(
-          `Seed data error: reward "${reward.name}" references unknown product "${reward.eligibleProductSlug}"`,
-        );
-      }
-      eligibleProductId = resolved;
-    }
-    const row = {
-      name: reward.name,
-      required_stars: reward.required_stars,
-      reward_type: reward.reward_type,
-      reward_value: reward.reward_value,
-      eligible_product_id: eligibleProductId,
-      is_active: true,
-    };
+// Battle-pass reward roadmap (STAR-003): a uniform 5-star-cadence escalating
+// roadmap. Tier 1 stays at 5 stars = the previous single MVP reward, so
+// STAR-002's `/rewards/summary` (MIN active reward) is unchanged and does not
+// regress. All `free_item` with `reward_value: null` (free item, not a monetary
+// discount) — no new reward_type semantics. Admin-configurable thresholds are
+// ADM-005 (unlock reads thresholds LIVE, so ADM-005 slots in without touching
+// unlock logic).
+const REWARD_ROADMAP = [
+  { name: 'Free regular fries or lemonade', required_stars: 5, reward_type: 'free_item', reward_value: null }, // prettier-ignore
+  { name: 'Free large fries', required_stars: 10, reward_type: 'free_item', reward_value: null },
+  { name: 'Free combo meal', required_stars: 15, reward_type: 'free_item', reward_value: null },
+  { name: 'Free premium loaded fries', required_stars: 20, reward_type: 'free_item', reward_value: null }, // prettier-ignore
+] as const;
+
+// The roadmap tier bound to a real product (STAR-004 AC8): tier 1 ("Free regular
+// fries or lemonade", 5 stars) is bound to the seeded `classic-fries` product so
+// its reward coupon is redeemable end-to-end without STAFF-003. No migration —
+// `rewards.eligible_product_id` already exists, and `classic-fries` is a seeded
+// product.
+const REWARD_ELIGIBLE_PRODUCT_SLUG_BY_NAME: Record<string, string> = {
+  'Free regular fries or lemonade': 'classic-fries',
+};
+
+// rewards.name has no unique constraint, so idempotency is app-level: for each
+// roadmap tier, find the reward by name, then update-or-insert (active). Re-seeding
+// converges to exactly these N active tiers. NOTE: this only upserts by name — any
+// PRE-EXISTING extra active rewards in a shared local dev DB are left as-is
+// (acceptable for a dev seed; the hermetic per-run `_test` DB used by the gates is
+// unaffected, and the self-seeding test suite uses `seedRewardTier`, not `db:seed`).
+async function seedRewardsTable(productIdBySlug: Map<string, string>): Promise<void> {
+  for (const tier of REWARD_ROADMAP) {
     const [existing] = await db
       .select({ id: rewards.id })
       .from(rewards)
-      .where(eq(rewards.name, reward.name));
-    const [rewardRow] = existing
-      ? await db
-          .update(rewards)
-          .set({ ...row, updated_at: new Date() })
-          .where(eq(rewards.id, existing.id))
-          .returning({ id: rewards.id, name: rewards.name })
-      : await db.insert(rewards).values(row).returning({ id: rewards.id, name: rewards.name });
-    if (!rewardRow)
-      throw new Error(`Seed error: upsert of reward "${reward.name}" returned no row`);
-    idByName.set(rewardRow.name, rewardRow.id);
+      .where(eq(rewards.name, tier.name));
+
+    const eligibleSlug = REWARD_ELIGIBLE_PRODUCT_SLUG_BY_NAME[tier.name];
+    const eligibleProductId = eligibleSlug ? (productIdBySlug.get(eligibleSlug) ?? null) : null;
+    const row = { ...tier, is_active: true, eligible_product_id: eligibleProductId };
+    if (existing) {
+      await db
+        .update(rewards)
+        .set({ ...row, updated_at: new Date() })
+        .where(eq(rewards.id, existing.id));
+    } else {
+      await db.insert(rewards).values(row);
+    }
   }
-  return idByName;
 }
 
-// Resolve jojo@test.com's user id after seedTestUser() has run. Throws if absent
-// (seedTestUser fail-closes under production and otherwise always creates it).
+// Mint an `available` reward coupon for the dev test user (STAR-004 AC8), so the
+// apply → checkout → consume flow is demoable/testable WITHOUT STAFF-003. Called
+// AFTER seedTestUser() (which creates jojo@test.com) — the test user's row does
+// not exist until then. Idempotent via the 0006 `coupons_user_reward_unique`
+// partial index (`onConflictDoNothing` carrying the matching `where` predicate,
+// per the STAR-001/003 E1 lesson: the bare target-only form throws on a partial
+// index). Fail-soft: if the test user or tier-1 reward is absent (e.g. prod guard
+// skipped seedTestUser), there is nothing to mint.
+async function seedTestUserRewardCoupon(): Promise<void> {
+  // Reuse seedTestUser()'s own by-email lookup shape (E3) to resolve the id.
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, TEST_USER.email));
+  if (!user) return;
+
+  const [reward] = await db
+    .select({ id: rewards.id })
+    .from(rewards)
+    .where(eq(rewards.name, REWARD_ROADMAP[0].name));
+  if (!reward) return;
+
+  await db
+    .insert(coupons)
+    .values({ user_id: user.id, reward_id: reward.id, code: rewardCouponCodeGenerator.generate() })
+    .onConflictDoNothing({
+      target: [coupons.user_id, coupons.reward_id],
+      where: sql`${coupons.reward_id} IS NOT NULL`,
+    });
+}
+
 async function resolveTestUserId(): Promise<string> {
   const [row] = await db
     .select({ id: users.id })
@@ -654,12 +689,18 @@ const JOJO_ORDERS: JojoOrderSpec[] = [
   },
 ];
 
-/** Sum item line totals (quantity × unitPrice) to a 2-decimal peso string. */
+/**
+ * Effective per-unit price in cents: the product base price plus the sum of the
+ * item's selected-option price deltas (e.g. the +₱30 Large size adjustment).
+ */
+function itemUnitPriceCents(item: JojoOrderItemSpec): number {
+  const optionDeltaCents = (item.options ?? []).reduce((sum, o) => sum + o.priceDeltaCents, 0);
+  return Math.round(Number(item.unitPrice) * 100) + optionDeltaCents;
+}
+
+/** Sum item line totals (effective unit price × quantity) to a 2-decimal peso string. */
 function orderSubtotal(items: JojoOrderItemSpec[]): string {
-  const cents = items.reduce(
-    (sum, item) => sum + Math.round(Number(item.unitPrice) * 100) * item.quantity,
-    0,
-  );
+  const cents = items.reduce((sum, item) => sum + itemUnitPriceCents(item) * item.quantity, 0);
   return (cents / 100).toFixed(2);
 }
 
@@ -751,13 +792,14 @@ async function seedJojoOrders(
             `Seed data error: jojo order item references unknown product "${item.slug}"`,
           );
         }
+        const perUnitCents = itemUnitPriceCents(item);
         return {
           order_id: orderRow.id,
           product_id: productId,
           product_name_snapshot: item.name,
           quantity: item.quantity,
-          unit_price: item.unitPrice,
-          total_price: (Number(item.unitPrice) * item.quantity).toFixed(2),
+          unit_price: (perUnitCents / 100).toFixed(2),
+          total_price: ((perUnitCents * item.quantity) / 100).toFixed(2),
           selected_options: item.options ?? [],
         };
       }),
@@ -805,103 +847,6 @@ async function seedStarTransactionsRows(
   await db.insert(starTransactions).values(rows);
 }
 
-type JojoCouponSpec = {
-  code: string;
-  status: 'available' | 'used' | 'expired';
-  rewardName: string | null;
-  dealTitle: string | null;
-  expiresInDays: number;
-  used: boolean;
-};
-
-// jojo's coupon wallet: reward-issued + deal-issued available coupons, one used,
-// one expired. Idempotent via the unique `code` column.
-const JOJO_COUPONS: JojoCouponSpec[] = [
-  {
-    code: 'WELCOME-JOJO-01',
-    status: 'available',
-    rewardName: 'Free Lemonade',
-    dealTitle: null,
-    expiresInDays: 30,
-    used: false,
-  },
-  {
-    code: 'DEAL-CENTRIO-01',
-    status: 'available',
-    rewardName: null,
-    dealTitle: 'Branch-exclusive opening promo',
-    expiresInDays: 14,
-    used: false,
-  },
-  {
-    code: 'USED-FRIES-01',
-    status: 'used',
-    rewardName: 'Free Regular Fries',
-    dealTitle: null,
-    expiresInDays: 30,
-    used: true,
-  },
-  {
-    code: 'EXPIRED-15OFF-01',
-    status: 'expired',
-    rewardName: '15% Off',
-    dealTitle: null,
-    expiresInDays: -5,
-    used: false,
-  },
-];
-
-async function seedJojoCoupons(
-  jojoId: string,
-  rewardIdByName: Map<string, string>,
-  dealIdByTitle: Map<string, string>,
-): Promise<void> {
-  const now = Date.now();
-  for (const spec of JOJO_COUPONS) {
-    let rewardId: string | null = null;
-    if (spec.rewardName) {
-      rewardId = rewardIdByName.get(spec.rewardName) ?? null;
-      if (!rewardId)
-        throw new Error(
-          `Seed data error: coupon "${spec.code}" references unknown reward "${spec.rewardName}"`,
-        );
-    }
-    let dealId: string | null = null;
-    if (spec.dealTitle) {
-      dealId = dealIdByTitle.get(spec.dealTitle) ?? null;
-      if (!dealId)
-        throw new Error(
-          `Seed data error: coupon "${spec.code}" references unknown deal "${spec.dealTitle}"`,
-        );
-    }
-    const expiresAt = new Date(now + spec.expiresInDays * 24 * 60 * 60 * 1000);
-    const usedAt = spec.used ? new Date(now - 2 * 24 * 60 * 60 * 1000) : null;
-    const row = {
-      user_id: jojoId,
-      reward_id: rewardId,
-      deal_id: dealId,
-      code: spec.code,
-      status: spec.status,
-      expires_at: expiresAt,
-      used_at: usedAt,
-    };
-    await db
-      .insert(coupons)
-      .values(row)
-      .onConflictDoUpdate({
-        target: coupons.code,
-        set: {
-          user_id: jojoId,
-          reward_id: rewardId,
-          deal_id: dealId,
-          status: spec.status,
-          expires_at: expiresAt,
-          used_at: usedAt,
-        },
-      });
-  }
-}
-
 export async function runSeed(): Promise<void> {
   const branchIdBySlug = await seedBranchesTable();
   await seedStaffUser(branchIdBySlug);
@@ -911,12 +856,16 @@ export async function runSeed(): Promise<void> {
   await seedBranchProductAvailabilityTable(branchIdBySlug, productIdBySlug);
   const dealIdByTitle = await seedDealsTable();
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
-  const rewardIdByName = await seedRewardsTable(productIdBySlug);
+  await seedRewardsTable(productIdBySlug);
   await seedTestUser();
+  // Mint the test user's reward coupon AFTER seedTestUser() creates the row.
+  await seedTestUserRewardCoupon();
 
   // Rich customer data attached to jojo@test.com: completed profile (routes to
   // tabs, populates Account), star balance, orders (History/tracking/star sources),
-  // star ledger, and a coupon wallet. All idempotent.
+  // and the star ledger. All idempotent. (The battle-pass reward coupon is minted
+  // by seedTestUserRewardCoupon above — the dropped spend-to-redeem coupon wallet
+  // is not seeded.)
   const [firstBranchId] = branchIdBySlug.values();
   if (!firstBranchId) throw new Error('Seed error: no branches seeded for jojo orders');
   const jojoId = await resolveTestUserId();
@@ -924,7 +873,6 @@ export async function runSeed(): Promise<void> {
   await seedUserStarsRow(jojoId);
   const completedOrderIds = await seedJojoOrders(jojoId, firstBranchId, productIdBySlug);
   await seedStarTransactionsRows(jojoId, completedOrderIds);
-  await seedJojoCoupons(jojoId, rewardIdByName, dealIdByTitle);
 
   // Sample orders are owned by a dedicated demo customer (NOT jojo@test.com), so
   // the seed-test-user unit test can delete jojo@test.com without hitting the
@@ -938,10 +886,11 @@ export async function runSeed(): Promise<void> {
   console.log(`  categories: ${categoryIdBySlug.size}`);
   console.log(`  products: ${productIdBySlug.size}`);
   console.log(`  deals: ${dealIdByTitle.size}`);
-  console.log(`  rewards: ${rewardIdByName.size}`);
-  console.log(`  test user: ${TEST_USER.email} (profile completed)`);
+  console.log(
+    `  rewards: ${REWARD_ROADMAP.length} (roadmap: ${REWARD_ROADMAP.map((r) => `${r.required_stars}★`).join(', ')})`,
+  );
+  console.log(`  test user: ${TEST_USER.email} (profile completed, + 1 available reward coupon)`);
   console.log(`  jojo orders: ${JOJO_ORDERS.length} (completed: ${completedOrderIds.length})`);
-  console.log(`  jojo coupons: ${JOJO_COUPONS.length}`);
   console.log(`  jojo stars: current 7 / lifetime 25`);
   console.log(`  demo customer: ${DEMO_CUSTOMER.email} (owns sample orders)`);
   console.log(`  sample orders: ${SAMPLE_ORDERS.length}`);

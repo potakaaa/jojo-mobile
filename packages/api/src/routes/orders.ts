@@ -1,3 +1,4 @@
+import type { Cart, CartItem } from '@jojopotato/types';
 import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -14,9 +15,10 @@ import {
   orders,
   productOptions,
   products,
-  rewards,
+  starTransactions,
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
+import { resolveCouponDiscount } from './lib/coupon-apply';
 import { orderNumberGenerator } from './lib/order-number';
 import {
   centsToNumeric,
@@ -43,12 +45,13 @@ const createOrderSchema = z.object({
       }),
     )
     .min(1),
+  // Optional reward/deal code (STAR-004). When present, the coupon is
+  // re-validated + atomically consumed inside the placement transaction; omitting
+  // it leaves the non-coupon path a pure no-op (discount_total stays 0.00).
+  couponCode: z.string().optional(),
   // Optional applied deal. The server NEVER accepts a discount amount — only a
   // deal id — and recomputes the real discount from the DB row (server authority).
   dealId: z.string().uuid().optional(),
-  // Optional applied coupon (Phase 2). Same server-authority rule: only an id is
-  // accepted; the real discount is derived from the coupon's linked reward/deal.
-  couponId: z.string().uuid().optional(),
 });
 
 /** Carries an HTTP status through a thrown-inside-transaction rollback path. */
@@ -99,6 +102,19 @@ ordersRouter.post('/', requireSession, async (req, res) => {
     return;
   }
 
+  // Single-active-discount rule: the cart model allows exactly ONE discount source
+  // at a time. A deal and a reward coupon must never both apply on one order, so
+  // reject the request up front (before any discount math / DB work) when both are
+  // present. `couponCode` counts as present only when it is a non-empty string —
+  // an empty/whitespace value is treated as absent (same as omitting it).
+  const hasCoupon = body.couponCode !== undefined && body.couponCode.trim() !== '';
+  if (body.dealId && hasCoupon) {
+    res.status(400).json({
+      error: 'Only one discount can be applied per order — remove the deal or the coupon.',
+    });
+    return;
+  }
+
   const userId = req.user!.id;
 
   try {
@@ -142,6 +158,10 @@ ordersRouter.post('/', requireSession, async (req, res) => {
 
       let subtotalCents = 0;
       const itemInserts: (typeof orderItems.$inferInsert)[] = [];
+      // Cents-based cart lines used for the server-side coupon recompute (LD5) —
+      // the discount is derived from THESE server-priced lines, never from a
+      // client-supplied amount.
+      const cartLines: CartItem[] = [];
 
       for (const line of body.items) {
         const product = productById.get(line.productId);
@@ -182,8 +202,33 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           total_price: centsToNumeric(lineTotalCents),
           selected_options: selectedSnapshot,
         });
+
+        cartLines.push({
+          lineId: product.id,
+          menuItemId: product.id,
+          quantity: line.quantity,
+          productNameSnapshot: product.name,
+          unitPriceCents,
+          selectedOptions: selectedSnapshot.map((o) => ({
+            id: o.optionId,
+            optionType: o.optionType,
+            name: o.name,
+            priceDeltaCents: o.priceDeltaCents,
+          })),
+        });
       }
 
+      // ─── DORMANT (ADM-004 deals-as-products pivot / ADM-008 test debt) ─────
+      // This server-authoritative deal-apply block targets the LEGACY discount-
+      // shaped `deals`/`orders.deal_id` mechanism, which is now DORMANT: the
+      // ADM-004 re-plan replaced standalone discount deals with deals-as-products
+      // (`products.is_deal` + `deal_components`), so no live caller sends `dealId`
+      // today (the mobile cart's apply-deal path reads the dormant public
+      // `GET /deals` route only). Left in place UNTOUCHED for ADM-008 (coupon
+      // domain) to potentially resume in a modified form; `orders.test.ts`'s
+      // ~15 deal-apply cases now exercise this caller-less path as deliberate
+      // regression insurance, not dead-code rot. Do NOT delete without ADM-008
+      // sign-off.
       // Server-authoritative deal apply. Runs AFTER the subtotal is known and
       // BEFORE the order insert, inside this same transaction, so any rejection
       // throws and rolls back the whole placement (atomic — no partial order).
@@ -276,97 +321,36 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         );
       }
 
-      // Server-authoritative coupon apply. Runs AFTER the deal block so the coupon
-      // row lock is always acquired AFTER the deal lock (consistent lock ordering
-      // → no cross-lock deadlock when both dealId and couponId are present). The
-      // discount is ALWAYS derived server-side from the coupon's linked
-      // reward/deal — never a client-sent amount. Any failure throws and rolls
-      // back the whole placement (atomic — no partial order, coupon stays available).
+      // Coupon recompute (STAR-004). Re-resolve + re-validate the code server-side
+      // against the freshly-priced cart (defense in depth — LD5). On any failure
+      // (unknown code, ineligible, or the eligible item was removed since apply)
+      // the WHOLE placement is rejected: we never silently place at full price.
+      // A reward coupon and a deal are independent discount sources; when both are
+      // present their amounts sum, clamped to the subtotal below.
       let couponDiscountCents = 0;
-      if (body.couponId) {
-        const [coupon] = await tx
-          .select()
-          .from(coupons)
-          .where(eq(coupons.id, body.couponId))
-          .for('update');
-        if (!coupon) {
-          throw new OrderError(404, 'Coupon not found');
+      let rewardCouponIdToConsume: string | null = null;
+      let rewardLabel = '';
+      if (body.couponCode !== undefined) {
+        const cart: Cart = { id: 'order-cart', items: cartLines, pickupBranchId: body.branchId };
+        const resolution = await resolveCouponDiscount(tx, {
+          code: body.couponCode.trim(),
+          userId,
+          pickupBranchId: body.branchId,
+          cart,
+          // Single-use is enforced by the UPDATE guard below (409), not here.
+          allowUsedReward: true,
+        });
+        if (!resolution.ok) {
+          throw new OrderError(resolution.status, resolution.message);
         }
-        if (coupon.user_id !== userId) {
-          throw new OrderError(403, 'Forbidden');
-        }
-        if (coupon.status !== 'available') {
-          throw new OrderError(409, 'Coupon is no longer available');
-        }
-        const nowC = new Date();
-        if (coupon.expires_at !== null && coupon.expires_at <= nowC) {
-          throw new OrderError(409, 'Coupon has expired');
-        }
-
-        // Derive the discount from the coupon's linked reward or deal.
-        if (coupon.reward_id !== null) {
-          const [reward] = await tx.select().from(rewards).where(eq(rewards.id, coupon.reward_id));
-          if (!reward) {
-            throw new OrderError(400, 'This coupon cannot be applied at checkout');
-          }
-          if (reward.reward_type === 'fixed_discount') {
-            couponDiscountCents = numericToCents(reward.reward_value ?? '0');
-          } else if (reward.reward_type === 'percentage_discount') {
-            couponDiscountCents = Math.round(
-              (subtotalCents * Number(reward.reward_value ?? '0')) / 100,
-            );
-          } else if (reward.reward_type === 'free_item') {
-            // Discount the eligible product's BASE price (server-derived,
-            // unambiguous) — NOT any specific customized order line. Requires the
-            // eligible product to actually be in the cart.
-            const eligibleProductId = reward.eligible_product_id;
-            const eligibleProduct =
-              eligibleProductId !== null ? productById.get(eligibleProductId) : undefined;
-            if (!eligibleProduct) {
-              throw new OrderError(400, `Add ${reward.name} to redeem this reward.`);
-            }
-            couponDiscountCents = Math.round(Number(eligibleProduct.base_price) * 100);
-          } else {
-            // reward_type is an unconstrained varchar — reject anything unknown
-            // rather than falling through to a 0/undefined discount.
-            throw new OrderError(400, 'This coupon cannot be applied at checkout');
-          }
-        } else if (coupon.deal_id !== null) {
-          // Reject stacking a coupon whose linked deal is the SAME deal already
-          // applied on this order — otherwise the deal discount would be counted
-          // twice (once via the deal path, once via this coupon path), which
-          // clamps to a free order. Reject clearly rather than silently zeroing.
-          if (body.dealId !== undefined && coupon.deal_id === body.dealId) {
-            throw new OrderError(400, 'This deal is already applied to your order');
-          }
-          const [deal] = await tx.select().from(deals).where(eq(deals.id, coupon.deal_id));
-          if (!deal) {
-            throw new OrderError(400, 'This coupon cannot be applied at checkout');
-          }
-          // Complex deal types cannot compute a real discount (same rule the deal
-          // apply path enforces) — reject before any math.
-          if (deal.deal_type !== 'percentage_discount' && deal.deal_type !== 'fixed_discount') {
-            throw new OrderError(400, 'This coupon cannot be applied at checkout yet');
-          }
-          couponDiscountCents = computeDealDiscountCents(
-            deal.deal_type,
-            deal.discount_value ?? '0',
-            subtotalCents,
-          );
-        } else {
-          // Linked to neither a reward nor a deal — nothing to price from.
-          throw new OrderError(400, 'This coupon cannot be applied at checkout');
-        }
-
-        // Clamp the coupon part individually to [0, subtotal].
-        couponDiscountCents = Math.max(0, Math.min(couponDiscountCents, subtotalCents));
+        couponDiscountCents = resolution.discount.amountCents;
+        rewardCouponIdToConsume = resolution.rewardCouponId;
+        rewardLabel = resolution.discount.label;
       }
 
-      // Stack the (already individually-clamped) deal + coupon discounts, then
-      // clamp the SUM to the subtotal. This combined value is written to BOTH
-      // discount_total and total, preserving the invariant
-      // subtotal - discount_total === total in the persisted row.
-      const combinedDiscountCents = Math.min(discountCents + couponDiscountCents, subtotalCents);
+      // Unified discount: deal + reward-coupon amounts, clamped to [0, subtotal].
+      const discountTotalCents = Math.min(discountCents + couponDiscountCents, subtotalCents);
+      const orderTotalCents = subtotalCents - discountTotalCents;
 
       const placedAt = new Date();
       const estimatedReadyAt = new Date(
@@ -385,11 +369,13 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             user_id: userId,
             branch_id: body.branchId,
             deal_id: body.dealId ?? null,
-            coupon_id: body.couponId ?? null,
+            // Persist the consumed reward coupon so the order keeps its audit link
+            // (serializeOrder returns couponId). null for non-coupon placements.
+            coupon_id: rewardCouponIdToConsume,
             order_number: orderNumber,
             subtotal: centsToNumeric(subtotalCents),
-            discount_total: centsToNumeric(combinedDiscountCents),
-            total: centsToNumeric(subtotalCents - combinedDiscountCents),
+            discount_total: centsToNumeric(discountTotalCents),
+            total: centsToNumeric(orderTotalCents),
             payment_method: body.paymentMethod,
             estimated_ready_at: estimatedReadyAt,
             placed_at: placedAt,
@@ -409,27 +395,36 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         throw new OrderError(500, 'Could not allocate a unique order number, please retry');
       }
 
+      // Consume a reward coupon AFTER the order row exists (so order_id on the
+      // redeemed ledger row is real) but INSIDE the same transaction (atomic:
+      // a later failure rolls back the consume too). The state-machine guard
+      // `UPDATE ... WHERE status='available'` is the double-spend defense (AC6):
+      // a concurrent/replayed placement finds 0 rows and the whole placement is
+      // rejected — never two successful redemptions, never an insert-based dedupe.
+      if (rewardCouponIdToConsume !== null) {
+        const consumed = await tx
+          .update(coupons)
+          .set({ status: 'used', used_at: new Date() })
+          .where(and(eq(coupons.id, rewardCouponIdToConsume), eq(coupons.status, 'available')))
+          .returning({ id: coupons.id });
+        if (consumed.length === 0) {
+          throw new OrderError(409, 'This reward has already been redeemed.');
+        }
+        // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
+        // redemption spends reward VALUE, it does not change the star COUNT.
+        await tx.insert(starTransactions).values({
+          user_id: userId,
+          order_id: createdOrder.id,
+          type: 'redeemed',
+          stars: 0,
+          description: `Redeemed reward: ${rewardLabel}`,
+        });
+      }
+
       const insertedItems = await tx
         .insert(orderItems)
         .values(itemInserts.map((item) => ({ ...item, order_id: createdOrder!.id })))
         .returning();
-
-      // Consume the coupon exactly once (CAS: available → used) inside this same
-      // transaction, AFTER the order insert. The FOR UPDATE lock from above is
-      // held through here, so a concurrent redeem/order-apply on the same coupon
-      // is serialized. If the CAS affects 0 rows (raced), abort the whole
-      // transaction — the order insert rolls back too, so a coupon is never
-      // consumed twice and no order is left with an unconsumed coupon.
-      if (body.couponId) {
-        const marked = await tx
-          .update(coupons)
-          .set({ status: 'used', used_at: new Date() })
-          .where(and(eq(coupons.id, body.couponId), eq(coupons.status, 'available')))
-          .returning();
-        if (marked.length === 0) {
-          throw new OrderError(409, 'Coupon is no longer available');
-        }
-      }
 
       return serializeOrder(createdOrder, insertedItems);
     });
