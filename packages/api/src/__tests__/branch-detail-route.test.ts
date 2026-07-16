@@ -32,13 +32,17 @@ type SchemaModule = typeof import('../db/schema/index');
 
 let db: DbModule['db'];
 let branches: SchemaModule['branches'];
-let deals: SchemaModule['deals'];
-let dealBranches: SchemaModule['dealBranches'];
+// ADM-008: schema symbols renamed deals→offers, dealBranches→offerBranches.
+// Bind to the same local names (aliased) so the mirror-query body below is
+// unchanged apart from the .deal_id → .offer_id column rename.
+let deals: SchemaModule['offers'];
+let dealBranches: SchemaModule['offerBranches'];
 let dbAvailable = false;
 
 beforeAll(async () => {
   ({ db } = await import('../db/client'));
-  ({ branches, deals, dealBranches } = await import('../db/schema/index'));
+  ({ offers: deals, offerBranches: dealBranches } = await import('../db/schema/index'));
+  ({ branches } = await import('../db/schema/index'));
   try {
     // Cheap connectivity + migration probe: if this select throws (no DB, or
     // migrations weren't applied), skip.
@@ -73,7 +77,7 @@ async function visibleDealsForBranch(branchId: string) {
   const explicitRows = await db
     .select({ deal: deals })
     .from(deals)
-    .innerJoin(dealBranches, eq(dealBranches.deal_id, deals.id))
+    .innerJoin(dealBranches, eq(dealBranches.offer_id, deals.id))
     .where(
       and(
         eq(dealBranches.branch_id, branchId),
@@ -92,7 +96,7 @@ async function visibleDealsForBranch(branchId: string) {
           db
             .select({ one: sql`1` })
             .from(dealBranches)
-            .where(eq(dealBranches.deal_id, deals.id)),
+            .where(eq(dealBranches.offer_id, deals.id)),
         ),
         eq(deals.is_active, true),
         lte(deals.start_at, now),

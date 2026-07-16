@@ -20,6 +20,8 @@ metadata:
 
 ## Purpose
 
+**Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 already renamed the schema symbols and mechanically repointed `routes/deals.ts`, `index.ts`, `branch-detail-route.test.ts`, and `deals.test.ts`. Phase 4 now owns VERIFICATION of the public wire contract (frozen `dealId` JSON field unchanged post-rename) plus any response-assertion changes — NOT the symbol rename itself.
+
 Wire-freeze repoint phase — swap the internal Drizzle table symbols the two public read surfaces
 (`GET /deals`/`GET /deals/:id` and `GET /api/branches/:id`'s embedded `deals` array) query, from the
 legacy `deals`/`dealBranches`/`dealProducts` tables to the Phase-1-renamed `offers`/`offerBranches`/

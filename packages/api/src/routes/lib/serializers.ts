@@ -6,7 +6,7 @@ import type {
   branches,
   categories,
   coupons,
-  deals,
+  offers,
   orderItems,
   orders,
   productOptions,
@@ -21,7 +21,7 @@ type ProductOptionRow = InferSelectModel<typeof productOptions>;
 type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailability>;
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
-type DealRow = InferSelectModel<typeof deals>;
+type DealRow = InferSelectModel<typeof offers>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
 
@@ -611,7 +611,10 @@ export function serializeReward(reward: RewardRow): ApiReward {
  */
 export interface ApiCoupon {
   id: string;
-  userId: string;
+  // ADM-008 LD2: coupons.user_id is now nullable (bulk-issued coupons are
+  // claimed on redeem). No live path emits a null yet (all current coupons are
+  // user-owned), but the type reflects the schema.
+  userId: string | null;
   code: string;
   status: CouponRow['status'];
   dealId: string | null;
@@ -628,7 +631,9 @@ export function serializeCoupon(coupon: CouponRow): ApiCoupon {
     userId: coupon.user_id,
     code: coupon.code,
     status: coupon.status,
-    dealId: coupon.deal_id,
+    // Wire-freeze (LD7B): the JSON field stays `dealId`; only the source column
+    // renamed (coupons.deal_id → offer_id in migration 0011).
+    dealId: coupon.offer_id,
     rewardId: coupon.reward_id,
     expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
     usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
@@ -687,7 +692,7 @@ export function serializeCouponWithLabel(
   reward: RewardRow | null,
 ): ApiCouponWithLabel {
   let displayLabel = 'Coupon';
-  if (coupon.deal_id !== null && deal !== null) {
+  if (coupon.offer_id !== null && deal !== null) {
     let discountValue = 0;
     if (deal.discount_value !== null) {
       if (deal.deal_type === 'percentage_discount') {

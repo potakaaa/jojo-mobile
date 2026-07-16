@@ -7,9 +7,9 @@ import {
   branches,
   categories,
   coupons,
-  dealBranches,
-  dealProducts,
-  deals,
+  offerBranches,
+  offerProducts,
+  offers,
   orderItems,
   orders,
   productOptions,
@@ -247,17 +247,17 @@ async function seedDealsTable(): Promise<Map<string, string>> {
       image_url: DEAL_IMAGE_BY_TITLE[deal.title] ?? null,
     };
     const [existing] = await db
-      .select({ id: deals.id })
-      .from(deals)
-      .where(eq(deals.title, deal.title));
+      .select({ id: offers.id })
+      .from(offers)
+      .where(eq(offers.title, deal.title));
 
     const [dealRow] = existing
       ? await db
-          .update(deals)
+          .update(offers)
           .set({ ...row, updated_at: new Date() })
-          .where(eq(deals.id, existing.id))
-          .returning({ id: deals.id, title: deals.title })
-      : await db.insert(deals).values(row).returning({ id: deals.id, title: deals.title });
+          .where(eq(offers.id, existing.id))
+          .returning({ id: offers.id, title: offers.title })
+      : await db.insert(offers).values(row).returning({ id: offers.id, title: offers.title });
 
     if (!dealRow) throw new Error(`Seed error: upsert of deal "${deal.title}" returned no row`);
     idByTitle.set(dealRow.title, dealRow.id);
@@ -284,10 +284,10 @@ async function seedDealScopingTables(
         );
       }
       await db
-        .insert(dealProducts)
-        .values({ deal_id: dealId, product_id: productId })
+        .insert(offerProducts)
+        .values({ offer_id: dealId, product_id: productId })
         .onConflictDoNothing({
-          target: [dealProducts.deal_id, dealProducts.product_id],
+          target: [offerProducts.offer_id, offerProducts.product_id],
         });
     }
 
@@ -299,10 +299,10 @@ async function seedDealScopingTables(
         );
       }
       await db
-        .insert(dealBranches)
-        .values({ deal_id: dealId, branch_id: branchId })
+        .insert(offerBranches)
+        .values({ offer_id: dealId, branch_id: branchId })
         .onConflictDoNothing({
-          target: [dealBranches.deal_id, dealBranches.branch_id],
+          target: [offerBranches.offer_id, offerBranches.branch_id],
         });
     }
   }

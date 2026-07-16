@@ -394,6 +394,8 @@ the source plan's single 18-row table, one AC-cluster per phase).
 
 ## Current Execution State
 
+**Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 now = full atomic mechanical rename (schema + migration + 7 consumer-file repoints, since the deals→offers rename breaks typecheck for those consumers otherwise); Phase 2 = logic only (resolver/burn/guard) on the already-renamed symbols; Phase 4 = public-contract verification only on the already-renamed symbols. Wire-freeze (Locked Decision 7B) unaffected.
+
 Last updated: 16-07-26
 Completed phases: none
 Current phase: Phase 1 — Schema migration

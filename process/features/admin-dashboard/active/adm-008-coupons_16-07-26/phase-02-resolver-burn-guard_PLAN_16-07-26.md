@@ -20,6 +20,8 @@ metadata:
 
 ## Purpose
 
+**Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 already renamed all schema symbols and mechanically repointed `routes/orders.ts` + `orders.test.ts` to `offers`/`offer_id`. Phase 2 layers LOGIC ONLY (resolver offer-branch, Branch-1 `reward_id` fix, claim-on-redeem burn, `is_deal` guard) on the already-renamed symbols — it does NOT perform the rename itself.
+
 Redemption-path correctness phase — the single hardest-correctness phase in the program. Extends
 `resolveCouponDiscount()` with a real offer-coupon resolution branch (retiring the static
 `deals-catalog.ts`), fixes a real code-verified logic bug in the existing reward-coupon Branch 1

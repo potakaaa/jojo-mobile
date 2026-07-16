@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { index, pgEnum, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
-import { deals } from './deals';
+import { offers } from './offers';
 import { rewards } from './rewards';
 import { users } from './users';
 
@@ -11,10 +11,12 @@ export const coupons = pgTable(
   'coupons',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    user_id: uuid('user_id')
-      .references(() => users.id)
-      .notNull(),
-    deal_id: uuid('deal_id').references(() => deals.id),
+    // ADM-008 Coupons: user_id is now nullable — a bulk-issued coupon (user_id
+    // NULL) is claimed on redeem via COALESCE in the atomic burn UPDATE (Phase 2).
+    user_id: uuid('user_id').references(() => users.id),
+    // ADM-008 Coupons: `deal_id` renamed to `offer_id` (migration 0011); FK now
+    // targets the renamed `offers` table.
+    offer_id: uuid('offer_id').references(() => offers.id),
     reward_id: uuid('reward_id').references((): AnyPgColumn => rewards.id),
     code: varchar('code').unique().notNull(),
     status: couponStatusEnum('status').default('available').notNull(),

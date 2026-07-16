@@ -215,11 +215,11 @@ beforeAll(async () => {
   const win = { start_at: new Date(nowMs - HOUR), end_at: new Date(nowMs + DAY) };
 
   const seedDeal = async (
-    values: Partial<typeof schema.deals.$inferInsert> &
-      Pick<typeof schema.deals.$inferInsert, 'title' | 'deal_type'>,
+    values: Partial<typeof schema.offers.$inferInsert> &
+      Pick<typeof schema.offers.$inferInsert, 'title' | 'deal_type'>,
   ): Promise<string> => {
     const [row] = await db
-      .insert(schema.deals)
+      .insert(schema.offers)
       .values({ start_at: win.start_at, end_at: win.end_at, is_active: true, ...values })
       .returning();
     return row!.id;
@@ -247,8 +247,8 @@ beforeAll(async () => {
     discount_value: '10.00',
   });
   await db
-    .insert(schema.dealBranches)
-    .values({ deal_id: branchScopedDealId, branch_id: branch45Id });
+    .insert(schema.offerBranches)
+    .values({ offer_id: branchScopedDealId, branch_id: branch45Id });
 
   productScopedDealId = await seedDeal({
     title: `ProductScoped ${suffix}`,
@@ -256,8 +256,8 @@ beforeAll(async () => {
     discount_value: '10.00',
   });
   await db
-    .insert(schema.dealProducts)
-    .values({ deal_id: productScopedDealId, product_id: otherProductId });
+    .insert(schema.offerProducts)
+    .values({ offer_id: productScopedDealId, product_id: otherProductId });
 
   minDealId = await seedDeal({
     title: `MinOrder ${suffix}`,

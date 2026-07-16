@@ -11,7 +11,7 @@ import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
 import express, { type Express } from 'express';
 
 import { db } from './db/client';
-import { branches, dealBranches, deals } from './db/schema/index';
+import { branches, offerBranches, offers } from './db/schema/index';
 import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
@@ -159,33 +159,33 @@ app.get('/api/branches/:id', async (req, res) => {
 
     // Query A — deals explicitly mapped to this branch.
     const explicitPromise = db
-      .select({ deal: deals })
-      .from(deals)
-      .innerJoin(dealBranches, eq(dealBranches.deal_id, deals.id))
+      .select({ deal: offers })
+      .from(offers)
+      .innerJoin(offerBranches, eq(offerBranches.offer_id, offers.id))
       .where(
         and(
-          eq(dealBranches.branch_id, id),
-          eq(deals.is_active, true),
-          lte(deals.start_at, now),
-          gte(deals.end_at, now),
+          eq(offerBranches.branch_id, id),
+          eq(offers.is_active, true),
+          lte(offers.start_at, now),
+          gte(offers.end_at, now),
         ),
       );
 
-    // Query B — global deals: no deal_branches rows exist for this deal at all.
+    // Query B — global deals: no offer_branches rows exist for this deal at all.
     const globalPromise = db
       .select()
-      .from(deals)
+      .from(offers)
       .where(
         and(
           notExists(
             db
               .select({ one: sql`1` })
-              .from(dealBranches)
-              .where(eq(dealBranches.deal_id, deals.id)),
+              .from(offerBranches)
+              .where(eq(offerBranches.offer_id, offers.id)),
           ),
-          eq(deals.is_active, true),
-          lte(deals.start_at, now),
-          gte(deals.end_at, now),
+          eq(offers.is_active, true),
+          lte(offers.start_at, now),
+          gte(offers.end_at, now),
         ),
       );
 

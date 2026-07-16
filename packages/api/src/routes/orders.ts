@@ -8,9 +8,9 @@ import {
   branchProductAvailability,
   branches,
   coupons,
-  dealBranches,
-  dealProducts,
-  deals,
+  offerBranches,
+  offerProducts,
+  offers,
   orderItems,
   orders,
   productOptions,
@@ -239,8 +239,8 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // simultaneous orders cannot both pass a limit only one should.
         const [deal] = await tx
           .select()
-          .from(deals)
-          .where(and(eq(deals.id, body.dealId), eq(deals.is_active, true)))
+          .from(offers)
+          .where(and(eq(offers.id, body.dealId), eq(offers.is_active, true)))
           .for('update');
         if (!deal) {
           throw new OrderError(400, 'Deal not found or inactive');
@@ -264,8 +264,8 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // 2. branch scope — empty deal_branches = branch-agnostic.
         const dealBranchRows = await tx
           .select()
-          .from(dealBranches)
-          .where(eq(dealBranches.deal_id, deal.id));
+          .from(offerBranches)
+          .where(eq(offerBranches.offer_id, deal.id));
         if (
           dealBranchRows.length > 0 &&
           !dealBranchRows.some((r) => r.branch_id === body.branchId)
@@ -276,8 +276,8 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // 3. product-in-cart — empty deal_products = all products.
         const dealProductRows = await tx
           .select()
-          .from(dealProducts)
-          .where(eq(dealProducts.deal_id, deal.id));
+          .from(offerProducts)
+          .where(eq(offerProducts.offer_id, deal.id));
         if (
           dealProductRows.length > 0 &&
           !dealProductRows.some((r) => productIds.includes(r.product_id))
