@@ -82,61 +82,49 @@ coupon issuance (bulk N-generate and single-targeted-issue). Depends on Phase 1 
 
 ### Step A — Promotions CRUD
 
-- [ ] A1. Create `packages/api/src/routes/admin/promotions.ts`: `GET /` (list), `GET /:id` (404 if
+- [x] A1. Create `packages/api/src/routes/admin/promotions.ts`: `GET /` (list), `GET /:id` (404 if
       missing), `POST /` (`{name, description?, startAt, endAt}`, Zod-validated, 201), `PATCH /:id`
       (partial update).
-- [ ] A2. Reuse `AdminApiError`/`handleAdminError`/`isUniqueViolation` from `admin/lib/errors.ts` —
-      no new error class.
+- [x] A2. Reuse `AdminApiError`/`handleAdminError` from `admin/lib/errors.ts` — no new error class
+      (Promotions has no UNIQUE constraint, so `isUniqueViolation` was not needed here).
 
 ### Step B — Offers CRUD
 
-- [ ] B1. Create `packages/api/src/routes/admin/offers.ts`: `GET /` (list, optional `?promotionId=`
-      filter), `GET /:id`, `POST /` (`{title, description?, offerType, discountValue?,
-      minimumOrderAmountCents, startAt, endAt, usageLimitPerUser?, totalUsageLimit?, promotionId?}`,
-      201), `PATCH /:id` (partial).
-- [ ] B2. `centsToNumeric` boundary serialization for `discountValue`/`minimumOrderAmountCents`
-      (reuse from `routes/lib/serializers.ts`, already exported per Phase 3's precedent in the
-      source umbrella plan).
-- [ ] B3. Validate `promotionId` FK when present — 404 if the referenced Promotion doesn't exist,
-      before any write.
+- [x] B1. Create `packages/api/src/routes/admin/offers.ts`: `GET /` (list, optional `?promotionId=`
+      filter), `GET /:id`, `POST /`, `PATCH /:id` (partial).
+- [x] B2. `centsToNumeric` boundary serialization for `discountValueCents`/`minimumOrderAmountCents`
+      (reused from `routes/lib/serializers.ts`).
+- [x] B3. Validate `promotionId` FK when present — 404 if the referenced Promotion doesn't exist,
+      before any write (both POST and PATCH).
 
 ### Step C — Coupons issuance + list
 
-- [ ] C1. Create `packages/api/src/routes/admin/coupons.ts`: `POST /generate` implementing the
-      bulk-N / single-targeted contract above; `GET /?offerId=` (query filter required — list).
-- [ ] C2. Zod-validate the whole batch request FIRST (`quantity>=1`, `offerId` required); reject
-      `quantity<=0` or missing `offerId` with 400 BEFORE any DB write (AC11) — no partial writes on
-      a malformed request.
-- [ ] C3. Reuse the collision-safe generator from `lib/reward-coupon-code.ts`, parameterized with
-      prefix `JP-OFR-` for admin-issued codes.
-- [ ] C4. Persist `expiresAt` when supplied (nullable — falls back to `offers.end_at` at redemption
-      per the locked decision above); persist `userId` only when `quantity===1` and `userId` is
-      present (targeted issuance), else leave `user_id` NULL (bulk).
+- [x] C1. Create `packages/api/src/routes/admin/coupons.ts`: `POST /generate` (bulk-N /
+      single-targeted); `GET /?offerId=` (query filter required — list).
+- [x] C2. Zod-validate the whole batch request FIRST; reject `quantity<=0`/missing `offerId` with
+      400 BEFORE any DB write (AC11).
+- [x] C3. Reuse the collision-safe generator, parameterized with prefix `JP-OFR-`
+      (`offerCouponCodeGenerator`), same savepoint-bounded retry as star-earning.
+- [x] C4. Persist `expiresAt` when supplied; persist `userId` only when `quantity===1` and `userId`
+      present, else `user_id` NULL (bulk).
 
 ### Step D — Aggregator + types
 
-- [ ] D1. Append exactly 3 new lines to `packages/api/src/routes/admin/index.ts`:
-      `adminRouter.use('/promotions', promotionsRouter)`, `.use('/offers', offersRouter)`,
-      `.use('/coupons', couponsRouter)` — append-only, no restructuring of existing lines.
-- [ ] D2. Add `AdminPromotion`/`AdminOffer`/`AdminCoupon` types + `serializeAdminPromotion`/
-      `serializeAdminOffer`/`serializeAdminCoupon` to `routes/lib/serializers.ts`, following the
-      existing `AdminBranch`/`AdminDealProduct` local-declaration convention (cents-at-boundary via
-      `centsToNumeric`, no `packages/types` edit needed unless a second consumer outside
-      `packages/api` needs the type).
+- [x] D1. Append exactly 3 new lines to `packages/api/src/routes/admin/index.ts`.
+- [x] D2. Add `AdminPromotion`/`AdminOffer`/`AdminCoupon` types + serializers to
+      `routes/lib/serializers.ts`, local-declaration convention.
 
 ### Step E — Test gates
 
-- [ ] E1. `admin-promotions.integration.test.ts` — create/list/get, using the `makeUser(role)`
-      self-seeding fixture pattern (5 real precedents on this branch — copy-pasteable, no shared
-      fixture module needed) (AC1).
-- [ ] E2. `admin-offers.integration.test.ts` — create with and without `promotionId` link, 404 on
-      missing referenced Promotion (AC2).
-- [ ] E3. `admin-coupon-issuance.integration.test.ts` — bulk N=50, assert 50 unique codes (AC3);
-      forced-collision unit test on the generator's retry path (AC3); targeted single-issue with
-      `user_id` set (AC4); `quantity<=0`/missing `offerId` → 400, zero rows written (AC11).
-- [ ] E4. All 3 new integration files include no-auth (403) and wrong-role (403) cases (AC9).
-- [ ] E5. Run `pnpm --filter @jojopotato/api typecheck`.
-- [ ] E6. Run full `pnpm --filter @jojopotato/api test` — confirm zero regressions.
+- [x] E1. `admin-promotions.integration.test.ts` — create/list/get (AC1). 11 tests.
+- [x] E2. `admin-offers.integration.test.ts` — create with/without `promotionId` link, 404 on
+      missing referenced Promotion (AC2). 11 tests.
+- [x] E3. `admin-coupon-issuance.integration.test.ts` — bulk N=50 unique (AC3); forced-collision
+      retry (AC3); targeted single-issue with `user_id` set (AC4); `quantity<=0`/missing `offerId`
+      → 400, zero rows (AC11). 12 tests.
+- [x] E4. All 3 new integration files include no-auth (403) and wrong-role (403) cases (AC9).
+- [x] E5. `pnpm --filter @jojopotato/api typecheck` — 0 errors.
+- [x] E6. `pnpm --filter @jojopotato/api test` — 25 files / 313 tests green, 0 regressions.
 
 ---
 
@@ -177,7 +165,8 @@ pnpm --filter @jojopotato/api test
       "n/a — research clean".
 - [x] 4. PVL — SEEDED below from source plan's outer-pvl VALIDATE pass. Orchestrator MUST still
       spawn vc-validate-agent for inner PVL re-confirmation before EXECUTE.
-- [ ] 5. EXECUTE — all checklist items (A–E) done; test gates green.
+- [x] 5. EXECUTE — all checklist items (A–E) done; test gates green (typecheck 0 errors; 313/313
+      full suite; 34 new tests across 3 files). Report written. Awaiting EVL confirmation run.
 - [ ] 6. EVL — all EVL gates green; follow-up stubs registered; EVL HANDOFF SUMMARY written.
 - [ ] 7. UPDATE PROCESS — phase report written, umbrella state updated. **Phase VERIFIED →
       orchestrator hands staging commands + a conventional-commit summary to the USER; do NOT

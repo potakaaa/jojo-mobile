@@ -11,6 +11,7 @@ import type {
   orders,
   productOptions,
   products,
+  promotions,
   rewards,
 } from '../../db/schema/index';
 
@@ -22,6 +23,8 @@ type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailab
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
 type DealRow = InferSelectModel<typeof offers>;
+type OfferRow = InferSelectModel<typeof offers>;
+type PromotionRow = InferSelectModel<typeof promotions>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
 
@@ -707,4 +710,98 @@ export function serializeCouponWithLabel(
   }
 
   return { ...serializeCoupon(coupon), displayLabel };
+}
+
+// ─── ADM-008 admin authoring serializers (Promotions / Offers / Coupons) ─────
+//
+// Admin-facing shapes for the ADM-008 coupon authoring surface. Declared LOCALLY
+// here matching the `AdminBranch`/`AdminProduct` convention (never in
+// `packages/types` — the admin dashboard is the only consumer). Money fields are
+// integer cents at the boundary via `numericToCents`/`centsToNumeric`. Unlike the
+// PUBLIC wire-frozen `ApiCoupon` (`dealId`), the admin coupon shape exposes the
+// real `offerId` column — this is an internal admin surface, not wire-frozen.
+
+export interface AdminPromotion {
+  id: string;
+  name: string;
+  description: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminOffer {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  offerType: DealType;
+  // Cents at the boundary (admin authoring convention, per Phase 3 plan B2).
+  discountValueCents: number | null;
+  minimumOrderAmountCents: number;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  usageLimitPerUser: number | null;
+  totalUsageLimit: number | null;
+  isActive: boolean;
+  promotionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCoupon {
+  id: string;
+  offerId: string | null;
+  userId: string | null;
+  code: string;
+  status: CouponRow['status'];
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+export function serializeAdminPromotion(promotion: PromotionRow): AdminPromotion {
+  return {
+    id: promotion.id,
+    name: promotion.name,
+    description: promotion.description,
+    startAt: promotion.start_at.toISOString(),
+    endAt: promotion.end_at.toISOString(),
+    createdAt: promotion.created_at.toISOString(),
+    updatedAt: promotion.updated_at.toISOString(),
+  };
+}
+
+export function serializeAdminOffer(offer: OfferRow): AdminOffer {
+  return {
+    id: offer.id,
+    title: offer.title,
+    description: offer.description,
+    imageUrl: offer.image_url,
+    offerType: offer.deal_type,
+    discountValueCents: offer.discount_value === null ? null : numericToCents(offer.discount_value),
+    minimumOrderAmountCents: numericToCents(offer.minimum_order_amount),
+    startAt: offer.start_at.toISOString(),
+    endAt: offer.end_at.toISOString(),
+    usageLimitPerUser: offer.usage_limit_per_user,
+    totalUsageLimit: offer.total_usage_limit,
+    isActive: offer.is_active,
+    promotionId: offer.promotion_id,
+    createdAt: offer.created_at.toISOString(),
+    updatedAt: offer.updated_at.toISOString(),
+  };
+}
+
+export function serializeAdminCoupon(coupon: CouponRow): AdminCoupon {
+  return {
+    id: coupon.id,
+    offerId: coupon.offer_id,
+    userId: coupon.user_id,
+    code: coupon.code,
+    status: coupon.status,
+    expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
+    usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
+    createdAt: coupon.created_at.toISOString(),
+  };
 }

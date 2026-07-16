@@ -2,8 +2,11 @@ import { Router, type Router as ExpressRouter } from 'express';
 
 import branchesRouter from './branches';
 import categoriesRouter from './categories';
+import couponsRouter from './coupons';
 import dealsRouter from './deals';
+import offersRouter from './offers';
 import productsRouter from './products';
+import promotionsRouter from './promotions';
 import usersRouter from './users';
 
 /**
@@ -31,5 +34,11 @@ adminRouter.use('/products', productsRouter);
 // Deals CRUD (ADM-004 — deals-as-products) — is_deal=true products + the
 // deal_components junction. Same inherited guard; append-only, never restructure.
 adminRouter.use('/deals', dealsRouter);
+
+// Coupon system CRUD (ADM-008 — Promotions/Offers/Coupons) — same inherited
+// guard; append-only, never restructure.
+adminRouter.use('/promotions', promotionsRouter);
+adminRouter.use('/offers', offersRouter);
+adminRouter.use('/coupons', couponsRouter);
 
 export default adminRouter;
