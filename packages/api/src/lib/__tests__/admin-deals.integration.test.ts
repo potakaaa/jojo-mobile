@@ -502,6 +502,58 @@ describe('AC7 — GET /branches/:id/menu excludes deals by default; ?isDeal=true
   });
 });
 
+// ─── Auto-seed branch availability on deal create ────────────────────────────
+
+describe('creating a deal seeds branch_product_availability for every active branch', () => {
+  it('a newly created deal (fast path) appears in ?isDeal=true menu with no explicit availability write', async () => {
+    // Branch must exist BEFORE the deal so create-time seeding covers it.
+    const branchId = await seedBranch();
+
+    const dealRes = await createDeal();
+    const dealId = dealRes.body.deal.id as string;
+
+    // A branch_product_availability row (available) was auto-seeded.
+    const [bpa] = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(
+        and(
+          eq(schema.branchProductAvailability.branch_id, branchId),
+          eq(schema.branchProductAvailability.product_id, dealId),
+        ),
+      );
+    expect(bpa!.is_available).toBe(true);
+
+    // End-to-end: the deal is visible on the deals menu without any setAvailability call.
+    const dealsMenu = await request(app).get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(dealsMenu.status).toBe(200);
+    const dealsMenuIds = (dealsMenu.body.categories as { products: { id: string }[] }[]).flatMap(
+      (c) => c.products.map((p) => p.id),
+    );
+    expect(dealsMenuIds).toContain(dealId);
+  });
+
+  it('a deal created with components (transactional path) also auto-seeds availability', async () => {
+    const branchId = await seedBranch();
+    const componentId = await seedRegularProduct();
+
+    const res = await createDealWith([{ productId: componentId, quantity: 1 }]);
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const [bpa] = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(
+        and(
+          eq(schema.branchProductAvailability.branch_id, branchId),
+          eq(schema.branchProductAvailability.product_id, dealId),
+        ),
+      );
+    expect(bpa!.is_available).toBe(true);
+  });
+});
+
 // ─── AC8: admin products/deals lists mutually exclusive ──────────────────────
 
 describe('AC8 — admin products list excludes deals by default; deals list is deals-only', () => {

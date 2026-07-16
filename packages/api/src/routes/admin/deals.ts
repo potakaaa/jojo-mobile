@@ -3,7 +3,13 @@ import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
-import { categories, dealComponents, products } from '../../db/schema/index';
+import {
+  branchProductAvailability,
+  branches,
+  categories,
+  dealComponents,
+  products,
+} from '../../db/schema/index';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
@@ -135,6 +141,32 @@ async function fetchComponents(dealProductId: string): Promise<AdminDealComponen
     .orderBy(asc(products.name));
 }
 
+/**
+ * Seed `branch_product_availability` rows (available=true) for a freshly-created
+ * deal-product across every ACTIVE branch, so the deal is immediately visible on
+ * the customer menu (`GET /branches/:id/menu?isDeal=true` filters on an available
+ * BPA row). Runs inside the create transaction so a seeding failure rolls back the
+ * product. `is_available` is set explicitly for clarity (schema default is true).
+ */
+async function seedBranchAvailability(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  productId: string,
+): Promise<void> {
+  const activeBranches = await tx
+    .select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.is_active, true));
+  if (activeBranches.length === 0) return;
+
+  await tx.insert(branchProductAvailability).values(
+    activeBranches.map((b) => ({
+      branch_id: b.id,
+      product_id: productId,
+      is_available: true,
+    })),
+  );
+}
+
 // ─── Deals CRUD (is_deal=true products) ──────────────────────────────────────
 
 // GET / — ALL deal-products (active + inactive), optional ?isActive=true|false.
@@ -221,18 +253,24 @@ adminDealsRouter.post('/', async (req, res) => {
       ...(d.isRewardEligible === undefined ? {} : { is_reward_eligible: d.isRewardEligible }),
     };
 
-    // Fast path: no components → shipped single-insert behavior (backward-compat).
+    // Fast path: no components. The product insert + branch-availability seeding
+    // run in ONE transaction so a seeding failure rolls back the product (mirrors
+    // the E1 transactional path's atomicity).
     if (!d.components || d.components.length === 0) {
-      let inserted;
-      try {
-        [inserted] = await db.insert(products).values(productValues).returning();
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          throw new AdminApiError(409, 'Slug already in use');
+      const inserted = await db.transaction(async (tx) => {
+        let created;
+        try {
+          [created] = await tx.insert(products).values(productValues).returning();
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            throw new AdminApiError(409, 'Slug already in use');
+          }
+          throw err;
         }
-        throw err;
-      }
-      res.status(201).json({ deal: serializeAdminDealProduct(inserted!) });
+        await seedBranchAvailability(tx, created!.id);
+        return created!;
+      });
+      res.status(201).json({ deal: serializeAdminDealProduct(inserted) });
       return;
     }
 
@@ -286,6 +324,8 @@ adminDealsRouter.post('/', async (req, res) => {
         }
         throw err;
       }
+
+      await seedBranchAvailability(tx, created!.id);
 
       return created!;
     });
