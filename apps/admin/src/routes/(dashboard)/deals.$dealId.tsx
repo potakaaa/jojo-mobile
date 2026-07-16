@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
+import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DealComponentEditor } from '@/features/deals/components/deal-component-editor';
 import { computeDealSavings } from '@/features/deals/lib/deal-savings';
+import { dealStatus } from '@/lib/entity-status';
 import { useAdminDeal, useUpdateDeal } from '@/features/deals/hooks/use-admin-deals';
 import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
 
@@ -95,10 +97,13 @@ function DealDetailPage() {
         {deal ? (
           <>
             <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
-              <h1 className="font-display text-h2 font-bold text-primary">{deal.name}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-display text-h2 font-bold text-primary">{deal.name}</h1>
+                <StatusBadge tone={dealStatus(deal).tone}>{dealStatus(deal).label}</StatusBadge>
+              </div>
               <p className="text-sm text-muted-foreground">
                 Slug <span className="font-mono">{deal.slug}</span> · Base price{' '}
-                {formatPeso(deal.basePriceCents)} · {deal.isActive ? 'Active' : 'Inactive'}
+                {formatPeso(deal.basePriceCents)}
               </p>
 
               <div className="mt-2 flex flex-wrap items-end gap-2">

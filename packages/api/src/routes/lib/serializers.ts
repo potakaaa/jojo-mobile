@@ -525,19 +525,35 @@ export interface AdminDealComponent {
 
 export interface AdminDealProduct extends AdminProduct {
   components: AdminDealComponent[];
+  // ADM-008 post-merge Fix 3 (visibility indicators). A deal is a product with
+  // `is_deal = true`; it is only visible on the customer menu when it has an
+  // `is_available = true` branch_product_availability row at an ACTIVE branch. The
+  // admin surface surfaces these counts so the UI can flag an active-but-invisible
+  // deal ("Not available at any branch"). ADDITIVE, admin-only (the public
+  // `GET /deals`/`serializeDeal` wire shape is untouched). Optional: populated on
+  // the read/detail paths (GET list, GET/:id, PATCH/:id); omitted on the create
+  // response (the create hook re-fetches the list, which carries the counts).
+  availableBranchCount?: number;
+  activeBranchCount?: number;
 }
 
 /**
  * Serialize a deal-product (`products` row with `is_deal = true`) to the admin
  * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
  * and appends the resolved `components` list (fetched by the route handler; `[]`
- * on the list route to avoid per-row junction joins).
+ * on the list route to avoid per-row junction joins), plus optional
+ * branch-availability counts (visibility indicators — omitted when not supplied).
  */
 export function serializeAdminDealProduct(
   product: ProductRow,
   components: AdminDealComponent[] = [],
+  availability?: { availableBranchCount: number; activeBranchCount: number },
 ): AdminDealProduct {
-  return { ...serializeAdminProduct(product), components };
+  return {
+    ...serializeAdminProduct(product),
+    components,
+    ...(availability === undefined ? {} : availability),
+  };
 }
 
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────

@@ -28,6 +28,16 @@ export interface AdminDealProduct {
   isDeal: boolean;
   /** Populated on the detail response; `[]` on the list response. */
   components: AdminDealComponent[];
+  /**
+   * Branch-visibility indicator (ADM-008 post-merge Fix 3). `availableBranchCount`
+   * = active branches where this deal has an `is_available = true` row (i.e. where
+   * it's actually visible on the customer menu); `activeBranchCount` = total active
+   * branches (the denominator). Present on the list/detail read paths; `undefined`
+   * on the create response. `availableBranchCount === 0` on an active deal means it
+   * is invisible everywhere.
+   */
+  availableBranchCount?: number;
+  activeBranchCount?: number;
 }
 
 /** One seeded component on a create-with-components request (Enhancement E1). */

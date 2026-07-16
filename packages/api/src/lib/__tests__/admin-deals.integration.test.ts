@@ -554,6 +554,58 @@ describe('creating a deal seeds branch_product_availability for every active bra
   });
 });
 
+// ─── Visibility indicator counts (ADM-008 post-merge Fix 3) ──────────────────
+
+describe('deal responses carry branch-availability counts for the visibility indicator', () => {
+  it('GET /:id reports availableBranchCount matching the seeded active branches', async () => {
+    // Branch created BEFORE the deal so create-time seeding covers it → the deal
+    // is available at ≥1 active branch, never more than the active-branch total.
+    await seedBranch();
+    const dealId = await seedDeal();
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(typeof detail.body.deal.availableBranchCount).toBe('number');
+    expect(typeof detail.body.deal.activeBranchCount).toBe('number');
+    expect(detail.body.deal.availableBranchCount).toBeGreaterThanOrEqual(1);
+    expect(detail.body.deal.activeBranchCount).toBeGreaterThanOrEqual(
+      detail.body.deal.availableBranchCount,
+    );
+  });
+
+  it('reports availableBranchCount 0 when a deal has no available branch rows', async () => {
+    await seedBranch();
+    const dealId = await seedDeal();
+
+    // Zero out every seeded availability row for this deal → invisible everywhere.
+    await db
+      .update(schema.branchProductAvailability)
+      .set({ is_available: false })
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.deal.availableBranchCount).toBe(0);
+  });
+
+  it('GET / (list) carries the count fields on every deal row', async () => {
+    await seedDeal();
+    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    expect(list.status).toBe(200);
+    const deals = list.body.deals as {
+      availableBranchCount: unknown;
+      activeBranchCount: unknown;
+    }[];
+    expect(deals.length).toBeGreaterThanOrEqual(1);
+    expect(deals.every((d) => typeof d.availableBranchCount === 'number')).toBe(true);
+    expect(deals.every((d) => typeof d.activeBranchCount === 'number')).toBe(true);
+  });
+});
+
 // ─── AC8: admin products/deals lists mutually exclusive ──────────────────────
 
 describe('AC8 — admin products list excludes deals by default; deals list is deals-only', () => {

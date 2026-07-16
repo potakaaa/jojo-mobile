@@ -1,4 +1,6 @@
 import { DataTable, type DataTableColumn } from '@/components/data-table';
+import { StatusBadge } from '@/components/status-badge';
+import { promotionStatus } from '@/lib/entity-status';
 
 import type { AdminPromotion } from '../lib/admin-promotions-api';
 
@@ -31,6 +33,14 @@ export function PromotionList({ promotions, isLoading, error }: PromotionListPro
       header: 'Window',
       cell: (p) => `${formatDate(p.startAt)} – ${formatDate(p.endAt)}`,
       className: 'text-xs',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (p) => {
+        const status = promotionStatus(p);
+        return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>;
+      },
     },
   ];
 

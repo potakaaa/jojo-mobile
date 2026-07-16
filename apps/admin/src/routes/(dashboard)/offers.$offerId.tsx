@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
+import { StatusBadge } from '@/components/status-badge';
 import { CouponList } from '@/features/offers/components/coupon-list';
 import { GenerateCouponsPanel } from '@/features/offers/components/generate-coupons-panel';
 import { useAdminOffer } from '@/features/offers/hooks/use-admin-offers';
@@ -11,6 +12,7 @@ import {
   OFFER_TYPE_OPTIONS,
   type GenerateCouponsInput,
 } from '@/features/offers/lib/admin-offers-api';
+import { offerStatus } from '@/lib/entity-status';
 
 function formatPeso(cents: number): string {
   return `₱${(cents / 100).toFixed(2)}`;
@@ -65,13 +67,15 @@ function OfferDetailPage() {
       >
         {offer ? (
           <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
-            <h1 className="font-display text-h2 font-bold text-primary">{offer.title}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display text-h2 font-bold text-primary">{offer.title}</h1>
+              <StatusBadge tone={offerStatus(offer).tone}>{offerStatus(offer).label}</StatusBadge>
+            </div>
             {offer.description ? (
               <p className="text-sm text-muted-foreground">{offer.description}</p>
             ) : null}
             <p className="text-sm text-muted-foreground">
-              {mechanicLabel} · Min order {formatPeso(offer.minimumOrderAmountCents)} ·{' '}
-              {offer.isActive ? 'Active' : 'Inactive'}
+              {mechanicLabel} · Min order {formatPeso(offer.minimumOrderAmountCents)}
             </p>
           </section>
         ) : null}

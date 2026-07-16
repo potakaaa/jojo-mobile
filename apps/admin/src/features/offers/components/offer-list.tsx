@@ -1,5 +1,7 @@
 import { DataTable, type DataTableColumn } from '@/components/data-table';
+import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { offerStatus } from '@/lib/entity-status';
 
 import { OFFER_TYPE_OPTIONS, type AdminOffer } from '../lib/admin-offers-api';
 
@@ -53,7 +55,14 @@ export function OfferList({ offers, isLoading, error, onManage, onEdit }: OfferL
       cell: (o) => formatPeso(o.minimumOrderAmountCents),
       className: 'font-mono text-xs',
     },
-    { key: 'status', header: 'Status', cell: (o) => (o.isActive ? 'Active' : 'Inactive') },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (o) => {
+        const status = offerStatus(o);
+        return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>;
+      },
+    },
     {
       key: 'actions',
       header: 'Actions',

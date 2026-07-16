@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -167,6 +167,42 @@ async function seedBranchAvailability(
   );
 }
 
+/**
+ * Count ACTIVE branches — the denominator for the deal-visibility indicator. A
+ * deal is only orderable at active branches, so this is the max it could ever be
+ * "available at". One cheap aggregate shared across every row of a list response.
+ */
+async function countActiveBranches(): Promise<number> {
+  const [row] = await db.select({ c: count() }).from(branches).where(eq(branches.is_active, true));
+  return Number(row?.c ?? 0);
+}
+
+/**
+ * Count, per deal-product, the number of ACTIVE branches where it has an
+ * `is_available = true` availability row — i.e. the branches where the deal is
+ * actually visible on the customer menu (`GET /branches/:id/menu?isDeal=true`
+ * filters on exactly this: an available BPA row at an active branch). A count of
+ * 0 for an active deal means it is invisible everywhere (the seeding bug this
+ * indicator surfaces). Returns a map keyed by product id; ids absent from the map
+ * have zero available branches.
+ */
+async function fetchAvailableBranchCounts(productIds: string[]): Promise<Map<string, number>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await db
+    .select({ productId: branchProductAvailability.product_id, c: count() })
+    .from(branchProductAvailability)
+    .innerJoin(branches, eq(branches.id, branchProductAvailability.branch_id))
+    .where(
+      and(
+        inArray(branchProductAvailability.product_id, productIds),
+        eq(branchProductAvailability.is_available, true),
+        eq(branches.is_active, true),
+      ),
+    )
+    .groupBy(branchProductAvailability.product_id);
+  return new Map(rows.map((r) => [r.productId, Number(r.c)]));
+}
+
 // ─── Deals CRUD (is_deal=true products) ──────────────────────────────────────
 
 // GET / — ALL deal-products (active + inactive), optional ?isActive=true|false.
@@ -190,7 +226,21 @@ adminDealsRouter.get('/', async (req, res) => {
     .where(and(...conditions))
     .orderBy(asc(products.name));
 
-  res.json({ deals: rows.map((p) => serializeAdminDealProduct(p)) });
+  // Visibility indicator: per-deal available-branch counts + the active-branch
+  // denominator (one aggregate query each, not per-row).
+  const [availableCounts, activeBranchCount] = await Promise.all([
+    fetchAvailableBranchCounts(rows.map((p) => p.id)),
+    countActiveBranches(),
+  ]);
+
+  res.json({
+    deals: rows.map((p) =>
+      serializeAdminDealProduct(p, [], {
+        availableBranchCount: availableCounts.get(p.id) ?? 0,
+        activeBranchCount,
+      }),
+    ),
+  });
 });
 
 // GET /:id — single deal-product WITH its resolved components array. 404 on a
@@ -211,8 +261,17 @@ adminDealsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  const components = await fetchComponents(id);
-  res.json({ deal: serializeAdminDealProduct(deal, components) });
+  const [components, availableCounts, activeBranchCount] = await Promise.all([
+    fetchComponents(id),
+    fetchAvailableBranchCounts([id]),
+    countActiveBranches(),
+  ]);
+  res.json({
+    deal: serializeAdminDealProduct(deal, components, {
+      availableBranchCount: availableCounts.get(id) ?? 0,
+      activeBranchCount,
+    }),
+  });
 });
 
 // POST / — create a deal-product (`is_deal = true`), `category_id` server-pinned
@@ -382,8 +441,17 @@ adminDealsRouter.patch('/:id', async (req, res) => {
       throw new AdminApiError(404, 'Deal not found');
     }
 
-    const components = await fetchComponents(id);
-    res.json({ deal: serializeAdminDealProduct(updated, components) });
+    const [components, availableCounts, activeBranchCount] = await Promise.all([
+      fetchComponents(id),
+      fetchAvailableBranchCounts([id]),
+      countActiveBranches(),
+    ]);
+    res.json({
+      deal: serializeAdminDealProduct(updated, components, {
+        availableBranchCount: availableCounts.get(id) ?? 0,
+        activeBranchCount,
+      }),
+    });
   } catch (err) {
     handleAdminError(err, res, 'updating deal');
   }
