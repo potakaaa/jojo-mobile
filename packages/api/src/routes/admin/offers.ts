@@ -39,6 +39,7 @@ const createOfferSchema = z.object({
   endAt: z.coerce.date(),
   usageLimitPerUser: z.number().int().positive().optional(),
   totalUsageLimit: z.number().int().positive().optional(),
+  isActive: z.boolean().optional(),
   promotionId: z.uuid().optional(),
 });
 
@@ -124,6 +125,7 @@ adminOffersRouter.post('/', async (req, res) => {
         end_at: o.endAt,
         ...(o.usageLimitPerUser === undefined ? {} : { usage_limit_per_user: o.usageLimitPerUser }),
         ...(o.totalUsageLimit === undefined ? {} : { total_usage_limit: o.totalUsageLimit }),
+        ...(o.isActive === undefined ? {} : { is_active: o.isActive }),
         ...(o.promotionId === undefined ? {} : { promotion_id: o.promotionId }),
       })
       .returning();
@@ -165,6 +167,7 @@ adminOffersRouter.patch('/:offerId', async (req, res) => {
     if (o.endAt !== undefined) updates.end_at = o.endAt;
     if (o.usageLimitPerUser !== undefined) updates.usage_limit_per_user = o.usageLimitPerUser;
     if (o.totalUsageLimit !== undefined) updates.total_usage_limit = o.totalUsageLimit;
+    if (o.isActive !== undefined) updates.is_active = o.isActive;
     if (o.promotionId !== undefined) updates.promotion_id = o.promotionId;
 
     const [updated] = await db

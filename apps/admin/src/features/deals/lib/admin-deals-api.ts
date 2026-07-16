@@ -60,6 +60,13 @@ export interface DealCreateInput {
    * the whole input as the request body, so no function-body change is needed.
    */
   components?: DealComponentInput[];
+  /**
+   * Optional branch selection (post-merge Fix 4). Omitting seeds availability for
+   * every active branch (the default seed-all behavior); a subset limits it to the
+   * listed branches (each must be an active branch — unknown → 400). An empty array
+   * creates the deal available at no branch (invisible until toggled on).
+   */
+  branchIds?: string[];
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

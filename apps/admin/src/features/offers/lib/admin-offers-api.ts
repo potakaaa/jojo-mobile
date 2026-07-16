@@ -84,6 +84,7 @@ export interface OfferCreateInput {
   endAt: string; // ISO
   usageLimitPerUser?: number;
   totalUsageLimit?: number;
+  isActive?: boolean;
   promotionId?: string;
 }
 

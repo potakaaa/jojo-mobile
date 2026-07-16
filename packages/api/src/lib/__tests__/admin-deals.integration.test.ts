@@ -554,6 +554,68 @@ describe('creating a deal seeds branch_product_availability for every active bra
   });
 });
 
+// ─── Branch selection on deal create (post-merge Fix 4) ──────────────────────
+
+describe('creating a deal with an explicit branchIds selection', () => {
+  it('seeds availability ONLY for the selected branches, not the excluded ones', async () => {
+    const included = await seedBranch();
+    const excluded = await seedBranch();
+
+    const res = await createDeal({ branchIds: [included] });
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    const rowByBranch = new Map(rows.map((r) => [r.branch_id, r.is_available]));
+    expect(rowByBranch.get(included)).toBe(true);
+    expect(rowByBranch.has(excluded)).toBe(false);
+  });
+
+  it('rejects a branchIds selection containing an unknown branch id with 400', async () => {
+    const before = await db.select().from(schema.products).where(eq(schema.products.is_deal, true));
+    const res = await createDeal({ branchIds: ['00000000-0000-0000-0000-000000000000'] });
+    expect(res.status).toBe(400);
+
+    // The deal-product write rolled back — no new deal row landed.
+    const after = await db.select().from(schema.products).where(eq(schema.products.is_deal, true));
+    expect(after.length).toBe(before.length);
+  });
+
+  it('an omitted branchIds field still seeds every active branch (backward compatible)', async () => {
+    const b1 = await seedBranch();
+    const b2 = await seedBranch();
+
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    const seededBranchIds = new Set(rows.map((r) => r.branch_id));
+    expect(seededBranchIds.has(b1)).toBe(true);
+    expect(seededBranchIds.has(b2)).toBe(true);
+  });
+
+  it('an empty branchIds array creates a deal with no availability rows (invisible)', async () => {
+    await seedBranch();
+
+    const res = await createDeal({ branchIds: [] });
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    expect(rows.length).toBe(0);
+  });
+});
+
 // ─── Visibility indicator counts (ADM-008 post-merge Fix 3) ──────────────────
 
 describe('deal responses carry branch-availability counts for the visibility indicator', () => {

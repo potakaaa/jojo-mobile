@@ -71,6 +71,12 @@ const createDealSchema = z.object({
   isActive: z.boolean().optional(),
   isRewardEligible: z.boolean().optional(),
   components: z.array(createDealComponentSchema).optional(),
+  // OPTIONAL branch selection (post-merge Fix 4). Omitting seeds availability for
+  // EVERY active branch (backward-compatible with the Fix 1 seed-all behavior).
+  // When present, availability is seeded ONLY for the listed branches; each id must
+  // reference an active branch (unknown/inactive → 400). An empty array is a valid
+  // explicit "no branches" choice (the deal is created invisible everywhere).
+  branchIds: z.array(z.uuid()).optional(),
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -143,24 +149,45 @@ async function fetchComponents(dealProductId: string): Promise<AdminDealComponen
 
 /**
  * Seed `branch_product_availability` rows (available=true) for a freshly-created
- * deal-product across every ACTIVE branch, so the deal is immediately visible on
- * the customer menu (`GET /branches/:id/menu?isDeal=true` filters on an available
- * BPA row). Runs inside the create transaction so a seeding failure rolls back the
- * product. `is_available` is set explicitly for clarity (schema default is true).
+ * deal-product, so the deal is immediately visible on the customer menu
+ * (`GET /branches/:id/menu?isDeal=true` filters on an available BPA row). Runs
+ * inside the create transaction so a seeding failure rolls back the product.
+ * `is_available` is set explicitly for clarity (schema default is true).
+ *
+ * `branchIds` selects WHICH branches to seed (post-merge Fix 4): omitted → every
+ * ACTIVE branch (the original seed-all behavior); provided → exactly those branches
+ * (each validated as an active branch, unknown/inactive → 400). An empty array
+ * seeds nothing (a valid "no branches" choice).
  */
 async function seedBranchAvailability(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   productId: string,
+  branchIds?: string[],
 ): Promise<void> {
   const activeBranches = await tx
     .select({ id: branches.id })
     .from(branches)
     .where(eq(branches.is_active, true));
-  if (activeBranches.length === 0) return;
+  const activeIds = new Set(activeBranches.map((b) => b.id));
+
+  let targetIds: string[];
+  if (branchIds === undefined) {
+    targetIds = [...activeIds];
+  } else {
+    // Validate the caller's selection against the active-branch set — a single
+    // source of truth for both the 400 guard and the rows we seed.
+    for (const id of branchIds) {
+      if (!activeIds.has(id)) {
+        throw new AdminApiError(400, 'Unknown or inactive branch');
+      }
+    }
+    targetIds = [...new Set(branchIds)];
+  }
+  if (targetIds.length === 0) return;
 
   await tx.insert(branchProductAvailability).values(
-    activeBranches.map((b) => ({
-      branch_id: b.id,
+    targetIds.map((id) => ({
+      branch_id: id,
       product_id: productId,
       is_available: true,
     })),
@@ -326,7 +353,7 @@ adminDealsRouter.post('/', async (req, res) => {
           }
           throw err;
         }
-        await seedBranchAvailability(tx, created!.id);
+        await seedBranchAvailability(tx, created!.id, d.branchIds);
         return created!;
       });
       res.status(201).json({ deal: serializeAdminDealProduct(inserted) });
@@ -384,7 +411,7 @@ adminDealsRouter.post('/', async (req, res) => {
         throw err;
       }
 
-      await seedBranchAvailability(tx, created!.id);
+      await seedBranchAvailability(tx, created!.id, d.branchIds);
 
       return created!;
     });

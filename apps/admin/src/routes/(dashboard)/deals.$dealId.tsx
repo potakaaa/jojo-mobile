@@ -7,6 +7,7 @@ import { QueryStates } from '@/components/query-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DealAvailabilityEditor } from '@/features/deals/components/deal-availability-editor';
 import { DealComponentEditor } from '@/features/deals/components/deal-component-editor';
 import { computeDealSavings } from '@/features/deals/lib/deal-savings';
 import { dealStatus } from '@/lib/entity-status';
@@ -168,6 +169,8 @@ function DealDetailPage() {
             ) : null}
 
             <DealComponentEditor dealId={dealId} components={deal.components} />
+
+            <DealAvailabilityEditor dealId={dealId} />
           </>
         ) : null}
       </QueryStates>

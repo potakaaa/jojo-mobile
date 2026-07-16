@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
 import { CouponList } from '@/features/offers/components/coupon-list';
 import { GenerateCouponsPanel } from '@/features/offers/components/generate-coupons-panel';
-import { useAdminOffer } from '@/features/offers/hooks/use-admin-offers';
+import { useAdminOffer, useUpdateOffer } from '@/features/offers/hooks/use-admin-offers';
 import { useGenerateCoupons, useOfferCoupons } from '@/features/offers/hooks/use-generate-coupons';
 import {
   OFFER_TYPE_OPTIONS,
@@ -35,6 +36,7 @@ function OfferDetailPage() {
   const offerQuery = useAdminOffer(offerId);
   const couponsQuery = useOfferCoupons(offerId);
   const generateMutation = useGenerateCoupons(offerId);
+  const updateMutation = useUpdateOffer();
 
   const [lastIssuedCount, setLastIssuedCount] = useState<number | null>(null);
 
@@ -77,6 +79,28 @@ function OfferDetailPage() {
             <p className="text-sm text-muted-foreground">
               {mechanicLabel} · Min order {formatPeso(offer.minimumOrderAmountCents)}
             </p>
+
+            <div className="mt-2 flex items-center gap-3">
+              <Button
+                variant={offer.isActive ? 'destructive' : 'default'}
+                isLoading={updateMutation.isPending}
+                onClick={() =>
+                  updateMutation.mutate({ id: offerId, input: { isActive: !offer.isActive } })
+                }
+              >
+                {offer.isActive ? 'Deactivate offer' : 'Activate offer'}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {offer.isActive
+                  ? 'Live for customers (within its validity window).'
+                  : 'Hidden from customers.'}
+              </span>
+            </div>
+            {updateMutation.error instanceof Error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {updateMutation.error.message}
+              </p>
+            ) : null}
           </section>
         ) : null}
       </QueryStates>

@@ -253,6 +253,32 @@ describe('PATCH /api/admin/offers/:id (AC2)', () => {
       .set('Content-Type', 'application/json');
     expect(bad.status).toBe(404);
   });
+
+  it('toggles isActive off and back on, persisting is_active at the boundary', async () => {
+    const created = await createOffer(adminCookies);
+    const id = created.body.offer.id as string;
+    // Offers default to active on create.
+    expect(created.body.offer.isActive).toBe(true);
+
+    const off = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ isActive: false })
+      .set('Content-Type', 'application/json');
+    expect(off.status).toBe(200);
+    expect(off.body.offer.isActive).toBe(false);
+
+    const [offRow] = await db.select().from(offers).where(eq(offers.id, id));
+    expect(offRow!.is_active).toBe(false);
+
+    const on = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ isActive: true })
+      .set('Content-Type', 'application/json');
+    expect(on.status).toBe(200);
+    expect(on.body.offer.isActive).toBe(true);
+  });
 });
 
 describe('requireAdmin guard on /api/admin/offers/* (AC9)', () => {
