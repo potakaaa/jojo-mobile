@@ -20,6 +20,7 @@ const offer: AdminOffer = {
   totalUsageLimit: null,
   isActive: true,
   promotionId: null,
+  benefitProductId: null,
   createdAt: '2026-07-16T00:00:00.000Z',
   updatedAt: '2026-07-16T00:00:00.000Z',
 };

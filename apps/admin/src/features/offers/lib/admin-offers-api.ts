@@ -43,6 +43,17 @@ export const OFFER_TYPE_CREATE_OPTIONS: { value: OfferType; label: string }[] =
       o.value === 'free_upgrade',
   );
 
+/**
+ * Mechanics whose redemption grants a specific product benefit and therefore
+ * REQUIRE a configured `benefitProductId` (ADM-008 fix 6). free_item grants one
+ * unit of the designated product free; free_upgrade waives that product's paid
+ * size upgrade. Mirrors the server-side per-mechanic requirement — the server
+ * Zod `superRefine` is the real gate; this client check is convenience only.
+ */
+export function needsBenefitProduct(offerType: OfferType): boolean {
+  return offerType === 'free_item' || offerType === 'free_upgrade';
+}
+
 /** Admin-facing offer shape — mirrors the server's `AdminOffer` (serializers.ts). */
 export interface AdminOffer {
   id: string;
@@ -58,6 +69,12 @@ export interface AdminOffer {
   totalUsageLimit: number | null;
   isActive: boolean;
   promotionId: string | null;
+  /**
+   * The product a free_item/free_upgrade offer grants at redemption (ADM-008 fix
+   * 6). Non-null only for the benefit-bearing mechanics; null for every other
+   * mechanic and for legacy free-mechanic offers created before this field.
+   */
+  benefitProductId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,9 +103,27 @@ export interface OfferCreateInput {
   totalUsageLimit?: number;
   isActive?: boolean;
   promotionId?: string;
+  /** Required by the server for free_item/free_upgrade; omitted otherwise. */
+  benefitProductId?: string;
 }
 
-export type OfferUpdateInput = Partial<OfferCreateInput>;
+/**
+ * Update payload. `benefitProductId` may be explicit `null` to CLEAR the column
+ * (ADM-008 fix 6 F2) — sent when a free mechanic is switched to a discount mechanic
+ * in edit mode. `undefined`/omitted leaves the column unchanged.
+ */
+export type OfferUpdateInput = Partial<Omit<OfferCreateInput, 'benefitProductId'>> & {
+  benefitProductId?: string | null;
+};
+
+/**
+ * What `OfferForm` emits on submit. Same as a create payload but `benefitProductId`
+ * may be explicit `null` (edit-mode clear). The create branch strips the null (a new
+ * offer never needs to clear a column); the update branch passes it through.
+ */
+export type OfferSubmitInput = Omit<OfferCreateInput, 'benefitProductId'> & {
+  benefitProductId?: string | null;
+};
 
 export interface GenerateCouponsInput {
   offerId: string;

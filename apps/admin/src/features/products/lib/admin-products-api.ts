@@ -19,6 +19,8 @@ export interface AdminProduct {
   basePriceCents: number;
   isActive: boolean;
   isRewardEligible: boolean;
+  /** True for deal-products (`products.is_deal`). Excluded from benefit pickers. */
+  isDeal: boolean;
 }
 
 export interface AdminProductOption {

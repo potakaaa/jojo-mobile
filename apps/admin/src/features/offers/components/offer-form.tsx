@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+import type { AdminProduct } from '@/features/products/lib/admin-products-api';
 import type { AdminPromotion } from '@/features/promotions/lib/admin-promotions-api';
 
 import {
   OFFER_TYPE_CREATE_OPTIONS,
+  needsBenefitProduct,
   type AdminOffer,
-  type OfferCreateInput,
+  type OfferSubmitInput,
   type OfferType,
 } from '../lib/admin-offers-api';
 
@@ -17,16 +19,20 @@ import {
  * controlled form emitting an `OfferCreateInput` on submit. Money is entered in
  * PHP and multiplied by 100 to cents (the API boundary). The discount-value field
  * is polymorphic: shown as ₱ for `fixed_discount`, as % for `percentage_discount`,
- * and hidden for the four complex mechanics (which carry no scalar value). The
- * optional Promotion link is sourced from the caller-supplied promotions list.
- * Server-side Zod validation is the real gate — client checks are convenience only.
+ * and hidden for the four complex mechanics (which carry no scalar value). For
+ * the free_item/free_upgrade mechanics a benefit-product picker is shown and
+ * required instead (sourced from the caller-supplied products list). The optional
+ * Promotion link is sourced from the caller-supplied promotions list. Server-side
+ * Zod validation is the real gate — client checks are convenience only.
  */
 interface OfferFormProps {
   initial?: AdminOffer;
   promotions: AdminPromotion[];
+  /** Candidate benefit products for free_item/free_upgrade offers. */
+  products: AdminProduct[];
   submitting: boolean;
   error: string | null;
-  onSubmit: (input: OfferCreateInput) => void;
+  onSubmit: (input: OfferSubmitInput) => void;
   onCancel: () => void;
 }
 
@@ -53,6 +59,7 @@ function isoToLocal(iso: string): string {
 export function OfferForm({
   initial,
   promotions,
+  products,
   submitting,
   error,
   onSubmit,
@@ -63,6 +70,7 @@ export function OfferForm({
   const [offerType, setOfferType] = useState<OfferType>(
     initial?.offerType ?? 'percentage_discount',
   );
+  const [benefitProductId, setBenefitProductId] = useState(initial?.benefitProductId ?? '');
   const [value, setValue] = useState(
     initial?.discountValueCents != null ? String(initial.discountValueCents / 100) : '',
   );
@@ -79,6 +87,12 @@ export function OfferForm({
   const [endAt, setEndAt] = useState(initial ? isoToLocal(initial.endAt) : '');
   const [promotionId, setPromotionId] = useState(initial?.promotionId ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
+
+  /** Switching to a mechanic that carries no product benefit clears the picker. */
+  function handleMechanicChange(next: OfferType) {
+    setOfferType(next);
+    if (!needsBenefitProduct(next)) setBenefitProductId('');
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -102,7 +116,7 @@ export function OfferForm({
       return;
     }
 
-    const input: OfferCreateInput = {
+    const input: OfferSubmitInput = {
       title: title.trim(),
       offerType,
       minimumOrderAmountCents: Math.round(min * 100),
@@ -118,6 +132,19 @@ export function OfferForm({
         return;
       }
       input.discountValueCents = Math.round(v * 100);
+    }
+
+    if (needsBenefitProduct(offerType)) {
+      if (!benefitProductId) {
+        setLocalError('Select a benefit product for this mechanic.');
+        return;
+      }
+      input.benefitProductId = benefitProductId;
+    } else if (initial?.benefitProductId != null) {
+      // EDIT mode (F2): the offer previously carried a benefit product but the mechanic
+      // is now a non-free one — send an explicit null to CLEAR the column. Create mode
+      // never reaches here with a lingering benefit, so the field stays omitted there.
+      input.benefitProductId = null;
     }
 
     if (perUser.trim().length > 0) {
@@ -151,7 +178,7 @@ export function OfferForm({
         <select
           className={selectClass}
           value={offerType}
-          onChange={(e) => setOfferType(e.target.value as OfferType)}
+          onChange={(e) => handleMechanicChange(e.target.value as OfferType)}
         >
           {OFFER_TYPE_CREATE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -171,6 +198,34 @@ export function OfferForm({
             placeholder="0"
           />
         </label>
+      ) : null}
+
+      {needsBenefitProduct(offerType) ? (
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1 text-sm">
+            Benefit product
+            <select
+              className={selectClass}
+              value={benefitProductId}
+              onChange={(e) => setBenefitProductId(e.target.value)}
+            >
+              <option value="">Select a product…</option>
+              {/* F5: only active, non-deal products are valid benefits (the server
+                  rejects a deal/inactive benefit), so never offer them. */}
+              {products
+                .filter((p) => p.isActive && !p.isDeal)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <span className="text-xs text-muted-foreground">
+            Redeeming this offer grants this product free (free_item) or waives its paid size
+            upgrade (free_upgrade).
+          </span>
+        </div>
       ) : null}
 
       <label className="flex flex-col gap-1 text-sm">

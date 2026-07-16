@@ -5,14 +5,17 @@ import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { BenefitProductField } from '@/features/offers/components/benefit-product-field';
 import { CouponList } from '@/features/offers/components/coupon-list';
 import { GenerateCouponsPanel } from '@/features/offers/components/generate-coupons-panel';
 import { useAdminOffer, useUpdateOffer } from '@/features/offers/hooks/use-admin-offers';
 import { useGenerateCoupons, useOfferCoupons } from '@/features/offers/hooks/use-generate-coupons';
 import {
   OFFER_TYPE_OPTIONS,
+  needsBenefitProduct,
   type GenerateCouponsInput,
 } from '@/features/offers/lib/admin-offers-api';
+import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
 import { offerStatus } from '@/lib/entity-status';
 
 function formatPeso(cents: number): string {
@@ -35,6 +38,7 @@ function OfferDetailPage() {
   const navigate = useNavigate();
   const offerQuery = useAdminOffer(offerId);
   const couponsQuery = useOfferCoupons(offerId);
+  const productsQuery = useAdminProducts();
   const generateMutation = useGenerateCoupons(offerId);
   const updateMutation = useUpdateOffer();
 
@@ -107,8 +111,14 @@ function OfferDetailPage() {
 
       {offer ? (
         <>
+          {needsBenefitProduct(offer.offerType) ? (
+            <BenefitProductField offer={offer} products={productsQuery.data ?? []} />
+          ) : null}
+
           <GenerateCouponsPanel
             offerId={offerId}
+            offerType={offer.offerType}
+            benefitProductId={offer.benefitProductId}
             submitting={generateMutation.isPending}
             error={generateMutation.error instanceof Error ? generateMutation.error.message : null}
             lastIssuedCount={lastIssuedCount}

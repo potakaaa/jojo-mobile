@@ -11,7 +11,8 @@ import {
   useCreateOffer,
   useUpdateOffer,
 } from '@/features/offers/hooks/use-admin-offers';
-import type { AdminOffer, OfferCreateInput } from '@/features/offers/lib/admin-offers-api';
+import type { AdminOffer, OfferSubmitInput } from '@/features/offers/lib/admin-offers-api';
+import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
 import { useAdminPromotions } from '@/features/promotions/hooks/use-admin-promotions';
 
 export const Route = createFileRoute('/(dashboard)/offers/')({
@@ -30,6 +31,7 @@ function OffersPage() {
   const navigate = useNavigate();
   const offersQuery = useAdminOffers();
   const promotionsQuery = useAdminPromotions();
+  const productsQuery = useAdminProducts();
   const createMutation = useCreateOffer();
   const updateMutation = useUpdateOffer();
 
@@ -50,11 +52,15 @@ function OffersPage() {
     setFormOpen(true);
   }
 
-  function handleSubmit(input: OfferCreateInput) {
+  function handleSubmit(input: OfferSubmitInput) {
     if (editing) {
       updateMutation.mutate({ id: editing.id, input }, { onSuccess: () => setFormOpen(false) });
     } else {
-      createMutation.mutate(input, { onSuccess: () => setFormOpen(false) });
+      // Create never clears a column — a lingering null benefit (only produced in edit
+      // mode) is stripped so the payload matches OfferCreateInput.
+      const { benefitProductId, ...rest } = input;
+      const createInput = benefitProductId != null ? { ...rest, benefitProductId } : rest;
+      createMutation.mutate(createInput, { onSuccess: () => setFormOpen(false) });
     }
   }
 
@@ -93,6 +99,7 @@ function OffersPage() {
         <OfferForm
           initial={editing ?? undefined}
           promotions={promotionsQuery.data ?? []}
+          products={productsQuery.data ?? []}
           submitting={formSubmitting}
           error={formError}
           onSubmit={handleSubmit}

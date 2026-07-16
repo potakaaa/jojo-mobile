@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-import type { GenerateCouponsInput } from '../lib/admin-offers-api';
+import {
+  needsBenefitProduct,
+  type GenerateCouponsInput,
+  type OfferType,
+} from '../lib/admin-offers-api';
 
 /**
  * "Generate Coupons" action panel (ADM-008), rendered on the Offer detail page.
@@ -12,9 +16,18 @@ import type { GenerateCouponsInput } from '../lib/admin-offers-api';
  * issue, so toggling "targeted" pins quantity to 1 and disables the quantity input
  * — the guard is enforced client-side here AND server-side by the route's Zod
  * `.refine`. An optional per-batch expiry overrides the Offer's own end date.
+ *
+ * A free_item/free_upgrade offer with no configured `benefitProductId` cannot
+ * issue coupons — a code with no defined benefit would reject at redemption — so
+ * the panel blocks generation (disabled control + explanatory message), matching
+ * the server's `POST /coupons/generate` reject (ADM-008 fix 6 P2).
  */
 interface GenerateCouponsPanelProps {
   offerId: string;
+  /** The offer's mechanic — drives the unconfigured-free-mechanic block. */
+  offerType: OfferType;
+  /** The offer's configured benefit product (null when unconfigured). */
+  benefitProductId: string | null;
   submitting: boolean;
   error: string | null;
   /** Count from the most recent successful issue, for inline feedback. */
@@ -28,6 +41,8 @@ function toIso(local: string): string {
 
 export function GenerateCouponsPanel({
   offerId,
+  offerType,
+  benefitProductId,
   submitting,
   error,
   lastIssuedCount,
@@ -39,6 +54,9 @@ export function GenerateCouponsPanel({
   const [expiresAt, setExpiresAt] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // A benefit-bearing mechanic with no configured product cannot issue codes.
+  const blocked = needsBenefitProduct(offerType) && !benefitProductId;
+
   function handleTargetedChange(next: boolean) {
     setTargeted(next);
     if (next) setQuantity('1'); // route contract: targeted issue is always quantity 1
@@ -47,6 +65,8 @@ export function GenerateCouponsPanel({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLocalError(null);
+
+    if (blocked) return;
 
     const qty = targeted ? 1 : Number(quantity);
     if (!Number.isInteger(qty) || qty < 1) {
@@ -68,6 +88,12 @@ export function GenerateCouponsPanel({
   return (
     <section className="flex flex-col gap-3 rounded-xl border-2 border-foreground p-4">
       <h2 className="font-display text-h3">Generate coupons</h2>
+
+      {blocked ? (
+        <p role="alert" className="text-sm text-destructive">
+          Configure a benefit product first.
+        </p>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm">
@@ -124,7 +150,7 @@ export function GenerateCouponsPanel({
         ) : null}
 
         <div className="flex justify-end">
-          <Button type="submit" isLoading={submitting}>
+          <Button type="submit" isLoading={submitting} disabled={blocked}>
             {submitting ? 'Generating…' : 'Generate'}
           </Button>
         </div>
