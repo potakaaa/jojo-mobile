@@ -154,27 +154,40 @@ screens already use, just with a query param flip. Without the param (or `isDeal
 normal menu products. With `isDeal=true`, it returns ONLY deal-products (`is_deal = true`) for that
 branch, in the exact same response envelope shape as the regular menu.
 
-Example response (illustrative — confirm exact field names against the live API before wiring):
+**Correction (16-07-26 UPDATE PROCESS pass): products are NOT a flat top-level array.** The real
+`MenuResponse` shape (see `packages/types/src/menu.ts`) nests products INSIDE each category —
+`categories: Category[]`, and each `Category` carries its own `products: Product[]`. There is no
+top-level `products` array. Corrected example response (illustrative field values, real shape):
 
 ```json
 {
-  "products": [
-    {
-      "id": "deal-abc-123",
-      "name": "Fries + Lemonade Combo",
-      "slug": "fries-lemonade-combo",
-      "description": "A crispy fries + refreshing lemonade combo",
-      "imageUrl": "https://.../combo.jpg",
-      "basePriceCents": 9900,
-      "isDeal": true,
-      "categoryId": "deals-category-uuid"
-    }
-  ],
   "categories": [
-    { "id": "deals-category-uuid", "name": "Deals", "sortOrder": 0 }
+    {
+      "id": "deals-category-uuid",
+      "name": "Deals",
+      "sortOrder": 0,
+      "products": [
+        {
+          "id": "deal-abc-123",
+          "name": "Fries + Lemonade Combo",
+          "slug": "fries-lemonade-combo",
+          "description": "A crispy fries + refreshing lemonade combo",
+          "imageUrl": "https://.../combo.jpg",
+          "basePriceCents": 9900,
+          "isDeal": true,
+          "categoryId": "deals-category-uuid"
+        }
+      ]
+    }
   ]
 }
 ```
+
+**Important — this response does NOT include `deal_components` ("what's inside") data.** The menu-
+list endpoint only ever returns the flat product fields shown above. If you need the "1x Fries, 1x
+Lemonade" breakdown for the deal detail screen, that is a SEPARATE request — see §4 below. Do not
+expect components to show up by fetching the menu list more thoroughly; they structurally aren't
+there.
 
 **How to add a deal-product to cart:** exactly the same as any regular product — call the existing
 `useCart().addItem()` path with this product's id/price. No special "apply deal" step needed.
@@ -184,11 +197,14 @@ Example response (illustrative — confirm exact field names against the live AP
 ## 4. "What's inside" display need
 
 The deal detail screen must show the list of component products (with quantity) that make up the
-deal — e.g. "This combo includes: 1x Fries, 1x Lemonade." Confirm with the API team the exact shape
-of the detail response (`GET /api/admin/deals/:id` is the ADMIN-side shape — you'll likely need a
-customer-facing equivalent, or the existing product-detail endpoint extended with a `components`
-array). If no customer-facing detail route exists yet when you start this work, flag it back to the
-API team rather than guessing the shape — see §2c above for the underlying data shape
+deal — e.g. "This combo includes: 1x Fries, 1x Lemonade." **Confirmed as of 16-07-26: no
+customer-facing detail-with-components route exists yet.** `GET /api/admin/deals/:id` is the
+ADMIN-side shape (`requireAdmin`-gated, not usable from the mobile app) and IS the only route today
+that returns a `components` array (via `serializeAdminDealProduct(product, components)`). You will
+need to ask the API team to add a customer-facing equivalent — either a public
+`GET /deals-as-products/:id`-style route, or the existing product-detail endpoint extended with a
+`components` array — before you can build the "what's inside" display. This is a real, currently-
+open gap, not something to guess around. See §2c above for the underlying data shape
 (`deal_components`: `componentProductId`, `quantity`) so you know what to ask for.
 
 ---

@@ -14,6 +14,16 @@ plan: process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-04-
 
 # Phase 4 — Deals CRUD (ADM-004) — EXECUTE exit summary
 
+> **⚠ SUPERSEDED (16-07-26 UPDATE PROCESS pass) — DO NOT READ AS CURRENT TRUTH.** This report
+> documents the ORIGINAL discount-object deals model (commit `d5070d8`), which was fully executed
+> and green as of this report, but was subsequently PIVOTED and DISCARDED in favor of a
+> deals-as-products model (`products.is_deal` + `deal_components`). The `deals`/`deal_products`/
+> `deal_branches`/`coupons` schema this report describes stays dormant in the DB (untouched,
+> reserved for a possible future ADM-008), but the API/UI code it describes was replaced at the same
+> file paths. The current, authoritative Phase 4 EXECUTE report is
+> `phase-04a-deals-as-products_REPORT_15-07-26.md` in this same task folder. This file is kept for
+> historical record only.
+
 **Answer up front:** All 10 Implementation-Checklist steps are done and every Fully-Automated gate
 is green. New `admin-deals` suite is 31/31; full API suite 214/214 (183 baseline + 31 new, 0
 regressions); API + admin typechecks green; format + lint clean. One named gap: AC11 (UI

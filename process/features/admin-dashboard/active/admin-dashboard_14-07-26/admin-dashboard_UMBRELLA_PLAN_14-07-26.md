@@ -354,37 +354,59 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 15-07-26 (Phase 4 RE-PLAN — deals-as-products pivot)
+Last updated: 16-07-26 (Phase 4a — Deals-as-Products, EVL-green; UPDATE PROCESS doc reconciliation
+  pass; branch `feat/adm-004-deals` NOT YET MERGED, PR pending review)
 Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
   14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26); Phase 3 — Products/Categories CRUD
-  (✅ VERIFIED, 15-07-26)
+  (✅ VERIFIED, 15-07-26); Phase 4a — Deals-as-Products, ADM-004 RE-PLAN (EVL-green, 16-07-26 —
+  see status note below on why this is not yet stamped ✅ VERIFIED at the umbrella level)
 Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
-Current phase N of total: 4 of 8 (Phase 4a — Deals-as-Products, ADM-004 RE-PLAN)
-Phase N name: Phase 4a — Deals-as-Products (ADM-004 RE-PLAN; supersedes the discount-shaped
-  "Phase 4 — Deals CRUD" model)
-Phase N status: 🔨 RE-PLANNED (15-07-26) — Phase 4 PIVOTED. The original discount-object deals model
-  (a standalone `deals` table + `deal_products`/`deal_branches` junctions + a coupon-cascade
-  deactivate flow) was fully EXECUTEd on commit `d5070d8` (31/31 new tests, 214/214 full API suite,
-  Gate: PASS) and is now SUPERSEDED — its code is discarded (not deleted from git history; the
-  `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant, preserved for ADM-008).
-  The new model: a "Deal" is a `products` row with `is_deal = true`, described by a
-  `deal_components` junction (member products + quantity), priced at its own `base_price` — reusing
-  the entire existing product → menu → cart → checkout → order_items pipeline with zero new
-  pricing/cart/order code. `phase-04-deals_PLAN_14-07-26.md` has been REWRITTEN IN FULL for this new
-  model (RE-PLAN complete — Phase Loop Progress Steps 1-3 done); its prior Gate: PASS
-  validate-contract is STALE and does not carry forward — a fresh Step 4 (PVL) run is required
-  before EXECUTE.
-Phase N EVL: not applicable yet (no EXECUTE has run against the new deals-as-products model; the
-  discarded discount-model's EVL — see `phase-04-deals_REPORT_15-07-26.md` — is void)
-Phase N report: `phase-04-deals_REPORT_15-07-26.md` documents the now-discarded discount-model
-  EXECUTE pass; a new report will be written once the deals-as-products EXECUTE completes
+Current phase N of total: 4 of 8 (Phase 4a — Deals-as-Products, ADM-004 RE-PLAN) — delivered;
+  Phase 5 (Rewards CRUD, ADM-005) is next once Phase 4a's PR merges
+Phase N name: Phase 4a — Deals-as-Products (ADM-004 RE-PLAN; supersedes and discards the
+  discount-shaped "Phase 4 — Deals CRUD" model built on commit `d5070d8`)
+Phase N status: EVL-green, code-complete, NOT YET MERGED (branch `feat/adm-004-deals`, PR pending
+  review — held at "Keep in active/testing" rather than stamped ✅ VERIFIED until the PR lands).
+  Phase 4 PIVOTED mid-program: the original discount-object deals model (a standalone `deals` table
+  + `deal_products`/`deal_branches` junctions + a coupon-cascade deactivate flow) was fully EXECUTEd
+  on commit `d5070d8` (31/31 new tests, 214/214 full API suite, Gate: PASS) and is now SUPERSEDED —
+  its code was discarded (content replaced at the same file paths, not `git revert`; not deleted from
+  git history; the `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant, preserved
+  for a future ADM-008). The new model: a "Deal" is a `products` row with `is_deal = true`, described
+  by a new self-referential `deal_components` junction (member products + quantity), priced at its
+  own `base_price` — reusing the entire existing product → menu → cart → checkout → order_items
+  pipeline with zero new pricing/cart/order code. `phase-04-deals_PLAN_14-07-26.md` was rewritten in
+  full for this new model and carried a fresh Step 4 PVL pass (Gate: CONDITIONAL, 1 accepted
+  non-blocking concern) before EXECUTE. Delivered on top of the base 4a scope: **Enhancement E1**
+  (2-step create wizard, transactional `db.transaction()` create-with-components, commit `680427f`,
+  Gate: PASS) and, this session (16-07-26, uncommitted at session start — see below), a live
+  deal-manage "Price comparison" panel (commit `1ca08f7`) plus 3 PR-review fixes (staged, uncommitted
+  as of this pass): (1) wizard `step1Valid` now also requires a non-empty slug; (2) `PATCH
+  /api/admin/deals/:id` now serializes existing components instead of `[]`; (3) deal-detail price
+  formatting routed through the shared `formatPeso` helper. EVL evidence this session: admin
+  typecheck ✅, api typecheck ✅, API suite 222/222 ✅, admin 8/8 ✅, Prettier clean.
+Phase N EVL: green for the full delivered scope (4a base + E1 + this session's price-comparison
+  panel + PR-review fixes) — see `phase-04a-deals-as-products_REPORT_15-07-26.md` `## Test Gate
+  Outcomes` for the 4a-base evidence table; this session's 3-file diff was independently re-verified
+  (typecheck + full API/admin suites + format) as summarized above. AC12/AC-E6 (Agent-Probe UI
+  walkthroughs) were user-verified.
+Phase N report: `phase-04a-deals-as-products_REPORT_15-07-26.md` is the CURRENT, AUTHORITATIVE
+  EXECUTE report for Phase 4a. `phase-04-deals_REPORT_15-07-26.md` (the original file, dated the same
+  day) documents the now-discarded discount-model EXECUTE pass on commit `d5070d8` and is marked
+  SUPERSEDED at its own header — do not read it as current truth.
 Companion (non-executed) artifact: `deals-mobile-repoint_HANDOFF_15-07-26.md` — a standalone,
   plain-language handoff spec for a different (non-RIPER-aware) teammate to repoint the mobile Deals
-  tab onto the new `?isDeal=true` menu-read contract once Phase 4a ships. This is NOT part of this
+  tab onto the new `?isDeal=true` menu-read contract once Phase 4a ships (and, separately, once a
+  customer-facing deal-detail-with-components read route exists — the handoff doc's read-contract
+  section was corrected this pass to stop implying `deal_components` are exposed via the menu-list
+  response; they are not — see the phase plan's `## Public Contracts` note). This is NOT part of this
   program's own EXECUTE scope and is never routed through this program's phase loop.
-Next phase: Phase 4a — Deals-as-Products, Step 4 (PVL). Run vc-validate-agent fresh against the
-  rewritten `phase-04-deals_PLAN_14-07-26.md` — do not reuse the prior discount-model contract as
-  evidence for this pivot.
+Next phase: (a) merge the `feat/adm-004-deals` PR — no further RIPER work is pending on Phase 4a
+  itself; (b) once merged, move `phase-04-deals_PLAN_14-07-26.md` +
+  `phase-04a-deals-as-products_REPORT_15-07-26.md` (+ the now-superseded
+  `phase-04-deals_REPORT_15-07-26.md`, kept for history) into `completed/admin-dashboard_14-07-26/`
+  and stamp Phase 4a ✅ VERIFIED in the Phase Map/Ordering/Program Status tables below; (c) start
+  Phase 5 — Rewards CRUD (ADM-005), Step 1 RESEARCH.
 
 **Phase 3 closeout summary (15-07-26):** Full real vertical slice for the product catalog surface —
 `packages/api/src/routes/admin/{products,categories}.ts` (new), mounted on the existing append-only
@@ -600,8 +622,11 @@ TEST GATES (every phase exit; run all applicable):
 VALIDATE CONTRACT: Per-phase contracts written by vc-validate-agent into each phase plan before
 EXECUTE. None exist yet -- per-phase plan files are created in the next pass after this umbrella.
 
-START: Phase 0 (Scaffold), loop step PRE-PROGRAM. Per-phase plan files (phase-00 through phase-07)
-do not exist yet -- create them in a separate PLAN pass before spawning any RESEARCH subagent.
+START (updated 16-07-26): Phases 0-3 ✅ VERIFIED; Phase 4a (Deals-as-Products, ADM-004 RE-PLAN)
+EVL-green and delivered incl. Enhancement E1 + this session's price-comparison panel/PR-review
+fixes, but NOT YET MERGED -- branch `feat/adm-004-deals`, PR pending review. Do not archive Phase 4a
+to completed/ or stamp it VERIFIED in the Phase Map until the PR lands. Once merged: Phase 5
+(Rewards CRUD, ADM-005), loop step 1-RESEARCH.
 ```
 
 ---

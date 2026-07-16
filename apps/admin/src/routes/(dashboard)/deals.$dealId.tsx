@@ -95,8 +95,8 @@ function DealDetailPage() {
             <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
               <h1 className="font-display text-h2 font-bold text-primary">{deal.name}</h1>
               <p className="text-sm text-muted-foreground">
-                Slug <span className="font-mono">{deal.slug}</span> · Base price ₱
-                {(deal.basePriceCents / 100).toFixed(2)} · {deal.isActive ? 'Active' : 'Inactive'}
+                Slug <span className="font-mono">{deal.slug}</span> · Base price{' '}
+                {formatPeso(deal.basePriceCents)} · {deal.isActive ? 'Active' : 'Inactive'}
               </p>
 
               <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -170,9 +170,9 @@ function DealDetailPage() {
         title="Change base price"
         description={
           deal && priceValid
-            ? `Change “${deal.name}” base price from ₱${(deal.basePriceCents / 100).toFixed(
-                2,
-              )} to ₱${Number(priceInput).toFixed(2)}? Existing orders keep their original prices — only new orders use the new price.`
+            ? `Change “${deal.name}” base price from ${formatPeso(deal.basePriceCents)} to ${formatPeso(
+                Math.round(Number(priceInput) * 100),
+              )}? Existing orders keep their original prices — only new orders use the new price.`
             : ''
         }
         confirmLabel="Change price"

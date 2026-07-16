@@ -12,11 +12,13 @@ metadata:
 # Phase 4a — Deals-as-Products (ADM-004 RE-PLAN)
 
 **Date**: 15-07-26 (full re-plan — supersedes the 14-07-26 discount-shaped plan and its Gate: PASS
-validate-contract)
+validate-contract); updated 16-07-26 (UPDATE PROCESS doc reconciliation — see `## Post-E1 Addendum
+(16-07-26)` below)
 **Complexity**: COMPLEX (phase-program phase)
-**Status**: 🔨 RE-PLANNED — pivot from discount-object deals to deals-as-products; ready for VALIDATE
-(Step 4 PVL fresh run required — the prior contract validated a discarded model and does not carry
-forward)
+**Status**: EVL-green, delivered (base 4a + Enhancement E1 + the 16-07-26 deal-manage price-comparison
+addition + 3 PR-review fixes). **NOT YET MERGED** — branch `feat/adm-004-deals`, PR pending review.
+Kept in `active/` (not archived to `completed/`) until the PR lands — see `## Post-E1 Addendum
+(16-07-26)`.
 
 Depends on: Phase 2 (Branches CRUD, ✅ VERIFIED), Phase 3 (Products/Categories CRUD, ✅ VERIFIED —
 this phase is now built directly ON TOP of the products CRUD pattern, not beside it), and the
@@ -59,7 +61,7 @@ Build:
 3. **API** — `packages/api/src/routes/admin/deals.ts`, a dedicated admin Deals page's backing route
    (composes product-CRUD-equivalent semantics for `is_deal=true` products + `deal_components`
    attach/detach), mounted on the existing append-only `/api/admin` aggregator.
-4. **4 filter-site changes** — every place products are queried gets an explicit `is_deal` decision
+4. **5 filter-site decisions** — every place products are queried gets an explicit `is_deal` decision
    (see `## The 4 is_deal Filter Sites`).
 5. **Admin UI** — a new `features/deals/**` + 3 TanStack Start routes, following the products
    pattern (Outlet layout split from the start), reusing the 5 shared composites Phase 3/4-discarded
@@ -122,7 +124,7 @@ discarded plan's D3 FK-pre-check pattern) — no additional query cost.
 **Rejected:** a DB `CHECK` constraint — Postgres `CHECK` cannot reference another row's `is_deal`
 value, so this must be app-layer regardless.
 
-### Decision 4 — Filtering at all 4 sites (see full detail below)
+### Decision 4 — Filtering at all 5 sites: THREE modified, TWO verified no-change (see full detail below)
 
 `branches.ts` menu query excludes deals by default and gains an `?isDeal=true` param on the SAME
 route (no new endpoint) to serve the mobile Deals tab; `admin/products.ts` list defaults to
@@ -180,7 +182,11 @@ called out in both this plan and the 4b handoff doc).
 
 ---
 
-## The 4 `is_deal` Filter Sites (enumerate individually — do not batch)
+## The 5 `is_deal` Filter Sites (enumerate individually — do not batch)
+
+Of the 5 sites below, THREE were actually modified ((a), (b), (c) — (a) and (b) are the same file/
+route, a where-clause add plus a query-param flip) and TWO were verified to need NO change ((d), (e)
+— confirmed correct-by-design, not overlooked; see AC10/AC11 tests).
 
 | # | File:lines | Current behavior | Required change | Reason |
 |---|---|---|---|---|
@@ -304,8 +310,14 @@ Money (`basePriceCents`) is integer cents in every request/response body — con
 **Menu read contract (filter sites a/b, consumed by 4b):**
 `GET /branches/:id/menu` (existing route, unchanged shape) gains `?isDeal=true` — when present,
 returns deal-products (`is_deal = true`) instead of regular catalog products, in the SAME
-`MenuResponse` envelope. See the 4b handoff doc for the exact response shape example including how
-`deal_components` are surfaced for the "what's inside" display.
+`MenuResponse` envelope. **Correction (16-07-26 UPDATE PROCESS pass):** this menu-list response does
+NOT carry `deal_components` — components are populated ONLY on a per-deal detail request
+(`GET /api/admin/deals/:id` on the admin side, via `serializeAdminDealProduct(product, components)`);
+there is currently no customer-facing detail-with-components read route. The 4b handoff doc's own
+§4 already states this correctly (a customer-facing detail route with a `components` array does not
+yet exist and must be requested from the API team) — this plan's prior text incorrectly implied the
+menu-list response itself surfaces `deal_components`; it does not. Any future customer-facing "what's
+inside" UI needs its own detail-request contract, not a menu-list field.
 
 ---
 
@@ -638,8 +650,12 @@ own EXECUTE scope.
 - [x] 5. EXECUTE (15-07-26 — all 14 checklist items complete; 28-test deals-as-products suite green;
   full API suite 211/211, 0 regressions; API + admin + types typecheck clean; format clean for all
   touched files; see `## Deviations` below and the co-located REPORT)
-- [ ] 6. EVL
-- [ ] 7. UPDATE-PROCESS
+- [x] 6. EVL (independently re-confirmed 15-07-26 per the co-located `phase-04a-deals-as-products_
+  REPORT_15-07-26.md`: 28/28 deals suite, 211/211 full API suite, all typechecks/format/lint clean;
+  AC12 admin-UI walkthrough user-verified)
+- [x] 7. UPDATE-PROCESS (this pass, 16-07-26 — doc/context reconciliation only; plan STAYS in
+  `active/` — NOT archived to `completed/` — because branch `feat/adm-004-deals` is not yet merged;
+  see `## Post-E1 Addendum (16-07-26)` below)
 
 **Enhancement E1 loop (2-step create dialog + transactional create-with-components, added
 15-07-26 PLAN-SUPPLEMENT — see `## Enhancement E1` below):**
@@ -648,15 +664,17 @@ own EXECUTE scope.
 - [x] E1-5. EXECUTE (15-07-26 — transactional create-with-components + 2-step wizard shipped;
   admin-deals suite 39/39 green (28 base + 11 new E1 across AC-E1..E5); full API suite 222/222,
   0 regressions; deal-savings unit test 7 cases green; API + admin typecheck clean; touched files
-  format-clean + lint-clean. AC-E6 wizard UI walkthrough is Agent-Probe, owed at EVL. See
-  `## Deviations (E1)` below.)
-- [ ] E1-6. EVL
-- [ ] E1-7. UPDATE-PROCESS
+  format-clean + lint-clean. AC-E6 wizard UI walkthrough is Agent-Probe. See `## Deviations (E1)`
+  below — the wizard's price input ended up on Step 2, not Step 1 as originally specced.)
+- [x] E1-6. EVL (AC-E6 user-verified; commit `680427f` landed; full gate table green per the
+  Post-E1 Addendum below)
+- [x] E1-7. UPDATE-PROCESS (folded into this same 16-07-26 pass — see `## Post-E1 Addendum
+  (16-07-26)`)
 
-Note: 4a's own Steps 6 (EVL) and 7 (UPDATE-PROCESS) are independent of the E1 loop — 4a can be
-EVL'd/archived on its own shipped scope, or the orchestrator may choose to fold E1 into the same
-UPDATE-PROCESS pass once E1 also reaches EXECUTE. Either sequencing is valid; do not block one on
-the other.
+Note: 4a's Steps 6-7 and the E1 loop's Steps 6-7 are both closed out together in this one
+16-07-26 UPDATE PROCESS pass, alongside the post-E1 deal-manage price-comparison addition and 3
+PR-review fixes (session work, uncommitted at pass start — see the Addendum below). Archival to
+`completed/` is deferred until the PR merges (branch `feat/adm-004-deals`).
 
 ## Deviations (EXECUTE, 15-07-26 — all within-blast-radius)
 
@@ -680,37 +698,98 @@ Migration 0007 stayed strictly additive (`NOT NULL DEFAULT false` column + new e
 backfill), so the VALIDATE-accepted CONDITIONAL (schema-migration risk class without a full
 5-artifact risk-evidence-pack, mitigated by the hard AC9 test) holds unchanged — no risk pack built.
 
+## Deviations (E1 EXECUTE, 15-07-26)
+
+1. **Deal price input moved from Step 1 to Step 2 of the create wizard.** The E1 UI Spec above
+   (written at PLAN-SUPPLEMENT time) put "Deal price" in Step 1 — Details, alongside Name/Slug/
+   Description. The shipped wizard (`deal-create-wizard.tsx`) moved price INTO Step 2 — Items &
+   Pricing instead, laid out as a 2-column view: item picker + quantity/price rows on the left, a
+   sticky live savings/price-comparison calculation on the right. Rationale (not captured in-plan
+   before EXECUTE): the savings panel's whole point is to compare the deal price against the
+   à-la-carte total of the selected items, so co-locating price entry with the items list makes the
+   live "saves ₱X / costs ₱X more" feedback immediate as the admin types, instead of requiring a
+   back-navigation to Step 1 to see the effect of a price change. Step 1 now covers Name/Slug/
+   Description only. `step1Valid` was correspondingly redefined as name-only at first (later
+   corrected — see the Post-E1 Addendum below). All of AC-E6's described behaviors (nav, gating,
+   savings math, warning flip, empty state, thumbnail fallback) hold under the revised layout; this
+   is a within-blast-radius UI deviation, not a scope change.
+
+---
+
+## Post-E1 Addendum (16-07-26) — Deal-Manage Price Comparison + PR-Review Fixes
+
+Session work performed AFTER E1 shipped (commit `680427f`), on the SAME `feat/adm-004-deals` branch,
+folded into this same 16-07-26 UPDATE PROCESS pass rather than opened as a separate plan (small,
+in-blast-radius UI/serializer additions, no new touchpoint category):
+
+1. **Live "Price comparison" panel on the deal-manage page** (`apps/admin/src/routes/(dashboard)/
+   deals.$dealId.tsx`, commit `1ca08f7`) — mirrors the E1 wizard's savings panel on the EXISTING
+   deal detail/edit screen: a per-item price breakdown (`Nx name @ unit … line total`), an
+   à-la-carte total, the deal price, and a saves/costs-more line. Cross-references
+   `deal.components` against `useAdminProducts()` for unit prices; reuses `computeDealSavings`
+   (the E1 `deal-savings.ts` util) rather than reimplementing the math. Follows the PENDING price
+   input live when the admin is mid-edit ("not saved until confirm"), falling back to the saved
+   `basePriceCents` otherwise; recomputes automatically as components are attached/detached.
+2. **PR-review fix 1 — wizard slug gate.** `deal-create-wizard.tsx`'s `step1Valid` now requires
+   `slug.trim().length > 0` in addition to `name.trim().length > 0` (previously name-only — see the
+   `## Deviations (E1 EXECUTE, 15-07-26)` note above, which flagged this as "later corrected"). Since
+   Slug auto-derives from Name, this mostly closes the edge case where an admin hand-clears the
+   auto-derived slug before advancing to Step 2.
+3. **PR-review fix 2 — PATCH response now returns real components.** `PATCH /api/admin/deals/:id`
+   (`packages/api/src/routes/admin/deals.ts`) previously returned `serializeAdminDealProduct(updated)`
+   with no `components` argument, always yielding `components: []` on update responses even when the
+   deal had attached components. Fixed to `fetchComponents(id)` + pass the result through, matching
+   the `GET /:id` handler's existing behavior.
+4. **PR-review fix 3 — shared money formatting.** `deals.$dealId.tsx`'s two inline
+   `₱${(x / 100).toFixed(2)}` call sites (the header price display and the change-price confirm
+   dialog's before/after copy) were routed through the shared `formatPeso` helper instead, matching
+   the convention already used elsewhere in `apps/admin`.
+
+**EVL evidence (this session, 16-07-26):** `pnpm --filter @jojopotato/admin typecheck` ✅,
+`pnpm --filter @jojopotato/api typecheck` ✅, `pnpm --filter @jojopotato/api test` 222/222 ✅,
+`pnpm --filter @jojopotato/admin test` 8/8 ✅, `pnpm format:check` clean on all 3 touched files
+(`deal-create-wizard.tsx`, `deals.$dealId.tsx`, `admin/deals.ts`).
+
+**State at UPDATE PROCESS time:** item 1 (price comparison panel) is COMMITTED (`1ca08f7`). Items
+2-4 (the 3 PR-review fixes) are STAGED but uncommitted — the user commits them manually after this
+UPDATE PROCESS pass. Branch `feat/adm-004-deals` overall: NOT YET MERGED, PR pending review.
+
+**Deferred hardening (backlog notes filed this pass, not implemented):**
+- `deal_components` has no DB `CHECK` constraint for `quantity > 0` or
+  `deal_product_id <> component_product_id` — both are already enforced app-layer (Decision 3); a DB
+  `CHECK` would require a NEW migration (0007 is already applied and cannot be mutated in place). See
+  `process/features/admin-dashboard/backlog/adm-004-deal-components-check-constraints-deferred_NOTE_16-07-26.md`.
+- No partial index on `products.is_deal` for the menu/admin filter queries — deferred as premature
+  until a real query-performance problem appears at scale. See
+  `process/features/admin-dashboard/backlog/adm-004-is-deal-partial-index-deferred_NOTE_16-07-26.md`.
+- The malformed-`components[]`-payload status-code question (400 vs 422) remains OPEN — currently
+  400, matching the existing codebase convention elsewhere; leaning toward leaving it as-is. Not
+  filed as a backlog note (not a defect, a style preference still under consideration).
+
 ---
 
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:**
    `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-04-deals_PLAN_14-07-26.md`
-2. **Last completed phase or step:** Step 3 — RE-PLAN (15-07-26). Ready for Step 4 (PVL) — a fresh
-   validate-contract run is required; the prior 15-07-26 PASS contract validated the now-discarded
-   discount-shaped model and does not carry forward to this rewrite.
-3. **Validate-contract status:** written 15-07-26, Gate: CONDITIONAL (0 FAILs, 1 accepted
-   non-blocking CONCERN, `generated-by: inner-pvl: phase-4`) — see `## Validate Contract` below.
-   EXECUTE is authorized to proceed on this contract.
-4. **Supporting context files loaded:**
-   - `process/features/admin-dashboard/active/admin-dashboard_14-07-26/admin-dashboard_UMBRELLA_PLAN_14-07-26.md`
-   - `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-03-products_PLAN_14-07-26.md` (CRUD-shape template)
-   - Prior (superseded) `phase-04-deals_PLAN_14-07-26.md` content + `phase-04-deals_REPORT_15-07-26.md` (discarded model, EXECUTEd on commit `d5070d8`)
-   - `packages/api/src/db/schema/products.ts`, `deals.ts`, `deal_products.ts`, `deal_branches.ts`, `coupons.ts` (full)
-   - `packages/api/src/routes/branches.ts:90-120` (menu query), `admin/products.ts` (GET list + imports), `admin/index.ts` (full), `admin/lib/errors.ts` (full), `orders.ts:100-130` (placement), `staff.ts:330-360` (availability)
-   - `packages/api/drizzle/` directory listing (confirmed next migration slot is 0007)
-   - Companion doc: `deals-mobile-repoint_HANDOFF_15-07-26.md`
-5. **Next step for a fresh agent picking up mid-execution:** run vc-context-discovery +
-   vc-plan-discovery, confirm this plan's Phase Loop Progress shows Step 4 (PVL) as the last checked
-   box (Gate: CONDITIONAL, 15-07-26), then proceed to Step 5 (EXECUTE) — spawn vc-execute-agent
-   against THIS plan file, following the Test Gates table in `## Validate Contract` below and the
-   Implementation Checklist in order. Do not reuse the prior discount-model Gate: PASS contract as
-   evidence for this rewrite.
-6. **Enhancement E1 (added 15-07-26, PLAN-SUPPLEMENT — see `## Enhancement E1` above 4a's shipped
-   scope was frozen):** E1 is at Step E1-3 (PLAN-SUPPLEMENT complete). Next step: spawn
-   vc-validate-agent for a FRESH E1-scoped PVL pass (Step E1-4) — do not reuse 4a's CONDITIONAL
-   contract. Once E1 reaches `Gate: PASS` or an accepted CONDITIONAL, proceed to Step E1-5
-   (EXECUTE) against the `## Enhancement E1` section's Touchpoints/Implementation content.
+2. **Last completed phase or step:** ALL steps complete for both the base 4a loop (Steps 1-7) and the
+   E1 loop (Steps E1-3 through E1-7), plus the Post-E1 Addendum above (16-07-26). This plan is
+   EVL-green and delivered in full.
+3. **Validate-contract status:** base 4a — Gate: CONDITIONAL (0 FAILs, 1 accepted non-blocking
+   CONCERN, `generated-by: inner-pvl: phase-4`), see `## Validate Contract` below. E1 — Gate: PASS
+   (0 FAILs, 0 CONCERNs), see `### Validate Contract (E1)`. The Post-E1 Addendum's 4 small changes
+   were treated as within-blast-radius of E1's already-validated scope (UI polish + a serializer
+   completeness fix) and were not re-run through a fresh PVL pass — EVL evidence (typecheck + full
+   suites + format, listed above) is the verification gate used instead.
+4. **Merge status (the actual blocker to archival):** branch `feat/adm-004-deals`, PR open, pending
+   review. This plan file stays in `active/` — do NOT move it to `completed/` — until the PR merges.
+5. **Next step once merged:** move this plan file + `phase-04a-deals-as-products_REPORT_15-07-26.md`
+   (+ the superseded `phase-04-deals_REPORT_15-07-26.md`, kept for history) to
+   `process/features/admin-dashboard/completed/admin-dashboard_14-07-26/`; stamp Phase 4a
+   ✅ VERIFIED in the umbrella plan's Phase Map/Ordering/Program Status tables; start Phase 5
+   (Rewards CRUD, ADM-005) at Step 1 RESEARCH. Companion doc `deals-mobile-repoint_HANDOFF_
+   15-07-26.md` remains a separate, non-executed handoff for a different (mobile) workstream and is
+   unaffected by this phase's archival.
 
 ---
 

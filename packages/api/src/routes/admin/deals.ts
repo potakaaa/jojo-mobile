@@ -331,7 +331,8 @@ adminDealsRouter.patch('/:id', async (req, res) => {
       throw new AdminApiError(404, 'Deal not found');
     }
 
-    res.json({ deal: serializeAdminDealProduct(updated) });
+    const components = await fetchComponents(id);
+    res.json({ deal: serializeAdminDealProduct(updated, components) });
   } catch (err) {
     handleAdminError(err, res, 'updating deal');
   }

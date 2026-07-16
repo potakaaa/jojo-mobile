@@ -59,7 +59,81 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 15-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 16-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard Deals-as-Products (`apps/admin` + `packages/api`, Phase 4a — ADM-004 RE-PLAN,
+  delivered 15/16-07-26, branch `feat/adm-004-deals`, EVL-green — NOT YET MERGED, PR pending review):**
+  Phase 4 was PIVOTED mid-program. The original discount-object deals model (a standalone `deals`
+  table + `deal_products`/`deal_branches` junctions + a coupon-cascade deactivate flow) was fully
+  EXECUTEd on commit `d5070d8` (31/31 tests, 214/214 full suite, Gate: PASS) and is now **SUPERSEDED
+  and discarded** — its code was replaced at the same file paths (not `git revert`), preserved only
+  in git history; the `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant,
+  untouched, reserved for a future ADM-008 (Promotion→Offer→Coupon). The new model: a "Deal" is a
+  `products` row with `is_deal = true`, described by a new self-referential `deal_components`
+  junction table (`deal_product_id`/`component_product_id` → `products.id`, `quantity`, unique on the
+  pair) — this is the FIRST self-referential FK in the schema. A deal is priced at its own
+  `base_price` exactly like any product; `deal_components` is display/composition metadata only,
+  never read by pricing/cart/checkout — this reuses the entire existing product → menu → cart →
+  checkout → order_items pipeline with zero new pricing/cart/order code (the single biggest scope
+  reduction versus the discarded model). Migration `0007_fearless_crystal.sql` (additive-only: new
+  `is_deal` column defaulting `false` + new empty table, zero backfill). `packages/api/src/routes/
+  admin/deals.ts` was fully rewritten (same file path) as a sibling of `admin/products.ts` — full CRUD
+  (`GET`/`GET :id`/`POST`/`PATCH`) plus `POST/DELETE .../:id/components` attach/detach (app-layer
+  self-reference and deal-of-deals guards — Postgres `CHECK` cannot express a cross-row rule, so both
+  guards live in the Zod/handler layer). `categoryId` is server-pinned on create to an idempotently
+  resolved "Deals" category (route-side find-or-create by reserved slug, since `products.category_id`
+  is `NOT NULL` and the integration suite is hermetic — a seed-only approach would 500 on the missing
+  FK in a fresh DB). **THREE filter sites were actually modified** (menu query `branches.ts` gains
+  `eq(products.is_deal, false)` by default + a `?isDeal=true` flip serving the deals tab on the SAME
+  route — no new endpoint; `admin/products.ts` list defaults to excluding deals with an `?isDeal=`
+  override) — **TWO more sites were explicitly verified to need NO change** (`orders.ts` placement and
+  `staff.ts` availability are deliberately `is_deal`-blind: a deal-product must be orderable and
+  branch-availability-toggleable through the exact same path as any other product). **AC9 (snapshot
+  integrity, HARD, Known-Gap banned) is proven by a real passing regression test** mirroring P3's AC1
+  pattern exactly, against an `is_deal=true` product — editing a deal-product's `base_price` after an
+  order containing it has been placed never mutates that order's `order_items.unit_price`/
+  `total_price`. `apps/admin` gained a rewritten `features/deals/**` (deleted the discount-shaped
+  `junction-chip-editor.tsx`/`deactivate-deal-dialog.tsx`, added a quantity-aware component chip
+  editor) reusing all 5 existing shared composites (data-table, form-dialog, confirm-dialog,
+  query-states, page-header) — no new composite needed. Public `GET /deals`/`GET /deals/:id` (the old
+  discount-model read routes) are left dormant and untouched — the mobile Deals tab keeps reading them
+  in the interim, a documented, non-regressing known gap, until a separate mobile workstream executes
+  the standalone handoff spec `deals-mobile-repoint_HANDOFF_15-07-26.md`. 28-test
+  `admin-deals.integration.test.ts` (AC1-AC11) replaced the old 31-test discount suite at the same
+  path; full API suite 211/211, 0 regressions.
+  **Enhancement E1 (2-step create wizard + atomic create-with-components, delivered 15-07-26, commit
+  `680427f`):** `POST /api/admin/deals` gained an OPTIONAL `components[]` array wrapped in a single
+  `db.transaction()` — the deal product and its component rows are created atomically (first
+  transactional write in this admin-CRUD family). `deal-create-wizard.tsx` replaced the old
+  single-step form dialog with a 2-step wizard (Step 1 Details, Step 2 Items & Pricing — price input
+  moved to Step 2, a 2-column sticky layout showing a live per-item price breakdown and savings via a
+  new `deal-savings.ts` util). `FormDialog` gained a `size` prop (additive) to accommodate the wider
+  wizard. 11 new tests (AC-E1..E5) + 7 `deal-savings` unit cases, all green; full API suite 222/222.
+  AC-E6 (wizard UI walkthrough) was user-verified.
+  **This session (16-07-26, uncommitted at session start, staged/ready to commit — NOT part of the
+  16-07-26 UPDATE PROCESS delta itself, ground-truth only):** a live "Price comparison" panel was
+  added to the deal-manage page (`deals.$dealId.tsx`, commit `1ca08f7`) mirroring the wizard's savings
+  panel — per-item price breakdown, à-la-carte total, deal price, and saves/costs-more line; follows
+  the pending price input live (falls back to the saved base price), recomputes on component
+  attach/detach. Plus 3 PR-review fixes (staged, uncommitted as of this UPDATE PROCESS pass):
+  (1) the wizard's `step1Valid` now also requires a non-empty `slug`, not just `name`; (2)
+  `PATCH /api/admin/deals/:id` now serializes the deal's EXISTING components in its response instead
+  of an empty array; (3) deal-detail price formatting was routed through the shared `formatPeso`
+  helper instead of inline `.toFixed(2)` math. EVL evidence (this session): admin typecheck ✅, api
+  typecheck ✅, API suite 222/222 ✅, admin 8/8 ✅, Prettier clean on the 3 touched files.
+  **Known gaps carried forward, each with a backlog note filed this UPDATE PROCESS pass:** (a)
+  `deal_components` has no DB `CHECK` constraint for `quantity > 0` or
+  `deal_product_id <> component_product_id` (app-layer already enforces both; a `CHECK` needs a NEW
+  migration since 0007 is already applied — deferred, not urgent); (b) no partial index on
+  `products.is_deal` for the menu/admin filter queries (deferred as premature until a real scale
+  problem appears). The malformed-`components[]`-payload 400-vs-422 status-code question remains open
+  (currently 400, matching existing codebase convention — leaning toward leaving it as-is).
+  **Branch state: `feat/adm-004-deals`, NOT merged — a PR is pending review.** Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-04-deals_PLAN_14-07-26.md`
+  (RE-PLANNED in full for the pivot) + co-located
+  `phase-04a-deals-as-products_REPORT_15-07-26.md` (the current, authoritative EXECUTE report — the
+  original `phase-04-deals_REPORT_15-07-26.md` documents the now-discarded discount-model EXECUTE
+  pass and is marked SUPERSEDED, not authoritative).
 
 - **Admin dashboard Products/Categories CRUD (`apps/admin` + `packages/api`, Phase 3 — Products/
   Categories CRUD ADM-003, delivered 15-07-26, ✅ VERIFIED — code-complete, automated-verified, AND
@@ -605,13 +679,14 @@ Scanned against the canonical Context Group Detection Table
 - `admin-dashboard` feature established (Phase 0 — Scaffold delivered 14-07-26; Phase 1 — Auth/RBAC
   delivered 14-07-26, ✅ VERIFIED; Phase 2 — Branches CRUD delivered 14-07-26, ✅ VERIFIED;
   Sidebar Navigation cross-cutting task delivered 15-07-26, ✅ COMPLETE; Phase 3 — Products/
-  Categories CRUD delivered 15-07-26, ✅ VERIFIED).
+  Categories CRUD delivered 15-07-26, ✅ VERIFIED; Phase 4a — Deals-as-Products (ADM-004 RE-PLAN)
+  delivered 15/16-07-26, EVL-green, on branch `feat/adm-004-deals`, PR pending review/merge).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
-  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; 3 backlog notes
-  filed post-Phase-2 remain, no new backlog note was needed for Phase 3 — AC8 was actually
-  performed, not left owed). This is an 8-phase program (P0 scaffold through P7 analytics,
-  ADM-001..007) — see the umbrella plan's `## Current Execution State` for the current phase
-  (Phase 4 — Deals CRUD, ADM-004, next).
+  (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; 3 Phase-2 backlog
+  notes remain, plus 2 new Phase-4a backlog notes filed this pass — see Deferred Hardening bullet
+  above). This is an 8-phase program (P0 scaffold through P7 analytics, ADM-001..007) — see the
+  umbrella plan's `## Current Execution State` for the current phase (Phase 4a delivered; Phase 5 —
+  Rewards CRUD, ADM-005, next, once Phase 4a merges).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -630,7 +705,7 @@ crossed — it will create the matching group automatically.
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
 | new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
-| admin dashboard work (Phase 4-7, ADM-004..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the 3 Phase-2 backlog notes under `backlog/` (AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction deferred — the extraction re-eval trigger is now live: Phase 3 built the first 3 composites, Phase 4's deal junction-table UI is the next `data-table`/`form-dialog` re-eval point) |
+| admin dashboard work (Phase 5-7, ADM-005..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase, then the named phase plan file, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 new Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred) |
 
 ## Context Group Lifecycle
 
@@ -861,16 +936,25 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-15 (admin-dashboard Phase 3 UPDATE PROCESS — Products/Categories CRUD
+- Last delta: 2026-07-16 (admin-dashboard Phase 4a UPDATE PROCESS — Deals-as-Products ADM-004
+  RE-PLAN, EVL-green: pivoted from a discarded discount-object deals model (commit `d5070d8`,
+  superseded) to `products.is_deal` + a new self-referential `deal_components` junction, reusing the
+  entire product→menu→cart→checkout pipeline with zero new pricing code; AC9 snapshot-integrity real
+  passing regression test (Known-Gap never used); THREE filter sites actually modified, TWO
+  explicitly verified as correctly unchanged; Enhancement E1 (transactional create-with-components +
+  2-step wizard) + this session's deal-manage price-comparison panel + 3 PR-review fixes layered on
+  top; branch `feat/adm-004-deals` NOT YET MERGED, PR pending review — do not treat Phase 4a as
+  archived to `completed/` until the PR lands)
+- Previous delta: 2026-07-15 (admin-dashboard Phase 3 UPDATE PROCESS — Products/Categories CRUD
   ✅ VERIFIED: full real vertical slice, third confirmed consumer of the append-only admin
   aggregator pattern, AC1 snapshot-integrity real passing regression test (Known-Gap never used),
   AC8 Agent-Probe walkthrough actually performed — found + fixed a real TanStack Start
   nested-detail-route `<Outlet/>` gotcha (durable, affects P4-P7), first 3 shared composites
   extracted (query-states/confirm-dialog/page-header), `data-table`/`form-dialog` extraction
   re-eval trigger now live for Phase 4)
-- Previous delta: 2026-07-15 (admin-dashboard Sidebar Nav UPDATE PROCESS — cross-cutting sidebar navigation ✅ COMPLETE: nav-config.ts + AppSidebar + NavUser + shadcn sidebar/sheet/tooltip/separator/skeleton primitives; (dashboard)/route.tsx wrapped with SidebarProvider; old shell stripped from index.tsx; plan+report archived to completed/admin-dashboard_14-07-26/)
-- Prior delta: 2026-07-14 (admin-dashboard Phase 2 UPDATE PROCESS — Branches CRUD ✅ VERIFIED: full real vertical slice, second confirmed consumer of the append-only admin aggregator pattern, drizzle `err.cause.code` unique-violation gotcha, 3 backlog notes filed for AC7/is_accepting_pickup/shared-composite-deferral)
-- HEAD at last delta: branch `feat/adm-003-products`, commits `b238d03` (ADM-003 products & categories
-  CRUD) + `79df222` (products-detail `<Outlet/>` fix) — both landed, working tree clean at UPDATE
-  PROCESS time
+- Prior delta: 2026-07-15 (admin-dashboard Sidebar Nav UPDATE PROCESS — cross-cutting sidebar navigation ✅ COMPLETE: nav-config.ts + AppSidebar + NavUser + shadcn sidebar/sheet/tooltip/separator/skeleton primitives; (dashboard)/route.tsx wrapped with SidebarProvider; old shell stripped from index.tsx; plan+report archived to completed/admin-dashboard_14-07-26/)
+- HEAD at last delta: branch `feat/adm-004-deals` (NOT merged, PR pending review), commits
+  `1ca08f7` (deal-manage live price comparison) / `680427f` (E1 2-step wizard + transactional create)
+  / `66f5536` (ADM-004 deals-as-products pivot) on top of `bfdc7b6` (merged ADM-003 PR #85); 3 files
+  staged uncommitted at UPDATE PROCESS time (PR-review fixes — user commits manually after this pass)
 - Package manager: pnpm 10.33.0 (workspaces: `apps/*`, `packages/*`)

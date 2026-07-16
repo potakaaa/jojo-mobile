@@ -71,7 +71,7 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
   const php = Number(price);
   const priceValid = price.trim().length > 0 && Number.isFinite(php) && php >= 0;
   const dealPriceCents = priceValid ? Math.round(php * 100) : 0;
-  const step1Valid = name.trim().length > 0;
+  const step1Valid = name.trim().length > 0 && slug.trim().length > 0;
 
   const addedIds = new Set(items.map((i) => i.productId));
   const candidates = (productsQuery.data ?? []).filter((p) => !addedIds.has(p.id));
