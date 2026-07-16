@@ -1,17 +1,16 @@
+import type { RewardsSummary } from '@jojopotato/types';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
-import { getRewardsBalance, type RewardsBalance } from '@/lib/api-client';
+import { fetchRewardsSummary } from '../lib/rewards-api';
 
 /**
- * Star balance + reward-progress summary for the signed-in customer, backed by
- * the session-gated `GET /rewards/balance` (Phase 1). Home is always rendered
- * behind auth, so the query is always enabled. Refetches on window focus so a
- * balance change (e.g. after redeeming) is reflected without a restart.
+ * The caller's star summary (`GET /rewards/summary`). Refetches on window focus
+ * (global default in `query-client.ts`) so the screen reflects a server-side
+ * star credit without an app restart (AC5).
  */
-export function useRewardsSummary(): UseQueryResult<RewardsBalance> {
+export function useRewardsSummary(): UseQueryResult<RewardsSummary> {
   return useQuery({
-    queryKey: ['rewards', 'balance'],
-    queryFn: getRewardsBalance,
-    refetchOnWindowFocus: true,
+    queryKey: ['rewards', 'summary'],
+    queryFn: fetchRewardsSummary,
   });
 }

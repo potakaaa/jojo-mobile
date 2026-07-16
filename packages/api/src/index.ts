@@ -16,6 +16,7 @@ import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
+import { requireSession } from './middleware/require-session';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { couponsRouter } from './routes/coupons';
@@ -211,14 +212,15 @@ app.get('/api/branches/:id', async (req, res) => {
 app.use('/branches', branchesRouter);
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
-// Rewards routes: GET /rewards is a public catalog; /rewards/balance and
-// /rewards/:id/redeem are session-gated per-route inside the router (mirrors
-// /orders — never mount-level guarded).
-app.use('/rewards', rewardsRouter);
-// Coupons routes: GET /coupons (wallet list) and POST /coupons/:id/redeem are
-// session-gated per-route inside the router (mirrors /orders and /rewards —
-// customer-tier route, no /api prefix, never mount-level guarded).
-app.use('/coupons', couponsRouter);
+
+// Rewards routes (STAR-002) — read-only, session-gated ONCE at mount. Every
+// handler in rewardsRouter assumes `req.user!.id` (the server-owned session user).
+app.use('/rewards', requireSession, rewardsRouter);
+
+// Coupon routes (STAR-004) — session-gated ONCE at mount. Every handler in
+// couponsRouter assumes `req.user!.id`. `POST /coupons/apply` is zero-mutation
+// (preview only); coupon consumption happens exclusively in POST /orders.
+app.use('/coupons', requireSession, couponsRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.

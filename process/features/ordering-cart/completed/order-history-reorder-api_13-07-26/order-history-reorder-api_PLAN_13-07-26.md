@@ -556,4 +556,3 @@ Next phase: EXECUTE — Section A (pure logic + vitest, TDD red-first) → B (ho
 Validate contract: inline in plan (## Validate Contract, Gate: CONDITIONAL, generated-by: outer-pvl)
 Execute start: fully-auto: pnpm --filter @jojopotato/utils test + pnpm typecheck + pnpm lint + raw-token check | agent-probe: AC1-AC15 screen walkthrough (incl. all-unavailable reorder empty-cart notice) | high-risk pack: no
 ```
-

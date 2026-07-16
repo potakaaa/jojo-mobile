@@ -107,6 +107,9 @@ export interface AdminProduct {
   basePriceCents: number;
   isActive: boolean;
   isRewardEligible: boolean;
+  // ADM-004 deals-as-products: true for a deal-product (surfaced by the dedicated
+  // Deals admin screen), false for a regular catalog product. Additive.
+  isDeal: boolean;
 }
 
 export interface AdminProductOption {
@@ -147,6 +150,7 @@ export function serializeAdminProduct(product: ProductRow): AdminProduct {
     basePriceCents: numericToCents(product.base_price),
     isActive: product.is_active,
     isRewardEligible: product.is_reward_eligible,
+    isDeal: product.is_deal,
   };
 }
 
@@ -464,6 +468,45 @@ export function serializeDeal(
     eligibleBranchIds,
     // `code` has no column in the `deals` schema (cart apply-by-code = Phase 3).
   };
+}
+
+// ─── Admin deal-product serializer (ADM-004 deals-as-products) ───────────────
+//
+// A "deal" is a `products` row with `is_deal = true`, so the admin deal shape is
+// the SAME as `AdminProduct` (reusing `serializeAdminProduct` verbatim — DRY)
+// plus a `components` array describing "what's inside" (the `deal_components`
+// junction, resolved with each component product's display name). Declared
+// LOCALLY here matching the `AdminBranch`/`AdminProduct` convention.
+//
+// `components` is populated only on the DETAIL response (it needs a junction
+// join); the list route passes `[]` to avoid N+1 joins. NB: the discount-shaped
+// `AdminDeal`/`AdminDealExtras`/`serializeAdminDeal` that lived here (ADM-004
+// discount model, commit d5070d8) were DISCARDED by the deals-as-products pivot —
+// their only consumer was the now-rewritten `admin/deals.ts`. The PUBLIC
+// `ApiDeal`/`serializeDeal` above are KEPT (dormant, still consumed by the live
+// `routes/deals.ts` read routes).
+
+export interface AdminDealComponent {
+  componentProductId: string;
+  componentName: string;
+  quantity: number;
+}
+
+export interface AdminDealProduct extends AdminProduct {
+  components: AdminDealComponent[];
+}
+
+/**
+ * Serialize a deal-product (`products` row with `is_deal = true`) to the admin
+ * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
+ * and appends the resolved `components` list (fetched by the route handler; `[]`
+ * on the list route to avoid per-row junction joins).
+ */
+export function serializeAdminDealProduct(
+  product: ProductRow,
+  components: AdminDealComponent[] = [],
+): AdminDealProduct {
+  return { ...serializeAdminProduct(product), components };
 }
 
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────

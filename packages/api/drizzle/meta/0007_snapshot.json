@@ -1,5 +1,5 @@
 {
-  "id": "9666ea83-f1d3-4afc-b910-d69c99ff1dfc",
+  "id": "4f81ff30-7caa-4c36-8bd4-5b199ace3638",
   "prevId": "64e55a9b-dda8-438d-ad4f-eb30763f86bb",
   "version": "7",
   "dialect": "postgresql",
@@ -1335,12 +1335,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "coupon_id": {
-          "name": "coupon_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "order_number": {
           "name": "order_number",
           "type": "varchar",
@@ -1517,15 +1511,6 @@
           "tableFrom": "orders",
           "tableTo": "deals",
           "columnsFrom": ["deal_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "orders_coupon_id_coupons_id_fk": {
-          "name": "orders_coupon_id_coupons_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "coupons",
-          "columnsFrom": ["coupon_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1757,6 +1742,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "star_transactions_order_type_unique": {
+          "name": "star_transactions_order_type_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"star_transactions\".\"order_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

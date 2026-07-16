@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "coupons_user_reward_unique" ON "coupons" USING btree ("user_id","reward_id") WHERE "coupons"."reward_id" IS NOT NULL;

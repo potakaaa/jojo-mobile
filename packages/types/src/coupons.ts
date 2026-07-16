@@ -1,38 +1,40 @@
-/**
- * Coupon domain shapes.
- *
- * `Coupon` mirrors the DB `coupons` table exactly (an issued coupon owned by a
- * user, linked to the deal or reward that created it). `title`/`discountLabel`
- * have NO DB column — they are display-only strings derived from the linked
- * reward/deal — so UI cards consume the separate `CouponDisplay` helper instead.
- */
-
-export type CouponStatus = 'available' | 'used' | 'expired';
-
-/** An issued coupon row (`coupons` table). Money-free — no amount is stored here. */
+/** UI-facing coupon shape (rendered in the mobile coupons list). Unchanged. */
 export interface Coupon {
-  id: string;
-  userId: string;
-  code: string;
-  status: CouponStatus;
-  dealId: string | null;
-  rewardId: string | null;
-  expiresAt: string | null;
-  usedAt: string | null;
-  createdAt: string;
-}
-
-/**
- * UI display helper for coupon cards. `title`/`discountLabel` are derived
- * presentation strings with no DB column; `isRedeemed` is a display flag derived
- * from `Coupon.status`. Kept separate from the schema `Coupon` so screens can
- * render a friendly card without inventing DB fields.
- */
-export interface CouponDisplay {
   id: string;
   code: string;
   title: string;
   discountLabel: string;
   expiresAt?: string;
   isRedeemed: boolean;
+}
+
+/** Mirrors the `coupon_status` pg enum (`packages/api` schema) verbatim. */
+export type CouponStatus = 'available' | 'used' | 'expired';
+
+/**
+ * DB-facing coupon row (STAR-003). Named `DbCoupon` to avoid colliding with the
+ * UI-facing `Coupon` above. A coupon is either a deal-coupon (`dealId` set) or a
+ * reward-coupon (`rewardId` set) — at most one reward-coupon per (user, reward)
+ * is enforced by the `coupons_user_reward_unique` partial index (migration 0006).
+ */
+export interface DbCoupon {
+  id: string;
+  userId: string;
+  dealId: string | null;
+  rewardId: string | null;
+  code: string;
+  status: CouponStatus;
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /coupons` response row (STAR-004): a `DbCoupon` joined with a light reward
+ * label (name + required stars) for reward-backed coupons, `null` for deal
+ * coupons. Deliberately NOT the full UI-facing `Coupon` mapper — the Rewards
+ * screen only needs the code + a minimal label to surface an available reward.
+ */
+export interface CouponWithReward extends DbCoupon {
+  reward: { name: string; requiredStars: number } | null;
 }

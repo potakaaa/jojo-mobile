@@ -2,7 +2,7 @@ import {
   MARKETING_NOTIFICATION_TYPES,
   ORDER_NOTIFICATION_TYPES,
   type AppNotification,
-  type CouponDisplay,
+  type Coupon,
   type NotificationType,
   type OrderStatus,
 } from '@jojopotato/types';
@@ -148,7 +148,7 @@ test('should fire one-more-order only at required-1 stars', () => {
 test('should fire coupon-expiring only inside the lead window', () => {
   const lead = 2 * 24 * 60 * 60 * 1000; // 2 days
   const expiresAtMs = Date.parse('2026-07-14T00:00:00.000Z');
-  const coupon: CouponDisplay = {
+  const coupon: Coupon = {
     id: 'c1',
     code: 'C1',
     title: 'C1',

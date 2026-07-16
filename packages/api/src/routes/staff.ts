@@ -1,5 +1,5 @@
 import type { OrderStatus, StaffMe } from '@jojopotato/types';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -11,20 +11,11 @@ import {
   orderStatusEnum,
   orders,
   products,
-  starTransactions,
-  userStars,
 } from '../db/schema/index';
 import { resolveBranchScope } from '../lib/require-staff';
+import { creditStarForCompletedOrder } from '../lib/star-earning';
 import { canTransition } from './lib/order-state-machine';
-import {
-  numericToCents,
-  serializeStaffOrderDetail,
-  serializeStaffOrderSummary,
-} from './lib/serializers';
-import { computeStarsEarned } from './lib/star-accrual';
-
-/** The transaction handle passed to `db.transaction(async (tx) => …)`. */
-type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+import { serializeStaffOrderDetail, serializeStaffOrderSummary } from './lib/serializers';
 
 /**
  * Non-terminal order statuses shown on the staff Active Orders dashboard.
@@ -45,52 +36,22 @@ const ORDER_STATUS_VALUES = orderStatusEnum.enumValues;
 // ─── Side-effect stubs (STAFF-003) ───────────────────────────────────────────
 
 /**
- * Credit stars for a completed order (server-authoritative). Count-based accrual:
- * an order earns exactly 1 star when its subtotal meets the minimum threshold,
- * else 0 (see `computeStarsEarned`). The star amount is always derived here from
- * the order's own `subtotal` — never client-sent.
+ * Credit a Jojo Star for a completed order (wired as of the dev/star merge —
+ * resolves the STAFF-003 star-earn dependency). Delegates to the idempotent
+ * `creditStarForCompletedOrder` service (DB-enforced single credit per order; also
+ * triggers STAR-003 reward unlock + coupon generation on threshold crossing).
  *
- * Runs INSIDE the caller's transaction (the same tx that flips the order to
- * `completed`), so the status flip + `user_stars` upsert + `star_transactions`
- * insert commit atomically — a crash can never leave an order `completed` but
- * uncredited (there is no retry path; `completed` is terminal). It upserts
- * `user_stars` (incrementing BOTH `current_stars` and `lifetime_stars`) and
- * inserts an `earned` `star_transactions` row. Idempotent per order — an explicit
- * guard skips crediting if this order already has an `earned` row.
+ * Best-effort and fire-and-forget: the order status transition is already committed
+ * by the time this runs, so a credit failure must NOT fail the 200 response. We
+ * still `await` so any error is caught and logged here rather than surfacing as an
+ * unhandled rejection.
  */
-async function creditStarsForOrder(
-  tx: DbTransaction,
-  order: typeof orders.$inferSelect,
-): Promise<void> {
-  const subtotalCents = numericToCents(order.subtotal);
-  const stars = computeStarsEarned(subtotalCents);
-  if (stars <= 0) return;
-
-  const [existing] = await tx
-    .select({ id: starTransactions.id })
-    .from(starTransactions)
-    .where(and(eq(starTransactions.order_id, order.id), eq(starTransactions.type, 'earned')));
-  if (existing) return; // already credited — never double-credit an order.
-
-  await tx
-    .insert(userStars)
-    .values({ user_id: order.user_id, current_stars: stars, lifetime_stars: stars })
-    .onConflictDoUpdate({
-      target: userStars.user_id,
-      set: {
-        current_stars: sql`${userStars.current_stars} + ${stars}`,
-        lifetime_stars: sql`${userStars.lifetime_stars} + ${stars}`,
-        updated_at: new Date(),
-      },
-    });
-
-  await tx.insert(starTransactions).values({
-    user_id: order.user_id,
-    order_id: order.id,
-    type: 'earned',
-    stars,
-    description: `Earned ${stars} star for order ${order.order_number}`,
-  });
+async function creditStarsForOrder(order: typeof orders.$inferSelect): Promise<void> {
+  try {
+    await creditStarForCompletedOrder(order.id);
+  } catch (err) {
+    console.error(`[staff] failed to credit star for completed order ${order.id}`, err);
+  }
 }
 
 /**
@@ -377,10 +338,10 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
 
   // 7. Apply the update inside a transaction — compare-and-swap on current status
   //    so a concurrent PATCH that already advanced the order results in 0 rows
-  //    matched → 409. For a completion, the star credit is folded into THIS SAME
-  //    transaction, so the status flip + user_stars upsert + star_transactions
-  //    insert commit atomically (a crash can never leave a completed-but-uncredited
-  //    order — `completed` is terminal with no retry path).
+  //    matched → 409. The star credit for a completion runs OUTSIDE this tx via the
+  //    idempotent `creditStarForCompletedOrder` service (which owns its own
+  //    transaction + STAR-003 reward unlock), so a credit failure never rolls back
+  //    the status flip (`completed` is terminal; the service is DB-idempotent).
   const updatedOrder = { ...order, ...patch } as typeof order;
   const committed = await db.transaction(async (tx) => {
     const [updatedRow] = await tx
@@ -390,9 +351,6 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
       .returning({ id: orders.id });
     if (!updatedRow) return false;
 
-    if (targetStatus === 'completed') {
-      await creditStarsForOrder(tx, updatedOrder);
-    }
     return true;
   });
 
@@ -404,6 +362,7 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
   // 8. Non-transactional side effects (push stub) run OUTSIDE the tx, only after
   //    the status flip (and any star credit) has durably committed.
   if (targetStatus === 'completed') {
+    await creditStarsForOrder(updatedOrder);
     notifyCustomer(updatedOrder, 'completed');
   } else if (targetStatus === 'rejected') {
     notifyCustomer(updatedOrder, 'rejected');
