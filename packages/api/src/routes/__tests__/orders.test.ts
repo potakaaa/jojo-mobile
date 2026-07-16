@@ -849,3 +849,139 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
     expect(coupon!.used_at).toBeNull();
   });
 });
+
+// ─── ADM-008: offer-coupon redemption + is_deal guard + bulk claim race ──────
+describe('POST /orders — offer coupon + is_deal guard (ADM-008)', () => {
+  let offerId: string; // agnostic percentage_discount 20% — no scope, no minimum
+  let dealProductId: string; // products.is_deal = true, available at branch20
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  beforeAll(async () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [offer] = await db
+      .insert(schema.offers)
+      .values({
+        title: `OrdOffer ${uid()}`,
+        deal_type: 'percentage_discount',
+        discount_value: '20.00',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    offerId = offer!.id;
+
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({ name: `DealCat ${uid()}`, slug: `deal-cat-${uid()}`, sort_order: 8 })
+      .returning();
+    const [dealProduct] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `Bundle ${uid()}`,
+        slug: `bundle-${uid()}`,
+        base_price: '9.00',
+        is_deal: true,
+      })
+      .returning();
+    dealProductId = dealProduct!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: dealProductId, is_available: true });
+  });
+
+  // AC5 (order half) + re-apply-after-use: a targeted offer coupon redeems once,
+  // burns, and a second placement of the now-used code is rejected (409).
+  it('places an order redeeming a targeted offer coupon, then rejects re-use (409)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofr5');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const first = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(first.status).toBe(201);
+    // subtotal 1300 (650 unit × 2); 20% => 260 discount; total 1040.
+    expect(first.json.order.subtotalCents).toBe(1300);
+    expect(first.json.order.discountTotalCents).toBe(260);
+    expect(first.json.order.totalCents).toBe(1040);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+    expect(coupon!.user_id).toBe(u);
+    // The consumed offer-coupon is persisted as the order's audit link.
+    expect(first.json.order.couponId).toBe(coupon!.id);
+
+    // Re-use of the now-used coupon by the same owner is rejected (single-use).
+    const second = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(second.status).toBe(409);
+  });
+
+  // AC6 (LD6): a coupon code cannot be combined with an is_deal product. The guard
+  // fires inside the placement tx before any write → 400, no order, coupon intact.
+  it('rejects (400) a coupon code combined with an is_deal product; places no order', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrDeal');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: dealProductId, quantity: 1, selectedOptions: [] }],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('Coupon codes cannot be combined with Deal products.');
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+  });
+
+  // Claim-on-redeem atomicity — a BULK (user_id NULL) two-racer. Added ALONGSIDE
+  // the STAR-004 reward-coupon race test (commit 43e9c13); exercises the COALESCE
+  // claim path under concurrency: exactly one racer claims+burns, the other 409s.
+  it('two racers claiming the SAME bulk offer code: exactly one 201, one 409; claimed to winner', async () => {
+    const { eq } = await import('drizzle-orm');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: null, offer_id: offerId, code });
+    const u1 = await freshUser('ofrRace1');
+    const u2 = await freshUser('ofrRace2');
+
+    const [a, b] = await Promise.all([
+      post('/orders', { user: u1, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+      post('/orders', { user: u2, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+    ]);
+    expect([a.status, b.status].sort((x, y) => x - y)).toEqual([201, 409]);
+
+    // Claimed exactly once, to the winner (COALESCE set user_id on redeem).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+    const winner = a.status === 201 ? u1 : u2;
+    expect(coupon!.user_id).toBe(winner);
+  });
+});

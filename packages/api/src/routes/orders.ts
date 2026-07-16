@@ -1,5 +1,5 @@
 import type { Cart, CartItem } from '@jojopotato/types';
-import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -218,6 +218,19 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         });
       }
 
+      // AC6 (ADM-008 LD6): a coupon code cannot be combined with a Deal product
+      // (ADM-004 deals-as-products, `products.is_deal = true`). Enforced HERE,
+      // inside the placement transaction (product rows are already loaded above),
+      // before any discount math or write. The dealId-XOR-couponCode guard before
+      // the transaction covers the legacy discount-deal case; this covers the
+      // deals-as-products case (a deal-product in the cart + a coupon code).
+      if (
+        hasCoupon &&
+        body.items.some((line) => productById.get(line.productId)?.is_deal === true)
+      ) {
+        throw new OrderError(400, 'Coupon codes cannot be combined with Deal products.');
+      }
+
       // ─── DORMANT (ADM-004 deals-as-products pivot / ADM-008 test debt) ─────
       // This server-authoritative deal-apply block targets the LEGACY discount-
       // shaped `deals`/`orders.deal_id` mechanism, which is now DORMANT: the
@@ -261,7 +274,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           throw new OrderError(400, 'This deal is not currently available');
         }
 
-        // 2. branch scope — empty deal_branches = branch-agnostic.
+        // 2. branch scope — empty offer_branches = branch-agnostic.
         const dealBranchRows = await tx
           .select()
           .from(offerBranches)
@@ -273,7 +286,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
           throw new OrderError(400, 'This deal is not available at your selected branch');
         }
 
-        // 3. product-in-cart — empty deal_products = all products.
+        // 3. product-in-cart — empty offer_products = all products.
         const dealProductRows = await tx
           .select()
           .from(offerProducts)
@@ -404,8 +417,22 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       if (rewardCouponIdToConsume !== null) {
         const consumed = await tx
           .update(coupons)
-          .set({ status: 'used', used_at: new Date() })
-          .where(and(eq(coupons.id, rewardCouponIdToConsume), eq(coupons.status, 'available')))
+          .set({
+            status: 'used',
+            // ADM-008 LD2: claim-on-redeem. A bulk-issued coupon (user_id NULL) is
+            // claimed to the placing user via COALESCE; an already-owned coupon
+            // keeps its owner. Paired with the `(user_id IS NULL OR user_id = me)`
+            // guard below so a bulk and a targeted coupon can never double-claim.
+            user_id: sql`coalesce(${coupons.user_id}, ${userId})`,
+            used_at: new Date(),
+          })
+          .where(
+            and(
+              eq(coupons.id, rewardCouponIdToConsume),
+              eq(coupons.status, 'available'),
+              or(isNull(coupons.user_id), eq(coupons.user_id, userId)),
+            ),
+          )
           .returning({ id: coupons.id });
         if (consumed.length === 0) {
           throw new OrderError(409, 'This reward has already been redeemed.');

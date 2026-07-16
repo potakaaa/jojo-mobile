@@ -53,6 +53,17 @@ const REWARD_CODE_A = `JP-RWD-A${uid().slice(0, 3).toUpperCase()}`;
 const REWARD_CODE_NULL = `JP-RWD-N${uid().slice(0, 3).toUpperCase()}`;
 const REWARD_CODE_B = `JP-RWD-B${uid().slice(0, 3).toUpperCase()}`; // userB's, for scoping
 
+// Offer-coupon fixtures (ADM-008). Cleaned up (incl. the bulk user_id NULL row)
+// in afterAll by offer_id, then the parent offers.
+let activeOfferId: string;
+let expiredOfferId: string;
+const seededOfferIds: string[] = [];
+const OFFER_BULK = `JP-OFR-B${uid().slice(0, 3).toUpperCase()}`; // user_id NULL
+const OFFER_TARGETED = `JP-OFR-T${uid().slice(0, 3).toUpperCase()}`; // user_id = userA (LD1 fix)
+const OFFER_EXPIRED = `JP-OFR-E${uid().slice(0, 3).toUpperCase()}`; // status expired
+const OFFER_USED = `JP-OFR-U${uid().slice(0, 3).toUpperCase()}`; // status used
+const OFFER_WINDOW = `JP-OFR-W${uid().slice(0, 3).toUpperCase()}`; // offer out of window
+
 async function post(
   path: string,
   opts: { user?: string; body?: unknown } = {},
@@ -186,11 +197,59 @@ beforeAll(async () => {
     { user_id: userA, reward_id: rewardNullEligibleId, code: REWARD_CODE_NULL },
     { user_id: userB, reward_id: rewardWithProductId, code: REWARD_CODE_B },
   ]);
+
+  // Offer-coupon fixtures (ADM-008): an active agnostic 20%-off offer + an
+  // out-of-window offer, plus coupons exercising bulk / targeted / status / window.
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const nowMs = Date.now();
+  const [activeOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `ActiveOffer ${suffix}`,
+      deal_type: 'percentage_discount',
+      discount_value: '20.00',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  activeOfferId = activeOffer!.id;
+  const [expiredOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `ExpiredOffer ${suffix}`,
+      deal_type: 'percentage_discount',
+      discount_value: '20.00',
+      start_at: new Date(nowMs - 2 * DAY),
+      end_at: new Date(nowMs - DAY),
+      is_active: true,
+    })
+    .returning();
+  expiredOfferId = expiredOffer!.id;
+  seededOfferIds.push(activeOfferId, expiredOfferId);
+
+  await db.insert(schema.coupons).values([
+    // Bulk (user_id NULL) — claimable by anyone at apply preview.
+    { user_id: null, offer_id: activeOfferId, code: OFFER_BULK },
+    // Targeted to userA — the LD1 Branch-1 regression case (must NOT match the
+    // reward branch and be wrongly rejected).
+    { user_id: userA, offer_id: activeOfferId, code: OFFER_TARGETED },
+    // Targeted, coupon-status expired / used.
+    { user_id: userA, offer_id: activeOfferId, code: OFFER_EXPIRED, status: 'expired' },
+    { user_id: userA, offer_id: activeOfferId, code: OFFER_USED, status: 'used' },
+    // Targeted, but the OFFER itself is out of window (not_in_window).
+    { user_id: userA, offer_id: expiredOfferId, code: OFFER_WINDOW },
+  ]);
 });
 
 afterAll(async () => {
   const { inArray } = await import('drizzle-orm');
+  // Offer-coupons (incl. the bulk user_id NULL row) — delete by offer_id first,
+  // then the parent offers (coupons.offer_id FK).
+  await db.delete(schema.coupons).where(inArray(schema.coupons.offer_id, seededOfferIds));
   await db.delete(schema.coupons).where(inArray(schema.coupons.user_id, createdUserIds));
+  await db.delete(schema.offers).where(inArray(schema.offers.id, seededOfferIds));
   await db
     .delete(schema.branchProductAvailability)
     .where(eq(schema.branchProductAvailability.branch_id, branchId));
@@ -297,20 +356,83 @@ describe('POST /coupons/apply — AC2 (reward)', () => {
   });
 });
 
-describe('POST /coupons/apply — AC3 (deal parity)', () => {
-  it('succeeds for the ported WELCOME20 deal code through the unified path', async () => {
+// ADM-008: the static DEAL_CATALOG apply path (the old AC3 "WELCOME20" parity
+// test) is RETIRED — deal codes now resolve against real DB-backed offer coupons.
+describe('POST /coupons/apply — AC5/AC7 (offer coupon, ADM-008)', () => {
+  it('succeeds for a bulk offer coupon (source deal, real discount)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: { code: OFFER_BULK, pickupBranchId: branchId, cartItems: [{ productId, quantity: 2 }] },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.discount.source).toBe('deal');
+    // subtotal = 500 * 2 = 1000; 20% off = 200.
+    expect(res.json.discount.amountCents).toBe(200);
+  });
+
+  it('succeeds for a TARGETED (user_id-set) offer coupon — LD1 Branch-1 fix regression', async () => {
+    // Before the LD1 fix this matched reward Branch 1 (scoped only by code+user_id)
+    // and was wrongly rejected with no_eligible_product (reward=null). With the
+    // reward_id IS NOT NULL scoping it now falls through to the offer branch.
     const res = await post('/coupons/apply', {
       user: userA,
       body: {
-        code: 'WELCOME20',
+        code: OFFER_TARGETED,
         pickupBranchId: branchId,
         cartItems: [{ productId, quantity: 2 }],
       },
     });
     expect(res.status).toBe(200);
     expect(res.json.discount.source).toBe('deal');
-    // subtotal = 500 * 2 = 1000; 20% off = 200.
     expect(res.json.discount.amountCents).toBe(200);
+  });
+
+  it('rejects a targeted offer coupon for a non-owner (reason not_found)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userB, // OFFER_TARGETED is owned by userA
+      body: {
+        code: OFFER_TARGETED,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('not_found');
+  });
+
+  it('rejects an expired-status offer coupon (reason expired)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_EXPIRED,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('expired');
+  });
+
+  it('rejects a used-status offer coupon (reason already_used)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: { code: OFFER_USED, pickupBranchId: branchId, cartItems: [{ productId, quantity: 1 }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('already_used');
+  });
+
+  it('rejects an offer coupon whose offer is out of window (reason not_in_window)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_WINDOW,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('not_in_window');
   });
 });
 
