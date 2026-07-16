@@ -187,7 +187,9 @@ pnpm --filter @jojopotato/admin test
       "n/a — research clean".
 - [x] 4. PVL — SEEDED below from source plan's outer-pvl VALIDATE pass. Orchestrator MUST still
       spawn vc-validate-agent for inner PVL re-confirmation before EXECUTE.
-- [ ] 5. EXECUTE — all checklist items (A–D) done; test gates green.
+- [x] 5. EXECUTE — all checklist items (A–D) done; test gates green (typecheck 0 errors, 21/21
+      tests, build clean). Report: `phase-05-admin-ui_REPORT_16-07-26.md`. D5 Agent-Probe
+      walkthrough is user-owned (no admin E2E runner).
 - [ ] 6. EVL — all EVL gates green; follow-up stubs registered; EVL HANDOFF SUMMARY written.
 - [ ] 7. UPDATE PROCESS — phase report written, umbrella state updated, **commit checkpoint**
       (staging commands + commit summary handed to user — no auto-commit).

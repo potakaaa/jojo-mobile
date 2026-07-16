@@ -1,0 +1,260 @@
+import { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+
+import type { AdminPromotion } from '@/features/promotions/lib/admin-promotions-api';
+
+import {
+  OFFER_TYPE_OPTIONS,
+  type AdminOffer,
+  type OfferCreateInput,
+  type OfferType,
+} from '../lib/admin-offers-api';
+
+/**
+ * Create/edit offer form (ADM-008). Mirrors `DealForm`/`BranchForm` — a
+ * controlled form emitting an `OfferCreateInput` on submit. Money is entered in
+ * PHP and multiplied by 100 to cents (the API boundary). The discount-value field
+ * is polymorphic: shown as ₱ for `fixed_discount`, as % for `percentage_discount`,
+ * and hidden for the four complex mechanics (which carry no scalar value). The
+ * optional Promotion link is sourced from the caller-supplied promotions list.
+ * Server-side Zod validation is the real gate — client checks are convenience only.
+ */
+interface OfferFormProps {
+  initial?: AdminOffer;
+  promotions: AdminPromotion[];
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (input: OfferCreateInput) => void;
+  onCancel: () => void;
+}
+
+const selectClass =
+  'flex h-9 w-full rounded-md border-2 border-foreground bg-transparent px-3 py-1 text-sm';
+
+/** Offer mechanics that carry a scalar discount value. */
+function hasScalarValue(type: OfferType): boolean {
+  return type === 'percentage_discount' || type === 'fixed_discount';
+}
+
+function toIso(local: string): string {
+  return new Date(local).toISOString();
+}
+
+function isoToLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes(),
+  )}`;
+}
+
+export function OfferForm({
+  initial,
+  promotions,
+  submitting,
+  error,
+  onSubmit,
+  onCancel,
+}: OfferFormProps) {
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [offerType, setOfferType] = useState<OfferType>(
+    initial?.offerType ?? 'percentage_discount',
+  );
+  const [value, setValue] = useState(
+    initial?.discountValueCents != null ? String(initial.discountValueCents / 100) : '',
+  );
+  const [minOrder, setMinOrder] = useState(
+    initial ? (initial.minimumOrderAmountCents / 100).toFixed(2) : '',
+  );
+  const [perUser, setPerUser] = useState(
+    initial?.usageLimitPerUser != null ? String(initial.usageLimitPerUser) : '',
+  );
+  const [totalLimit, setTotalLimit] = useState(
+    initial?.totalUsageLimit != null ? String(initial.totalUsageLimit) : '',
+  );
+  const [startAt, setStartAt] = useState(initial ? isoToLocal(initial.startAt) : '');
+  const [endAt, setEndAt] = useState(initial ? isoToLocal(initial.endAt) : '');
+  const [promotionId, setPromotionId] = useState(initial?.promotionId ?? '');
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLocalError(null);
+
+    if (!title.trim()) {
+      setLocalError('Title is required.');
+      return;
+    }
+    if (!startAt || !endAt) {
+      setLocalError('Start and end dates are required.');
+      return;
+    }
+    if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+      setLocalError('End must be after start.');
+      return;
+    }
+    const min = Number(minOrder || '0');
+    if (!Number.isFinite(min) || min < 0) {
+      setLocalError('Minimum order must be a valid non-negative amount.');
+      return;
+    }
+
+    const input: OfferCreateInput = {
+      title: title.trim(),
+      offerType,
+      minimumOrderAmountCents: Math.round(min * 100),
+      startAt: toIso(startAt),
+      endAt: toIso(endAt),
+    };
+    if (description.trim().length > 0) input.description = description.trim();
+
+    if (hasScalarValue(offerType) && value.trim().length > 0) {
+      const v = Number(value);
+      if (!Number.isFinite(v) || v < 0) {
+        setLocalError('Discount value must be a valid non-negative number.');
+        return;
+      }
+      input.discountValueCents = Math.round(v * 100);
+    }
+
+    if (perUser.trim().length > 0) {
+      const n = Number(perUser);
+      if (Number.isInteger(n) && n > 0) input.usageLimitPerUser = n;
+    }
+    if (totalLimit.trim().length > 0) {
+      const n = Number(totalLimit);
+      if (Number.isInteger(n) && n > 0) input.totalUsageLimit = n;
+    }
+    if (promotionId) input.promotionId = promotionId;
+
+    onSubmit(input);
+  }
+
+  const valueLabel =
+    offerType === 'percentage_discount' ? 'Discount percent (%)' : 'Discount amount (₱)';
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-sm">
+        Title
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Description (optional)
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Mechanic
+        <select
+          className={selectClass}
+          value={offerType}
+          onChange={(e) => setOfferType(e.target.value as OfferType)}
+        >
+          {OFFER_TYPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {hasScalarValue(offerType) ? (
+        <label className="flex flex-col gap-1 text-sm">
+          {valueLabel}
+          <Input
+            inputMode="decimal"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="0"
+          />
+        </label>
+      ) : null}
+
+      <label className="flex flex-col gap-1 text-sm">
+        Minimum order (₱)
+        <Input
+          inputMode="decimal"
+          value={minOrder}
+          onChange={(e) => setMinOrder(e.target.value)}
+          placeholder="0.00"
+        />
+      </label>
+
+      <div className="flex gap-3">
+        <label className="flex flex-1 flex-col gap-1 text-sm">
+          Usage limit / user (optional)
+          <Input
+            inputMode="numeric"
+            value={perUser}
+            onChange={(e) => setPerUser(e.target.value)}
+            placeholder="∞"
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-sm">
+          Total usage limit (optional)
+          <Input
+            inputMode="numeric"
+            value={totalLimit}
+            onChange={(e) => setTotalLimit(e.target.value)}
+            placeholder="∞"
+          />
+        </label>
+      </div>
+
+      <div className="flex gap-3">
+        <label className="flex flex-1 flex-col gap-1 text-sm">
+          Starts
+          <Input
+            type="datetime-local"
+            value={startAt}
+            onChange={(e) => setStartAt(e.target.value)}
+            required
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-sm">
+          Ends
+          <Input
+            type="datetime-local"
+            value={endAt}
+            onChange={(e) => setEndAt(e.target.value)}
+            required
+          />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-1 text-sm">
+        Promotion (optional)
+        <select
+          className={selectClass}
+          value={promotionId}
+          onChange={(e) => setPromotionId(e.target.value)}
+        >
+          <option value="">None</option>
+          {promotions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {localError || error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {localError ?? error}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button type="submit" isLoading={submitting}>
+          {submitting ? 'Saving…' : initial ? 'Save changes' : 'Create offer'}
+        </Button>
+      </div>
+    </form>
+  );
+}
