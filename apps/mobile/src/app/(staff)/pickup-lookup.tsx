@@ -30,6 +30,24 @@ const TERMINAL_STATUSES: readonly StaffOrderDetail['status'][] = [
   'rejected',
 ];
 
+// Pickup code shape is always `JP-YYMMDD-XXXX` (2 + 6 + 4 = 12 alphanumeric
+// chars). Staff shouldn't have to type the hyphens themselves — strip
+// anything that isn't a letter/digit, then re-insert both hyphens at their
+// fixed positions on every keystroke (also correctly handles backspace,
+// since the mask is rebuilt from scratch each time rather than patched).
+const PICKUP_CODE_ALNUM_LENGTH = 12;
+
+function formatPickupCode(raw: string): string {
+  const alnum = raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, PICKUP_CODE_ALNUM_LENGTH);
+  let formatted = alnum.slice(0, 2);
+  if (alnum.length > 2) formatted += `-${alnum.slice(2, 8)}`;
+  if (alnum.length > 8) formatted += `-${alnum.slice(8, 12)}`;
+  return formatted;
+}
+
 function terminalMessage(status: StaffOrderDetail['status']): string {
   if (status === 'completed') return 'This order was already picked up.';
   if (status === 'cancelled') return 'This order was cancelled.';
@@ -94,10 +112,10 @@ export default function PickupLookupScreen() {
           <Input
             value={code}
             onChangeText={(text) => {
-              setCode(text);
+              setCode(formatPickupCode(text));
               if (errorMessage) setErrorMessage(null);
             }}
-            placeholder="e.g. JP-250715-0001"
+            placeholder="e.g. JP-260715-4Q7K"
             label="Pickup code"
             mode={mode}
             autoCapitalize="characters"
