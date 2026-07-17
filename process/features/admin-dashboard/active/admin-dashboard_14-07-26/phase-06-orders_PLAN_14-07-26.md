@@ -15,25 +15,25 @@ metadata:
 Date: 17-07-26
 **Complexity:** COMPLEX (part of the 8-phase program; individually MODERATE scope)
 Complexity: COMPLEX
-**Status:** ⏳ PLANNED (DRAFT — Open Decisions below need user sign-off)
-Status: PLANNED
+**Status:** ✅ DECISIONS LOCKED (D1–D8 resolved with user 17-07-26) — PARKED pending Phase 5 merge into `development` (D8); do NOT plan-supplement/validate until then
+Status: DECISIONS LOCKED — PARKED (gated on P5 merge)
 
 TL;DR: read-only admin oversight of ALL branches' orders — a new `GET /api/admin/orders` (cursor-paginated, filterable by branch/status/date) + `GET /api/admin/orders/:orderId` (staff-detail shape + customer name/phone + discount context), reusing the staff serializers and the existing admin composites. No write path anywhere.
 
 ---
 
-## Open Decisions For Review
+## Open Decisions For Review — ✅ RESOLVED (user, 17-07-26)
 
-Each is a recommended choice, made so EXECUTE has zero ambiguity — flag any you want changed.
-
-| # | Decision | Recommendation |
+| # | Decision | Resolution |
 |---|---|---|
-| D1 | **Admin status override?** | **NO — read-only MVP** `(recommended — pending user review)`. Status transitions remain a staff action via the STAFF-003 state machine (`PATCH /api/staff/orders/:orderId`). Rationale: issue #44 + PRD §19 say admin "can view orders" (read); adding an admin write path duplicates the state machine, bypasses branch-scoping semantics, and raises the risk class from low to high (trust-boundary). If oversight later needs intervention (e.g. force-cancel), that is a new explicitly-reviewed phase, not a P6 extension. |
-| D2 | **Customer PII field set** | **Name + phone only; NO email** `(recommended — pending user review)`. Minimal set needed for pickup verification / dispute contact. Email is account-adjacent, not order-operational — deferred to a future Customers module. Full rationale table in the PII design note below. |
-| D3 | **List pagination** | **Cursor pagination on `placed_at`** (reuse the customer-history pattern verbatim, `packages/api/src/routes/orders.ts:471-512`: `limit` clamped 1–50 default 20, `cursor` = ISO `placed_at`, fetch `limit+1`, `{ orders, nextCursor }`) `(recommended — pending user review)`. Existing admin lists (branches/products/offers) don't paginate, but they're small catalogs; orders grow unboundedly, so the unpaginated-admin-list precedent does NOT fit here. |
-| D4 | **Serializer reuse vs duplicate** | **Compose, don't duplicate** `(recommended — pending user review)`: new `serializeAdminOrderSummary`/`serializeAdminOrderDetail` in `serializers.ts` that CALL the existing `serializeStaffOrderSummary`/`serializeStaffOrderDetail` (`serializers.ts:580,610`) and spread admin-only fields on top (`branchId`, `customerName`, `customerPhone`, `discountTotalCents`, `couponId`, `dealId`). This guarantees AC3 ("admin detail matches true order state / staff view") by construction — same snapshot source, zero drift. Existing staff exports are NOT modified. |
-| D5 | **Discount context depth in detail** | **IDs + amount only in MVP** `(recommended — pending user review)`: expose `discountTotalCents`, `couponId`, `dealId` (raw FKs; `deal_id` points at `offers` post-0013 rename). Do NOT join in offer/promotion/coupon-code display names this phase — that's a cross-domain join the Offers detail screen already covers; admin can follow the ID. Revisit if the user wants inline labels. |
-| D6 | **Date-range semantics** | Filter on `placed_at`; `dateFrom`/`dateTo` accepted as ISO dates, `dateFrom` inclusive start-of-day, `dateTo` inclusive end-of-day (server converts `dateTo` to `< dateTo + 1 day`) `(recommended — pending user review)`. |
+| D1 | **Admin status override?** | **✅ LOCKED: NO — read-only MVP.** Status transitions remain a staff action via the STAFF-003 state machine (`PATCH /api/staff/orders/:orderId`). No admin write path anywhere. If oversight later needs intervention (force-cancel etc.), that is a new explicitly-reviewed phase, not a P6 extension. |
+| D2 | **Customer PII field set** | **✅ LOCKED: Name + phone only; NO email.** Minimal set for pickup verification / dispute contact. |
+| D3 | **List pagination** | **✅ LOCKED: Cursor pagination on `placed_at`** (reuse the customer-history pattern verbatim, `orders.ts:471-512`: `limit` 1–50 default 20, `cursor` = ISO `placed_at`, fetch `limit+1`, `{ orders, nextCursor }`). |
+| D4 | **Serializer reuse vs duplicate** | **✅ LOCKED: Compose, don't duplicate.** New `serializeAdminOrderSummary`/`serializeAdminOrderDetail` CALL the existing staff serializers (`serializers.ts:580,610`) and spread admin-only fields on top (`branchId`, `customerName`, `customerPhone`, `discountTotalCents`, `couponId`, `dealId`). Guarantees AC3 by construction. Staff exports unmodified. |
+| D5 | **Discount context depth in detail** | **✅ LOCKED: IDs + amount only in MVP.** Expose `discountTotalCents`, `couponId`, `dealId` (raw FKs; `deal_id` → `offers` post-0013). No joined display names this phase. |
+| D6 | **Date-range semantics** | **✅ LOCKED: Filter on `placed_at`;** `dateFrom` inclusive start-of-day, `dateTo` inclusive end-of-day (server: `< dateTo + 1 day`). |
+| D7 | **List rendering + data freshness** (new — surfaced by RESEARCH + `UI_AUDIT.md`) | **✅ LOCKED: `data-table` composite (existing) + react-query with `staleTime` caching + poll-while-mounted for live status.** "Live updates while the admin is on the page" = react-query `refetchInterval` while the list is mounted (mirror the staff active-orders freshness cadence), NOT websockets/push — no realtime infra exists in this stack and none is added here (fetch-on-focus + polling is the app-wide convention). Caching = the existing ~30s `staleTime` model so navigation doesn't refetch every time. Filters (branch/status/date-range) rendered with **native `<select>` feature-local** (matches the offer-form convention; no new shared `Select` primitive until a second consumer needs it — defers the `UI_AUDIT.md` shared-primitive recommendation). |
+| D8 | **Sequencing / branch timing** (new) | **✅ LOCKED: PARKED.** Research done (this pass); do NOT plan-supplement/validate/execute P6 until **Phase 5 is finished AND PR'd into the `development` branch.** Keeps the shared aggregator/serializer/nav edits serialized behind P5. |
 
 ---
 

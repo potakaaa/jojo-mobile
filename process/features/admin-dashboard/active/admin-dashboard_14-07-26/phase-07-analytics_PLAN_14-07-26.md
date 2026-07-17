@@ -13,7 +13,7 @@ metadata:
 
 **Date**: 14-07-26 (stub) — fleshed out to full DRAFT 17-07-26
 **Complexity**: COMPLEX (last phase of the 8-phase program; money-adjacent correctness)
-**Status**: 📝 DRAFT — pending user review of `## Open Decisions For Review`
+**Status**: ✅ DECISIONS LOCKED (D1–D9 resolved with user 17-07-26, KPI set informed by competitor-dashboard research) — PARKED pending Phase 6 execution; do NOT plan-supplement/validate until P6 is done (D9)
 
 > **TL;DR:** One new read-only route `GET /api/admin/analytics?from=&to=[&branchId=]` returning all
 > six #45 metrics in one payload, computed in cents server-side with Drizzle `sql` aggregates; one
@@ -21,12 +21,14 @@ metadata:
 > library at MVP); exact-value seeded-fixture tests per AC. Six product decisions are recommended
 > below but held open for user sign-off.
 
-## Open Decisions For Review
+## Open Decisions For Review — ✅ RESOLVED (user, 17-07-26)
 
-Each decision below has a recommended choice already baked into the checklist/ACs. Approving the
-plan as-is locks the recommendations; any override triggers a PLAN-SUPPLEMENT pass before PVL.
+D1–D7 all ACCEPTED as drafted (verified sound against live schema by RESEARCH). D8 (KPI set)
+and D9 (sequencing) added this pass, informed by competitor-dashboard research (Toast/Square/Olo/
+loyalty platforms). The two new metrics' full checklist/AC/serializer/touchpoint wiring is folded
+in at PLAN-SUPPLEMENT when the phase activates (post-P6) — this pass records the decision only.
 
-| # | Decision | Recommendation (recommended — pending user review) |
+| # | Decision | Resolution |
 |---|---|---|
 | D1 | **"Orders using deals" definition** (post-ADM-004/008 there are 3 possible signals) | An order "uses a deal" iff ANY of: (a) `orders.coupon_id IS NOT NULL` (offer/reward coupon applied), (b) `orders.deal_id IS NOT NULL` (legacy dormant column — near-zero rows, included for correctness), (c) the order has ≥1 `order_items` line whose `products.is_deal = true` (bundle deal). This is a boolean per order, so deal-orders + non-deal-orders is an exact partition and AC3's sum-to-total property holds by construction. |
 | D2 | **Order status filter for order-count + AOV** | Exclude `cancelled` and `rejected`; include all other placed statuses (`pending…completed`). Rationale: reflects real demand without waiting for completion; matches "what the customer committed to pay". AC4 repeat-rate numerator uses `completed` only per issue #45 verbatim. |
@@ -34,7 +36,9 @@ plan as-is locks the recommendations; any override triggers a PLAN-SUPPLEMENT pa
 | D4 | **"Rewards unlocked" / "rewards redeemed" definitions** | Unlocked = `COUNT(coupons) WHERE reward_id IS NOT NULL AND created_at IN range` (a reward coupon is minted exactly when a reward is unlocked, STAR-003). Redeemed = `COUNT(coupons) WHERE reward_id IS NOT NULL AND used_at IN range`. (Alternative rejected: `star_transactions.type='redeemed'` — that tracks star spends, which STAR-side flows may not 1:1 mirror coupon burns.) |
 | D5 | **"Stars earned" definition** | `SUM(star_transactions.stars) WHERE type = 'earned' AND created_at IN range`. `adjusted`/`expired`/`redeemed` excluded from the headline number. |
 | D6 | **Chart library** | NONE at MVP. Plain stat tiles (new small `metric-card` composite) + the existing `data-table` composite for the per-branch breakdown. Consistent with issue #45's explicit "basic — no BI tooling". Charts are a possible later enhancement, not in scope. |
-| D7 | **Endpoint + query shape** | ONE combined `GET /api/admin/analytics` returning all metrics in a single `{ resource }` payload (one screen = one fetch); Drizzle `sql`-template aggregate helpers (`sql<string>\`sum(...)\``, `count()`) — NOT raw `db.execute` — staying inside the codebase's Drizzle idiom. |
+| D7 | **Endpoint + query shape** | ✅ ACCEPTED. ONE combined `GET /api/admin/analytics` returning all metrics in a single `{ resource }` payload (one screen = one fetch); Drizzle `sql`-template aggregate helpers (`sql<string>\`sum(...)\``, `count()`) — NOT raw `db.execute` — staying inside the codebase's Drizzle idiom. (First aggregation route in the codebase — extra care at EXECUTE.) |
+| D8 | **MVP KPI set** (new — competitor-research-informed) | **✅ LOCKED: keep the original 6 (orders/branch, AOV, deals split, repeat-purchase rate, stars earned, rewards unlocked-vs-redeemed) + ADD 2 zero-migration metrics:** (a) **Top-selling products** — ranked `data-table`, source `order_items.product_id/quantity/total_price` + `products` (the one universally-present competitor widget missing from our set); (b) **New vs. returning customers** — source `orders.user_id` + `users.createdAt`, reuses the repeat-rate user grouping. So **8 metrics total**, rendered as stat cards + two tables (per-branch + top-products). **Fine-tune defaults (flip at PLAN-SUPPLEMENT if wanted):** rewards-redemption metric stays **reward-coupon only** for MVP (offer/promo-coupon redemption deferred to Phase 2); new-vs-returning gets its own stat card. **Deferred to a Phase-2 note (cheap but out of MVP):** order-status funnel (cancel/reject rate), stars breakage (`type='expired'`), offer-coupon redemption rate, peak-hours/day-parts (⚠️ needs hour-bucketing), prep-time (⚠️ needs accepted_at→ready_at duration aggregate). |
+| D9 | **Chart vs. cards/tables + sequencing** (new) | **✅ LOCKED: D6's no-chart-library decision re-confirmed by research** — the universal MVP norm is stat cards (headline numbers) + tables (ranked/itemized); charts are a deliberate Phase-2 enhancement once daily-checked numbers are known. **Sequencing: PARKED** — do NOT plan-supplement/validate/execute P7 until **Phase 6 has finished execution** (P5 → P6 → P7 serialized behind the shared aggregator/serializer/nav edits). |
 
 ## Phase Completion Rules
 
