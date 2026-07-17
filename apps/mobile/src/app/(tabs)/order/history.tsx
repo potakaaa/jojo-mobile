@@ -1,14 +1,17 @@
 import type { Order } from '@jojopotato/types';
-import { Button, Card, EmptyState, OrderStatusBadge } from '@jojopotato/ui';
+import { Button, Card, EmptyState, OrderStatusBadge, Toast } from '@jojopotato/ui';
 import { formatCurrency, reorderEligibility, summarizeOrderItems } from '@jojopotato/utils';
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useReorder } from '@/features/orders/hooks/use-reorder';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -26,7 +29,16 @@ export default function OrderHistoryScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { data: orders, loading, error, refetch } = useOrderHistory();
   const { branches } = useBranch();
-  const { reorder, isReordering } = useReorder();
+  // Aliased: `error` is already taken by useOrderHistory above.
+  const { reorder, isReordering, error: reorderError } = useReorder();
+  const { toast, showToast, hideToast } = useToast();
+  const insets = useSafeAreaInsets();
+
+  // The hook reports the failure as data; deciding to show it as a toast is this
+  // screen's call. Must sit above the early returns below (rules of hooks).
+  useEffect(() => {
+    if (reorderError) showToast(reorderError, 'error');
+  }, [reorderError, showToast]);
 
   if (loading) return <ScreenLoader />;
   if (error) {
@@ -108,6 +120,15 @@ export default function OrderHistoryScreen() {
             </Pressable>
           );
         }}
+      />
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={insets.bottom + Spacing.four}
+        onDismiss={hideToast}
       />
     </View>
   );

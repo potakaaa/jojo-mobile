@@ -10,10 +10,11 @@ import {
   CouponCard,
   EmptyState,
   Input,
+  Toast,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
@@ -27,9 +28,54 @@ import { useDealUsage } from '@/features/deals/hooks/use-deal-usage';
 import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
 import { checkDealEligibility } from '@/features/deals/lib/eligibility';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useToast } from '@/features/shared/hooks/use-toast';
+import {
+  FontFamily,
+  MaxContentWidth,
+  MinTouchTarget,
+  Radii,
+  Spacing,
+  TypeScale,
+} from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * Rendered height of the sticky checkout footer, derived from `styles.footer`'s
+ * own padding plus the Button's real `minHeight` (`MinTouchTarget`, button.tsx) —
+ * same "derived from the real styles below" convention as `BAR_CONTENT_HEIGHT`
+ * in floating-tab-bar.tsx. Anything anchored above the footer (a Toast) sizes
+ * itself off this rather than a guessed number.
+ *
+ * A FUNCTION of `insets.bottom`, not a static export — same reason as
+ * `getFloatingTabBarClearance`. On iOS/Android the footer's paddingBottom is the
+ * floating-tab-bar clearance plus its base padding, which is device-dependent; a
+ * static constant could only describe the web variant. A previous static
+ * `CART_FOOTER_HEIGHT` did exactly that and under-reported the real iOS/Android
+ * height by ~93dp + insets, letting the Toast paint over the Checkout button.
+ */
+
+/** styles.footer's own paddingTop. */
+const FOOTER_PADDING_TOP = Spacing.three; // 16
+/** styles.footer's base paddingBottom — its FULL paddingBottom on web. */
+const FOOTER_BASE_PADDING_BOTTOM = Spacing.two; // 8
+
+/**
+ * The footer's real paddingBottom. SINGLE SOURCE: both the rendered style and
+ * `getCartFooterHeight` read this, so the height cannot drift from what paints.
+ * iOS/Android additionally clears the floating tab bar, keeping its base padding.
+ */
+const getCartFooterPaddingBottom = (insetsBottom: number): number =>
+  Platform.OS === 'web'
+    ? FOOTER_BASE_PADDING_BOTTOM
+    : getFloatingTabBarClearance(insetsBottom) + FOOTER_BASE_PADDING_BOTTOM;
+
+/**
+ * Total rendered height (dp) of the sticky checkout footer.
+ * web: 16 + 48 + 8 = 72. iOS/Android: 16 + 48 + (93 + insets + 8) = 165 + insets.
+ */
+export const getCartFooterHeight = (insetsBottom: number): number =>
+  FOOTER_PADDING_TOP + MinTouchTarget + getCartFooterPaddingBottom(insetsBottom);
 
 /** Build the display-only estimated pickup time (D5): now + branch prep minutes. */
 function estimatedPickup(prepMinutes: number): PickupTime {
@@ -74,6 +120,7 @@ export default function CartScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
+  const { toast, showToast, hideToast } = useToast();
 
   const {
     cart,
@@ -136,9 +183,12 @@ export default function CartScreen() {
     if (!result.eligible) {
       clearDiscount();
       setAppliedCouponCode(null);
-      Alert.alert('Deal removed', result.message);
+      // 'warning', not 'error': the user did nothing wrong, but their cart just
+      // changed with a real cost (a higher total). Tap-required, so it cannot be
+      // missed the way an auto-dismissing success can.
+      showToast(`Deal removed — ${result.message}`, 'warning');
     }
-  }, [cart, appliedDeal, usage, user?.id, clearDiscount]);
+  }, [cart, appliedDeal, usage, user?.id, clearDiscount, showToast]);
 
   // Reward coupons: eligibility (eligible_product_id) is server-side only, so we
   // can't re-validate locally. Any cart-item change after a reward is applied
@@ -156,9 +206,11 @@ export default function CartScreen() {
       rewardBaselineSigRef.current = null;
       clearDiscount();
       setAppliedCouponCode(null);
-      Alert.alert('Cart updated', 'Re-apply your reward code to redeem it.');
+      // Same rationale as the deal-removed notice above: an automatic change
+      // that silently costs the user a reward if they miss it.
+      showToast('Cart updated — re-apply your reward code to redeem it.', 'warning');
     }
-  }, [itemsSignature, cart.appliedDiscount, clearDiscount]);
+  }, [itemsSignature, cart.appliedDiscount, clearDiscount, showToast]);
 
   const handleRemoveDiscount = () => {
     clearDiscount();
@@ -178,7 +230,7 @@ export default function CartScreen() {
       const result = await resolveAndApplyDeal(code, cart, cart.pickupBranchId);
       if (!result.ok) {
         // Keep couponCode on failure so the user can see what they typed.
-        Alert.alert('Cannot apply code', result.message);
+        showToast(result.message, 'error');
         return;
       }
       applyDiscount(result.discount);
@@ -408,11 +460,14 @@ export default function CartScreen() {
             </ScrollView>
 
             <View
+              testID="cart-footer"
               style={[
                 styles.footer,
-                Platform.OS !== 'web' && {
-                  paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.two,
-                },
+                // Always set from the single source above (which returns the web
+                // value on web) rather than overriding a StyleSheet default — an
+                // overridden default is invisible to anything reading the
+                // StyleSheet, which is how the Toast overlap shipped.
+                { paddingBottom: getCartFooterPaddingBottom(insets.bottom) },
               ]}
             >
               <Button
@@ -451,6 +506,15 @@ export default function CartScreen() {
           mode={mode}
           onConfirm={confirmBranchSwitch}
           onCancel={() => setPendingBranchSwitch(null)}
+        />
+
+        <Toast
+          visible={toast.visible}
+          message={toast.message}
+          severity={toast.severity}
+          mode={mode}
+          bottomOffset={getCartFooterHeight(insets.bottom) + Spacing.two}
+          onDismiss={hideToast}
         />
       </SafeAreaView>
     </View>
@@ -539,8 +603,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'transparent',
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.two,
+    paddingTop: FOOTER_PADDING_TOP,
+    // NOTE: no `paddingBottom` here on purpose — it is always supplied by
+    // `getCartFooterPaddingBottom` at the render site so there is one source.
   },
   conflictCard: {
     marginHorizontal: Spacing.four,
