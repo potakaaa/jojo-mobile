@@ -126,6 +126,7 @@ beforeEach(() => {
   mockUseReorder.mockReturnValue({
     reorder: jest.fn(),
     isReordering: false,
+    error: null,
   } as unknown as ReturnType<typeof useReorder>);
 });
 
