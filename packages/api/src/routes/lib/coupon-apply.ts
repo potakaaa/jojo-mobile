@@ -1,9 +1,12 @@
 import type { AppliedDiscount, Cart } from '@jojopotato/types';
 import {
   checkDealEligibility,
+  checkFreeBenefit,
   checkRewardEligibility,
   computeDealDiscountCents,
+  computeFreeUpgradeDiscountCents,
   computeRewardDiscountCents,
+  subtotalCents,
 } from '@jojopotato/utils';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 
@@ -244,20 +247,19 @@ export async function resolveCouponDiscount(
       return { ok: false, status: 400, reason: result.reason, message: result.message };
     }
 
-    // ADM-008 Fix 6 (P1b widened deny-guard, D4). Four of the six `deal_type`
+    // ADM-008 Fix 6 (P2 mechanic dispatch, D4). Four of the six `deal_type`
     // mechanics route through `computeDealDiscountCents`'s cheapest-eligible-line
     // branch (discount.ts) — `buy_one_take_one`, `bundle`, `free_item`,
-    // `free_upgrade` — which silently makes the cheapest cart line free. None has
-    // real coupon-redemption semantics in this plan, so DENY all four here, AFTER
-    // eligibility (deterministic reason ordering) and BEFORE any discount math.
-    // Runs on BOTH preview and placement (single resolver); the coupon is NEVER
-    // burned on any reject (apply is zero-mutation; placement throws before the
-    // burn UPDATE). Both branches reuse the existing `no_eligible_product` reason
-    // value — no wire-shape change.
+    // `free_upgrade` — which silently makes the cheapest cart line free. Only
+    // `percentage_discount` / `fixed_discount` have real coupon-redemption discount
+    // math; the two free mechanics get configured benefit semantics; b1t1/bundle
+    // never redeem via a coupon. This dispatch runs AFTER eligibility (deterministic
+    // reason ordering) and BEFORE any discount math, on BOTH preview and placement
+    // (single resolver). The coupon is NEVER burned on a reject (apply is
+    // zero-mutation; placement throws before the burn UPDATE).
 
     // (a) PERMANENT deny — `buy_one_take_one` / `bundle` have no coupon-redemption
-    //     semantics in this plan, ever. This branch stays after P2 lands the
-    //     free-mechanic math; do NOT swap it.
+    //     semantics in this plan, ever. Untouched by P2's free-mechanic dispatch.
     if (offer.deal_type === 'buy_one_take_one' || offer.deal_type === 'bundle') {
       return {
         ok: false,
@@ -267,29 +269,83 @@ export async function resolveCouponDiscount(
       };
     }
 
-    // (b) P1b INTERIM deny — `free_item` / `free_upgrade` are denied
-    //     UNCONDITIONALLY, regardless of `benefit_product_id` (P1 checked null
-    //     only, leaving an out-of-band/SQL-configured window hole open). P2
-    //     REPLACES ONLY THIS BRANCH with the configured-path dispatch
-    //     (`checkFreeBenefit` → real discount math); the permanent (a) branch
-    //     above is untouched by that swap.
+    // (b) Free-mechanic configured-path dispatch (replaces the P1b interim deny). An
+    //     unconfigured offer (`benefit_product_id` NULL) stays rejected — the D4
+    //     permanent safety net so a legacy free offer never mis-discounts. A
+    //     configured offer runs the real benefit check + math: `free_item` waives one
+    //     unit of the benefit product (reward math verbatim), `free_upgrade` waives
+    //     one unit's paid size-upgrade charge. A computed 0 is a REJECT (SPEC AC6 —
+    //     never ₱0-and-burn), dual-clamped to [0, subtotal].
     if (offer.deal_type === 'free_item' || offer.deal_type === 'free_upgrade') {
+      if (offer.benefit_product_id === null) {
+        return {
+          ok: false,
+          status: 400,
+          reason: 'no_eligible_product',
+          message: 'This offer is not configured for redemption.',
+        };
+      }
+      const benefit = checkFreeBenefit(offer.deal_type, offer.benefit_product_id, cart);
+      if (!benefit.eligible) {
+        return { ok: false, status: 400, reason: benefit.reason, message: benefit.message };
+      }
+      const rawAmount =
+        offer.deal_type === 'free_item'
+          ? computeRewardDiscountCents(offer.benefit_product_id, cart)
+          : computeFreeUpgradeDiscountCents(offer.benefit_product_id, cart);
+      const amountCents = Math.max(0, Math.min(rawAmount, subtotalCents(cart)));
+      if (amountCents <= 0) {
+        return {
+          ok: false,
+          status: 400,
+          reason: 'no_eligible_product',
+          message: 'This offer is not configured for redemption.',
+        };
+      }
       return {
-        ok: false,
-        status: 400,
-        reason: 'no_eligible_product',
-        message: 'This offer is not configured for redemption.',
+        ok: true,
+        rewardCouponId: coupon.id,
+        discount: { source: 'deal', refId: offer.id, label: offer.title, amountCents },
+      };
+    }
+
+    // (c) ALLOWLIST — only `percentage_discount` / `fixed_discount` may reach
+    //     `computeDealDiscountCents`. Any other/unknown mechanic is rejected (parity
+    //     with the orders.ts legacy allowlist) rather than silently falling into the
+    //     cheapest-eligible-line path. ADM-008 Fix 6 F1: the computed amount is
+    //     dual-clamped to [0, subtotal] and a non-positive result is REJECTED (mirrors
+    //     the free branch above). A legacy offer with a NULL/0/negative discount_value
+    //     — or a percentage that rounds to zero on a micro-subtotal — has no redeemable
+    //     value; it must never resolve ok and burn the coupon for zero benefit.
+    if (offer.deal_type === 'percentage_discount' || offer.deal_type === 'fixed_discount') {
+      const amountCents = Math.max(
+        0,
+        Math.min(computeDealDiscountCents(deal, cart), subtotalCents(cart)),
+      );
+      if (amountCents <= 0) {
+        return {
+          ok: false,
+          status: 400,
+          reason: 'no_eligible_product',
+          message: 'This offer has no redeemable value.',
+        };
+      }
+      return {
+        ok: true,
+        rewardCouponId: coupon.id,
+        discount: {
+          source: 'deal',
+          refId: offer.id,
+          label: offer.title,
+          amountCents,
+        },
       };
     }
     return {
-      ok: true,
-      rewardCouponId: coupon.id,
-      discount: {
-        source: 'deal',
-        refId: offer.id,
-        label: offer.title,
-        amountCents: computeDealDiscountCents(deal, cart),
-      },
+      ok: false,
+      status: 400,
+      reason: 'no_eligible_product',
+      message: 'This offer type cannot be redeemed with a coupon.',
     };
   }
 

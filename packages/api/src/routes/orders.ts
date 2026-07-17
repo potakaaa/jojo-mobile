@@ -361,8 +361,15 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         rewardLabel = resolution.discount.label;
       }
 
-      // Unified discount: deal + reward-coupon amounts, clamped to [0, subtotal].
-      const discountTotalCents = Math.min(discountCents + couponDiscountCents, subtotalCents);
+      // Unified discount: deal + reward-coupon amounts, dual-clamped to [0, subtotal].
+      // The `Math.max(0, …)` floor is defense-in-depth — a corrupt/negative raw
+      // discount_value (only reachable by direct SQL now that admin Zod forbids a
+      // non-positive value) can never push the discount below 0 and make the total
+      // exceed the subtotal.
+      const discountTotalCents = Math.max(
+        0,
+        Math.min(discountCents + couponDiscountCents, subtotalCents),
+      );
       const orderTotalCents = subtotalCents - discountTotalCents;
 
       const placedAt = new Date();

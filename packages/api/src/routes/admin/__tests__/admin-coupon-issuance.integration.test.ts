@@ -37,6 +37,8 @@ let db: DbModule['db'];
 let users: SchemaModule['users'];
 let offers: SchemaModule['offers'];
 let coupons: SchemaModule['coupons'];
+let categories: SchemaModule['categories'];
+let products: SchemaModule['products'];
 let app: IndexModule['app'];
 let offerCouponCodeGenerator: CodeModule['offerCouponCodeGenerator'];
 
@@ -104,7 +106,7 @@ beforeAll(async () => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   ({ auth } = await import('../../../lib/auth'));
   ({ db } = await import('../../../db/client'));
-  ({ users, offers, coupons } = await import('../../../db/schema/index'));
+  ({ users, offers, coupons, categories, products } = await import('../../../db/schema/index'));
   ({ app } = await import('../../../index'));
   ({ offerCouponCodeGenerator } = await import('../../../lib/reward-coupon-code'));
 
@@ -229,6 +231,123 @@ describe('POST /api/admin/coupons/generate — malformed (AC11)', () => {
       quantity: 3,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// ADM-008 Fix 6 (P2): a free_item/free_upgrade offer with no benefit product cannot
+// be redeemed, so generating coupons against one is blocked (400) before any write.
+describe('POST /api/admin/coupons/generate — free-mechanic benefit guard (AC10)', () => {
+  const seedOfferRow = async (
+    values: Partial<typeof offers.$inferInsert> &
+      Pick<typeof offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  it('blocks (400) generation for an unconfigured free_item offer and writes zero rows', async () => {
+    // Direct insert — the admin create route now forbids a null-benefit free offer,
+    // so this mirrors a legacy row created before the fix.
+    const offerId = await seedOfferRow({ title: `NoBenefit ${unique()}`, deal_type: 'free_item' });
+    const res = await generate(adminCookies, { offerId, quantity: 5 });
+    expect(res.status).toBe(400);
+
+    const rows = await db.select().from(coupons).where(eq(coupons.offer_id, offerId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('allows generation for a CONFIGURED free_upgrade offer (benefit product set)', async () => {
+    const suffix = unique();
+    const [category] = await db
+      .insert(categories)
+      .values({ name: `GenCat ${suffix}`, slug: `gen-cat-${suffix}`, sort_order: 1 })
+      .returning();
+    const [product] = await db
+      .insert(products)
+      .values({
+        category_id: category!.id,
+        name: `GenBenefit ${suffix}`,
+        slug: `gen-benefit-${suffix}`,
+        base_price: '5.00',
+      })
+      .returning();
+    const offerId = await seedOfferRow({
+      title: `Configured ${suffix}`,
+      deal_type: 'free_upgrade',
+      benefit_product_id: product!.id,
+    });
+
+    const res = await generate(adminCookies, { offerId, quantity: 2 });
+    expect(res.status).toBe(201);
+    expect(res.body.coupons).toHaveLength(2);
+  });
+});
+
+// ADM-008 Fix 6 F6: the resolver permanently denies buy_one_take_one/bundle coupons
+// and rejects percentage/fixed offers with no positive discount value, so minting codes
+// against any of them is blocked (400) before any write — no unredeemable codes.
+describe('POST /api/admin/coupons/generate — unredeemable-offer guard (Fix 6 F6)', () => {
+  const seedOfferRow = async (
+    values: Partial<typeof offers.$inferInsert> &
+      Pick<typeof offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  const expectBlocked = async (offerId: string): Promise<void> => {
+    const res = await generate(adminCookies, { offerId, quantity: 3 });
+    expect(res.status).toBe(400);
+    const rows = await db.select().from(coupons).where(eq(coupons.offer_id, offerId));
+    expect(rows).toHaveLength(0);
+  };
+
+  it('blocks (400) generation for a buy_one_take_one offer, zero rows', async () => {
+    await expectBlocked(
+      await seedOfferRow({ title: `B1T1 ${unique()}`, deal_type: 'buy_one_take_one' }),
+    );
+  });
+
+  it('blocks (400) generation for a bundle offer, zero rows', async () => {
+    await expectBlocked(await seedOfferRow({ title: `Bundle ${unique()}`, deal_type: 'bundle' }));
+  });
+
+  it('blocks (400) generation for a percentage_discount offer with discount_value 0', async () => {
+    await expectBlocked(
+      await seedOfferRow({
+        title: `ZeroPct ${unique()}`,
+        deal_type: 'percentage_discount',
+        discount_value: '0.00',
+      }),
+    );
+  });
+
+  it('blocks (400) generation for a fixed_discount offer with a NULL discount_value', async () => {
+    await expectBlocked(
+      await seedOfferRow({ title: `NullFixed ${unique()}`, deal_type: 'fixed_discount' }),
+    );
   });
 });
 

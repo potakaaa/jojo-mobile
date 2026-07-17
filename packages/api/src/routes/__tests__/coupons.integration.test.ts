@@ -85,6 +85,22 @@ const OFFER_BUNDLE = `JP-OFR-BN${uid().slice(0, 2).toUpperCase()}`;
 const OFFER_FI_CONFIG = `JP-OFR-FC${uid().slice(0, 2).toUpperCase()}`;
 const OFFER_FU_CONFIG = `JP-OFR-UC${uid().slice(0, 2).toUpperCase()}`;
 const OFFER_FIXED = `JP-OFR-FX${uid().slice(0, 2).toUpperCase()}`;
+// ADM-008 P2 free-mechanic redemption fixtures: a product WITH a paid size upgrade
+// (for the free_upgrade exact-cents success) + a free_upgrade offer configured to it.
+let sizedProductId: string;
+let sizedSizeOptionId: string;
+let fuSizedOfferId: string;
+const OFFER_FU_SIZED = `JP-OFR-FS${uid().slice(0, 2).toUpperCase()}`;
+// ADM-008 Fix 6 F1: zero-redeemable-value percentage/fixed offers (legacy/SQL-only,
+// bypass admin Zod). A percentage with discount_value 0, a fixed with NULL, and a
+// micro-percentage that rounds to 0 on the 500c subtotal — all must reject (no burn),
+// never resolve ok for zero benefit.
+let zeroPercentOfferId: string;
+let nullFixedOfferId: string;
+let microPercentOfferId: string;
+const OFFER_PCT_ZERO = `JP-OFR-PZ${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_FIXED_NULL = `JP-OFR-XN${uid().slice(0, 2).toUpperCase()}`;
+const OFFER_PCT_MICRO = `JP-OFR-PM${uid().slice(0, 2).toUpperCase()}`;
 
 async function post(
   path: string,
@@ -362,7 +378,90 @@ beforeAll(async () => {
     .returning();
   fixedOfferId = fixedOffer!.id;
 
+  // ADM-008 P2: a product carrying a paid size upgrade (+2.00 = 200c) + a
+  // free_upgrade offer configured to it, for the exact size-delta success path.
+  const [sizedProduct] = await db
+    .insert(schema.products)
+    .values({
+      category_id: category!.id,
+      name: `CpnSized ${suffix}`,
+      slug: `cpn-sized-${suffix}`,
+      base_price: '4.00',
+    })
+    .returning();
+  sizedProductId = sizedProduct!.id;
+  await db
+    .insert(schema.branchProductAvailability)
+    .values({ branch_id: branchId, product_id: sizedProductId, is_available: true });
+  const [sizeOption] = await db
+    .insert(schema.productOptions)
+    .values({
+      product_id: sizedProductId,
+      option_type: 'size',
+      name: 'Large',
+      price_delta: '2.00',
+      sort_order: 1,
+    })
+    .returning();
+  sizedSizeOptionId = sizeOption!.id;
+  const [fuSizedOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `FreeUpgradeSized ${suffix}`,
+      deal_type: 'free_upgrade',
+      benefit_product_id: sizedProductId,
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  fuSizedOfferId = fuSizedOffer!.id;
+
+  // ADM-008 Fix 6 F1: zero-redeemable-value percentage/fixed offers. All in-window,
+  // branch-agnostic, no minimum → checkDealEligibility PASSES, so the F1 amount<=0
+  // guard is provably what rejects them (AFTER eligibility, deterministic ordering).
+  const [zeroPercentOffer] = await db
+    .insert(schema.offers)
+    .values({
+      title: `ZeroPercent ${suffix}`,
+      deal_type: 'percentage_discount',
+      discount_value: '0.00',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  zeroPercentOfferId = zeroPercentOffer!.id;
+  const [nullFixedOffer] = await db
+    .insert(schema.offers)
+    .values({
+      // discount_value left NULL (omitted) — serializeDeal maps NULL → 0.
+      title: `NullFixed ${suffix}`,
+      deal_type: 'fixed_discount',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  nullFixedOfferId = nullFixedOffer!.id;
+  const [microPercentOffer] = await db
+    .insert(schema.offers)
+    .values({
+      // 0.05% of the 500c subtotal = 0.25c → Math.round → 0 → reject (F1).
+      title: `MicroPercent ${suffix}`,
+      deal_type: 'percentage_discount',
+      discount_value: '0.05',
+      start_at: new Date(nowMs - HOUR),
+      end_at: new Date(nowMs + DAY),
+      is_active: true,
+    })
+    .returning();
+  microPercentOfferId = microPercentOffer!.id;
+
   seededOfferIds.push(
+    zeroPercentOfferId,
+    nullFixedOfferId,
+    microPercentOfferId,
     activeOfferId,
     expiredOfferId,
     unconfiguredFreeItemOfferId,
@@ -372,6 +471,7 @@ beforeAll(async () => {
     configuredFreeItemOfferId,
     configuredFreeUpgradeOfferId,
     fixedOfferId,
+    fuSizedOfferId,
   );
 
   await db.insert(schema.coupons).values([
@@ -395,6 +495,11 @@ beforeAll(async () => {
     { user_id: userA, offer_id: configuredFreeItemOfferId, code: OFFER_FI_CONFIG },
     { user_id: userA, offer_id: configuredFreeUpgradeOfferId, code: OFFER_FU_CONFIG },
     { user_id: userA, offer_id: fixedOfferId, code: OFFER_FIXED },
+    { user_id: userA, offer_id: fuSizedOfferId, code: OFFER_FU_SIZED },
+    // ADM-008 Fix 6 F1: zero-redeemable-value percentage/fixed offer coupons.
+    { user_id: userA, offer_id: zeroPercentOfferId, code: OFFER_PCT_ZERO },
+    { user_id: userA, offer_id: nullFixedOfferId, code: OFFER_FIXED_NULL },
+    { user_id: userA, offer_id: microPercentOfferId, code: OFFER_PCT_MICRO },
   ]);
 });
 
@@ -642,15 +747,14 @@ describe('POST /coupons/apply — AC1 unconfigured free-mechanic guard (ADM-008 
   });
 });
 
-// ADM-008 P1b: the widened deny-guard. ALL FOUR cheapest-line-vulnerable offer
-// mechanics are rejected at the resolver — none has coupon-redemption semantics in
-// this plan. buy_one_take_one / bundle are a PERMANENT deny; free_item /
-// free_upgrade is a P1b-interim deny that fires even when benefit_product_id is
-// CONFIGURED (non-null — the finding-2 window-hole lock). Two-line carts (finding
-// 5) prove no cheapest-line discount leaks: absent the guard,
-// computeDealDiscountCents would return the cheaper line's 300c. Every reject
-// leaves the coupon `available` (apply is zero-mutation).
-describe('POST /coupons/apply — P1b widened deny-guard (ADM-008 Fix 6 P1b)', () => {
+// ADM-008 P1b→P2: the PERMANENT deny half of the widened guard. buy_one_take_one /
+// bundle have no coupon-redemption semantics ever, so they are denied at the
+// resolver (b1t1/bundle deny survives P2 untouched). Two-line carts (finding 5)
+// prove no cheapest-line discount leaks: absent the guard, computeDealDiscountCents
+// would return the cheaper line's 300c. The CONFIGURED free-mechanic cases that P1b
+// also denied now REDEEM under P2 — see the P2 configured-redemption block below.
+// Every reject leaves the coupon `available` (apply is zero-mutation).
+describe('POST /coupons/apply — P1b permanent deny-guard (ADM-008 Fix 6 P1b/P2)', () => {
   // Two-line cart: seeded product (500c) + cheaper product (300c). If the P1b guard
   // were removed, the cheapest-eligible-line path would leak a 300c discount.
   const twoLineCart = () => ({
@@ -682,15 +786,6 @@ describe('POST /coupons/apply — P1b widened deny-guard (ADM-008 Fix 6 P1b)', (
     await expectDenied(OFFER_BUNDLE);
   });
 
-  it('denies a CONFIGURED free_item offer coupon (finding-2 window-hole lock), no leak', async () => {
-    // benefit_product_id is NON-NULL here — P1 admitted this; P1b denies it.
-    await expectDenied(OFFER_FI_CONFIG);
-  });
-
-  it('denies a CONFIGURED free_upgrade offer coupon (finding-2 window-hole lock), no leak', async () => {
-    await expectDenied(OFFER_FU_CONFIG);
-  });
-
   // finding 4 — fixed_discount offer-coupon exact-cents insurance: the guard
   // restructure must NOT perturb the fixed_discount fall-through path.
   it('still applies a fixed_discount offer coupon at exact cents (guard-restructure insurance)', async () => {
@@ -706,6 +801,148 @@ describe('POST /coupons/apply — P1b widened deny-guard (ADM-008 Fix 6 P1b)', (
     expect(res.json.discount.source).toBe('deal');
     // subtotal 500; fixed ₱3.00 = 300c; min(300, 500) = 300.
     expect(res.json.discount.amountCents).toBe(300);
+  });
+});
+
+// ADM-008 P2: CONFIGURED free-mechanic redemption semantics at preview. free_item
+// waives one unit of the BENEFIT product (reward math verbatim) — never the cheapest
+// cart line; free_upgrade waives one unit's paid size-upgrade delta. Exact cents,
+// reject on not_in_cart / no_upgrade_to_waive (never a ₱0-and-burn), apply
+// zero-mutation. These REPLACE the P1b CONFIGURED-deny assertions (findings 1–5).
+describe('POST /coupons/apply — P2 configured free-mechanic redemption (ADM-008 Fix 6 P2)', () => {
+  async function couponStatus(code: string): Promise<string> {
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    return coupon!.status;
+  }
+
+  it('free_item waives the exact benefit-product unit price (AC2), NOT the cheapest cart line', async () => {
+    // Two-line cart: benefit productId (500c) + cheaper product (300c). free_item
+    // must waive the BENEFIT product's 500c, never the cheapest line's 300c.
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FI_CONFIG,
+        pickupBranchId: branchId,
+        cartItems: [
+          { productId, quantity: 1 },
+          { productId: cheapProductId, quantity: 1 },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.discount.source).toBe('deal');
+    expect(res.json.discount.amountCents).toBe(500);
+    expect(res.json.discount.refId).toBe(configuredFreeItemOfferId);
+    // AC9 wire-freeze: the AppliedDiscount shape is exactly {source, refId, label, amountCents}.
+    expect(Object.keys(res.json.discount).sort()).toEqual([
+      'amountCents',
+      'label',
+      'refId',
+      'source',
+    ]);
+    // Apply is zero-mutation — the coupon stays available on success.
+    expect(await couponStatus(OFFER_FI_CONFIG)).toBe('available');
+  });
+
+  it('free_item rejects when the benefit product is absent from the cart (AC4 not_in_cart)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FI_CONFIG,
+        pickupBranchId: branchId,
+        cartItems: [{ productId: cheapProductId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('not_in_cart');
+    expect(res.json.discount).toBeUndefined();
+    expect(await couponStatus(OFFER_FI_CONFIG)).toBe('available');
+  });
+
+  it('free_upgrade waives the exact paid size-upgrade delta (AC5)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FU_SIZED,
+        pickupBranchId: branchId,
+        cartItems: [
+          {
+            productId: sizedProductId,
+            quantity: 1,
+            selectedOptions: [{ optionId: sizedSizeOptionId }],
+          },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.discount.source).toBe('deal');
+    expect(res.json.discount.amountCents).toBe(200); // +2.00 size delta
+    expect(await couponStatus(OFFER_FU_SIZED)).toBe('available');
+  });
+
+  it('free_upgrade rejects when the benefit has no paid size upgrade (AC6 no_upgrade_to_waive, no ₱0-burn)', async () => {
+    // OFFER_FU_CONFIG benefit = productId, which has NO size option — present but
+    // nothing to waive → no_upgrade_to_waive, never a ₱0-and-burn success.
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FU_CONFIG,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_upgrade_to_waive');
+    expect(res.json.discount).toBeUndefined();
+    expect(await couponStatus(OFFER_FU_CONFIG)).toBe('available');
+  });
+
+  it('free_upgrade rejects when the benefit product is absent (AC4 not_in_cart)', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: OFFER_FU_SIZED,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('not_in_cart');
+    expect(res.json.discount).toBeUndefined();
+  });
+});
+
+// ADM-008 Fix 6 F1: a percentage/fixed offer coupon whose computed discount is <= 0
+// (NULL/0/negative discount_value, or a percentage that rounds to zero on a small
+// subtotal) must REJECT at preview — never resolve ok and burn for zero benefit. The
+// reject lands AFTER checkDealEligibility (these offers all pass eligibility), so F1
+// is provably the guard that fires. Apply is zero-mutation, so the coupon stays
+// available.
+describe('POST /coupons/apply — F1 zero-value discount offer reject (ADM-008 Fix 6)', () => {
+  async function expectNoRedeemableValue(code: string): Promise<void> {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: { code, pickupBranchId: branchId, cartItems: [{ productId, quantity: 1 }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_eligible_product');
+    expect(res.json.error).toBe('This offer has no redeemable value.');
+    expect(res.json.discount).toBeUndefined();
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+  }
+
+  it('rejects a percentage_discount offer with discount_value 0', async () => {
+    await expectNoRedeemableValue(OFFER_PCT_ZERO);
+  });
+
+  it('rejects a fixed_discount offer with a NULL discount_value', async () => {
+    await expectNoRedeemableValue(OFFER_FIXED_NULL);
+  });
+
+  it('rejects a percentage_discount that rounds to 0 on a micro subtotal', async () => {
+    await expectNoRedeemableValue(OFFER_PCT_MICRO);
   });
 });
 

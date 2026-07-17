@@ -32,6 +32,8 @@ let auth: AuthModule['auth'];
 let db: DbModule['db'];
 let users: SchemaModule['users'];
 let offers: SchemaModule['offers'];
+let categories: SchemaModule['categories'];
+let products: SchemaModule['products'];
 let app: IndexModule['app'];
 
 let logSpy: ReturnType<typeof vi.spyOn>;
@@ -41,6 +43,7 @@ const unique = () => Math.random().toString(36).slice(2, 10);
 let adminCookies: string[];
 let staffCookies: string[];
 let customerCookies: string[];
+let benefitProductId: string; // ADM-008 Fix 6: a real product for free-mechanic offers
 
 async function signUpAndGetCookie(email: string, password: string): Promise<string[]> {
   await auth.api.signUpEmail({ body: { email, password, name: 'Test User' } });
@@ -108,12 +111,29 @@ beforeAll(async () => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   ({ auth } = await import('../../../lib/auth'));
   ({ db } = await import('../../../db/client'));
-  ({ users, offers } = await import('../../../db/schema/index'));
+  ({ users, offers, categories, products } = await import('../../../db/schema/index'));
   ({ app } = await import('../../../index'));
 
   adminCookies = (await makeUser('admin')).cookies;
   staffCookies = (await makeUser('staff')).cookies;
   customerCookies = (await makeUser('customer')).cookies;
+
+  // A real product to reference as a free-mechanic benefit (ADM-008 Fix 6 AC10).
+  const suffix = unique();
+  const [category] = await db
+    .insert(categories)
+    .values({ name: `OfferCat ${suffix}`, slug: `offer-cat-${suffix}`, sort_order: 1 })
+    .returning();
+  const [product] = await db
+    .insert(products)
+    .values({
+      category_id: category!.id,
+      name: `Benefit ${suffix}`,
+      slug: `benefit-${suffix}`,
+      base_price: '5.00',
+    })
+    .returning();
+  benefitProductId = product!.id;
 });
 
 afterAll(() => {
@@ -189,10 +209,242 @@ describe('POST /api/admin/offers (AC2)', () => {
       'bundle',
     ];
     for (const offerType of types) {
-      const res = await createOffer(adminCookies, { offerType });
+      // ADM-008 Fix 6: free mechanics now REQUIRE a benefit product (cross-validated).
+      const overrides: Record<string, unknown> = { offerType };
+      if (offerType === 'free_item' || offerType === 'free_upgrade') {
+        overrides.benefitProductId = benefitProductId;
+      }
+      const res = await createOffer(adminCookies, overrides);
       expect(res.status).toBe(201);
       expect(res.body.offer.offerType).toBe(offerType);
     }
+  });
+});
+
+// ADM-008 Fix 6 (P2) admin cross-validation (AC10). free_item/free_upgrade REQUIRE a
+// benefitProductId (referencing a real product); percentage_discount/fixed_discount
+// REJECT a benefitProductId AND REQUIRE a positive discountValueCents. PATCH validates
+// the MERGED (existing + patch) state so a partial update cannot bypass the rules.
+describe('POST/PATCH /api/admin/offers — free-mechanic cross-validation (AC10)', () => {
+  it('rejects (400) creating a free_item offer WITHOUT a benefit product', async () => {
+    const res = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('creates a free_upgrade offer WITH a benefit product and reads it back', async () => {
+    const res = await createOffer(adminCookies, {
+      offerType: 'free_upgrade',
+      discountValueCents: undefined,
+      benefitProductId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.offer.offerType).toBe('free_upgrade');
+    expect(res.body.offer.benefitProductId).toBe(benefitProductId);
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, res.body.offer.id));
+    expect(row!.benefit_product_id).toBe(benefitProductId);
+  });
+
+  it('rejects (400) a free-mechanic benefitProductId that does not reference a product', async () => {
+    const res = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId: '00000000-0000-0000-0000-000000000000',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects (400) a percentage_discount offer that supplies a benefitProductId', async () => {
+    const res = await createOffer(adminCookies, {
+      offerType: 'percentage_discount',
+      discountValueCents: 1500,
+      benefitProductId,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects (400) a fixed_discount offer with no positive discountValueCents', async () => {
+    const zero = await createOffer(adminCookies, {
+      offerType: 'fixed_discount',
+      discountValueCents: 0,
+    });
+    expect(zero.status).toBe(400);
+  });
+
+  it('PATCH merged-state: rejects flipping a discount offer to free while the benefit stays absent', async () => {
+    const created = await createOffer(adminCookies, {
+      offerType: 'fixed_discount',
+      discountValueCents: 500,
+    });
+    const id = created.body.offer.id as string;
+    // Flip mechanic to free_item WITHOUT supplying a benefitProductId → merged state
+    // is free + null benefit → reject (the partial-update bypass trap).
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ offerType: 'free_item' })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH merged-state: rejects flipping a free offer to discount while the benefit lingers', async () => {
+    const created = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId,
+    });
+    const id = created.body.offer.id as string;
+    // Flip mechanic to fixed_discount but the benefit product lingers on the row →
+    // merged state is discount + benefit present → reject.
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ offerType: 'fixed_discount', discountValueCents: 500 })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH merged-state: allows a valid free-offer edit that keeps the benefit configured', async () => {
+    const created = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId,
+    });
+    const id = created.body.offer.id as string;
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ title: `Renamed ${unique()}` })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.offer.benefitProductId).toBe(benefitProductId);
+  });
+});
+
+// ADM-008 Fix 6 F2/F4/F5 supplement fixes.
+describe('POST/PATCH /api/admin/offers — Fix 6 F2/F4/F5', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+
+  /** Direct-insert an offer row (bypasses admin Zod, mirroring a legacy/misconfigured row). */
+  const seedOfferRow = async (
+    values: Partial<typeof offers.$inferInsert> &
+      Pick<typeof offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  // F2 — clearing a benefit product via an explicit null in the same PATCH.
+  it('F2: PATCH free→percentage with benefitProductId null succeeds and clears the column', async () => {
+    const created = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId,
+    });
+    const id = created.body.offer.id as string;
+
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ offerType: 'percentage_discount', discountValueCents: 1000, benefitProductId: null })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.offer.benefitProductId).toBeNull();
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, id));
+    expect(row!.benefit_product_id).toBeNull();
+    expect(row!.deal_type).toBe('percentage_discount');
+  });
+
+  it('F2: PATCH free→percentage WITHOUT clearing the benefit still 400s (merged-state intact)', async () => {
+    const created = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId,
+    });
+    const id = created.body.offer.id as string;
+
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ offerType: 'percentage_discount', discountValueCents: 1000 })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(400);
+  });
+
+  // F4 — a deactivate-only (or any non-mechanic) PATCH must not be blocked by a
+  // pre-existing legacy-invalid row.
+  it('F4: deactivates a SQL-seeded misconfigured free offer (no cross-validation on isActive-only patch)', async () => {
+    const id = await seedOfferRow({ title: `Legacy ${unique()}`, deal_type: 'free_item' }); // null benefit
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ isActive: false })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.offer.isActive).toBe(false);
+  });
+
+  // F5 — a benefit product must exist AND be active AND not be a deal product.
+  it('F5: rejects (400) a benefit product that is a deal product', async () => {
+    const suffix = unique();
+    const [category] = await db
+      .insert(categories)
+      .values({ name: `F5DealCat ${suffix}`, slug: `f5-deal-cat-${suffix}`, sort_order: 1 })
+      .returning();
+    const [dealProduct] = await db
+      .insert(products)
+      .values({
+        category_id: category!.id,
+        name: `F5Deal ${suffix}`,
+        slug: `f5-deal-${suffix}`,
+        base_price: '5.00',
+        is_deal: true,
+      })
+      .returning();
+    const res = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId: dealProduct!.id,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('F5: rejects (400) a benefit product that is inactive', async () => {
+    const suffix = unique();
+    const [category] = await db
+      .insert(categories)
+      .values({ name: `F5InactiveCat ${suffix}`, slug: `f5-inactive-cat-${suffix}`, sort_order: 1 })
+      .returning();
+    const [inactiveProduct] = await db
+      .insert(products)
+      .values({
+        category_id: category!.id,
+        name: `F5Inactive ${suffix}`,
+        slug: `f5-inactive-${suffix}`,
+        base_price: '5.00',
+        is_active: false,
+      })
+      .returning();
+    const res = await createOffer(adminCookies, {
+      offerType: 'free_item',
+      discountValueCents: undefined,
+      benefitProductId: inactiveProduct!.id,
+    });
+    expect(res.status).toBe(400);
   });
 });
 

@@ -54,10 +54,53 @@ adminCouponsRouter.post('/generate', async (req, res) => {
     }
     const { offerId, quantity, userId, expiresAt } = parsed.data;
 
-    // Referenced Offer must exist (404) — checked before any coupon write.
-    const [offer] = await db.select({ id: offers.id }).from(offers).where(eq(offers.id, offerId));
+    // Referenced Offer must exist (404) — checked before any coupon write. The
+    // deal_type + benefit_product_id + discount_value are read too so an
+    // unredeemable offer can be blocked (ADM-008 Fix 6, below).
+    const [offer] = await db
+      .select({
+        id: offers.id,
+        dealType: offers.deal_type,
+        benefitProductId: offers.benefit_product_id,
+        discountValue: offers.discount_value,
+      })
+      .from(offers)
+      .where(eq(offers.id, offerId));
     if (!offer) {
       throw new AdminApiError(404, 'Offer not found');
+    }
+
+    // ADM-008 Fix 6: a free_item/free_upgrade offer with no benefit product cannot
+    // be redeemed (the resolver rejects it), so refuse to mint codes against one —
+    // fail before any coupon write, matching the malformed-payload 400 contract.
+    if (
+      (offer.dealType === 'free_item' || offer.dealType === 'free_upgrade') &&
+      offer.benefitProductId === null
+    ) {
+      throw new AdminApiError(
+        400,
+        'This offer has no benefit product configured — set one before generating coupons.',
+      );
+    }
+
+    // ADM-008 Fix 6 F6: buy_one_take_one / bundle offers have no coupon-redemption
+    // semantics — the resolver permanently denies them — so refuse to mint codes that
+    // could never be redeemed.
+    if (offer.dealType === 'buy_one_take_one' || offer.dealType === 'bundle') {
+      throw new AdminApiError(400, 'This offer type cannot be redeemed with a coupon.');
+    }
+
+    // ADM-008 Fix 6 F6 (F1 mint-side twin): a percentage/fixed offer with a NULL or
+    // non-positive discount_value resolves to zero benefit (the resolver rejects it),
+    // so refuse to mint codes against it.
+    if (
+      (offer.dealType === 'percentage_discount' || offer.dealType === 'fixed_discount') &&
+      (offer.discountValue === null || Number(offer.discountValue) <= 0)
+    ) {
+      throw new AdminApiError(
+        400,
+        'This offer has no discount value configured — set one before generating coupons.',
+      );
     }
 
     // Persist user_id ONLY for a targeted single issue; bulk coupons stay NULL

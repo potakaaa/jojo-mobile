@@ -816,6 +816,11 @@ export interface AdminOffer {
   totalUsageLimit: number | null;
   isActive: boolean;
   promotionId: string | null;
+  // ADM-008 Fix 6 (free-mechanic redemption): the product a free_item/free_upgrade
+  // offer's benefit applies to. Additive, ADMIN-only (the public wire-frozen
+  // `ApiDeal`/`serializeDeal` shape is untouched). Null for non-free offers and for
+  // legacy free offers created before this fix.
+  benefitProductId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -858,6 +863,7 @@ export function serializeAdminOffer(offer: OfferRow): AdminOffer {
     totalUsageLimit: offer.total_usage_limit,
     isActive: offer.is_active,
     promotionId: offer.promotion_id,
+    benefitProductId: offer.benefit_product_id,
     createdAt: offer.created_at.toISOString(),
     updatedAt: offer.updated_at.toISOString(),
   };
