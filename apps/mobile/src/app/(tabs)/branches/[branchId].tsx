@@ -201,11 +201,13 @@ export default function BranchDetailsScreen() {
               </Text>
             </View>
 
-            <Badge
-              label={branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
-              variant={branch.isAcceptingPickup ? 'success' : 'danger'}
-              mode={mode}
-            />
+            {isOpen ? (
+              <Badge
+                label={branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
+                variant={branch.isAcceptingPickup ? 'success' : 'danger'}
+                mode={mode}
+              />
+            ) : null}
           </Card>
 
           <Card mode={mode} style={styles.section}>
@@ -267,9 +269,14 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: Spacing.two,
-    paddingVertical: Spacing.four,
-    // Moved down from `safeArea` so the gutter applies to the scroll body only, not to
-    // <ScreenHeader> (which pads itself). Same net inset as before for this content.
+    // BRN-006: split the former `paddingVertical: Spacing.four` so the top gap under
+    // <ScreenHeader> isn't oversized. `paddingTop: Spacing.three` matches the sibling
+    // ScreenHeader screens (order/cart, order/checkout); `paddingBottom` stays
+    // Spacing.four (the inline clearance override below re-adds it on native).
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    // paddingHorizontal moved down from `safeArea` (NAV-003) so the gutter applies to the
+    // scroll body only, not to <ScreenHeader> (which pads itself).
     paddingHorizontal: Spacing.four,
   },
   centered: {

@@ -21,7 +21,8 @@ export interface BranchListItemProps {
  * Full-width branch row for the branch locator list. Purely presentational —
  * the caller pre-computes `isOpen`, `showDistance`, `isEnabled`, and `isNearest`
  * (this component does NOT import getIsOpenNow or distanceKm). Renders name,
- * address, optional distance, open/closed badge, pickup-availability badge, prep
+ * address, optional distance, open/closed badge, a pickup-availability badge
+ * (shown ONLY when `isOpen` — a closed branch never shows a pickup badge), prep
  * time, and an "Order from this branch" CTA that is disabled when `!isEnabled`.
  * When `isNearest` is true, the card gets a jred accent outline and a
  * "Nearest to you" pill so it obviously reads as the user's closest branch.
@@ -67,11 +68,13 @@ export function BranchListItem({
         {showDistance && typeof branch.distanceKm === 'number' ? (
           <Text style={styles.meta}>{branch.distanceKm.toFixed(1)} km</Text>
         ) : null}
-        <Badge
-          label={branch.isAcceptingPickup ? 'Pickup available' : 'Pickup unavailable'}
-          variant={branch.isAcceptingPickup ? 'success' : 'danger'}
-          mode={mode}
-        />
+        {isOpen ? (
+          <Badge
+            label={branch.isAcceptingPickup ? 'Pickup available' : 'Pickup unavailable'}
+            variant={branch.isAcceptingPickup ? 'success' : 'danger'}
+            mode={mode}
+          />
+        ) : null}
         <Text style={styles.meta}>~{branch.estimatedPrepMinutes} min</Text>
       </View>
     </>
