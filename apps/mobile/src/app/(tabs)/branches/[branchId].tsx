@@ -158,11 +158,13 @@ export default function BranchDetailsScreen() {
               </Text>
             </View>
 
-            <Badge
-              label={branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
-              variant={branch.isAcceptingPickup ? 'success' : 'danger'}
-              mode={mode}
-            />
+            {isOpen ? (
+              <Badge
+                label={branch.isAcceptingPickup ? 'Accepting Pickup' : 'Not Accepting Pickup'}
+                variant={branch.isAcceptingPickup ? 'success' : 'danger'}
+                mode={mode}
+              />
+            ) : null}
           </Card>
 
           <Card mode={mode} style={styles.section}>
@@ -220,7 +222,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: Spacing.two,
-    paddingVertical: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.four,
   },
   centered: {
     alignItems: 'center',
