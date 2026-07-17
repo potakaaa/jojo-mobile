@@ -6,7 +6,7 @@ import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode 
 
 export interface OrderStatusTimelineProps {
   currentStatus: OrderStatus;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
   liveMode?: boolean;
 }
@@ -142,7 +142,7 @@ function StepConnector({
 
 export function OrderStatusTimeline({
   currentStatus,
-  mode = 'light',
+  mode,
   style,
   liveMode = false,
 }: OrderStatusTimelineProps) {

@@ -12,7 +12,7 @@ export interface NotificationRowProps {
   unread: boolean;
   iconName: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -31,7 +31,7 @@ export function NotificationRow({
   unread,
   iconName,
   onPress,
-  mode = 'light',
+  mode,
   style,
 }: NotificationRowProps) {
   const theme = Colors[mode];

@@ -5,6 +5,7 @@ import { NotificationRow } from '../notification-row';
 test('renders an unread NotificationRow', async () => {
   const { getByText } = await render(
     <NotificationRow
+      mode="light"
       title="Order ready for pickup"
       body="Your order is ready."
       timeLabel="2 min ago"
@@ -20,6 +21,7 @@ test('renders an unread NotificationRow', async () => {
 test('renders a read NotificationRow without throwing', async () => {
   await render(
     <NotificationRow
+      mode="light"
       title="New deal"
       body="20% off"
       timeLabel="1 h ago"
@@ -34,6 +36,7 @@ test('fires onPress when the row is tapped', async () => {
   const onPress = jest.fn();
   const { getByRole } = await render(
     <NotificationRow
+      mode="light"
       title="Reward unlocked"
       body="Enjoy!"
       timeLabel="Just now"

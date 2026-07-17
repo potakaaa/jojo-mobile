@@ -15,7 +15,7 @@ import {
 export interface CouponCardProps {
   coupon: Coupon;
   onPress?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -23,7 +23,7 @@ export interface CouponCardProps {
  * Coupon card showing the code, title, discount, and redeemed state. Renders
  * dimmed when already redeemed.
  */
-export function CouponCard({ coupon, onPress, mode = 'light', style }: CouponCardProps) {
+export function CouponCard({ coupon, onPress, mode, style }: CouponCardProps) {
   const theme = Colors[mode];
 
   return (

@@ -16,7 +16,7 @@ export interface FlavorSelectorProps {
   flavors: Flavor[];
   selectedFlavorId?: string;
   onSelect?: (flavor: Flavor) => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -29,7 +29,7 @@ export function FlavorSelector({
   flavors,
   selectedFlavorId,
   onSelect,
-  mode = 'light',
+  mode,
   style,
 }: FlavorSelectorProps) {
   const theme = Colors[mode];

@@ -28,7 +28,7 @@ export interface ButtonProps {
   variant?: ButtonVariant;
   size?: 'md' | 'sm';
   disabled?: boolean;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
   /** Optional Ionicons glyph rendered before the label. */
   iconName?: keyof typeof Ionicons.glyphMap;
@@ -54,7 +54,7 @@ export function Button({
   variant = 'primary',
   size = 'md',
   disabled = false,
-  mode = 'light',
+  mode,
   style,
   iconName,
   loading = false,

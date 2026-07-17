@@ -16,7 +16,7 @@ export interface SizeSelectorProps {
   sizes: Size[];
   selectedSizeId?: string;
   onSelect?: (size: Size) => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -25,13 +25,7 @@ export interface SizeSelectorProps {
  * `selectedSizeId` prop (no internal selection state), matching the package's
  * no-context/no-hook convention.
  */
-export function SizeSelector({
-  sizes,
-  selectedSizeId,
-  onSelect,
-  mode = 'light',
-  style,
-}: SizeSelectorProps) {
+export function SizeSelector({ sizes, selectedSizeId, onSelect, mode, style }: SizeSelectorProps) {
   const theme = Colors[mode];
 
   return (

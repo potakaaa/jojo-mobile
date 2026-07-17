@@ -7,6 +7,7 @@ import { MOCK_CART_ITEM, MOCK_FLAVOR, MOCK_MENU_ITEM, MOCK_SIZE } from './mocks'
 test('renders CartItem with flavor and size variant', async () => {
   const { getByText } = await render(
     <CartItem
+      mode="light"
       item={MOCK_CART_ITEM}
       product={MOCK_MENU_ITEM}
       flavor={MOCK_FLAVOR}
@@ -26,7 +27,7 @@ test('renders CartItem with flavor and size variant', async () => {
 
 test('renders CartItem with no flavor/size variant', async () => {
   const { getByText, queryByText } = await render(
-    <CartItem item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} />,
+    <CartItem mode="light" item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} />,
   );
 
   const lineTotalCents = MOCK_MENU_ITEM.priceCents * MOCK_CART_ITEM.quantity;
@@ -37,5 +38,7 @@ test('renders CartItem with no flavor/size variant', async () => {
 });
 
 test('renders CartItem with onRemove trash affordance without throwing', async () => {
-  await render(<CartItem item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} onRemove={() => {}} />);
+  await render(
+    <CartItem mode="light" item={MOCK_CART_ITEM} product={MOCK_MENU_ITEM} onRemove={() => {}} />,
+  );
 });

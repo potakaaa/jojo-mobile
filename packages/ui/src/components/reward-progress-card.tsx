@@ -13,7 +13,7 @@ export interface RewardProgress {
 export interface RewardProgressCardProps {
   rewards: RewardProgress;
   onPress?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
 }
 
 /**
@@ -21,7 +21,7 @@ export interface RewardProgressCardProps {
  * their next reward. Tapping toggles a local pressed highlight — it does not
  * navigate.
  */
-export function RewardProgressCard({ rewards, onPress, mode = 'light' }: RewardProgressCardProps) {
+export function RewardProgressCard({ rewards, onPress, mode }: RewardProgressCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
   const isUnlocked = rewards.currentStars >= rewards.requiredStars;

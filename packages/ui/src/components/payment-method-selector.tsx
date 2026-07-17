@@ -9,7 +9,7 @@ export interface PaymentMethodSelectorProps {
   onChange: (v: PaymentMethod) => void;
   /** When false, the GCash/Maya/card options render disabled (not selectable). */
   onlinePaymentEnabled: boolean;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -91,7 +91,7 @@ export function PaymentMethodSelector({
   value,
   onChange,
   onlinePaymentEnabled,
-  mode = 'light',
+  mode,
   style,
 }: PaymentMethodSelectorProps) {
   const theme = Colors[mode];

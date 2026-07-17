@@ -14,7 +14,7 @@ export interface BranchListItemProps {
   isNearest?: boolean; // this is the closest branch to the user (only when distance known)
   onOrderPress?: () => void;
   onPress?: () => void; // card-level tap (e.g. focus the map on this branch); the Order CTA still fires onOrderPress independently
-  mode?: ThemeMode;
+  mode: ThemeMode;
 }
 
 /**
@@ -43,7 +43,7 @@ export function BranchListItem({
   isNearest = false,
   onOrderPress,
   onPress,
-  mode = 'light',
+  mode,
 }: BranchListItemProps) {
   const infoRegion = (
     <>

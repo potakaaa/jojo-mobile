@@ -4,7 +4,7 @@ import { render } from '@testing-library/react-native';
 import { OrderStatusBadge } from '../order-status-badge';
 
 test('renders OrderStatusBadge without throwing', () => {
-  render(<OrderStatusBadge status="preparing" />);
+  render(<OrderStatusBadge mode="light" status="preparing" />);
 });
 
 test.each<OrderStatus>([
@@ -16,5 +16,5 @@ test.each<OrderStatus>([
   'completed',
   'cancelled',
 ])('renders OrderStatusBadge for the %s status', (status) => {
-  render(<OrderStatusBadge status={status} />);
+  render(<OrderStatusBadge mode="light" status={status} />);
 });

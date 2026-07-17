@@ -22,6 +22,7 @@ function disabledByMethod(getAllByRole: RenderResult['getAllByRole']) {
 test('renders all 5 rows with correct labels', async () => {
   const { getByText } = await render(
     <PaymentMethodSelector
+      mode="light"
       value="pay_at_branch"
       onChange={() => {}}
       onlinePaymentEnabled={false}
@@ -35,6 +36,7 @@ test('renders all 5 rows with correct labels', async () => {
 test('marks only pay_at_branch non-disabled when onlinePaymentEnabled=false', async () => {
   const { getAllByRole } = await render(
     <PaymentMethodSelector
+      mode="light"
       value="pay_at_branch"
       onChange={() => {}}
       onlinePaymentEnabled={false}
@@ -50,7 +52,12 @@ test('marks only pay_at_branch non-disabled when onlinePaymentEnabled=false', as
 
 test('marks gcash/maya/card non-disabled and app_wallet still disabled when onlinePaymentEnabled=true', async () => {
   const { getAllByRole } = await render(
-    <PaymentMethodSelector value="pay_at_branch" onChange={() => {}} onlinePaymentEnabled={true} />,
+    <PaymentMethodSelector
+      mode="light"
+      value="pay_at_branch"
+      onChange={() => {}}
+      onlinePaymentEnabled={true}
+    />,
   );
   const disabled = disabledByMethod(getAllByRole);
   expect(disabled.pay_at_branch).toBe(false);
@@ -64,6 +71,7 @@ test('does not call onChange when a disabled row is tapped', async () => {
   const onChange = jest.fn();
   const { getByText } = await render(
     <PaymentMethodSelector
+      mode="light"
       value="pay_at_branch"
       onChange={onChange}
       onlinePaymentEnabled={false}
@@ -77,7 +85,12 @@ test('does not call onChange when a disabled row is tapped', async () => {
 test('calls onChange with the method when an enabled row is tapped', async () => {
   const onChange = jest.fn();
   const { getByText } = await render(
-    <PaymentMethodSelector value="pay_at_branch" onChange={onChange} onlinePaymentEnabled={true} />,
+    <PaymentMethodSelector
+      mode="light"
+      value="pay_at_branch"
+      onChange={onChange}
+      onlinePaymentEnabled={true}
+    />,
   );
   fireEvent.press(getByText('GCash'));
   expect(onChange).toHaveBeenCalledWith('gcash');
