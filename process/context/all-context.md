@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-16 (ADM-008 post-merge fix batch — Fixes 3+4, doc-only reconciliation; merged with ADM-008 Coupons delta, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-17 (BRN-006 branch status badge fix — doc-only reconciliation; branch badge gate + two-handler API precedence fact recorded)
 
 This file is the root context entrypoint for the repo.
 
@@ -720,6 +720,25 @@ top of it later without re-plumbing the project.
   `pickup-order-flow` plan's happy-path coverage relied on an Agent-Probe manual QA script for this
   reason, not an automated E2E gate. The mobile staff shell and role-gate are Agent-Probe only for
   the same reason.
+- **Branch status badge fix (BRN-006 #102, `fix/brn-006-branch-status-badge`, PR #111 OPEN — 17-07-26,
+  CODE-COMPLETE + automated-verified, Agent-Probe QA pending):** presentation-only fix; zero backend
+  changes. Gated the accepting-pickup `<Badge>` on `isOpen === true` in both
+  `apps/mobile/src/app/(tabs)/branches/[branchId].tsx` and
+  `packages/ui/src/components/branch-list-item.tsx` — a closed branch with `is_accepting_pickup = true`
+  no longer renders "Closed" + "Accepting Pickup" simultaneously. Also fixed doubled top spacing in
+  `[branchId].tsx` `scrollContent` (`paddingVertical: Spacing.four` → `paddingTop: Spacing.two +
+  paddingBottom: Spacing.four`). Added 3 new jest render tests in
+  `packages/ui/src/components/__tests__/branch-list-item.test.tsx` (badge absent when closed; "Pickup
+  unavailable" when open+not-accepting; "Pickup available" when open+accepting). All automated gates
+  green: mobile+ui typecheck, ui 65/65 (+3 new), mobile 27/27, Prettier clean. Ordering gates
+  (`canOrder`, `isEnabled`) are byte-identical (untouched). **Deals section intentionally kept (descope
+  decision, durable):** `[branchId].tsx` fetches `/api/branches/:id`, which is served by an inline
+  handler at `packages/api/src/index.ts:137` (returns `{ branch, deals }` via live UNION over the
+  `offers` table), NOT by `packages/api/src/routes/branches.ts` (mounted at `/branches` — wrong prefix,
+  never matched). Removing the deals section would silently delete working functionality. See memory
+  `api-branches-two-handler-precedence.md` for the full two-handler precedence fact. Plan:
+  `process/features/pickup-branches/active/brn-006-branch-status-badge_17-07-26/` (task folder stays in
+  `active/` pending Agent-Probe QA + PR merge).
 - **API testing:** `packages/api` has vitest + supertest. Run `pnpm --filter @jojopotato/api test`
   (requires `docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate` first). Suites
   cover auth, staff authz (`require-staff.integration.test.ts` — hermetic, self-seeding fixtures),
@@ -1161,7 +1180,14 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (ADM-008 POST-MERGE FIX 6 UPDATE PROCESS — doc-only reconciliation, no
+- Last delta: 2026-07-17 (BRN-006 branch status badge fix — doc-only reconciliation. Presentation-only
+  fix: accepting-pickup badge gated on `isOpen` in `[branchId].tsx` + `branch-list-item.tsx`; top
+  spacing fix; 3 new jest render tests (ui 65/65). Deals section kept — descoped after discovering the
+  two-handler API precedence: `/api/branches/:id` is served by the inline handler at `index.ts:137`
+  (returns `{ branch, deals }`, live UNION over `offers` table), NOT by `routes/branches.ts`. Memory
+  filed: `api-branches-two-handler-precedence.md`. Plan stays in `active/` pending Agent-Probe QA and
+  PR #111 merge. Commit: `9910872`, branch `fix/brn-006-branch-status-badge`.)
+- Previous delta: 2026-07-17 (ADM-008 POST-MERGE FIX 6 UPDATE PROCESS — doc-only reconciliation, no
   source changes this pass. `adm-008-free-mechanics_16-07-26` (4 commits: `35981fa` P1, `66cbb0e`
   P1b, `ad3e937` P3, `cceb66b` P2) closed the live free_item/free_upgrade (and b1t1/bundle)
   cheapest-line money leak — see the dedicated bullet above for the full account. Final gates: API

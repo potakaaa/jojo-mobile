@@ -10,6 +10,7 @@ import {
   EmptyState,
   PAYMENT_METHOD_ICONS,
   PAYMENT_METHOD_LABELS,
+  ScreenHeader,
 } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
@@ -31,7 +32,8 @@ import {
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance, useHideTabBarWhile } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
+import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { getAppliedCouponCode, setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
@@ -228,10 +230,20 @@ export default function CheckoutScreen() {
         ? Palette.jgold
         : Palette.green;
 
+  /*
+    All THREE return branches (isEmpty / isBranchUnavailable / main) render the
+    SAME ScreenHeader — the native header used to cover every branch for free,
+    so adding it to the main branch alone would silently strip the title and the
+    back control from these two. Neither branch has a bottom CTA (the centered
+    EmptyState is their only content) and neither has a clearance call, so
+    'bottom' is correctly absent here: there is nothing that could sit flush
+    against the home indicator.
+  */
   if (isEmpty) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Checkout" onBack={() => router.back()} mode={mode} />
           <EmptyState
             iconName="cart-outline"
             title="Nothing to check out"
@@ -248,7 +260,8 @@ export default function CheckoutScreen() {
   if (isBranchUnavailable) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Checkout" onBack={() => router.back()} mode={mode} />
           <EmptyState
             iconName="location-outline"
             title="Branch unavailable"
@@ -264,13 +277,33 @@ export default function CheckoutScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={[]}>
+      {/*
+        NESTED screen — see cart.tsx for the full note.
+
+        TOP edge only (NAV-003): this stack now runs `headerShown:false`, so the
+        top inset is ours to supply. 'bottom' is deliberately GONE, resolving the
+        double-count NAV-001's EXECUTE report flagged — the device bottom inset
+        now arrives exactly ONCE, via the resolveTabBarClearance(true, …) calls
+        on the scroll content and the footer below.
+
+        The confirm drawer is intentionally OUTSIDE this SafeAreaView and applies
+        `insets.bottom` itself; it is unaffected either way.
+      */}
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScreenHeader title="Checkout" onBack={() => router.back()} mode={mode} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
             Platform.OS !== 'web' && {
-              paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.six + Spacing.two,
+              // isNested hardcoded true: checkout.tsx is always pushed inside the Order
+              // tab's Stack — never that tab's root — so isNestedTabRoute() would also
+              // evaluate true here; hardcoded per INNOVATE's static-per-screen-fact
+              // decision (see PLAN "Locked Inputs"). If this file moves, this literal changes.
+              paddingBottom:
+                resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) +
+                Spacing.six +
+                Spacing.two,
             },
           ]}
           showsVerticalScrollIndicator={false}
@@ -352,7 +385,15 @@ export default function CheckoutScreen() {
             style={[
               styles.footer,
               Platform.OS !== 'web' && {
-                paddingBottom: getFloatingTabBarClearance(insets.bottom),
+                // isNested hardcoded true — same structural invariant as the scroll
+                // content above (checkout.tsx is always a pushed screen in Order's Stack).
+                //
+                // `+ Spacing.two` restores styles.footer's own paddingBottom, which this
+                // override would otherwise wipe — leaving the "Place order" button flush
+                // against the home indicator. Mirrors cart.tsx's checkout bar, whose
+                // footer stylesheet is identical.
+                paddingBottom:
+                  resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.two,
               },
             ]}
           >

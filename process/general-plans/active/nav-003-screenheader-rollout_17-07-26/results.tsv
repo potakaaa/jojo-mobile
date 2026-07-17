@@ -1,0 +1,3 @@
+cycle	date	domain	gap_count	gate	loop_status	notes
+0	2026-07-17	plan	1	CONDITIONAL	BASELINE	outer-pvl first pass; 0 FAIL 1 CONCERN (loading/error early-return branches on 5 screens lose header+back)
+1	2026-07-17	plan	0	CONDITIONAL	HALTED_GAPS_RESOLVED	concern fixed inline as plan steps 6b/7b/9b/17b + probe 20b; validator 0 failures; user EXECUTE approval standing
