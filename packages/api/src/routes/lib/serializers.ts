@@ -904,3 +904,93 @@ export function serializeAdminCoupon(coupon: CouponRow): AdminCoupon {
     createdAt: coupon.created_at.toISOString(),
   };
 }
+
+// ─── Admin order serializers (ADM-006 read-only orders view) ─────────────────
+//
+// Admin-facing order shapes for the read-only cross-branch orders view. Declared
+// LOCALLY here matching the `AdminBranch`/`AdminReward` convention. By DESIGN
+// (Phase 6 D4) these COMPOSE the existing staff serializers verbatim and spread a
+// fixed admin-only field set on top — guaranteeing admin/staff detail parity (AC3)
+// structurally, never by re-implementing the staff shape. Admin adds exactly:
+// `branchId`/`branchName` (which branch), `customerName`/`customerPhone` (who
+// placed it — PII boundary D2: name + phone ONLY, never email/auth internals), and
+// the discount context `discountTotalCents`/`couponId`/`dealId` (IDs + amount, D5).
+// The public `serializeOrder`/`serializeStaffOrder*` wire shapes are UNTOUCHED.
+
+/** Minimal customer identity slice exposed on an admin order (PII boundary D2). */
+interface AdminOrderCustomer {
+  name: string;
+  phoneNumber: string | null;
+}
+
+/** Minimal branch slice exposed on an admin order. */
+interface AdminOrderBranch {
+  name: string;
+}
+
+export interface AdminOrderSummary extends StaffOrderSummary {
+  branchId: string;
+  branchName: string;
+  customerName: string;
+  customerPhone: string | null;
+  discountTotalCents: number;
+  couponId: string | null;
+  dealId: string | null;
+}
+
+export interface AdminOrderDetail extends StaffOrderDetail {
+  branchId: string;
+  branchName: string;
+  customerName: string;
+  customerPhone: string | null;
+  discountTotalCents: number;
+  couponId: string | null;
+  dealId: string | null;
+}
+
+/**
+ * Serialize an order + its items into the admin list row (ADM-006). Calls
+ * `serializeStaffOrderSummary` verbatim then spreads the admin-only field set on
+ * top — customer identity (name + phone only), branch name, and discount context.
+ */
+export function serializeAdminOrderSummary(
+  order: OrderRow,
+  items: OrderItemRow[],
+  customer: AdminOrderCustomer,
+  branch: AdminOrderBranch,
+): AdminOrderSummary {
+  return {
+    ...serializeStaffOrderSummary(order, items),
+    branchId: order.branch_id,
+    branchName: branch.name,
+    customerName: customer.name,
+    customerPhone: customer.phoneNumber,
+    discountTotalCents: numericToCents(order.discount_total),
+    couponId: order.coupon_id,
+    dealId: order.deal_id,
+  };
+}
+
+/**
+ * Serialize an order + its items into the admin detail shape (ADM-006). Calls
+ * `serializeStaffOrderDetail` verbatim (the shared item-snapshot shape staff see)
+ * then spreads the same admin-only field set — guaranteeing AC3 parity by
+ * construction.
+ */
+export function serializeAdminOrderDetail(
+  order: OrderRow,
+  items: OrderItemRow[],
+  customer: AdminOrderCustomer,
+  branch: AdminOrderBranch,
+): AdminOrderDetail {
+  return {
+    ...serializeStaffOrderDetail(order, items),
+    branchId: order.branch_id,
+    branchName: branch.name,
+    customerName: customer.name,
+    customerPhone: customer.phoneNumber,
+    discountTotalCents: numericToCents(order.discount_total),
+    couponId: order.coupon_id,
+    dealId: order.deal_id,
+  };
+}
