@@ -1587,3 +1587,190 @@ describe('POST /orders — P2 configured free-mechanic redemption (ADM-008 Fix 6
     expect(placed.json.order.discountTotalCents).toBe(preview.json.discount.amountCents);
   });
 });
+
+// ─── MENU-003: deal component availability at placement (AC5 — HARD, money) ──
+//
+// AC5 is a trust boundary: until this guard existed, a customer could place (and
+// be charged for) an order containing a deal whose ingredient the branch had run
+// out of. Fully-Automated by SPEC mandate — Known-Gap is banned for this AC.
+describe('POST /orders — MENU-003 deal component availability', () => {
+  let branchOkId: string; // deal fully available here
+  let branchDownId: string; // deal's component unavailable here
+  let categoryId: string;
+
+  let dealId: string; // 1 component: available at branchOk, unavailable at branchDown
+  let secondDealId: string; // fully available at branchOk — the multi-line partner
+  let inactiveComponentDealId: string; // AC8: component branch-available but is_active=false
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+
+  async function makeBranch(label: string, suffix: string): Promise<string> {
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `MENU003 ${label} ${suffix}`,
+        slug: `menu003-ord-${label.toLowerCase()}-${suffix}`,
+        address: `${label} Rd`,
+        latitude: '14.5',
+        longitude: '120.9',
+        phone: '+639170000011',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 20,
+      })
+      .returning();
+    return branch!.id;
+  }
+
+  async function makeProduct(
+    suffix: string,
+    opts: { isDeal?: boolean; isActive?: boolean } = {},
+  ): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `MENU003 Ord ${suffix}`,
+        slug: `menu003-ord-${suffix}`,
+        base_price: '9.00',
+        is_deal: opts.isDeal ?? false,
+        is_active: opts.isActive ?? true,
+      })
+      .returning();
+    return product!.id;
+  }
+
+  async function attach(dealProductId: string, componentProductId: string) {
+    await db
+      .insert(schema.dealComponents)
+      .values({ deal_product_id: dealProductId, component_product_id: componentProductId });
+  }
+
+  async function setAvailability(branchId: string, productId: string, isAvailable: boolean) {
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: productId, is_available: isAvailable });
+  }
+
+  const orderBody = (branchId: string, productIds: string[]) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch' as const,
+    items: productIds.map((productId) => ({ productId, quantity: 1, selectedOptions: [] })),
+  });
+
+  beforeAll(async () => {
+    const suffix = uid();
+    branchOkId = await makeBranch('Ok', suffix);
+    branchDownId = await makeBranch('Down', suffix);
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `MENU003 Ord ${suffix}`, slug: `menu003-ord-cat-${suffix}`, sort_order: 9 })
+      .returning();
+    categoryId = category!.id;
+
+    // The deal under test + its single component. The DEAL-PRODUCT ITSELF is
+    // marked available at BOTH branches, so ONLY the component's availability
+    // can decide the outcome — precisely the gap AC5 closes. The component is up
+    // at branchOk and down at branchDown, which makes the very same deal
+    // orderable at one branch and rejected at the other.
+    const component = await makeProduct(`comp-${suffix}`);
+    dealId = await makeProduct(`deal-${suffix}`, { isDeal: true });
+    await attach(dealId, component);
+    await setAvailability(branchOkId, component, true);
+    await setAvailability(branchOkId, dealId, true);
+    await setAvailability(branchDownId, component, false);
+    await setAvailability(branchDownId, dealId, true);
+
+    // A second deal that is fully available at BOTH branches — the partner line
+    // for the multi-deal cart, proving the check covers EVERY deal in the cart
+    // rather than stopping at the first one.
+    const secondComponent = await makeProduct(`comp2-${suffix}`);
+    secondDealId = await makeProduct(`deal2-${suffix}`, { isDeal: true });
+    await attach(secondDealId, secondComponent);
+    await setAvailability(branchOkId, secondComponent, true);
+    await setAvailability(branchOkId, secondDealId, true);
+    await setAvailability(branchDownId, secondComponent, true);
+    await setAvailability(branchDownId, secondDealId, true);
+
+    // AC8 at placement: component's bpa row says available, but the component is
+    // globally deactivated. Both signals are required, so the deal is rejected.
+    const inactiveComponent = await makeProduct(`comp-inactive-${suffix}`, { isActive: false });
+    inactiveComponentDealId = await makeProduct(`deal-inactive-${suffix}`, { isDeal: true });
+    await attach(inactiveComponentDealId, inactiveComponent);
+    await setAvailability(branchOkId, inactiveComponent, true);
+    await setAvailability(branchOkId, inactiveComponentDealId, true);
+  });
+
+  it('AC5: rejects (400) an order for a deal whose component is unavailable at the branch, writing no order row', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('menu003rej');
+
+    const res = await post('/orders', { user: u, body: orderBody(branchDownId, [dealId]) });
+
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/no longer fully available at this branch/);
+
+    // Nothing was written — the throw rolled the whole placement back.
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('AC5 (contrast): accepts (201) the SAME deal at a branch where every component IS available', async () => {
+    const u = await freshUser('menu003ok');
+
+    const res = await post('/orders', { user: u, body: orderBody(branchOkId, [dealId]) });
+
+    expect(res.status).toBe(201);
+    expect(res.json.order.items).toHaveLength(1);
+    expect(res.json.order.items[0].productId).toBe(dealId);
+  });
+
+  it('rejects the WHOLE order when a cart holds 2 deal lines and only one is unavailable', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('menu003multi');
+
+    // At branchDown: secondDeal is fully available, dealId is NOT. The AVAILABLE
+    // deal is listed FIRST, so a check that stopped at the first deal line (or
+    // assumed one deal per order) would wrongly accept this cart.
+    const res = await post('/orders', {
+      user: u,
+      body: orderBody(branchDownId, [secondDealId, dealId]),
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/no longer fully available at this branch/);
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('AC8: rejects (400) a deal whose component is branch-available but globally deactivated', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('menu003inactive');
+
+    const res = await post('/orders', {
+      user: u,
+      body: orderBody(branchOkId, [inactiveComponentDealId]),
+    });
+
+    expect(res.status).toBe(400);
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('leaves a regular (non-deal) product order unaffected by the deal check', async () => {
+    const u = await freshUser('menu003regular');
+    const regular = await makeProduct(`regular-${uid()}`);
+    await setAvailability(branchOkId, regular, true);
+
+    const res = await post('/orders', { user: u, body: orderBody(branchOkId, [regular]) });
+    expect(res.status).toBe(201);
+  });
+});

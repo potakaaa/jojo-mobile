@@ -207,3 +207,100 @@ describe('reconcileReorder', () => {
     expect(unavailable).toEqual([{ productName: 'Gone Item', reason: 'product_unavailable' }]);
   });
 });
+
+// --- MENU-003 (AC9): reorder reconciliation of DEAL lines ------------------
+//
+// `reconcileReorder` itself is UNCHANGED by MENU-003 — it is shape-agnostic and
+// already does the right thing. What changed is its caller (`use-reorder.ts`),
+// which now feeds it the regular menu MERGED with the deals menu instead of the
+// regular menu alone. Before that fix the deals menu was never fetched, so every
+// historical deal line was flagged `product_unavailable` unconditionally, in both
+// directions — deals were simply never reorderable.
+//
+// These cases pin the behavior against that merged shape. The deals menu the
+// server returns already EXCLUDES deals whose components are unavailable, so an
+// unavailable deal is simply absent from the merged tree and the existing
+// `product_unavailable` branch fires — no new reason value is needed.
+describe('reconcileReorder — MENU-003 deal lines against a merged (regular + deals) menu', () => {
+  /** The shape `use-reorder.ts` builds: regular categories ++ deals categories. */
+  function mergedMenu(regular: Product[], deals: Product[]): MenuResponse {
+    return {
+      branchId: 'b1',
+      categories: [
+        { id: 'c1', name: 'All', products: regular },
+        { id: 'c-deals', name: 'Deals', products: deals },
+      ],
+    };
+  }
+
+  it('AC9a: reorders a still-available deal line like any other line, at today’s price', () => {
+    const currentMenu = mergedMenu(
+      [product({ id: 'p1', name: 'Fries' })],
+      [product({ id: 'd1', name: 'Combo Deal', basePriceCents: 1200 })],
+    );
+    const past = order([
+      orderItem({
+        productId: 'd1',
+        productNameSnapshot: 'Combo Deal',
+        unitPriceCents: 900, // stale — today's 1200 must win
+        quantity: 2,
+      }),
+    ]);
+
+    const { available, unavailable } = reconcileReorder(past, currentMenu);
+
+    expect(unavailable).toHaveLength(0);
+    expect(available).toHaveLength(1);
+    expect(available[0]!.product.id).toBe('d1');
+    expect(available[0]!.product.basePriceCents).toBe(1200);
+    expect(available[0]!.quantity).toBe(2);
+  });
+
+  it('AC9b-i: flags a deal pulled from the menu entirely as an explicit conflict', () => {
+    // The deals category exists but no longer carries this deal.
+    const currentMenu = mergedMenu(
+      [product({ id: 'p1', name: 'Fries' })],
+      [product({ id: 'd-other', name: 'Other Deal' })],
+    );
+    const past = order([orderItem({ productId: 'd1', productNameSnapshot: 'Pulled Deal' })]);
+
+    const { available, unavailable } = reconcileReorder(past, currentMenu);
+
+    expect(available).toHaveLength(0);
+    expect(unavailable).toEqual([{ productName: 'Pulled Deal', reason: 'product_unavailable' }]);
+  });
+
+  it('AC9b-ii: flags a deal hidden for an unavailable COMPONENT as the same explicit conflict', () => {
+    // The server excludes a component-down deal from the ?isDeal=true response,
+    // so it never reaches the merged tree — indistinguishable here from a pulled
+    // deal by design, which is why AC9b needs no new reason value.
+    const currentMenu = mergedMenu([product({ id: 'p1', name: 'Fries' })], []);
+    const past = order([
+      orderItem({ productId: 'd1', productNameSnapshot: 'Component-Down Deal' }),
+    ]);
+
+    const { available, unavailable } = reconcileReorder(past, currentMenu);
+
+    expect(available).toHaveLength(0);
+    expect(unavailable).toEqual([
+      { productName: 'Component-Down Deal', reason: 'product_unavailable' },
+    ]);
+  });
+
+  it('partitions a mixed regular + deal order, never silently dropping the unavailable deal', () => {
+    const currentMenu = mergedMenu(
+      [product({ id: 'p1', name: 'Fries' })],
+      [product({ id: 'd1', name: 'Live Deal' })],
+    );
+    const past = order([
+      orderItem({ productId: 'p1', productNameSnapshot: 'Fries' }),
+      orderItem({ productId: 'd1', productNameSnapshot: 'Live Deal' }),
+      orderItem({ productId: 'd-gone', productNameSnapshot: 'Dead Deal' }),
+    ]);
+
+    const { available, unavailable } = reconcileReorder(past, currentMenu);
+
+    expect(available.map((l) => l.product.id)).toEqual(['p1', 'd1']);
+    expect(unavailable).toEqual([{ productName: 'Dead Deal', reason: 'product_unavailable' }]);
+  });
+});

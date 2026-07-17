@@ -1,4 +1,4 @@
-import type { Order } from '@jojopotato/types';
+import type { MenuResponse, Order } from '@jojopotato/types';
 import { reconcileReorder } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -33,10 +33,35 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
         setBranch(order.branchId);
         clearCart();
 
-        const menu = await queryClient.fetchQuery({
-          queryKey: ['menu', order.branchId],
-          queryFn: () => getMenu(order.branchId),
-        });
+        // MENU-003: fetch the regular menu AND the deals menu, then merge their
+        // categories into one `MenuResponse`. The regular menu structurally
+        // excludes every deal-product (`is_deal=false` server-side), so fetching
+        // it alone made `reconcileReorder` flag EVERY past deal line
+        // `product_unavailable` unconditionally — deals were never reorderable.
+        //
+        // The deals menu already excludes deals whose components are unavailable
+        // at this branch, so an unavailable deal is simply absent from the merged
+        // tree and `reconcileReorder`'s existing `product_unavailable` branch
+        // fires naturally — no signature change, no new reason value.
+        //
+        // Distinct query keys keep the two react-query cache entries from
+        // colliding. All deal-products are server-pinned to a single "Deals"
+        // category that the regular menu never returns, so the merge cannot
+        // produce a duplicate category id.
+        const [regularMenu, dealsMenu] = await Promise.all([
+          queryClient.fetchQuery({
+            queryKey: ['menu', order.branchId],
+            queryFn: () => getMenu(order.branchId),
+          }),
+          queryClient.fetchQuery({
+            queryKey: ['menu', order.branchId, 'deals'],
+            queryFn: () => getMenu(order.branchId, { isDeal: true }),
+          }),
+        ]);
+        const menu: MenuResponse = {
+          ...regularMenu,
+          categories: [...regularMenu.categories, ...dealsMenu.categories],
+        };
 
         const { available, unavailable } = reconcileReorder(order, menu);
         for (const line of available) {

@@ -12,9 +12,10 @@ import { products } from './products';
  * deletes are soft (`is_active` toggle), never a hard row delete, so a dangling
  * component can never be created by a legitimate flow.
  *
- * Metadata ONLY: these rows are NEVER read by pricing/cart/order-placement code
- * (Decision 5). The deal's price is its own `products.base_price`; this table
- * drives the admin + mobile "what's inside" display exclusively. The composite
+ * Metadata for display AND branch-availability gating — never read for pricing or
+ * discount math; order-placement reads it solely to reject a cart containing an
+ * unavailable deal before payment, never to influence `unit_price`/`total_price`
+ * (MENU-003). The deal's price is still its own `products.base_price`. The composite
  * unique index makes re-attaching the same (deal, component) pair a clean 409
  * (via the shared `isUniqueViolation` catch), never a silent duplicate.
  *
