@@ -17,6 +17,13 @@ import FloatingTabBar from '@/components/floating-tab-bar';
 export default function TabsAndroidLayout() {
   return (
     <Tabs
+      // `backBehavior` defaults to `'firstRoute'`, which makes a GO_BACK from any
+      // tab-sibling route (e.g. `/(tabs)/notifications`, `/(tabs)/deals`) return to
+      // the FIRST registered tab — `index` (Home) — rather than the tab the user
+      // actually came from. `'history'` tracks the real visited-route order, so back
+      // returns to the calling tab (open Notifications from Account -> back = Account).
+      // Also governs the Android hardware back button.
+      backBehavior="history"
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{ headerShown: false, animation: 'fade' }}
     >
