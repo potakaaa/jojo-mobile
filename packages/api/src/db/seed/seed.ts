@@ -7,6 +7,7 @@ import {
   branches,
   categories,
   coupons,
+  dealComponents,
   offerBranches,
   offerProducts,
   offers,
@@ -19,7 +20,7 @@ import {
   userStars,
   users,
 } from '../schema/index';
-import { seedBranches, seedCategories, seedDeals, seedProducts } from './data';
+import { seedBranches, seedCategories, seedDealProducts, seedDeals, seedProducts } from './data';
 
 // Relative image paths (resolved against the API origin at render time by the
 // mobile app — see apps/mobile/src/lib/image-url.ts). Served statically from
@@ -206,6 +207,77 @@ async function seedProductOptionsTable(productIdBySlug: Map<string, string>): Pr
           sort_order: option.sort_order,
         })),
       );
+    }
+  }
+}
+
+// Deal-products (ADM-004 deals-as-products): a deal IS a `products` row with
+// `is_deal = true`, pinned to the reserved `deals` category the seed already
+// provisions (matching DEALS_CATEGORY_SLUG in routes/admin/deals.ts). Ids are
+// merged INTO productIdBySlug so seedBranchProductAvailabilityTable picks them up
+// with no change to that function. Distinct from seedDealsTable (legacy `offers`).
+async function seedDealProductsTable(
+  categoryIdBySlug: Map<string, string>,
+  productIdBySlug: Map<string, string>,
+): Promise<Map<string, string>> {
+  const idBySlug = new Map<string, string>();
+  const dealsCategoryId = categoryIdBySlug.get('deals');
+  if (!dealsCategoryId) {
+    throw new Error('Seed data error: reserved category "deals" is missing — cannot seed deals');
+  }
+  for (const deal of seedDealProducts) {
+    const row = {
+      slug: deal.slug,
+      name: deal.name,
+      description: deal.description,
+      category_id: dealsCategoryId,
+      base_price: deal.base_price,
+      is_deal: true,
+      is_reward_eligible: false,
+      image_url: PRODUCT_IMAGE_BY_SLUG[deal.slug] ?? null,
+    };
+    const [inserted] = await db
+      .insert(products)
+      .values(row)
+      .onConflictDoUpdate({
+        target: products.slug,
+        set: { ...row, updated_at: new Date() },
+      })
+      .returning({ id: products.id, slug: products.slug });
+    if (!inserted)
+      throw new Error(`Seed error: upsert of deal-product "${deal.slug}" returned no row`);
+    idBySlug.set(inserted.slug, inserted.id);
+    productIdBySlug.set(inserted.slug, inserted.id);
+  }
+  return idBySlug;
+}
+
+// deal_components has a composite unique on (deal_product_id, component_product_id),
+// so the pair is a valid ON CONFLICT target — quantity is refreshed on re-seed.
+async function seedDealComponentsTable(productIdBySlug: Map<string, string>): Promise<void> {
+  for (const deal of seedDealProducts) {
+    const dealProductId = productIdBySlug.get(deal.slug);
+    if (!dealProductId) {
+      throw new Error(`Seed data error: components for unknown deal-product "${deal.slug}"`);
+    }
+    for (const component of deal.components) {
+      const componentProductId = productIdBySlug.get(component.componentSlug);
+      if (!componentProductId) {
+        throw new Error(
+          `Seed data error: deal-product "${deal.slug}" references unknown component "${component.componentSlug}"`,
+        );
+      }
+      await db
+        .insert(dealComponents)
+        .values({
+          deal_product_id: dealProductId,
+          component_product_id: componentProductId,
+          quantity: component.quantity,
+        })
+        .onConflictDoUpdate({
+          target: [dealComponents.deal_product_id, dealComponents.component_product_id],
+          set: { quantity: component.quantity },
+        });
     }
   }
 }
@@ -853,6 +925,10 @@ export async function runSeed(): Promise<void> {
   const categoryIdBySlug = await seedCategoriesTable();
   const productIdBySlug = await seedProductsTable(categoryIdBySlug);
   await seedProductOptionsTable(productIdBySlug);
+  // Before bpa seeding: seedDealProductsTable merges deal ids into productIdBySlug,
+  // so deal-products get their availability rows from the same loop.
+  const dealProductIdBySlug = await seedDealProductsTable(categoryIdBySlug, productIdBySlug);
+  await seedDealComponentsTable(productIdBySlug);
   await seedBranchProductAvailabilityTable(branchIdBySlug, productIdBySlug);
   const dealIdByTitle = await seedDealsTable();
   await seedDealScopingTables(dealIdByTitle, productIdBySlug, branchIdBySlug);
@@ -884,7 +960,7 @@ export async function runSeed(): Promise<void> {
   console.log(`  branches: ${branchIdBySlug.size}`);
   console.log(`  staff users: 1 (${STAFF_EMAIL})`);
   console.log(`  categories: ${categoryIdBySlug.size}`);
-  console.log(`  products: ${productIdBySlug.size}`);
+  console.log(`  products: ${productIdBySlug.size} (incl. ${dealProductIdBySlug.size} deal-products)`);
   console.log(`  deals: ${dealIdByTitle.size}`);
   console.log(
     `  rewards: ${REWARD_ROADMAP.length} (roadmap: ${REWARD_ROADMAP.map((r) => `${r.required_stars}★`).join(', ')})`,

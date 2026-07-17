@@ -244,6 +244,52 @@ export const seedProducts: SeedProduct[] = [
   },
 ];
 
+export type SeedDealComponent = {
+  componentSlug: string;
+  quantity: number;
+};
+
+/**
+ * Deal-products (ADM-004 deals-as-products): a deal IS a `products` row with
+ * `is_deal = true`, priced at its own `base_price`, described by `deal_components`.
+ * Distinct from `seedDeals` below (the legacy discount-object model / `offers`).
+ *
+ * Components are deliberately NON-OVERLAPPING between the two deals so toggling one
+ * component's branch availability makes exactly one deal disappear (MENU-003 demo).
+ */
+export type SeedDealProduct = {
+  slug: string;
+  name: string;
+  description: string;
+  base_price: string;
+  components: SeedDealComponent[];
+};
+
+export const seedDealProducts: SeedDealProduct[] = [
+  {
+    slug: 'fries-lemonade-deal',
+    name: 'Fries + Lemonade Deal',
+    description: 'Crispy Classic Fries and a freshly squeezed Lemonade, bundled for less.',
+    // À la carte: 89.00 + 59.00 = 148.00
+    base_price: '129.00',
+    components: [
+      { componentSlug: 'classic-fries', quantity: 1 },
+      { componentSlug: 'lemonade', quantity: 1 },
+    ],
+  },
+  {
+    slug: 'corndog-nuggets-deal',
+    name: 'Corndog + Spicy Nuggets Deal',
+    description: 'An Original Corndog on a stick with a serving of Spicy Nuggets.',
+    // À la carte: 69.00 + 99.00 = 168.00
+    base_price: '149.00',
+    components: [
+      { componentSlug: 'original-corndog', quantity: 1 },
+      { componentSlug: 'spicy-nuggets', quantity: 1 },
+    ],
+  },
+];
+
 export type SeedDeal = {
   title: string;
   description: string;
