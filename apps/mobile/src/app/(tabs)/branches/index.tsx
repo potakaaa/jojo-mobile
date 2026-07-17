@@ -197,6 +197,7 @@ export default function BranchLocatorScreen() {
         ref={mapRef}
         branches={filteredBranches}
         coords={coords}
+        isLocationEnabled={locationStatus === 'granted'}
         onBranchPress={onOrderPress}
       />
 

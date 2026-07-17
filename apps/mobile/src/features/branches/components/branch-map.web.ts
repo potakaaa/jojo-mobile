@@ -17,6 +17,12 @@ import type React from 'react';
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
+  /**
+   * Gates the native "my location" layer. Unused on web (no map here), but the
+   * interface must mirror the native signature exactly for cross-platform
+   * type-safety at the shared `<BranchMap>` call site.
+   */
+  isLocationEnabled: boolean;
   onBranchPress: (branchId: string) => void;
 }
 

@@ -24,6 +24,12 @@ import { useTheme } from '@/hooks/use-theme';
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
+  /**
+   * Gates the native "my location" layer (the OS blue dot). True ONLY when the
+   * runtime location permission is granted — enabling it without the grant
+   * throws SecurityException on Android's setMyLocationEnabled.
+   */
+  isLocationEnabled: boolean;
   onBranchPress: (branchId: string) => void;
 }
 
