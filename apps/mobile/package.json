@@ -4,6 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
+    "eas-build-pre-install": "if [ -n \"$GOOGLE_SERVICES_JSON\" ]; then cp \"$GOOGLE_SERVICES_JSON\" ./android/app/google-services.json; fi",
     "start": "expo start",
     "dev": "node scripts/dev-with-tunnel.mjs",
     "dev:bypass": "node scripts/dev-bypass.mjs",
