@@ -1,5 +1,4 @@
 import type { MenuCategory } from '@jojopotato/types';
-import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -7,6 +6,10 @@ import { useTheme } from '@/hooks/use-theme';
 
 export interface CategorySelectorProps {
   categories: MenuCategory[];
+  /** The currently-filtered category id, or `null` when no filter is active. */
+  selectedId: string | null;
+  /** Called with the newly-selected id, or `null` when the filter is cleared. */
+  onSelect: (categoryId: string | null) => void;
 }
 
 /** Small emoji glyph per known category id, purely decorative. */
@@ -18,13 +21,13 @@ const CATEGORY_EMOJI: Record<string, string> = {
 };
 
 /**
- * Horizontal scrollable row of category chips. Tapping a chip toggles its local
- * selected highlight. Self-contained — the selection is not propagated to the
- * product grid (no filtering required at this stage).
+ * Horizontal scrollable row of category chips. Single-select toggle: tapping a
+ * chip selects it, tapping the selected chip again clears the selection.
+ * Controlled — the selection is owned by the parent screen and propagates
+ * outward via `onSelect`, which is what filters the product grid.
  */
-export function CategorySelector({ categories }: CategorySelectorProps) {
+export function CategorySelector({ categories, selectedId, onSelect }: CategorySelectorProps) {
   const theme = useTheme();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
     <ScrollView
@@ -40,9 +43,7 @@ export function CategorySelector({ categories }: CategorySelectorProps) {
             key={category.id}
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
-            onPress={() =>
-              setSelectedId((current) => (current === category.id ? null : category.id))
-            }
+            onPress={() => onSelect(category.id === selectedId ? null : category.id)}
             style={[
               styles.chip,
               {
