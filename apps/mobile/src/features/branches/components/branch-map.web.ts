@@ -23,6 +23,12 @@ export interface BranchMapProps {
    * type-safety at the shared `<BranchMap>` call site.
    */
   isLocationEnabled: boolean;
+  /**
+   * Bottom inset (px) applied to the Android map's `contentPadding`. Unused on web
+   * (no map here), but mirrored to keep this interface identical to the native
+   * signature for cross-platform type-safety at the shared `<BranchMap>` call site.
+   */
+  contentBottomInset: number;
   onBranchPress: (branchId: string) => void;
 }
 

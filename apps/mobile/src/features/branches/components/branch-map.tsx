@@ -30,6 +30,11 @@ export interface BranchMapProps {
    * throws SecurityException on Android's setMyLocationEnabled.
    */
   isLocationEnabled: boolean;
+  /**
+   * Bottom inset (px) applied to the Android map's `contentPadding` so the native
+   * Google controls/logo clear the floating tab bar. (Android-only in expo-maps v57.)
+   */
+  contentBottomInset: number;
   onBranchPress: (branchId: string) => void;
 }
 
