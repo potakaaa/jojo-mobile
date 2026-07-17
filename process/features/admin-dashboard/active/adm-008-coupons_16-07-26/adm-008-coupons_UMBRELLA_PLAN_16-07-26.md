@@ -396,7 +396,7 @@ the source plan's single 18-row table, one AC-cluster per phase).
 
 **Phase-boundary correction (Option A, approved 16-07-26):** Phase 1 now = full atomic mechanical rename (schema + migration + 7 consumer-file repoints, since the deals→offers rename breaks typecheck for those consumers otherwise); Phase 2 = logic only (resolver/burn/guard) on the already-renamed symbols; Phase 4 = public-contract verification only on the already-renamed symbols. Wire-freeze (Locked Decision 7B) unaffected.
 
-Last updated: 16-07-26 (UPDATE PROCESS — post-merge fix batch, Fixes 3+4 closed out)
+Last updated: 17-07-26 (UPDATE PROCESS — post-merge fix batch now 6/6 COMPLETE, Fix 6 closed out)
 Completed phases: 1, 2, 3, 4, 5 (all 5/5 — program is CODE-COMPLETE)
 Current phase: none — all 5 phases delivered; program held OPEN in `active/` (not archived) for a
   post-merge fix batch (see below)
@@ -450,22 +450,49 @@ kid-friendly-ui-deals-unification + push-notifications). A PR will be opened fro
    (`isActive` added additively to the offer create/PATCH Zod schema — column + serializer already
    existed, only schema wiring was missing). API 359→364 tests, admin 29/29 (no new RTL tests —
    network-hook-bound components, documented decision).
-5. NOT STARTED. Dev-DB reconciliation doc for teammates whose local migration cursor predates the
-   `0013` rename (manual SQL steps applied to this session's dev DB — see the
+5. `8e49d8c` — DONE. Dev-DB reconciliation doc for teammates whose local migration cursor predates
+   the `0013` rename (manual SQL steps applied to this session's dev DB — see the
    `deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` backlog note history and the
    16-07-26 deals-unification-merge `all-context.md` delta for the exact statements run).
-6. NOT STARTED. `free_item`/`free_upgrade` Offer-mechanic redemption math — full RIPER-5 (schema/
-   pricing-adjacent; not a quick fix). See
-   `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md`.
+6. DONE, 17-07-26 — CODE-COMPLETE + USER-VERIFIED. `free_item`/`free_upgrade` Offer-mechanic
+   redemption math, delivered as its own standalone COMPLEX plan
+   (`process/features/admin-dashboard/active/adm-008-free-mechanics_16-07-26/`) via full RIPER-5,
+   4 commits: `35981fa` (P1 — migration `0014` `offers.benefit_product_id` + resolver
+   null-guard), `66cbb0e` (P1b — widened two-branch deny-guard closing 2 residual leak classes
+   found by adversarial review), `ad3e937` (P3 — admin benefit-product picker + generate-block
+   hardening), `cceb66b` (P2 — real redemption math: free_item reuses reward math, new
+   `computeFreeUpgradeDiscountCents` for size-delta waiving, allowlist resolver dispatch with
+   `<=0` reject closing a SECOND money leak found this cycle, admin merged-state Zod
+   cross-validation). Final gates: API 411/411, `packages/utils` 35/35 (first-ever discount.ts
+   unit suite), `apps/admin` 49/49. AC11 (UI walkthrough) + the HIGH-risk 5-artifact evidence pack
+   both USER-REVIEWED 17-07-26 — `mustStopBeforeFinalize` satisfied. `computeDealDiscountCents`/
+   `checkDealEligibility`/the `apps/mobile` eligibility twin remain byte-identical. See
+   `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` (now RESOLVED + corrected)
+   for the pre-fix bug history.
 
-**Backlog note resolved this pass:**
-`deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` is now marked RESOLVED (Bug 1
-by Fixes 1+4, Bug 2 by Fix 3) — kept in place for history, not deleted.
+**Post-merge fix batch is now 6/6 COMPLETE.**
+
+**One approved follow-up pending (found during Fix 6's risk-evidence-pack review, 17-07-26):** the
+user upgraded a previously-accepted residual risk — no DB `CHECK` enforces
+`coupons.reward_id`/`offer_id` mutual exclusivity — to an APPROVED next fix, to be executed via its
+own small RIPER-5 cycle before a PR is opened from `feat/deals_unification`. See
+`backlog/coupons-reward-offer-mutual-exclusivity-check_NOTE_17-07-26.md`. Two other new backlog
+notes were also filed this pass (both descoped, not approved-next):
+`backlog/offer-usage-limits-unenforced-coupon-path_NOTE_17-07-26.md` (D6, re-confirmed descoped)
+and `backlog/api-test-db-concurrency-guard_NOTE_17-07-26.md` (infra gap, observed live this
+session).
+
+**Backlog notes resolved this pass:**
+`deal-availability-seeding-and-status-indicators_NOTE_16-07-26.md` (Bug 1 by Fixes 1+4, Bug 2 by
+Fix 3, resolved 16-07-26) and `adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md`
+(resolved by Fix 6, corrected 17-07-26 — its original "silently ₱0" claim was factually wrong, the
+real pre-fix bug was a cheapest-cart-line mis-discount that burned the coupon) — both kept in
+place for history, not deleted.
 
 **Program status: CODE-COMPLETE, OPEN.** This task folder stays in `active/` — the post-merge fix
-batch above (items 5-6 remaining) is the user's explicit follow-up exploration work on ADM-008.
-Do NOT archive to `completed/` until that batch concludes or the user explicitly closes the
-program.
+batch is now fully delivered (6/6), but the program is held open pending the user-approved
+mutual-exclusivity follow-up fix and the eventual PR from `feat/deals_unification`. Do NOT archive
+to `completed/` until that follow-up lands or the user explicitly closes the program.
 
 Loop step values: RESEARCH | INNOVATE | PLAN-SUPPLEMENT | PVL | EXECUTE | EVL | UPDATE-PROCESS
 Orchestrator rule: read "Current loop step" and "validate-contract status" before spawning any

@@ -10,6 +10,24 @@ metadata:
 
 # ADM-008 — free_item / free_upgrade redemption math not implemented
 
+**STATUS: RESOLVED 17-07-26** by the ADM-008 POST-MERGE FIX 6 program
+(`process/features/admin-dashboard/active/adm-008-free-mechanics_16-07-26/`, 4 commits: `35981fa`
+P1, `66cbb0e` P1b, `ad3e937` P3, `cceb66b` P2). `free_item` now reuses the reward-coupon discount
+math against a new nullable `offers.benefit_product_id`; `free_upgrade` waives the selected
+size-upgrade delta for one unit via a new pure function. Both are admin-configured (required picker
+in the Offer create/edit form) and server-validated. Kept in place for history — do not delete.
+
+**CORRECTION to this note's original claim (recorded 17-07-26):** the paragraph below states the
+pre-fix behavior was "silently no monetary effect" (₱0 discount). **This was factually wrong.**
+`computeDealDiscountCents()` routed `free_item`/`free_upgrade` (and, as a post-P1 adversarial
+review separately found, `buy_one_take_one`/`bundle` too) through a **cheapest-eligible-line**
+branch, not a zero branch — because no admin route ever wrote `offer_products` rows, "eligible"
+degraded to the whole cart, so a coupon against any of these 4 mechanics made the **cheapest item
+in the customer's entire cart free** at both preview and placement, and burned the coupon. This
+was a live, unscoped money leak, not a harmless no-op. See the fix program's SPEC
+(`adm-008-free-mechanics_SPEC_16-07-26.md` §Background / Research Findings) for the full
+code-verified account.
+
 **Priority:** Medium — not a regression (both mechanics predate ADM-008 as inert/dormant), but now
 user-facing again via the Offer create form, so the gap is more visible than before.
 
