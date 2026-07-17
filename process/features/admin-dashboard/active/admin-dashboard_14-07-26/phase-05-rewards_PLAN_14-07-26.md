@@ -13,7 +13,7 @@ metadata:
 
 **Date:** 14-07-26 (stub) — **DRAFT fleshed out 17-07-26**
 **Complexity:** COMPLEX (phase-program phase plan — carries a program HARD invariant)
-**Status:** 📝 DRAFT — pending user review of `## Open Decisions For Review`
+**Status:** ✅ DECISIONS LOCKED (D1–D4 resolved with user 17-07-26) — ready for Step 1 RESEARCH
 
 Date: 14-07-26 (draft updated 17-07-26)
 Status: DRAFT — pending user review
@@ -29,17 +29,14 @@ invalidating issued unused coupons. STAR-002 threshold pickup is live-read by co
 
 ---
 
-## Open Decisions For Review
+## Open Decisions For Review — ✅ RESOLVED (user, 17-07-26)
 
-All four are recommended choices baked into this draft; flip any and the affected
-checklist items are called out inline.
-
-| # | Decision | Recommendation |
+| # | Decision | Resolution |
 |---|---|---|
-| D1 | Issue AC4 — single-active-default vs multiple-concurrent reward rules | **Multiple-concurrent, documented + tested as deterministic** (recommended — pending user review). Ground truth: the seed already ships 4 concurrent active tiers (4/5/6/8 stars) and the STAR-003 unlock path is an explicitly battle-pass cumulative model (`star-earning.ts` `unlockRewardsForLifetime` — one coupon per crossed active tier; `GET /rewards/summary` targets the MIN active tier). Enforcing single-active would be a behavior regression against live, tested code. This plan satisfies AC4 via the "explicitly documented as deterministic tested behavior" branch of the issue, with a dedicated multi-tier determinism test. |
-| D2 | `reward_type` app-level allow-list values | **`['free_item', 'fixed_discount', 'percentage_discount']`** (recommended — pending user review). These are the only 3 values used by the seed (`SeedReward` union, `seed/data.ts:336`), the only 3 with label rendering (`rewardDiscountLabel`, `serializers.ts:732`), and `free_item` is the only one with redemption math (`computeRewardDiscountCents`). NOT including `free_upgrade` — avoids repeating the ADM-008 known-gap where a selectable mechanic silently redeems for ₱0. The DB column is a plain `varchar` (no pgEnum), so this Zod enum is the ONLY gate. |
-| D3 | Deactivate convention | **`PATCH /api/admin/rewards/:id` with `isActive: false`** (recommended — pending user review). Matches the freshest precedent (ADM-008 `offers.ts` `updateOfferSchema` carries `isActive`), rather than Phase 2's older dedicated `PATCH .../deactivate` route. Soft-delete only either way — no hard `DELETE` ever. |
-| D4 | Cross-field validation on create/update | **Enforce type-conditional required fields** (recommended — pending user review): `reward_type = 'free_item'` ⇒ `eligibleProductId` required + `rewardValueCents` must be null; discount types ⇒ `rewardValueCents` required (positive) + `eligibleProductId` must be null. Prevents mint-able-but-worthless rewards (a `free_item` reward without a product has no redemption math path — `computeRewardDiscountCents(eligibleProductId, cart)` needs the product id). Stricter than the DB (which allows all-null); if user prefers looser, drop the Zod `.superRefine` in checklist item 3. |
+| D1 | Issue AC4 — single-active-default vs multiple-concurrent reward rules | **✅ LOCKED: Multiple-concurrent (battle-pass), documented + tested as deterministic.** User-confirmed intended product model: users earn stars toward each set reward, claimable via coupon on crossing. Matches live code — the seed ships 4 concurrent active tiers (4/5/6/8 stars) and `unlockRewardsForLifetime` mints one coupon per crossed active tier; `GET /rewards/summary` targets the MIN active tier. Satisfied via a dedicated multi-tier determinism test (G5). |
+| D2 | `reward_type` app-level allow-list values | **✅ LOCKED: `['free_item', 'fixed_discount', 'percentage_discount', 'free_upgrade']`** — user chose to INCLUDE `free_upgrade` (retention-standard mechanic). **SCOPE IMPACT (diverges from the draft recommendation):** `free_upgrade` has NO reward-side redemption math today (`computeRewardDiscountCents` handles `free_item` only), so including it in the allow-list REQUIRES adding reward-side `free_upgrade` math in this phase — otherwise it redeems for ₱0 (the ADM-008 trap). Reuse/adapt the offer-side `computeFreeUpgradeDiscountCents` (`packages/utils/src/discount.ts`, built in ADM-008 Fix 6 P2) rather than net-new. This adds one money-path (Known-Gap BANNED for it) — see new checklist item 3b + touchpoint. D4's cross-field rule extends to treat `free_upgrade` like `free_item` (needs `eligibleProductId`, value must be null). |
+| D3 | Deactivate convention | **✅ LOCKED: `PATCH /api/admin/rewards/:id` with `isActive: false`** (matches ADM-008 `offers.ts` precedent). Soft-delete only — no hard `DELETE` ever. |
+| D4 | Cross-field validation on create/update | **✅ LOCKED: Enforce type-conditional required fields.** `reward_type ∈ {'free_item','free_upgrade'}` ⇒ `eligibleProductId` required + `rewardValueCents` must be null; discount types ⇒ `rewardValueCents` required (positive) + `eligibleProductId` must be null. (Extended per D2 to cover `free_upgrade` in the product-required branch.) Prevents mint-able-but-worthless rewards. |
 
 ---
 
@@ -166,8 +163,13 @@ on ADM-008 code, but ADM-008's `offers.ts`/`promotions.ts` routes and
   tests), route files `(dashboard)/rewards.tsx` (thin `<Outlet/>` layout) +
   `(dashboard)/rewards.index.tsx` (list) per the P3 layout+index gotcha
 - `apps/admin/src/config/nav-config.ts` (edit) — enable the Rewards nav item
+- `packages/utils/src/discount.ts` (edit, additive — **D2/free_upgrade money-path**) —
+  extend `computeRewardDiscountCents` with a `free_upgrade` branch reusing/adapting
+  `computeFreeUpgradeDiscountCents`; `packages/utils/src/__tests__/discount.test.ts` (edit)
+  — exact-cents unit tests for the new branch
 - `packages/api/src/routes/admin/__tests__/admin-rewards.integration.test.ts` (new) — all
-  Fully-Automated gates incl. both retroactivity regressions
+  Fully-Automated gates incl. both retroactivity regressions + `free_upgrade` reward
+  apply-path assertion (never ₱0)
 - READ-ONLY (verified, no change): `packages/api/src/db/schema/rewards.ts`,
   `star_transactions.ts`, `coupons.ts`, `lib/star-earning.ts`, `routes/rewards.ts`,
   `routes/lib/coupon-apply.ts` (checklist item 1 verifies its `is_active` behavior)
@@ -219,12 +221,24 @@ DRAFT-level checklist; finalized at inner-loop PLAN-SUPPLEMENT after Step 1 RESE
    needs a product decision; (b) confirm `admin/lib/errors.ts` exports cover the FK/404
    translation needed; (c) confirm the admin products list endpoint shape for the product
    picker; (d) re-confirm no other live reader of `rewards` exists beyond
-   `routes/rewards.ts`, `star-earning.ts`, coupon-apply, and serializer label paths.
+   `routes/rewards.ts`, `star-earning.ts`, coupon-apply, and serializer label paths;
+   (e) **[D2/free_upgrade]** read the offer-side `computeFreeUpgradeDiscountCents`
+   (`packages/utils/src/discount.ts`) + the reward-coupon apply path to confirm the
+   reward-side signature `(eligibleProductId, cart)` can reuse it, and where
+   `computeRewardDiscountCents` dispatches on `reward_type` — scope the reward-side
+   `free_upgrade` branch (money-path, Known-Gap banned).
 2. Add `REWARD_TYPES` const + `RewardType` type to `packages/types/src/rewards.ts` (D2).
 3. Write `packages/api/src/routes/admin/rewards.ts`: Zod schemas (create + partial update
    with non-empty refine + D4 `.superRefine` cross-field rules), `assertProductExists`
    helper, handlers GET-list / GET-:id / POST / PATCH; errors via
    `AdminApiError`/`handleAdminError`.
+3b. **[D2/free_upgrade money-path — Known-Gap BANNED]** Add reward-side `free_upgrade`
+   redemption math: extend `computeRewardDiscountCents` (`packages/utils/src/discount.ts`)
+   to dispatch `free_upgrade` → reuse/adapt the offer-side `computeFreeUpgradeDiscountCents`
+   against the reward's `eligibleProductId`. Add exact-cents unit tests
+   (`packages/utils/src/__tests__/discount.test.ts`) + an apply-path integration assertion
+   that a `free_upgrade` reward coupon waives the correct size-upgrade delta (never ₱0).
+   Add `free_upgrade` to the `rewardDiscountLabel` render path if it lacks a case.
 4. Add `AdminReward` + `serializeAdminReward` to `routes/lib/serializers.ts` (additive).
 5. Append `adminRouter.use('/rewards', rewardsRouter)` in `routes/admin/index.ts`.
 6. **TDD-first:** write `admin-rewards.integration.test.ts` retroactivity tests BEFORE/
