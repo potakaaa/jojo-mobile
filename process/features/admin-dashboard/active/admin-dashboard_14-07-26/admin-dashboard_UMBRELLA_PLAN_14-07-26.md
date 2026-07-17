@@ -271,7 +271,7 @@ incomplete and must be sent back to PLAN.
 | P3 — Products/Categories CRUD (ADM-003, #41) ✅ VERIFIED | #41 | P0 | CRUD for products, categories, product_options, branch_product_availability; money boundary conversion (decimal PHP in DB ↔ cents in API/UI) | `packages/api/src/routes/admin/products.ts`, `admin/categories.ts` (new), `apps/admin/src/features/products/**`, `features/categories/**` (new) | P2 (reuses branch-scoping patterns) | Snapshot-integrity regression is a HARD invariant — editing `base_price` must be proven NOT to mutate historical `order_items.unit_price`; this is the highest-stakes correctness bar in the whole program. RESOLVED: real passing automated regression test (AC1), Known-Gap never used. |
 | P4 — Deals CRUD (ADM-004, #42) | #42 | P0 | CRUD for deals + deal_products/deal_branches join tables; 6 deal types (enum); `end_at > start_at` app-level validation | `packages/api/src/routes/admin/deals.ts` (new), `apps/admin/src/features/deals/**` (new) | P2, P3 (deals reference branches + products) | Coupon-cascade behavior when a deal with outstanding coupons is deactivated is an OPEN QUESTION — must be explicitly flagged (not silently decided) in the P4 phase plan |
 | P5 — Rewards CRUD (ADM-005, #43) | #43 | P1 | CRUD for rewards; `reward_type` is free-text varchar (no enum) — validate allowed values app-side | `packages/api/src/routes/admin/rewards.ts` (new), `apps/admin/src/features/rewards/**` (new) | P0, P1 (no direct dependency on P2-P4 catalog data) | Retroactivity regression is a HARD invariant — editing `required_stars` must be proven NOT to rewrite historical `star_transactions`; second of the two program-level non-negotiable invariants |
-| P6 — Orders view (ADM-006, #44) | #44 | P1 | Read-only order list per branch; filter by branch/status/date; NO status mutation in this program | `packages/api/src/routes/admin/orders.ts` (new, read-only), `apps/admin/src/features/orders/**` (new) | P2 (branch filter needs branch list) | Customer-PII exposure boundary — orders carry customer name/contact; needs an explicit design note contrasting this against the existing §19 staff-role restriction pattern, not an ad-hoc call during EXECUTE |
+| P6 — Orders view (ADM-006, #44) ✅ VERIFIED | #44 | P1 | Read-only order list per branch; filter by branch/status/date; NO status mutation in this program | `packages/api/src/routes/admin/orders.ts` (new, read-only), `apps/admin/src/features/orders/**` (new) | P2 (branch filter needs branch list) | Customer-PII exposure boundary — orders carry customer name/contact; needs an explicit design note contrasting this against the existing §19 staff-role restriction pattern, not an ad-hoc call during EXECUTE. RESOLVED: D2 locked (name+phone only), proven by an automated field-shape test (AC6), no ad-hoc EXECUTE decision. |
 | P7 — Analytics (ADM-007, #45) | #45 | P2 | Basic analytics: orders/branch, AOV, deals-vs-no-deals lift, repeat-purchase rate, stars issued, rewards redeemed — time-range filterable | `packages/api/src/routes/admin/analytics.ts` (new, aggregation queries), `apps/admin/src/features/analytics/**` (new) | P3, P4, P5, P6 (aggregates across products/deals/rewards/orders) | Least-precedented phase — `packages/api` has NO existing aggregation-query pattern to mirror; query correctness (esp. AOV and repeat-purchase definitions) needs explicit acceptance-criteria sign-off before EXECUTE, not just "looks right" |
 
 ---
@@ -286,9 +286,9 @@ incomplete and must be sent back to PLAN.
 | 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ✅ VERIFIED |
 | 4 | P4a — Deals-as-Products (ADM-004 RE-PLAN) | P2, P3 | ✅ VERIFIED (merged PR #92, `fedcfcb`) |
 | — | ADM-008 Coupons + Fix 6 (sub-program, inserted between P4 and P5, not phase-numbered) | P4a | CODE-COMPLETE, EVL-green, USER-REVIEWED — held OPEN in `active/` |
-| 5 | P5 — Rewards CRUD (ADM-005) | P0, P1 | 🔨 CODE DONE (EVL-green, `feat/adm-005-rewards`, G10 owed, not yet merged) |
-| 6 | P6 — Orders view (ADM-006) | P2 | ⏳ PLANNED — D1-D8 DECISIONS LOCKED, PARKED pending P5 merge (D8) |
-| 7 | P7 — Analytics (ADM-007) | P3, P4, P5, P6 | ⏳ PLANNED — D1-D9 DECISIONS LOCKED, PARKED pending P6 execution (D9) |
+| 5 | P5 — Rewards CRUD (ADM-005) | P0, P1 | ✅ VERIFIED (merged via PR #112, commit `772e2fd`) |
+| 6 | P6 — Orders view (ADM-006) | P2 | ✅ VERIFIED (commit `7bb0918`, `feat/adm-006-branchview`, user-run UI walkthrough passed) |
+| 7 | P7 — Analytics (ADM-007) | P3, P4, P5, P6 | ⏳ PLANNED — D1-D9 DECISIONS LOCKED, unparked (D9 condition — Phase 6 execution — now satisfied) |
 
 No phase depends on a later phase's output — ordering verified by inspection (P4/P7 have the widest
 fan-in but still only depend on strictly earlier phases).
@@ -305,9 +305,9 @@ fan-in but still only depend on strictly earlier phases).
 | P3 — Products/Categories CRUD (ADM-003) | ✅ VERIFIED |
 | P4a — Deals-as-Products (ADM-004 RE-PLAN) | ✅ VERIFIED |
 | ADM-008 Coupons + Fix 6 (sub-program) | CODE-COMPLETE (held OPEN) |
-| P5 — Rewards CRUD (ADM-005) | 🔨 CODE DONE |
-| P6 — Orders view (ADM-006) | ⏳ PLANNED (decisions locked, PARKED) |
-| P7 — Analytics (ADM-007) | ⏳ PLANNED (decisions locked, PARKED) |
+| P5 — Rewards CRUD (ADM-005) | ✅ VERIFIED |
+| P6 — Orders view (ADM-006) | ✅ VERIFIED |
+| P7 — Analytics (ADM-007) | ⏳ PLANNED (decisions locked, unparked — next up) |
 
 Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧 BLOCKED | ✅ COMPLETE
 
@@ -356,68 +356,63 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 17-07-26 (Phase 5 — Rewards Configuration CRUD, ADM-005; UPDATE PROCESS doc
-  reconciliation pass; branch `feat/adm-005-rewards`, commit `7a198b9`, not yet merged)
+Last updated: 17-07-26 (Phase 6 — Orders View by Branch, ADM-006; UPDATE PROCESS doc
+  reconciliation pass; branch `feat/adm-006-branchview`, commit `7bb0918`, source committed —
+  process-only reconciliation this pass)
 Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
   14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26); Phase 3 — Products/Categories CRUD
   (✅ VERIFIED, 15-07-26); Phase 4a — Deals-as-Products, ADM-004 RE-PLAN (✅ VERIFIED — MERGED via
-  PR #92, commit `fedcfcb`; previously held at "NOT YET MERGED" in a stale snapshot, corrected
-  this pass)
+  PR #92, commit `fedcfcb`); Phase 5 — Rewards Configuration CRUD, ADM-005 (✅ VERIFIED — MERGED
+  via PR #112, commit `772e2fd`; previously held at "CODE DONE, not yet merged" in a stale
+  snapshot, corrected this pass now that the merge is confirmed by git ancestry); Phase 6 —
+  Orders View by Branch, ADM-006 (✅ VERIFIED, this pass — see below).
 Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
 Completed sub-program (inserted between P4 and P5, NOT part of the 8-phase numbering): ADM-008
   Coupons (Promotion→Offer→Coupon, 5 phases, CODE-COMPLETE + EVL-green, 16-07-26) plus its 6-item
   post-merge fix batch (6/6 COMPLETE, 17-07-26 — Fix 6 = `adm-008-free-mechanics_16-07-26`, the
   free_item/free_upgrade offer-coupon redemption-math program, USER-REVIEWED 17-07-26 via a
   5-artifact risk evidence pack). Shipped on `feat/deals_unification`, merged into `development`
-  via PR #109 (merge commit `95e7aeb`, confirmed present in `feat/adm-005-rewards`'s own git
-  history). Held OPEN in `active/` (not archived) per standing decision — user has further
-  follow-up exploration planned on the coupons domain. Full account:
+  via PR #109 (merge commit `95e7aeb`). Held OPEN in `active/` (not archived) per standing
+  decision — user has further follow-up exploration planned on the coupons domain. Full account:
   `process/context/all-context.md` (ADM-008 + Fix 6 bullets) — not duplicated here.
-Current phase N of total: 5 of 8 (Phase 5 — Rewards Configuration CRUD, ADM-005) —
-  CODE-COMPLETE, EVL-confirmed green; G10 (Agent-Probe admin UI walkthrough) owed (user-run,
-  standing project-wide gap — no `apps/admin` browser/E2E runner). Not yet merged.
-Phase N name: Phase 5 — Rewards Configuration CRUD (ADM-005, #43)
-Phase N status: CODE-COMPLETE + EVL-green (branch `feat/adm-005-rewards`, commit `7a198b9`, not
-  yet merged) — held at "Keep in active/testing" rather than stamped ✅ VERIFIED until G10's
-  manual admin UI walkthrough is user-confirmed and the branch merges. Delivered: admin Rewards
-  CRUD (`packages/api/src/routes/admin/rewards.ts`, 5th confirmed append-only aggregator
-  consumer), additive `AdminReward`/`serializeAdminReward` (public `ApiReward` wire-frozen),
-  `REWARD_TYPES` incl. `free_upgrade` (D2), and the reward-side `free_upgrade` money-path in
-  `coupon-apply.ts`'s `resolveCouponDiscount` (reward_type dispatch: `free_item` →
-  `computeRewardDiscountCents`, `free_upgrade` → `computeFreeUpgradeDiscountCents`, with a
-  zero-guard reject — 400, coupon left unburned — when nothing to upgrade). `apps/admin` gained
-  `features/rewards/**` (list/form + hooks/lib), an Outlet+index route split (Phase 3's
-  nested-detail-route precedent applied proactively), and a new, non-disabled Rewards nav entry
-  (no prior placeholder existed — Execute-Agent Instruction E4). D1-D4 locked with the user
-  17-07-26: multiple-concurrent battle-pass reward tiers; 4 reward types incl. `free_upgrade`;
-  `isActive:false` soft-deactivate only (no hard DELETE); type-conditional D4 cross-field
-  validation.
-Phase N EVL: independently confirmed green — API 448/448 (incl. 19 new `admin-rewards`
-  integration tests + 2 new G13 `coupons.integration.test.ts` free_upgrade cases), admin 58/58,
-  both typechecks clean, admin build clean, `pnpm format:check` clean. HARD gates G1/G2/G3
-  (retroactivity — `required_stars`/`reward_value` edits never mutate `star_transactions`
-  history or issued coupons; deactivation stops new unlocks but pre-issued available coupons
-  survive + still redeem) and G13 (`free_upgrade` exact-cents waive + reject-when-unburned) all
-  proven by real passing Fully-Automated tests — Known-Gap banned and unused for every developed
-  money behavior, per the program's own HARD-invariant charter language. 3 execution deviations
-  recorded honestly in the phase report (none hard-stop): (1) reward-side zero-guard reason code
-  is `no_upgrade_to_waive`, not the offer-side `no_eligible_product` the plan cited by analogy —
-  semantically clearer, money behavior identical, proven by G13b; (2) no new
-  `packages/utils/discount.test.ts` tests added — the validate-contract explicitly said none
-  were required (`computeFreeUpgradeDiscountCents` reused verbatim, already 35/35-covered;
-  dispatch wiring proven by G13 instead) — matches contract, not a gap; (3) execute-agent added
-  `!build` to `.claude/.vcignore` to unblock the admin build gate per the scout-block hook's own
-  instruction — benign harness allowance, no source impact.
-Phase N report: `phase-05-rewards_REPORT_17-07-26.md` (this pass).
-Next phase: Phase 6 — Orders view (ADM-006, #44). D1-D8 decisions LOCKED with the user 17-07-26
-  (read-only MVP, name+phone-only PII, cursor pagination, composed serializers, IDs-only
-  discount context, inclusive date-range semantics, `data-table` + polling for freshness) but
-  the phase is explicitly **PARKED (D8)** — do NOT run PLAN-SUPPLEMENT/PVL/EXECUTE for Phase 6
-  until Phase 5 has merged into `development` (keeps the shared aggregator/serializer/nav edits
-  serialized). Phase 7 — Analytics (ADM-007, #45) is similarly DECISIONS-LOCKED (D1-D9, incl. 2
-  competitor-research-informed additions — top-selling products + new-vs-returning customers, 8
-  KPIs total) but PARKED (D9) behind Phase 6's execution. Both are DRAFT-complete
-  (research + decisions done), not yet RIPER-activated (no PLAN-SUPPLEMENT/PVL run).
+Current phase N of total: 6 of 8 (Phase 6 — Orders View by Branch, ADM-006) — ✅ VERIFIED. Next
+  up: Phase 7 of 8 (Analytics, ADM-007) — unparked, decisions already locked, ready for its
+  inner-loop RESEARCH re-confirm pass.
+Phase N name: Phase 6 — Orders View by Branch (ADM-006, #44)
+Phase N status: ✅ VERIFIED (branch `feat/adm-006-branchview`, rooted at `development`'s PR #112
+  merge commit `772e2fd`; execution commit `7bb0918`). D1-D8 decisions (locked 17-07-26) were
+  fully honored with zero ad-hoc EXECUTE deviations. Delivered: `GET /api/admin/orders`
+  (cursor-paginated, filterable by branch/status/date, AND-composed) + `GET
+  /api/admin/orders/:orderId` — the **10th confirmed append-only `/api/admin` aggregator
+  consumer**. Additive `AdminOrderSummary`/`AdminOrderDetail` serializers that CALL the existing
+  staff serializers (D4 "compose, don't duplicate" — guarantees AC3 field-parity by
+  construction, not by hand-matching). Read-only by construction: zero mutation verb anywhere
+  under `/api/admin/orders*` (D1). PII-scoped to name+phone only, email/auth fields excluded
+  (D2), proven by an automated field-shape test, not a code-review judgment call. `apps/admin`
+  gained `features/orders/**` (fetch wrapper + hooks + filter-bar/list components), the
+  Outlet+index route split (P3's nested-detail-route precedent applied proactively — no repeat
+  of that bug), a new Orders nav entry (Execute-Agent Instruction E1 — no prior disabled
+  placeholder existed), `data-table`/`status-badge` composite reuse, native-`<select>` filters
+  (D7 — no new shared `Select` primitive), and a 15s poll-while-mounted `refetchInterval` for
+  live-status freshness (D7 — fetch-on-focus + polling remains the app-wide realtime
+  convention, no websockets added).
+Phase N EVL: independently confirmed green — API 468/468 (448 baseline + 20 new
+  `admin-orders.integration.test.ts` cases, 0 regressions), admin 58/58 (unchanged baseline — no
+  new component test file, filter-bar/order-list are network-hook-bound per the established
+  Fix-4 precedent for skipping RTL tests on that component class), both typechecks/build clean,
+  `pnpm format:check` clean. Regression checkpoint against P1 (`requireAdmin` role matrix) and P2
+  (`GET /api/admin/branches` list, the branch-filter source) both re-run as part of the full
+  suite pass — no regression. **The Agent-Probe UI-layer gate (filters, pagination, detail
+  render, PII display matching D2) was PERFORMED AND PASSED BY THE USER this session** — not
+  left as an owed residual like prior phases' equivalents (P2 AC7, Phase 5 G10). Zero deviations
+  from the validate-contract's 4 informational Execute-Agent Instructions (E1-E4) — all followed
+  as written; zero Known-Gap rows, matching the contract going in.
+Phase N report: `phase-06-orders_REPORT_17-07-26.md` (this pass).
+Next phase: Phase 7 — Analytics (ADM-007, #45). D1-D9 decisions LOCKED with the user 17-07-26
+  (incl. 2 competitor-research-informed additions — top-selling products + new-vs-returning
+  customers, 8 KPIs total). The D9 unpark condition ("Phase 6 execution") is now satisfied — this
+  is no longer PARKED. Next loop step: inner-loop RESEARCH re-confirm pass (Step 1), same shape
+  as Phase 6's own unpark-then-reconfirm sequence, before PLAN-SUPPLEMENT/PVL.
 
 **Phase 4a merge + ADM-008 + Fix 6 (free-mechanics) closeout summary (16→17-07-26, reconciled
 this pass):** `feat/adm-004-deals` merged via PR #92 (commit `fedcfcb`) — Phase 4a now stands
@@ -479,9 +474,10 @@ mobile Deals tab keeps reading the OLD `GET /deals` route in the interim (no reg
 is untouched) until the standalone `deals-mobile-repoint_HANDOFF_15-07-26.md` handoff is picked up
 by a separate mobile workstream.
 
-Program Net Gate: 4/8 phases VERIFIED — PENDING overall
-Latest validator run: 15-07-26 — this UPDATE PROCESS pass (see phase report + this session's
-closeout packet for results)
+Program Net Gate: 6/8 phases VERIFIED — PENDING overall (Phase 7 — Analytics — is the sole
+remaining phase; unparked and ready for its inner-loop RESEARCH pass)
+Latest validator run: 17-07-26 — this UPDATE PROCESS pass (Phase 6 closeout; see phase report +
+this session's closeout packet for results)
 
 **Sidebar Navigation closeout summary (15-07-26, cross-cutting):** Config-driven brutalist sidebar
 navigation delivered across the admin dashboard shell. `apps/admin/src/config/nav-config.ts` exports
@@ -570,10 +566,10 @@ Report: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-
 
 Orchestrator rule: read "Phase N status" and the named phase plan's `## Phase Loop Progress`
 before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE,
-PLAN-SUPPLEMENT, or PVL. Phase 5's `## Phase Loop Progress` has Steps 1-6 ticked (EVL-green);
-Step 7 (UPDATE PROCESS) is this pass. Phase 6/7 plan files exist with D1-D8/D1-D9 decisions
-LOCKED but are explicitly PARKED (D8/D9) — do not spawn any agent for them until their stated
-unpark condition (Phase 5 merge / Phase 6 execution, respectively) is met.
+PLAN-SUPPLEMENT, or PVL. Phase 6's `## Phase Loop Progress` has all 7 steps ticked (✅ VERIFIED,
+this pass). Phase 7's plan file exists with D1-D9 decisions LOCKED and is now UNPARKED (D9's
+unpark condition — Phase 6 execution — is satisfied) — its first unticked step is Step 1
+(RESEARCH), so spawn vc-research-agent for its inner-loop re-confirm pass next.
 
 Note: this section is the only part of the umbrella plan expected to change over the program's
 life — update-process-agent rewrites it after every phase closeout (overwrite, not append — git
@@ -653,11 +649,10 @@ TEST GATES (every phase exit; run all applicable):
 VALIDATE CONTRACT: Per-phase contracts written by vc-validate-agent into each phase plan before
 EXECUTE. None exist yet -- per-phase plan files are created in the next pass after this umbrella.
 
-START (updated 16-07-26): Phases 0-3 ✅ VERIFIED; Phase 4a (Deals-as-Products, ADM-004 RE-PLAN)
-EVL-green and delivered incl. Enhancement E1 + this session's price-comparison panel/PR-review
-fixes, but NOT YET MERGED -- branch `feat/adm-004-deals`, PR pending review. Do not archive Phase 4a
-to completed/ or stamp it VERIFIED in the Phase Map until the PR lands. Once merged: Phase 5
-(Rewards CRUD, ADM-005), loop step 1-RESEARCH.
+START (updated 17-07-26): Phases 0-6 ✅ VERIFIED (P4a merged PR #92; P5 merged PR #112; P6
+committed `7bb0918` on `feat/adm-006-branchview`, user UI walkthrough passed). ADM-008 Coupons +
+Fix 6 sub-program CODE-COMPLETE, held OPEN in active/. Next: Phase 7 (Analytics, ADM-007) --
+D1-D9 decisions already locked, unparked (D9 condition met) -- loop step 1-RESEARCH.
 ```
 
 ---
@@ -680,8 +675,8 @@ inner-loop PLAN-SUPPLEMENT after RESEARCH).
 | P3 — Products/Categories CRUD (ADM-003) ✅ VERIFIED | [phase-03-products_PLAN_14-07-26.md](./phase-03-products_PLAN_14-07-26.md) | FLEXIBLE | RESOLVED — snapshot-integrity regression test (AC1) real and passing, Known-Gap never used; `centsToNumeric` exported. Only residual: `data-table`/`form-dialog` extraction deferred to P4 re-eval. |
 | P4 — Deals CRUD (ADM-004) | [phase-04-deals_PLAN_14-07-26.md](./phase-04-deals_PLAN_14-07-26.md) | FLEXIBLE | **Coupon-cascade on deal deactivation — 3 options, needs sign-off at P4 INNOVATE** |
 | P5 — Rewards CRUD (ADM-005) | [phase-05-rewards_PLAN_14-07-26.md](./phase-05-rewards_PLAN_14-07-26.md) | FLEXIBLE | Reward-retroactivity regression test (HARD, Known-Gap banned) |
-| P6 — Orders view (ADM-006) | [phase-06-orders_PLAN_14-07-26.md](./phase-06-orders_PLAN_14-07-26.md) | FLEXIBLE | Customer-PII exposure boundary design note (name+phone in, email out) |
-| P7 — Analytics (ADM-007) | [phase-07-analytics_PLAN_14-07-26.md](./phase-07-analytics_PLAN_14-07-26.md) | FLEXIBLE | **6 metric definitions need sign-off; aggregation-query approach open (no precedent)** |
+| P6 — Orders view (ADM-006) ✅ VERIFIED | [phase-06-orders_PLAN_14-07-26.md](./phase-06-orders_PLAN_14-07-26.md) | FULL | RESOLVED — D2 PII boundary (name+phone in, email out) proven by automated field-shape test; no open items. |
+| P7 — Analytics (ADM-007) | [phase-07-analytics_PLAN_14-07-26.md](./phase-07-analytics_PLAN_14-07-26.md) | FLEXIBLE | D1-D9 decisions locked 17-07-26 (incl. 2 new KPIs); unparked (D9 condition met) — next: inner-loop RESEARCH re-confirm pass. |
 
 ---
 

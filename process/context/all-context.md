@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-17 (Phase 5 — Rewards Configuration CRUD, ADM-005, doc-only UPDATE PROCESS reconciliation; + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-17 (Phase 6 — Orders View by Branch, ADM-006, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, user UI walkthrough passed; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,54 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 17-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 17-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard Orders View by Branch (`apps/admin` + `packages/api`, Phase 6 — ADM-006, #44,
+  delivered 17-07-26, branch `feat/adm-006-branchview`, commit `7bb0918`, ✅ VERIFIED — CODE-COMPLETE,
+  EVL-green, user-run Agent-Probe UI walkthrough PASSED):** read-only admin oversight of orders
+  across ALL branches — `GET /api/admin/orders` (cursor-paginated on `placed_at`, filterable by
+  `branchId`/`status`/`dateFrom`/`dateTo`, AND-composed) + `GET /api/admin/orders/:orderId`, the
+  **10th confirmed consumer** of the append-only `/api/admin` aggregator (after
+  users/branches/products+categories/deals/promotions+offers+coupons/rewards). Zero schema
+  migration. `packages/api/src/routes/lib/serializers.ts` gained additive
+  `AdminOrderSummary`/`AdminOrderDetail` that CALL the existing staff serializers
+  (`serializeStaffOrderSummary`/`serializeStaffOrderDetail`) and spread admin-only fields
+  (`branchId`, `branchName`, `customerName`, `customerPhone`, `discountTotalCents`, `couponId`,
+  `dealId`) on top — "compose, don't duplicate" (D4), which guarantees admin/staff detail
+  field-parity by construction rather than by hand-matching two independent serializers. Locked
+  decisions (D1-D8, resolved with the user 17-07-26): **D1 no admin status-override write path**
+  (status transitions stay a staff-only action via STAFF-003's state machine — Phase 6 is
+  read-only by construction, zero mutation verb anywhere under `/api/admin/orders*`, proven by an
+  automated mutation-absence probe); **D2 PII boundary** — customer `name` + `phone` only, no
+  `email`, no better-auth credential/session fields, proven by an automated field-shape
+  presence/absence assertion (not a code-review judgment call); **D3** cursor pagination on
+  `placed_at` (reuses the customer order-history pattern verbatim); **D5** discount context is
+  IDs+cents only (`couponId`/`dealId`/`discountTotalCents`), no joined display names this phase;
+  **D6** date-range filters are inclusive start/end-of-day on `placed_at`; **D7** list rendering
+  reuses the `data-table`/`status-badge` composites + native `<select>` filters (no new shared
+  `Select` primitive — matches the offer-form convention) + a 15s `refetchInterval`
+  poll-while-mounted for live-status freshness (fetch-on-focus + polling remains the app-wide
+  realtime convention, no websockets/push infra added). `apps/admin` gained
+  `features/orders/**` (fetch wrapper + hooks + filter-bar/list components), the layout+index
+  `<Outlet/>` route split (`orders.tsx`/`orders.index.tsx`/`orders.$orderId.tsx` — the P3
+  nested-detail-route precedent applied proactively, no repeat of that bug), and a new Orders nav
+  entry (no prior disabled placeholder existed to "enable" — same class of deviation as Phase 5's
+  rewards nav entry). 20 new integration tests (branch/status/date filters, cursor pagination
+  round-trip, admin-vs-staff detail parity, 403/401 role matrix, mutation-absence probe, PII
+  field-shape assertion) — API 448→468, admin 58/58 unchanged (no new component tests — the
+  filter-bar/order-list are network-hook-bound, matching the established convention for skipping
+  RTL tests on that component class). All final gates independently EVL-reconfirmed (not taken on
+  execute-agent's word): API 468/468, admin 58/58, both typechecks/build/format clean. Zero
+  execution deviations from the validate-contract's 4 informational Execute-Agent Instructions
+  (E1-E4) — all followed as written; zero Known-Gap rows, matching the contract going in. The
+  Agent-Probe UI-layer gate (filters, pagination UX, detail render, PII display matching D2
+  exactly) was PERFORMED AND PASSED BY THE USER this session — unlike prior phases' equivalents
+  (P2 AC7, Phase 5 G10), this residual is NOT owed for Phase 6. Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-06-orders_PLAN_14-07-26.md`
+  (+ co-located `phase-06-orders_REPORT_17-07-26.md` in the same task folder). With this phase, the
+  program is 6/8 phases ✅ VERIFIED — Phase 7 (Analytics, ADM-007) is the sole remaining phase,
+  D1-D9 decisions already locked with the user and unparked (its D9 unpark condition — Phase 6
+  execution — is now satisfied).
 
 - **Admin dashboard Rewards Configuration CRUD (`apps/admin` + `packages/api`, Phase 5 — ADM-005,
   #43, delivered 17-07-26, branch `feat/adm-005-rewards`, commit `7a198b9`, CODE-COMPLETE +
@@ -974,17 +1021,18 @@ Scanned against the canonical Context Group Detection Table
   (6/6 COMPLETE 17-07-26, incl. Fix 6 free-mechanics money-path fix, USER-REVIEWED) — shipped via
   `feat/deals_unification`, MERGED into `development` via PR #109, held OPEN in `active/` for
   planned follow-up exploration work, not archived; Phase 5 — Rewards Configuration CRUD (ADM-005)
-  delivered 17-07-26, CODE-COMPLETE + EVL-green on branch `feat/adm-005-rewards`, NOT yet merged,
-  G10 Agent-Probe walkthrough owed; Phase 6 — Orders view (ADM-006) and Phase 7 — Analytics
-  (ADM-007) both DECISIONS LOCKED with the user 17-07-26 but explicitly PARKED — P6 behind Phase 5's
-  merge, P7 behind Phase 6's execution).
+  delivered 17-07-26, ✅ VERIFIED, MERGED via PR #112 (commit `772e2fd`); Phase 6 — Orders View by
+  Branch (ADM-006) delivered 17-07-26, ✅ VERIFIED, user UI walkthrough passed (commit `7bb0918`,
+  branch `feat/adm-006-branchview`); Phase 7 — Analytics (ADM-007) DECISIONS LOCKED with the user
+  17-07-26, now UNPARKED (D9 condition — Phase 6 execution — satisfied), ready for its inner-loop
+  RESEARCH pass — the sole remaining phase of the 8-phase program).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
   (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; the
   `adm-008-coupons_16-07-26/` task folder stays in `active/`; 3 Phase-2 + 2 Phase-4a + 1 new
   ADM-008 backlog note — see the Coupons entry above). This is an 8-phase program (P0 scaffold
   through P7 analytics, ADM-001..007) with ADM-008 as an inserted sub-program between Phase 4 and
-  Phase 5 — see the umbrella plan's `## Current Execution State` for the current phase (ADM-008
-  delivered; Phase 5 — Rewards CRUD, ADM-005, next, once feat/adm-008-coupons merges).
+  Phase 5 — see the umbrella plan's `## Current Execution State` for the current phase (6/8
+  phases ✅ VERIFIED; Phase 7 — Analytics, ADM-007, is next).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -1003,7 +1051,7 @@ crossed — it will create the matching group automatically.
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
 | new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
-| admin dashboard work (Phase 5-7, ADM-005..007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase (Phase 5 CODE-COMPLETE + EVL-green, G10 owed, not merged; Phase 6/7 DECISIONS LOCKED but PARKED — do not activate), then the named phase plan file, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred; ADM-008-era notes resolved/superseded — see the coupons feature bullet) |
+| admin dashboard work (Phase 7, ADM-007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase (Phases 0-6 all ✅ VERIFIED; Phase 7 — Analytics — DECISIONS LOCKED and UNPARKED, ready for inner-loop RESEARCH), then `phase-07-analytics_PLAN_14-07-26.md`, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred; ADM-008-era notes resolved/superseded — see the coupons feature bullet) |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 
 ## Context Group Lifecycle
@@ -1235,7 +1283,25 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (Phase 5 — Rewards Configuration CRUD, ADM-005, UPDATE PROCESS — doc-only
+- Last delta: 2026-07-17 (Phase 6 — Orders View by Branch, ADM-006, UPDATE PROCESS — doc-only
+  reconciliation, no source changes this pass; source already committed by the user before this
+  pass began. Phase 6 delivered commit `7bb0918` on branch `feat/adm-006-branchview` (`GET
+  /api/admin/orders` cursor-paginated list + `GET /api/admin/orders/:orderId` detail, 10th
+  append-only aggregator consumer, D1-D8 all honored with zero ad-hoc EXECUTE deviations,
+  composed `AdminOrderSummary`/`AdminOrderDetail` serializers guaranteeing AC3 parity by
+  construction, PII-scoped name+phone-only proven by an automated field-shape test, zero mutation
+  verb anywhere under `/api/admin/orders*`) — ✅ VERIFIED, EVL independently reconfirmed green
+  (API 468/468 incl. 20 new tests, admin 58/58, both typechecks/build/format clean), and the
+  Agent-Probe UI-layer gate (filters, pagination, detail render, PII display) was PERFORMED AND
+  PASSED BY THE USER this session — unlike prior phases' equivalents (P2 AC7, Phase 5 G10), this
+  residual is not owed. Wrote `phase-06-orders_REPORT_17-07-26.md`; ticked Phase Loop Progress
+  Steps 5-7 and stamped the plan Status ✅ VERIFIED; reconciled the umbrella's `## Current
+  Execution State` (also corrected a stale Phase 5 "CODE DONE, not yet merged" snapshot — Phase 5
+  in fact merged via PR #112, commit `772e2fd`, confirmed by git ancestry) and its Phase
+  Map/Ordering/Program Status tables (P6 ✅ VERIFIED, program now 6/8 phases VERIFIED, Phase 7
+  unparked and next up). No new backlog notes filed this pass (zero Known-Gap rows, zero new
+  gaps found). HEAD this delta: `7bb0918`.)
+- Previous delta: 2026-07-17 (Phase 5 — Rewards Configuration CRUD, ADM-005, UPDATE PROCESS — doc-only
   reconciliation, no source changes this pass. Phase 5 delivered commit `7a198b9` (admin Rewards
   CRUD, 5th append-only aggregator consumer, D1-D4 locked, reward-side `free_upgrade` money-path
   in `coupon-apply.ts` — HARD gates G1/G2/G3/G13 all Fully-Automated, Known-Gap banned and unused)
