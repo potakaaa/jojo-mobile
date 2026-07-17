@@ -7,6 +7,7 @@ import dealsRouter from './deals';
 import offersRouter from './offers';
 import productsRouter from './products';
 import promotionsRouter from './promotions';
+import rewardsRouter from './rewards';
 import usersRouter from './users';
 
 /**
@@ -40,5 +41,9 @@ adminRouter.use('/deals', dealsRouter);
 adminRouter.use('/promotions', promotionsRouter);
 adminRouter.use('/offers', offersRouter);
 adminRouter.use('/coupons', couponsRouter);
+
+// Rewards CRUD (ADM-005 — points-earned redemption tiers) — same inherited guard;
+// append-only, never restructure. 5th consumer of the append-only aggregator pattern.
+adminRouter.use('/rewards', rewardsRouter);
 
 export default adminRouter;

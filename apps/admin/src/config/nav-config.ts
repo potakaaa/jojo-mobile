@@ -8,6 +8,7 @@ import {
   Tag,
   Megaphone,
   Ticket,
+  Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -76,6 +77,12 @@ export const navConfig: NavGroup[] = [
         label: 'Offers',
         icon: Ticket,
         to: '/offers',
+      },
+      {
+        id: 'rewards',
+        label: 'Rewards',
+        icon: Gift,
+        to: '/rewards',
       },
       {
         id: 'users',
