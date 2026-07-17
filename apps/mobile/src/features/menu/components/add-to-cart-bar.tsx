@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -45,7 +44,18 @@ export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: Add
       style={[
         styles.bar,
         { backgroundColor: theme.backgroundElement, borderTopColor: theme.border },
-        Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+        // This bar only ever renders on Product Details, which is always pushed inside a
+        // tab's Stack — never a tab root — so isNestedTabRoute() would also evaluate true
+        // there; the nested-ness is hardcoded per INNOVATE's static-per-screen-fact decision
+        // (see PLAN "Locked Inputs"). If this bar is ever reused on a tab-root screen, this
+        // must change back to getFloatingTabBarClearance(insets.bottom).
+        //
+        // RN style arrays merge left-to-right, so this entry OVERRIDES styles.bar's static
+        // paddingBottom on iOS/Android — which is why the old clearance call was reserving
+        // the full ~85dp of dead tab-bar height on this screen. Equivalent to
+        // resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.four,
+        // written explicitly since this file has no other use for the footprint constant.
+        Platform.OS !== 'web' && { paddingBottom: insets.bottom + Spacing.four },
       ]}
     >
       {showHint && !canAdd ? (

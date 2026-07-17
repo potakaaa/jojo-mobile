@@ -78,7 +78,7 @@ export default function AccountScreen() {
           <View style={styles.linkList}>
             <AccountLink
               label="Notifications"
-              onPress={() => router.push('/(tabs)/account/notifications')}
+              onPress={() => router.push('/(tabs)/notifications')}
               color={theme.accent}
             />
             <AccountLink

@@ -6,20 +6,11 @@
  * with `LiveOrderActions` — a real mutation-backed button matrix (STAFF-003).
  */
 
-import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, type ThemeMode } from '@jojopotato/ui';
+import { Button, Card, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { OrderStatus, StaffOrderDetail, StaffOrderItem } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -210,19 +201,11 @@ export default function OrderDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>
-            {order ? order.orderNumber : 'Order Detail'}
-          </Text>
-        </View>
+        <ScreenHeader
+          title={order ? order.orderNumber : 'Order Detail'}
+          onBack={() => router.back()}
+          mode={mode}
+        />
 
         <ScrollView contentContainerStyle={styles.content}>
           {isLoading ? (
@@ -297,18 +280,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
-  },
-  headerTitle: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
   },
   content: {
     paddingHorizontal: Spacing.four,

@@ -32,3 +32,26 @@ export interface NestedRouteLike {
 export function isNestedTabRoute(route: NestedRouteLike): boolean {
   return route.state != null && route.state.index != null && route.state.index > 0;
 }
+
+/**
+ * Bottom clearance (dp) a screen must reserve, with the two terms it is made of
+ * kept SEPARATE — this split is the whole point of the function:
+ *
+ * - `footprint` — the floating tab bar's own on-screen dead height. Only real
+ *   when the bar is actually rendered, i.e. on a tab ROOT screen. On a pushed
+ *   (nested) screen the bar is hidden, so reserving this is dead space.
+ * - `insetsBottom` — the DEVICE safe-area inset (home indicator / gesture bar).
+ *   Always real, on every screen, bar or no bar. Never conditional.
+ *
+ * The historical bug this fixes: `getFloatingTabBarClearance` returns both terms
+ * fused into one number, so a nested screen could only drop the dead bar height
+ * by also dropping its device inset — pushing CTAs flush against the home
+ * indicator. Callers now choose the branch explicitly.
+ */
+export function resolveTabBarClearance(
+  isNested: boolean,
+  footprint: number,
+  insetsBottom: number,
+): number {
+  return isNested ? insetsBottom : footprint + insetsBottom;
+}
