@@ -27,7 +27,6 @@ export default function OrderStackLayout() {
       <Stack.Screen name="checkout" options={{ headerShown: false }} />
       <Stack.Screen name="payment-method" options={{ headerShown: false }} />
       <Stack.Screen name="confirmation/[orderId]" options={{ headerShown: false }} />
-      <Stack.Screen name="tracking/[orderId]" options={{ headerShown: false }} />
       <Stack.Screen name="history" options={{ headerShown: false }} />
     </Stack>
   );

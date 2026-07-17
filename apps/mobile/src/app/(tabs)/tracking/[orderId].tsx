@@ -1,5 +1,5 @@
 import { OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { isTerminalStatus, useOrderQuery } from '@/features/orders/hooks/use-order-query';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
@@ -61,10 +62,26 @@ export default function OrderTrackingScreen() {
   const { data: order, isLoading, error, refetch } = useOrderQuery(orderId);
 
   /*
+    Hide the floating tab bar on this screen. Tracking is a leaf screen you enter
+    and leave, and since NAV-004 it is the ROOT of its own TOP-LEVEL stack — so
+    `isNestedTabRoute()` is false and the bar would otherwise paint here.
+    `useHideTabBarWhile` is the existing cross-tree seam for exactly this (it is
+    OR-composed with the nested check in floating-tab-bar.tsx). Gated on FOCUS,
+    not just mount: this screen stays mounted in the Tabs navigator after the user
+    navigates away, and an always-true flag would leave the bar hidden on the
+    destination. Losing focus restores it; unmount also restores.
+
+    This hook sits ABOVE the loading/error early returns below — hooks must run on
+    every render path (Rules of Hooks), and this component has three return
+    branches.
+  */
+  useHideTabBarWhile(useIsFocused());
+
+  /*
     All three return paths (loading / error / loaded) render the SAME header
     inside the SAME safe-area wrapper. The native header used to cover the
     loading and error branches for free — with `headerShown:false` (see
-    ../_layout.tsx) an unwrapped early return would lose both its status-bar
+    ./_layout.tsx) an unwrapped early return would lose both its status-bar
     clearance and its only way back, visible whenever the fetch is slow or the
     order id is bad.
   */
@@ -109,6 +126,12 @@ export default function OrderTrackingScreen() {
         it is breathing room, a different concern from the device inset, so the
         two together are NOT a double-count. This screen has no bottom CTA and no
         resolveTabBarClearance call: this SafeAreaView is the only inset source.
+
+        NAV-004 does not change any of the above. The tab bar is now EXPLICITLY
+        hidden here (via useHideTabBarWhile above) rather than implicitly absent,
+        but no footprint was ever reserved for it on this screen, so there is
+        nothing to reclaim: the device inset still arrives exactly ONCE, from this
+        SafeAreaView.
       */}
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Order Tracking" onBack={() => router.back()} mode={mode} />
