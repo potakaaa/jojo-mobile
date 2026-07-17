@@ -34,6 +34,7 @@ import { PromoBanner } from '@/features/home/components/promo-banner';
 import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
 import { useMenu } from '@/features/menu/hooks/use-menu';
 import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
+import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { fetchOrderHistory } from '@/features/orders/lib/api-client';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -119,6 +120,7 @@ export default function HomeScreen() {
   });
   // Most-recent non-terminal order (list is newest-first from the API).
   const activeOrder = orders?.find((o) => !isTerminalStatus(o.status)) ?? null;
+  const navigateToOrderTracking = useNavigateToOrderTracking();
 
   const branchId = selectedBranch?.id;
 
@@ -181,15 +183,16 @@ export default function HomeScreen() {
         >
           <HomeHeader />
 
+          {/*
+            The CROSS-TAB entry point: Home pushing into the Order tab's stack
+            while Order is not focused. This is the case the back-stack trap
+            (issue #96) actually reproduced from — a bare router.push landed
+            Tracking on top of whatever stale screen Order's stack still held.
+          */}
           {activeOrder != null && (
             <ActiveOrderBanner
               order={activeOrder}
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/order/tracking/[orderId]',
-                  params: { orderId: activeOrder.id },
-                })
-              }
+              onPress={() => navigateToOrderTracking(activeOrder.id)}
             />
           )}
 

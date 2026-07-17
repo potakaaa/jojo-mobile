@@ -148,18 +148,37 @@ const ICON_CHIP_SIZE = 36;
 const BAR_CONTENT_HEIGHT = ICON_CHIP_SIZE + Spacing.half + 15 + Spacing.one * 2;
 
 /**
- * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
- * must reserve so its last row clears this floating bar. The bar is absolutely
- * positioned at `bottom: insets.bottom + Spacing.two`, so the footprint from the
- * screen's bottom edge is the bar content height PLUS that offset PLUS extra
- * breathing room (Spacing.four) so content isn't flush against the bar.
+ * The floating bar's OWN dead footprint (dp) from the screen's bottom edge —
+ * device-independent, so it can be a static export. The bar is absolutely
+ * positioned at `bottom: insets.bottom + Spacing.two`, so its footprint is the
+ * bar content height PLUS that offset PLUS extra breathing room (Spacing.four)
+ * so content isn't flush against the bar. Currently 61 + 8 + 16 = 85.
+ *
+ * This term is real ONLY where the bar actually renders (tab-root screens). On a
+ * pushed/nested screen the bar is hidden, so reserving it is dead space — see
+ * `resolveTabBarClearance` in `./floating-tab-bar.helpers`, which nested screens
+ * use to reserve the device safe-area inset WITHOUT this footprint.
+ */
+export const TAB_BAR_FOOTPRINT = BAR_CONTENT_HEIGHT + Spacing.two + Spacing.four;
+
+/**
+ * Total bottom clearance (dp) an iOS/Android TAB-ROOT screen's scrollable
+ * content must reserve so its last row clears this floating bar: the bar's own
+ * footprint PLUS the device safe-area inset.
+ *
+ * These are two DIFFERENT concerns fused into one number for the tab-root case,
+ * where both happen to apply. Do not reuse this on a nested screen to get the
+ * safe-area inset — that reserves ~85dp of dead bar height for a bar that isn't
+ * rendered there. Nested screens call
+ * `resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insetsBottom)` instead, which
+ * keeps the inset and drops the footprint.
  *
  * `insets.bottom` is device-dependent, so this must be a function (it cannot be
  * baked into a static export). Screens pass `useSafeAreaInsets().bottom`.
  * iOS/Android only: the web tab bar reserves its own space natively.
  */
 export const getFloatingTabBarClearance = (insetsBottom: number): number =>
-  BAR_CONTENT_HEIGHT + insetsBottom + Spacing.two + Spacing.four;
+  TAB_BAR_FOOTPRINT + insetsBottom;
 
 interface TabItemProps {
   isActive: boolean;
