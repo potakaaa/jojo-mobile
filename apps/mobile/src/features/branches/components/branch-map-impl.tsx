@@ -45,7 +45,7 @@ const USER_LOCATION_ZOOM = 14;
 const FOCUS_ZOOM = 16;
 
 export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function BranchMap(
-  { branches, coords, isLocationEnabled, onBranchPress },
+  { branches, coords, isLocationEnabled, contentBottomInset, onBranchPress },
   ref,
 ) {
   // Ref to the underlying native map view (Apple on iOS, Google on Android).
@@ -119,6 +119,8 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
           // Force light appearance to approximate the warm brand look
           // (`colorScheme` is a top-level view prop, not part of `properties`).
           colorScheme={AppleMaps.MapColorScheme.LIGHT}
+          // Caveat: iOS controls are NOT inset — AppleMaps.View has no
+          // `contentPadding` API in expo-maps v57 (Android-only). Left unchanged.
           properties={{
             // Muted emphasis deemphasizes map imagery for the low-clutter look.
             emphasis: AppleMapsMapStyleEmphasis.MUTED,
@@ -161,6 +163,9 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
         ref={androidMapRef}
         style={styles.map}
         cameraPosition={cameraPosition}
+        // Insets the native Google controls (my-location button + logo) above the
+        // floating tab bar. `contentPadding` is Android-only in expo-maps v57.
+        contentPadding={{ bottom: contentBottomInset }}
         properties={{
           mapStyleOptions: { json: MAP_STYLE_JSON },
           // Native "you are here" blue dot — clearly distinct from the branch
