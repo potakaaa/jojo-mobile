@@ -45,7 +45,7 @@ const USER_LOCATION_ZOOM = 14;
 const FOCUS_ZOOM = 16;
 
 export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function BranchMap(
-  { branches, coords, onBranchPress },
+  { branches, coords, isLocationEnabled, contentBottomInset, onBranchPress },
   ref,
 ) {
   // Ref to the underlying native map view (Apple on iOS, Google on Android).
@@ -119,16 +119,20 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
           // Force light appearance to approximate the warm brand look
           // (`colorScheme` is a top-level view prop, not part of `properties`).
           colorScheme={AppleMaps.MapColorScheme.LIGHT}
+          // Caveat: iOS controls are NOT inset — AppleMaps.View has no
+          // `contentPadding` API in expo-maps v57 (Android-only). Left unchanged.
           properties={{
             // Muted emphasis deemphasizes map imagery for the low-clutter look.
             emphasis: AppleMapsMapStyleEmphasis.MUTED,
             // Hide high-clutter POI categories so branch pins stand out.
             pointsOfInterest: { excluding: EXCLUDED_POI_CATEGORIES },
             // Native "you are here" indicator — distinct from the branch pins.
-            // Uses the OS location (already permission-gated by expo-location); if
-            // permission is denied it simply doesn't show. Sets up a future
-            // "nearest branch from you" feature.
-            isMyLocationEnabled: true,
+            // Gated on the resolved location-permission grant (`isLocationEnabled`,
+            // true only when `useUserLocation()` status === 'granted'). Enabling
+            // the native my-location layer without the runtime grant throws
+            // SecurityException on Android's setMyLocationEnabled, so it must
+            // never be forced true while permission is loading or denied.
+            isMyLocationEnabled: isLocationEnabled,
           }}
           // Custom images on Apple Maps require `annotations` (AppleMapsMarker has
           // no `icon` field — only AppleMapsAnnotation does). Verified expo-maps
@@ -159,13 +163,19 @@ export const BranchMap = forwardRef<BranchMapHandle, BranchMapProps>(function Br
         ref={androidMapRef}
         style={styles.map}
         cameraPosition={cameraPosition}
+        // Insets the native Google controls (my-location button + logo) above the
+        // floating tab bar. `contentPadding` is Android-only in expo-maps v57.
+        contentPadding={{ bottom: contentBottomInset }}
         properties={{
           mapStyleOptions: { json: MAP_STYLE_JSON },
           // Native "you are here" blue dot — clearly distinct from the branch
-          // pins (works around Android's lack of a per-marker tint). Uses the OS
-          // location (already permission-gated by expo-location); if permission is
-          // denied it simply doesn't show. Sets up a future "nearest branch" feature.
-          isMyLocationEnabled: true,
+          // pins (works around Android's lack of a per-marker tint). Gated on the
+          // resolved location-permission grant (`isLocationEnabled`, true only
+          // when `useUserLocation()` status === 'granted'). Enabling this without
+          // the runtime grant throws SecurityException on Android's
+          // setMyLocationEnabled, so it must never be forced true while permission
+          // is loading or denied.
+          isMyLocationEnabled: isLocationEnabled,
         }}
         markers={branchMarkers.map((m) => ({
           id: m.id,
