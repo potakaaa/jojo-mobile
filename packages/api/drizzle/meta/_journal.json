@@ -113,6 +113,13 @@
       "when": 1784250666069,
       "tag": "0015_lazy_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784250726069,
+      "tag": "0016_rename_offer_fk_constraints",
+      "breakpoints": true
     }
   ]
 }

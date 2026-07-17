@@ -155,7 +155,7 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-This applies all 14 migrations (`0000`→`0013`) cleanly in order — no cursor confusion possible
+This applies all migrations (`0000`→`0016`) cleanly in order — no cursor confusion possible
 on a DB that's never been migrated before.
 
 ---
@@ -192,9 +192,40 @@ Column/table names verified against the schema file; the statement itself was no
 
 ---
 
+## 6. Migration `0016` — offer FK-constraint reconciliation
+
+`0016_rename_offer_fk_constraints.sql` renames the six foreign-key **constraints** on
+`offer_products` / `offer_branches` / `coupons` / `orders` from their old physical
+`deal_*_deals_id_fk` names to the `offer_*` names the schema snapshot expects. Migration `0013`
+renamed the tables/columns but Postgres does **not** rename FK constraints on a table rename, so
+the physical names drifted from the snapshot. `drizzle-kit generate` stays a no-op today, but a
+future FK change on any of these tables would emit a `DROP CONSTRAINT "<new name>"` that fails on
+a DB still carrying the old physical names.
+
+Nothing special is needed — the normal migrate path applies it:
+
+```bash
+cd packages/api
+pnpm db:migrate
+```
+
+The migration is **idempotent** (each rename is guarded by an `IF EXISTS` check on the old
+constraint name), so it is safe to run regardless of your DB's current state — old names, already
+reconciled, or fresh. Verify afterward that no stale names remain:
+
+```bash
+psql "$DATABASE_URL" -tAc "SELECT conname FROM pg_constraint WHERE conname LIKE '%deal%deals_id_fk';"
+# empty output = reconciled
+```
+
+Teammates who used the Section 4 nuclear option get this automatically (it's in the `0000`→`0016`
+chain). Also apply `0014` (`offers.benefit_product_id`) and `0015` (coupon reward/offer mutex
+CHECK) via the same `db:migrate` if your cursor predates them.
+
+---
+
 ## Known residual gap
 
-The `feat/deals_unification` branch is also missing a drizzle snapshot for `0013` (see
-`process/context/all-context.md` scan metadata) — `drizzle-kit generate` may propose a spurious
-extra diff until that snapshot is committed. Not fixed by this runbook; unrelated to the
-migration-skip issue above.
+~~The `feat/deals_unification` branch is missing a drizzle snapshot for `0013`.~~ **Resolved** —
+the `0013` snapshot was committed in `ea71c1b`, and `drizzle-kit generate` is now a clean no-op
+across `0013`–`0016`. No residual gap remains.
