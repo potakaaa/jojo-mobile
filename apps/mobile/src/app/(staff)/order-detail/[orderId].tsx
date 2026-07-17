@@ -7,19 +7,12 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, type ThemeMode } from '@jojopotato/ui';
+import { Button, Card, ConfirmDialog, type ThemeMode } from '@jojopotato/ui';
 import type { OrderStatus, StaffOrderDetail, StaffOrderItem } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -69,24 +62,19 @@ interface LiveOrderActionsProps {
 function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
   const { mutate, isPending, isError, error } = useUpdateOrderStatus();
   const status = order.status as OrderStatus;
+  const [pendingAction, setPendingAction] = useState<{
+    status: OrderStatus;
+    label: string;
+  } | null>(null);
 
   function handleTransition(targetStatus: OrderStatus) {
     mutate({ orderId: order.id, status: targetStatus });
   }
 
+  // Opens the themed confirm instead of a raw OS alert. Two-choice semantics are
+  // identical: cancel does nothing, confirm runs the same handleTransition.
   function confirmThenTransition(targetStatus: OrderStatus, actionLabel: string) {
-    Alert.alert(
-      `${actionLabel} order?`,
-      `Are you sure you want to ${actionLabel.toLowerCase()} this order?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: actionLabel,
-          style: 'destructive',
-          onPress: () => handleTransition(targetStatus),
-        },
-      ],
-    );
+    setPendingAction({ status: targetStatus, label: actionLabel });
   }
 
   // Detect 409 specifically for the inline message copy.
@@ -174,6 +162,22 @@ function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
       )}
 
       {/* Terminal statuses (completed / cancelled / rejected): no actions */}
+
+      <ConfirmDialog
+        visible={pendingAction !== null}
+        title={`${pendingAction?.label ?? ''} order?`}
+        message={`Are you sure you want to ${(pendingAction?.label ?? '').toLowerCase()} this order?`}
+        confirmLabel={pendingAction?.label ?? 'Confirm'}
+        cancelLabel="Cancel"
+        variant="destructive"
+        mode={mode}
+        onConfirm={() => {
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action) handleTransition(action.status);
+        }}
+        onCancel={() => setPendingAction(null)}
+      />
     </View>
   );
 }
