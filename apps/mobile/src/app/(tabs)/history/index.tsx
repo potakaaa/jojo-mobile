@@ -1,10 +1,11 @@
 import type { Order } from '@jojopotato/types';
 import { Button, Card, EmptyState, OrderStatusBadge, ScreenHeader } from '@jojopotato/ui';
 import { formatCurrency, reorderEligibility, summarizeOrderItems } from '@jojopotato/utils';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
@@ -30,6 +31,19 @@ export default function OrderHistoryScreen() {
   const { branches } = useBranch();
   const { reorder, isReordering } = useReorder();
   const navigateToOrderTracking = useNavigateToOrderTracking();
+
+  /*
+    Hide the floating tab bar on this screen — it is the ROOT of its own
+    top-level stack now (NAV-005), so `isNestedTabRoute()` is false and the bar
+    would otherwise paint here. Gated on FOCUS, not just mount: the screen stays
+    mounted in the Tabs navigator after the user navigates away (e.g. Reorder
+    pushes to Cart), and an always-true flag would leave the bar hidden on the
+    destination. See ../cart/index.tsx for the full note.
+
+    Placed ABOVE all four early returns below: hooks must run in the same order
+    on every render, so it cannot sit after a conditional return.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   /*
     All FOUR return paths (loading / error / empty / list) render the SAME header

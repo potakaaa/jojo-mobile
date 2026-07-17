@@ -1,9 +1,10 @@
 import type { PaymentMethod } from '@jojopotato/types';
 import { PaymentMethodSelector, ScreenHeader } from '@jojopotato/ui';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { env } from '@/config/env';
 import { useOrder } from '@/features/order/hooks/use-order';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -20,6 +21,15 @@ export default function PaymentMethodScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+
+  /*
+    Hide the floating tab bar on this screen — it lives in a top-level stack now
+    (NAV-005), so `isNestedTabRoute()` is false and the bar would otherwise paint
+    here. Gated on FOCUS, not just mount: the screen stays mounted in the Tabs
+    navigator after the user navigates away, and an always-true flag would leave
+    the bar hidden on the destination. See ./index.tsx for the full note.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   const { paymentMethod, setPaymentMethod } = useOrder();
 

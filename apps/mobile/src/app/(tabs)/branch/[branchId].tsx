@@ -5,7 +5,7 @@ import {
   formatOpeningHours,
   getIsOpenNow,
 } from '@jojopotato/utils';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TAB_BAR_FOOTPRINT } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { BranchDetailResponse, mapApiBranch, mapApiBranchDeal } from '@/features/branches/api';
@@ -48,6 +48,19 @@ export default function BranchDetailsScreen() {
   const { coords, status: locationStatus } = useUserLocation();
   const { setSelectedBranch } = useBranch();
   const insets = useSafeAreaInsets();
+
+  /*
+    Hide the floating tab bar on this screen — it is the ROOT of its own
+    top-level stack now (NAV-005), so `isNestedTabRoute()` is false and the bar
+    would otherwise paint here. Gated on FOCUS, not just mount: the screen stays
+    mounted in the Tabs navigator after the user navigates away (e.g. the Order
+    CTA pushes into the Order tab), and an always-true flag would leave the bar
+    hidden on the destination. See ../cart/index.tsx for the full note.
+
+    Placed ABOVE the loading / error early returns below: hooks must run in the
+    same order on every render, so it cannot sit after a conditional return.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   // Reset to the loading state when the branch param changes. React's
   // adjust-state-on-prop-change pattern (run in render, not an effect) so a stale
@@ -147,7 +160,8 @@ export default function BranchDetailsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/*
-        NESTED screen — see cart.tsx for the full note.
+        The floating tab bar is hidden here via useHideTabBarWhile(useIsFocused())
+        above — see ../cart/index.tsx for the full note.
 
         TOP edge only (NAV-003). 'top' is still required — more so now, since this
         stack runs `headerShown:false` and the ScreenHeader below would otherwise
@@ -162,10 +176,13 @@ export default function BranchDetailsScreen() {
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && {
-              // isNested hardcoded true: branches/[branchId].tsx is always pushed inside
-              // the Branches tab's Stack — never that tab's root — so isNestedTabRoute()
-              // would also evaluate true here; hardcoded per INNOVATE's
-              // static-per-screen-fact decision (see PLAN "Locked Inputs").
+              // `true` selects the no-footprint branch: the floating bar is HIDDEN on this
+              // screen (via useHideTabBarWhile above), so reserving its ~85dp footprint
+              // would be dead space. NOTE: the helper's param is named `isNested` and this
+              // screen is now the ROOT of its own top-level stack, not a nested tab screen
+              // (NAV-005) — what the branch actually selects is "bar not rendered here",
+              // which is true either way. The name is not renamed on purpose: the helper is
+              // shared with other call sites and a unit test (NAV-001 owns it).
               //
               // `+ Spacing.four` restores styles.scrollContent's own paddingVertical:
               // paddingBottom overrides that shorthand's bottom half, so without it the
@@ -271,7 +288,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     // BRN-006: split the former `paddingVertical: Spacing.four` so the top gap under
     // <ScreenHeader> isn't oversized. `paddingTop: Spacing.three` matches the sibling
-    // ScreenHeader screens (order/cart, order/checkout); `paddingBottom` stays
+    // ScreenHeader screens (cart/index, cart/checkout); `paddingBottom` stays
     // Spacing.four (the inline clearance override below re-adds it on native).
     paddingTop: Spacing.three,
     paddingBottom: Spacing.four,

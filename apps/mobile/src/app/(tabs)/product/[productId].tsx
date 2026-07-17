@@ -2,11 +2,12 @@ import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from 
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
 import { ConfirmDialog, ScreenHeader } from '@jojopotato/ui';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
@@ -30,6 +31,19 @@ export default function ProductDetailsScreen() {
   const { data: product, isLoading, isError } = useProductDetails(productId);
   const { cart, addItem, setBranch, clearCart } = useCart();
   const { selectedBranch } = useBranch();
+
+  /*
+    Hide the floating tab bar on this screen — it is the ROOT of its own
+    top-level stack now (NAV-005), so `isNestedTabRoute()` is false and the bar
+    would otherwise paint here. Gated on FOCUS, not just mount: the screen stays
+    mounted in the Tabs navigator after the user navigates away, and an
+    always-true flag would leave the bar hidden on the destination. See
+    ../cart/index.tsx for the full note.
+
+    Placed ABOVE the loading / error early returns below: hooks must run in the
+    same order on every render, so it cannot sit after a conditional return.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   const [selection, setSelection] = useState<SelectionState>({});
   const [addedNotice, setAddedNotice] = useState(false);
@@ -142,7 +156,7 @@ export default function ProductDetailsScreen() {
     Loading / error early returns get the SAME header + top inset as the loaded
     branch below. The native header used to cover these branches for free (React
     Navigation renders it from the Stack regardless of which return path this
-    component takes); with `headerShown:false` (see ../_layout.tsx) they would
+    component takes); with `headerShown:false` (see ./_layout.tsx) they would
     otherwise lose BOTH their status-bar clearance and their only way back.
   */
   if (isLoading) {
