@@ -88,7 +88,7 @@ export default function EditProfileScreen() {
       style={[styles.safe, { backgroundColor: theme.background }]}
       edges={['top', 'bottom']}
     >
-      <ScreenHeader title="Edit Profile" onBack={() => router.back()} mode={mode} />
+      <ScreenHeader title="Edit Profile" onBack={onCancel} mode={mode} />
       <KeyboardAvoidingView
         style={styles.avoider}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

@@ -16,8 +16,8 @@ export interface ComingSoonProps {
    * padding. Defaults to `false` (tab-root behavior — reserve the floating-bar
    * clearance).
    *
-   * NOTE: this no longer affects the safe-area `edges` — see the `edges` comment
-   * in the render below.
+   * It also selects where the bottom inset comes from, so the device inset is
+   * counted exactly once either way — see the `edges` comment in the render below.
    */
   isNestedScreen?: boolean;
   /**
@@ -46,13 +46,17 @@ export function ComingSoon({ title, isNestedScreen = false, onBack, children }: 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/*
-        'top' is now UNCONDITIONAL (NAV-003). It used to be dropped for nested
-        screens because the native `Stack` header supplied that inset for them —
-        but the nested callers (help, coupons) now run `headerShown:false`, so
-        skipping 'top' would leave their content under the status bar. Both
-        branches are identical, so the ternary is gone.
+        'top' is UNCONDITIONAL (NAV-003). It used to be dropped for nested screens
+        because the native `Stack` header supplied that inset for them — but the
+        nested callers (help, coupons) now run `headerShown:false`, so skipping
+        'top' would leave their content under the status bar.
+
+        'bottom' is NESTED-ONLY. Nested screens have no paddingBottom override, so
+        this edge is their sole source of the device inset. Tab-root screens get
+        the inset from getFloatingTabBarClearance() below (it already includes
+        insets.bottom), so adding the edge there too would count it twice.
       */}
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={isNestedScreen ? ['top', 'bottom'] : ['top']}>
         {onBack ? <ScreenHeader title={title} onBack={onBack} mode={mode} /> : null}
         <View
           style={[

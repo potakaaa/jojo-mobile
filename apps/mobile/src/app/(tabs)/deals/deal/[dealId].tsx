@@ -106,7 +106,13 @@ export default function DealDetailsScreen() {
               // footprint here is the same dead-space bug as the 6 Step-2 sites either way.
               // This call remains the SOLE bottom-inset source: NAV-003 added a
               // SafeAreaView above, but deliberately with a 'top'-only edge.
-              paddingBottom: resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom),
+              //
+              // `+ Spacing.four` restores styles.content's own `padding`: paddingBottom
+              // overrides that shorthand's bottom side, so without it the content would
+              // end exactly at the home-indicator boundary with no gap. The clearance
+              // term supplies the device inset; this term is the design's breathing room.
+              paddingBottom:
+                resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.four,
             },
           ]}
           showsVerticalScrollIndicator={false}

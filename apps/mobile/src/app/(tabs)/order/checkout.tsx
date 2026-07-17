@@ -387,7 +387,13 @@ export default function CheckoutScreen() {
               Platform.OS !== 'web' && {
                 // isNested hardcoded true — same structural invariant as the scroll
                 // content above (checkout.tsx is always a pushed screen in Order's Stack).
-                paddingBottom: resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom),
+                //
+                // `+ Spacing.two` restores styles.footer's own paddingBottom, which this
+                // override would otherwise wipe — leaving the "Place order" button flush
+                // against the home indicator. Mirrors cart.tsx's checkout bar, whose
+                // footer stylesheet is identical.
+                paddingBottom:
+                  resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.two,
               },
             ]}
           >

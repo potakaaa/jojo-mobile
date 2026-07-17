@@ -1,8 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from '@jojopotato/utils';
-import { Button, CartSummary, EmptyState, PAYMENT_METHOD_LABELS } from '@jojopotato/ui';
+import {
+  Button,
+  CartSummary,
+  EmptyState,
+  PAYMENT_METHOD_LABELS,
+  ScreenHeader,
+} from '@jojopotato/ui';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useBranch } from '@/features/branch/hooks/use-branch';
@@ -67,17 +72,7 @@ export default function OrderConfirmationScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Order Confirmed</Text>
-        </View>
+        <ScreenHeader title="Order Confirmed" onBack={() => router.back()} mode={mode} />
 
         <ScrollView
           style={styles.scroll}
@@ -185,18 +180,6 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
-  },
-  headerTitle: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
   },
   scroll: {
     flex: 1,

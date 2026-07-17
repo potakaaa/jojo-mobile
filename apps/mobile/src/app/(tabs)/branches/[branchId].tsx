@@ -161,12 +161,19 @@ export default function BranchDetailsScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            {
+            Platform.OS !== 'web' && {
               // isNested hardcoded true: branches/[branchId].tsx is always pushed inside
               // the Branches tab's Stack — never that tab's root — so isNestedTabRoute()
               // would also evaluate true here; hardcoded per INNOVATE's
               // static-per-screen-fact decision (see PLAN "Locked Inputs").
-              paddingBottom: resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom),
+              //
+              // `+ Spacing.four` restores styles.scrollContent's own paddingVertical:
+              // paddingBottom overrides that shorthand's bottom half, so without it the
+              // content would end exactly at the home-indicator boundary with no gap.
+              // The clearance term supplies the device inset; this term is the design's
+              // breathing room. Same split as notifications/cart/checkout.
+              paddingBottom:
+                resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.four,
             },
           ]}
           showsVerticalScrollIndicator={false}
@@ -252,11 +259,18 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
+    // NO paddingHorizontal here: <ScreenHeader> is a direct child and brings its own
+    // (Spacing.four). Padding this wrapper too would indent the header twice, offsetting
+    // it against every other client screen (Product Details, Cart, Checkout, …), whose
+    // wrappers are unpadded. The children that need the gutter carry it themselves —
+    // scrollContent below, and `centered` for the loading/error branches.
   },
   scrollContent: {
     gap: Spacing.two,
     paddingVertical: Spacing.four,
+    // Moved down from `safeArea` so the gutter applies to the scroll body only, not to
+    // <ScreenHeader> (which pads itself). Same net inset as before for this content.
+    paddingHorizontal: Spacing.four,
   },
   centered: {
     alignItems: 'center',
