@@ -1,14 +1,14 @@
 ---
 name: context:all-tests
 description: "Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout, admin, tanstack, jsdom, testing-library
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout, admin, tanstack, jsdom, testing-library, utils, packages/utils
 related: []
-date: 14-07-26
+date: 17-07-26
 ---
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17 (corrected stale claim: packages/utils has a vitest runner, 39/39 tests, verified live during MENU-003/MENU-004)
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -37,7 +37,7 @@ As the project grows, add deeper docs to this group (e.g., `e2e-tests.md`, `debu
 
 ## What This Covers
 
-- test runner selection (vitest in `packages/api` + `apps/mobile` + `apps/admin`; jest-expo in `packages/ui`; still none in `packages/{types,utils}`)
+- test runner selection (vitest in `packages/api` + `apps/mobile` + `apps/admin` + `packages/utils`; jest-expo in `packages/ui` + `apps/mobile`; still none in `packages/types`)
 - quick commands by package
 - fast debugging procedures
 - current testing gaps worth remembering
@@ -104,7 +104,14 @@ count: 23 tests across 6 suites.
 
 `packages/ui` has `jest`/`jest-expo` (`"test": "jest"`, `packages/ui/jest.config.js`) with component
 tests for `OrderStatusBadge`/`OrderStatusTimeline` and others (from the shared-ui-component-library
-work). `packages/{types,utils}` still declare no runner.
+work). `packages/types` still declares no runner.
+
+**`packages/utils` has `vitest` (`"test": "vitest run"`) — CORRECTING a previously-stale claim in
+this file that said it had none.** Verified live 17-07-26 (re-confirmed 4x during MENU-003/MENU-004):
+39/39 tests green across 4 suites (`order-display`, `product-options`, `discount`, `reorder`). Real,
+non-vacuous coverage — `packages/utils/src/reorder.ts`'s `reconcileReorder`/`packages/utils/src/discount.ts`'s
+discount math are both proven by these tests, not Agent-Probe. Do not assign Agent-Probe verification
+tiers to `packages/utils` logic changes — check `packages/utils/package.json` first.
 
 `apps/admin` (added 14-07-26, admin-dashboard Phase 0 — Scaffold) is the FIRST WEB-APP test runner
 precedent in the repo: `vitest` (`"test": "vitest run --passWithNoTests"`) + `@testing-library/react`
@@ -156,6 +163,7 @@ Unless the task clearly needs a different path:
 | `apps/mobile` | tsc | `pnpm --filter @jojopotato/mobile typecheck` | single-package typecheck |
 | `apps/mobile` | eslint | `pnpm --filter @jojopotato/mobile lint` | single-package lint |
 | `packages/{types,ui,utils}` | tsc | `pnpm --filter @jojopotato/{types,ui,utils} typecheck` | single-package typecheck |
+| `packages/utils` | vitest | `pnpm --filter @jojopotato/utils test` | `"test": "vitest run"` — 39 tests, 4 suites (order-display, product-options, discount, reorder); no dedicated vitest.config.ts, uses defaults |
 | `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
 | `apps/mobile` (pure-TS logic + RN component) | vitest + jest/jest-expo | `pnpm --filter @jojopotato/mobile test` | runs `vitest run --passWithNoTests && jest` sequentially — vitest owns `*.test.ts` (node env, no rendering), jest owns `*.test.tsx` (RN component rendering via `test-utils/render.tsx` + `jest-setup.ts`) |
 | `packages/ui` (component) | jest / jest-expo | `pnpm --filter @jojopotato/ui test` | `packages/ui/jest.config.js` |
@@ -167,7 +175,7 @@ Unless the task clearly needs a different path:
 
 ## Debugging Quick Reference
 
-- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only), `apps/admin/vitest.config.ts` (jsdom env, component rendering, separate from `vite.config.ts` to avoid loading the TanStack Start SSR plugin), `packages/ui/jest.config.js`. `packages/{types,utils}` still have none.
+- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only) + `apps/mobile/jest.config.js` (RN component), `apps/admin/vitest.config.ts` (jsdom env, component rendering, separate from `vite.config.ts` to avoid loading the TanStack Start SSR plugin), `packages/ui/jest.config.js`, `packages/utils` (`vitest run`, no dedicated config file — uses vitest defaults). `packages/types` still has none.
 - Typecheck failures are the fastest signal in this repo today — packages are TS-source-only (no build step), so `tsc --noEmit` catches cross-package type breakage immediately via workspace links.
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
 - Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).

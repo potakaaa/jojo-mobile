@@ -48,13 +48,25 @@ decision, and explicitly deferred the indicator work.
 ## Concrete evidence found during MENU-003 EXECUTE
 
 Four pre-existing tests in `packages/api/src/lib/__tests__/admin-deals.integration.test.ts`
-seeded deals via the admin create route with **no components** and asserted they were listed
-and orderable. All four went red under the new rule and were updated to attach one available
-component (a mechanical test-data adaptation to a SPEC-locked behavior change, not a product
-fix). This is direct evidence that "admin creates a deal with zero components" is the natural
-default of the current create flow, not an exotic edge case — which makes the missing
-indicator more likely to bite in practice than the SPEC's "if an admin forgets" framing
-suggests.
+seeded deals via a raw `createDeal()` test helper (a direct `POST /api/admin/deals` call with
+no `components[]`) and asserted they were listed and orderable. All four went red under the new
+rule and were updated to attach one available component (a mechanical test-data adaptation to a
+SPEC-locked behavior change, not a product fix).
+
+**Correction (this UPDATE PROCESS pass, 17-07-26):** an earlier draft of this note claimed
+zero-component creation was "the natural default of the current create flow." That is **wrong**
+and has been corrected. The orchestrator verified `apps/admin/src/features/deals/components/
+deal-create-wizard.tsx` directly: the wizard is double-guarded against a componentless save —
+the step-1→2 advance path early-returns when `items.length === 0` (line 135), and the final
+Create button is `disabled={items.length === 0 || !priceValid}` (line 414). **A deal with zero
+components cannot be created through the admin UI.** The only way to reach the zero-component
+state is a raw API call bypassing the wizard entirely — exactly what the test helper does, and
+exactly why the tests, not the product, hit this path. The real risk is therefore lower than
+originally stated: it requires someone calling the API directly (a script, a future integration,
+or a bug in a future admin surface), not an admin accidentally clicking through the wizard.
+The **component-down invisibility** case above (toggling an ingredient off after a deal is
+live) remains the more realistic and higher-probability gap of the two — it needs no API
+bypass, just normal availability-editor use.
 
 ## Suggested direction (not a decision)
 
