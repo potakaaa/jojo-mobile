@@ -17,7 +17,10 @@ Agent-Probe (no RN E2E runner exists — project-wide gap). Exit state is honest
 VERIFIED** until a user-run simulator walkthrough, mirroring the predecessor plan's own outcome.
 
 Date: 17-07-26
-Status: DRAFT -- awaiting VALIDATE
+Status: EXECUTED 17-07-26 — automated gates green; CODE DONE, not VERIFIED (device
+walkthrough owed). See the companion `_REPORT_17-07-26.md` for what actually shipped,
+including the Step 3.1 gate rejecting this plan's primary `reset` mechanism in favour
+of the documented contingency.
 Complexity: SIMPLE
 
 ## Overview
@@ -88,15 +91,32 @@ Inputs section below and the SPEC file. No schema/auth/API/billing surface; no n
   reset-to-root pattern Fix B already uses, or an equivalent 2-step navigate sequence) — EXECUTE
   must record which path was taken in the phase report; do not silently improvise a third mechanism.
 
-  **VALIDATE addendum (17-07-26 — see Validate Contract below for full evidence):** the mechanism
-  is now resolved **VIABLE** with high-confidence static evidence (installed package source read,
+  > **SUPERSEDED — VALIDATE's VIABLE verdict was WRONG. Do not implement the `reset` path.**
+  > EXECUTE's Step 3.1 gate REFUTED it on 17-07-26: `useNavigation(parent)` resolves its argument
+  > via `navigation.getParent(parent)`, which walks **ancestors only** and throws otherwise. The
+  > JSDoc example VALIDATE relied on (`useNavigation('/orders/menu')` called from
+  > `app/orders/menu/index.tsx`) reaches a **parent of the caller**. From Home, the Order tab's
+  > Stack is a **sibling** — never an ancestor — so the cross-tab case that motivated this fix
+  > cannot obtain that handle at all. **The shipped mechanism is the documented contingency**, the
+  > `navigate(name, { screen })` pattern already verified on-device by the predecessor plan; see
+  > `features/orders/lib/navigate-to-tracking.ts` and the companion `_REPORT_17-07-26.md`.
+  >
+  > Kept below as a worked example of a plausible-but-wrong probe: the vendored-fork evidence was
+  > correct, but the conclusion drawn from a JSDoc example was not. Only the empirical gate caught
+  > it. Verify mechanisms against installed source, not documentation examples.
+
+  **VALIDATE addendum (17-07-26 — HISTORICAL, REFUTED; see the note above):** the mechanism
+  was resolved **VIABLE** with static evidence (installed package source read,
   not a guess). `expo-router` 57.0.4 has NO separate `@react-navigation/*` npm dependency — it
   VENDORS a full internal fork of `@react-navigation/core` + `@react-navigation/bottom-tabs`
   (confirmed: `apps/mobile`'s `Tabs` = `createBottomTabNavigator()` from expo-router's own
-  `build/react-navigation/bottom-tabs`). `useNavigation(parent?: string | Href)` is expo-router's
+  `build/react-navigation/bottom-tabs`) — **this part is true and still holds.**
+  `useNavigation(parent?: string | Href)` was read as expo-router's
   own **officially documented** convenience for exactly this cross-navigator case (JSDoc example:
-  `useNavigation('/orders/menu')` from anywhere in the tree); `.reset(state)` is an unconditional
-  method on the returned `NavigationProp`, not focus-gated. A genuinely NEW risk was found and must
+  `useNavigation('/orders/menu')` from anywhere in the tree) — **this inference was WRONG; the
+  example reaches an ancestor, not a sibling.** `.reset(state)` is indeed an unconditional
+  method on the returned `NavigationProp`, not focus-gated — but that is moot when the handle
+  itself is unobtainable cross-tab. A genuinely NEW risk was found and must
   be added to Step 3.1's empirical check: default `lazy: true` tab semantics mean the Order tab's
   nested Stack navigator only mounts/registers once the Order tab is first focused in the session —
   a cold app start where the user taps the Home banner without ever having visited the Order tab
@@ -212,6 +232,27 @@ like `Spacing.six + Spacing.two` for breathing room are UNCHANGED — only the b
 term itself changes). **`isNested` is hardcoded `true` at every one of these 6 call sites** — they
 are all confirmed-nested screens per SPEC Constraints, not derived from a runtime predicate (matches
 the locked "static per-screen fact" decision).
+
+> **SUPERSEDED — do NOT replay sub-steps 2.1–2.5 verbatim. They author a real bug.**
+>
+> Each sub-step below prescribes BOTH inset sources at the same site: the
+> `resolveTabBarClearance(true, …)` padding **and** `edges={['bottom']}`. Since
+> `resolveTabBarClearance(true, …)` returns `insets.bottom`, that counts the device inset
+> **twice** — the double-count the EXECUTE report flagged and NAV-003 later removed.
+>
+> **The rule, as shipped:** exactly ONE bottom-inset source per element.
+> - Screen has a `resolveTabBarClearance(...)` padding → **drop `'bottom'`** from its
+>   `SafeAreaView edges` (that call is the sole source). Add back only the element's own
+>   baseline breathing room from its stylesheet (e.g. `+ Spacing.four`, `+ Spacing.two`) —
+>   `paddingBottom` overrides the stylesheet shorthand, so omitting it leaves content flush
+>   at the home-indicator boundary.
+> - Screen has NO such padding → **keep `'bottom'`** (the SafeAreaView is its sole source).
+>
+> Also stale: **2.4 (`account/notifications.tsx`) was superseded by NAV-002**, which moved
+> that screen to a top-level `(tabs)/notifications/` route with `edges={['top']}`.
+>
+> Ground truth is the code plus the companion `_REPORT_17-07-26.md`, not the text below.
+> Retained as the record of what was planned.
 
 2.1. **`cart.tsx`** — footer clearance at `:301` becomes
 `resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.two`. **VALIDATE-confirmed
@@ -446,7 +487,7 @@ pnpm --filter @jojopotato/mobile test        # vitest run --passWithNoTests && j
 
 | Risk | Mitigation |
 |---|---|
-| Cross-tab `reset` mechanism does not behave as expected from Home (the ONE genuinely novel navigation call in this plan) | Step-1 gate (3.1) confirms before the helper body is written; documented contingency fallback to the already-verified `navigate(name, {screen})` pattern; VALIDATE (17-07-26) resolved the CORE mechanism VIABLE via installed-package evidence and added a cold-start/lazy-mount sub-case to the gate (see E1) |
+| Cross-tab `reset` mechanism does not behave as expected from Home (the ONE genuinely novel navigation call in this plan) | **RISK MATERIALIZED — the gate did its job.** VALIDATE called the mechanism VIABLE, but EXECUTE's Step-1 gate (3.1) REFUTED it: `useNavigation(parent)` walks ancestors only, so Home cannot reach the sibling Order stack. The documented contingency — the already-verified `navigate(name, {screen})` pattern — shipped instead, and it also covers the cold-start/lazy-mount sub-case (E1). |
 | Half-applied edit: padding term changed but `SafeAreaView edges` not flipped (or vice versa) → live safe-area regression | Explicit "atomic, same edit" instruction per site in Step 2; Agent-Probe AC2 is a hard gate, not optional |
 | `checkout.tsx`'s footer edit accidentally touches the `countdown !== null` sibling branch (confirm-drawer overlay) | Step 2.2 explicitly calls out the conditional boundary; AC9 regression guard |
 | `cart.tsx`'s second cited call site (`:414`) is stale/renamed since SPEC's research pass | RESOLVED by VALIDATE (17-07-26) — grep-confirmed both `:301` and `:414` are real, current call sites |
@@ -469,13 +510,23 @@ pnpm --filter @jojopotato/mobile test        # vitest run --passWithNoTests && j
 3. **Validate-contract status:** written 17-07-26, Gate: CONDITIONAL (see below). Unchanged by the
    supplement cycle — the contract itself is out of scope for plan-agent edits.
 4. **Supporting context files loaded:** `process/context/all-context.md`, `process/context/tests/all-tests.md`, this task's SPEC, `fix-tab-bar-visibility-nav-trap_15-07-26` PLAN + REPORT (predecessor), installed `expo-router@57.0.4` package source (`node_modules/.pnpm/expo-router@57.0.4_.../expo-router/build/`).
-5. **Next step for a fresh agent picking up mid-execution:** proceed straight to EXECUTE using the
-   CONDITIONAL contract's execute-agent instructions as binding — both E1 and E2 are already
-   permanent checklist text (Steps 3.1 and 2 respectively), confirmed by this PVL-supplement cycle,
-   so no further plan-supplement or VALIDATE re-run is needed to unblock EXECUTE. EXECUTE order:
-   Steps 1 → 2 → 3 (3 may run in parallel with 1-2) → 4, running the per-section gate commands after
-   each step per the orchestration protocol's "per-section test-gate loop." Do not batch all gates
-   to the end.
+5. **Next step for a fresh agent: do NOT re-run EXECUTE — it is already complete.**
+   EXECUTE ran 17-07-26; see the companion `_REPORT_17-07-26.md`. All automated gates are green
+   (mobile typecheck exit 0, vitest 51, jest 27, `packages/ui` 68, lint 0 errors) and the code is
+   committed on `feat/nav-shell-screenheader` (PR #110). The only outstanding work is the
+   **Agent-Probe device walkthrough** — no automated runner can prove the visual/nav-state ACs.
+
+   Two things this plan's body still describes as *intended* that EXECUTE changed — trust the
+   REPORT over the checklist where they disagree:
+   - The primary `reset`-based back-stack mechanism was **rejected** at the Step 3.1 gate
+     (`useNavigation(parent)` resolves via `getParent()` and walks ancestors only, so the Order
+     stack is unreachable from Home). The documented `navigate(name, { screen })` contingency
+     shipped instead.
+   - Step 2.4's `notifications` guidance was **superseded** by NAV-002, which moved that screen to
+     a top-level `(tabs)/notifications/` route.
+
+   The historical checklist below is retained as the record of what was planned, not as
+   instructions to replay.
 
 ---
 
@@ -577,8 +628,9 @@ Legacy line form (retained so existing validate-contract consumers still parse):
   numbers confirmed close/exact (`history.tsx:60` exact; `confirmation/[orderId].tsx:140-141`, plan
   cited 138-144, immaterial drift; `index.tsx:185-193`, plan cited 186-193, immaterial drift — no
   action needed, EXECUTE's own re-grep instruction already covers this). The core feasibility
-  question (VC-FEASIBILITY-PROBE-NEEDED candidate) is resolved **VIABLE** with high-confidence static
-  evidence — see "Feasibility Probe Resolution" below. Gap found (NEW, not anticipated by INNOVATE's
+  question (VC-FEASIBILITY-PROBE-NEEDED candidate) was resolved **VIABLE** with high-confidence static
+  evidence — **and that verdict was later REFUTED by EXECUTE's Step 3.1 gate; see "Feasibility Probe
+  Resolution" below for the correction.** Gap found (NEW, not anticipated by INNOVATE's
   Step-1 gate wording): default `lazy: true` tab-mount semantics mean the Order tab's nested Stack
   navigator only registers once the Order tab has been focused at least once in the session; a
   cold-start Home-banner tap (Order tab never visited this session) is a distinct code path from the
@@ -627,11 +679,26 @@ source and type declarations under `node_modules/.pnpm/expo-router@57.0.4_.../ex
    screen currently has visual focus — this is the core mechanic nested/cross-tree action dispatch
    in React Navigation (and this fork) has always relied on.
 
-**Verdict: VIABLE (high confidence, static evidence — not a guess).** The blessed mechanism is
-`useNavigation('/order')` (absolute-path form) → `.reset({ index: 1, routes: [...] })`, which is
-MORE DIRECT than the plan's originally-hedged "`.getParent()` or a route-scoped `useNavigation()`"
-phrasing — both options in that hedge are real, but the parent-path form of `useNavigation` is the
-one expo-router itself documents for this exact use case.
+**Verdict: ~~VIABLE (high confidence, static evidence — not a guess)~~ → REFUTED by EXECUTE
+(17-07-26).** This verdict was wrong and the Step 3.1 empirical gate overturned it.
+
+The error: `useNavigation(parent)` resolves its argument through `navigation.getParent(parent)` —
+it walks **ancestors only**, and throws `Could not find parent navigation with route ...` otherwise.
+The JSDoc example this verdict leaned on (`useNavigation('/orders/menu')`) is called from
+*within* `app/orders/menu/`, so it reaches a **parent of the caller**. Home is a **sibling** of the
+Order tab, not a descendant of it, so `useNavigation('/order')` from Home cannot obtain that handle
+at all — the exact cross-tab case the fix exists for.
+
+**Shipped mechanism (the plan's documented contingency):** a 2-step
+`navigate(ORDER_TAB_NAME, { screen })` sequence realizing `[index, tracking/[orderId]]` — the
+pattern the predecessor plan already verified on-device, which also mounts a lazy tab and so covers
+the cold-start sub-case. See `features/orders/lib/navigate-to-tracking.ts`.
+
+**Standing lesson (this is why the gate exists):** the vendored-fork evidence here was accurate;
+the failure was inferring an API capability from a *documentation example* rather than from the
+resolution code. A probe that reads examples can return a confident VIABLE on a structurally
+impossible mechanism. Verify against installed source, and never let a probe verdict retire an
+empirical gate.
 
 **NEW finding beyond the original hypothesis (genuine value-add, not previously anticipated):**
 default `lazy: true` bottom-tabs semantics (confirmed: no `lazy`/`unmountOnBlur` override anywhere

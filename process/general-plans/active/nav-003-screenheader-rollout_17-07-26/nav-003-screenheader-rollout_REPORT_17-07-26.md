@@ -1,6 +1,6 @@
 ---
 name: report:nav-003-screenheader-rollout
-description: "EXECUTE report — NAV-003 ScreenHeader rollout across 11 (tabs) screens + folded-in NAV-001 double-count fix. All automated gates green; AC1/AC2/AC3/AC5/AC6/AC7/AC8 remain Agent-Probe-only and UNPROVEN."
+description: "EXECUTE report — NAV-003 ScreenHeader rollout across 11 (tabs) screens + folded-in NAV-001 double-count fix. All automated gates green. AC3/AC8 are source-verified and AC6 code-verified; on-device acceptance of AC1/AC2/AC3/AC5/AC6/AC7/AC8 remains Agent-Probe and UNPROVEN."
 date: 17-07-26
 phase: nav-003-screenheader-rollout
 status: COMPLETE_WITH_GAPS
@@ -287,7 +287,7 @@ Zero files outside `apps/mobile`. No API/schema/auth surface. No new dependency.
 `ComingSoonProps` gained one optional additive prop (`onBack?`), app-local only.
 
 ### Commands to Stay Green
-```
+```bash
 pnpm --filter @jojopotato/mobile typecheck   # exit 0, zero errors
 pnpm --filter @jojopotato/mobile lint        # 0 errors (3 pre-existing warnings in scripts/)
 pnpm --filter @jojopotato/mobile test        # vitest 51 + jest 27 (8 suites)

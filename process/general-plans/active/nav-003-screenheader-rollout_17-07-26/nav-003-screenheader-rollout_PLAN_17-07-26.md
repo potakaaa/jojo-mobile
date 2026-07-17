@@ -93,9 +93,19 @@ Left untouched (SPEC §5).
 
 ## Blast Radius
 
-- 17 files touched (6 `_layout.tsx` option flips + 11 screen files' render tree changes), all
-  inside `apps/mobile/src/app/(tabs)/**` and one `apps/mobile/src/components/coming-soon.tsx`.
-  Zero files outside `apps/mobile`.
+- 17 files touched, all inside `apps/mobile`: **5** nested-Stack `_layout.tsx` option flips
+  (`order`, `branches`, `account`, `rewards`, `deals`) + **11** client screens that lose their
+  native header and render `<ScreenHeader>` + `apps/mobile/src/components/coming-soon.tsx`
+  (which gains an additive `onBack?` and renders the header for `help`/`coupons`).
+  Zero files outside `apps/mobile`; `packages/ui` is unchanged.
+
+  **Screen count, stated once to keep the artifacts consistent:** **11 screens change here**
+  (`product/[productId]`, `cart`, `checkout`, `payment-method`, `tracking/[orderId]`, `history`,
+  `branches/[branchId]`, `edit-profile`, `help`, `coupons`, `deal/[dealId]`).
+  `confirmation/[orderId]` is a **12th** screen that carries a ScreenHeader but is NOT counted in
+  the 11: it already ran `headerShown:false` with its own byte-identical hand-rolled header, so it
+  needed no layout flip. Where an artifact says "12 client screens," it means *screens carrying a
+  ScreenHeader*; where it says 11, it means *screens this plan changes*.
 - Risk class: UI-only render-tree change, no data/schema/auth/API surface. Medium risk from the
   Agent-Probe-only placement bar (AC1/AC3) and the swipe-back gesture concern (AC5, refuted as a
   real risk — SPEC §7 Claim 1).
@@ -122,6 +132,21 @@ Each step cites the AC(s) it proves (SPEC §4).
    `router` (already imported? check — file currently has no `router` import; add it) and
    `ScreenHeader`/`SafeAreaView` from their existing package sources. `AddToCartBar` stays outside
    the new SafeAreaView, unchanged (per-screen table row 1).
+
+   **2b. [AC1, AC2] (added post-EXECUTE — see note):** `product/[productId].tsx`'s **loading and
+   error early-return branches** must be wrapped identically to the main branch
+   (`<SafeAreaView edges={['top']}>` + `<ScreenHeader title="Product Details" onBack …>`). They are
+   bare unwrapped `View`s otherwise: the native header used to cover them for free regardless of
+   which return path fired, so once `headerShown:false` lands they would silently lose both their
+   status-bar clearance and their back button — visible only during loading/error, never on the
+   happy path. Same class as steps 6b/7b/9b/17b.
+
+   > **Why this step exists:** the implementation and the REPORT both cover these branches, but the
+   > numbered checklist did not require them — VALIDATE's Dimension finding claimed product was
+   > "added as 6b/7b" when 6b names only `tracking` and 7b only `history`. EXECUTE caught the
+   > discrepancy, implemented it anyway (the validate-contract gate row and probe 20b both demand
+   > it), and reported the gap rather than silently papering over it. Recorded here so the plan is
+   > reproducible: replaying this checklist now yields the shipped code.
 3. **[AC1, AC2, AC3, AC8]** `cart.tsx`: change `edges={['bottom']}` (cart.tsx:280) to
    `edges={['top']}`; insert `<ScreenHeader title="Cart" onBack={() => router.back()} mode={mode}
    />` as the first child inside the `SafeAreaView`, above `{conflictNotice}`. Leave both

@@ -1,6 +1,6 @@
 ---
 name: plan:nav-003-screenheader-rollout-spec
-description: "Replace native headers with shared ScreenHeader on 12 (tabs) client screens across 5 nested Stacks"
+description: "Replace native headers with shared ScreenHeader on 11 (tabs) client screens across 5 nested Stacks (+ confirmation/[orderId], already headerless — 12 screens carry a ScreenHeader in total)"
 date: 17-07-26
 feature: general-plans
 ---

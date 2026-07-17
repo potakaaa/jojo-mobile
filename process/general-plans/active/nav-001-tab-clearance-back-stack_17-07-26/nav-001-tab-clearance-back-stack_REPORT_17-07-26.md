@@ -16,9 +16,17 @@ the user must know before probing:**
    be probing. Evidence below.
 2. **A real plan defect found: the device safe-area inset is now DOUBLE-COUNTED on the 4 nested
    `SafeAreaView` screens.** The plan mandates both `edges={['bottom']}` AND
-   `resolveTabBarClearance(true, …)` at each site — both supply the inset. Safe (never flush — the
-   hard AC2 bar is met) and still a large net improvement, but ~34dp of dead space remains. I
-   implemented the plan literally rather than silently redesigning. **Needs a decision.**
+   `resolveTabBarClearance(true, …)` at each site — both supply the inset. Structurally this
+   *should* satisfy AC2 (the terms are additive-only, so the result can never be less than the
+   device inset and cannot go flush) — but that is **static reasoning, not evidence: AC2 stays
+   UNVERIFIED until the nonzero-inset walkthrough below**. Still a large net improvement, but
+   ~34dp of dead space remained. I implemented the plan literally rather than silently redesigning.
+
+   > **RESOLVED since this report was written (17-07-26).** NAV-003 dropped the redundant
+   > `edges={['bottom']}` on these screens, making `resolveTabBarClearance(...)` the sole bottom-inset
+   > source; a follow-up CodeRabbit review (PR #110) then restored each element's baseline breathing
+   > room (`+ Spacing.four` / `+ Spacing.two`), which the override had been wiping. The inset is now
+   > counted exactly once per element. No decision outstanding.
 
 Status: **CODE DONE, not VERIFIED** — AC1–AC4, AC7–AC10 are Agent-Probe, owed to a device
 walkthrough. Same shape as the predecessor plan.
@@ -265,7 +273,7 @@ were re-grepped and found **exact** — no drift anywhere.
 
 | AC | Tier | State |
 |---|---|---|
-| AC5 (`resolveTabBarClearance` ignores footprint when nested) | Fully-Automated | ✅ **PROVEN** — 6 new vitest cases |
+| AC5 (single source of truth for visibility + clearance) | Partly automated | ⚠️ **PARTIAL — not fully proven.** The 6 new vitest cases prove `resolveTabBarClearance`'s arithmetic *in isolation* (it ignores the footprint term when nested). They do NOT prove SPEC AC5's actual bar: that the visibility and clearance predicates never disagree. Nothing couples them — the tests never call `isNestedTabRoute()`, and each call site's `isNested={true}` is a JSX literal no unit test can observe. Coupling rests on a **structural argument** (these screens can never be tab roots by file-tree position), not a runtime-coupled test, which would need the RN navigation runner this repo lacks. See PLAN §Validate Contract, which concedes the same. |
 | AC6 (safe-area term independent of bar term) | Fully-Automated | ✅ **PROVEN** — same suite |
 | AC4 (pure layer — reset action shape) | Fully-Automated | ✅ **PROVEN** — 8 new vitest cases |
 | Regression (7 tab-root callers still compile, signature unchanged) | Fully-Automated | ✅ **PROVEN** — typecheck exit 0 |
