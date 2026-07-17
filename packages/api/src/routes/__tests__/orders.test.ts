@@ -103,6 +103,8 @@ beforeAll(async () => {
   ({ orderNumberGenerator } = await import('../lib/order-number'));
   const { branchesRouter } = await import('../branches');
   const { ordersRouter } = await import('../orders');
+  const { couponsRouter } = await import('../coupons');
+  const { requireSession } = await import('../../middleware/require-session');
   const { auth } = await import('../../lib/auth');
 
   // Deterministic session stub: x-test-user header -> that user id; absent -> 401.
@@ -116,6 +118,9 @@ beforeAll(async () => {
   app.use(express.json());
   app.use('/branches', branchesRouter);
   app.use('/orders', ordersRouter);
+  // Mounted for the ADM-008 P2 apply-then-place symmetry gate (AC8) — the same
+  // shared resolver backs both /coupons/apply preview and /orders placement.
+  app.use('/coupons', requireSession, couponsRouter);
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
@@ -215,11 +220,11 @@ beforeAll(async () => {
   const win = { start_at: new Date(nowMs - HOUR), end_at: new Date(nowMs + DAY) };
 
   const seedDeal = async (
-    values: Partial<typeof schema.deals.$inferInsert> &
-      Pick<typeof schema.deals.$inferInsert, 'title' | 'deal_type'>,
+    values: Partial<typeof schema.offers.$inferInsert> &
+      Pick<typeof schema.offers.$inferInsert, 'title' | 'deal_type'>,
   ): Promise<string> => {
     const [row] = await db
-      .insert(schema.deals)
+      .insert(schema.offers)
       .values({ start_at: win.start_at, end_at: win.end_at, is_active: true, ...values })
       .returning();
     return row!.id;
@@ -247,8 +252,8 @@ beforeAll(async () => {
     discount_value: '10.00',
   });
   await db
-    .insert(schema.dealBranches)
-    .values({ deal_id: branchScopedDealId, branch_id: branch45Id });
+    .insert(schema.offerBranches)
+    .values({ offer_id: branchScopedDealId, branch_id: branch45Id });
 
   productScopedDealId = await seedDeal({
     title: `ProductScoped ${suffix}`,
@@ -256,8 +261,8 @@ beforeAll(async () => {
     discount_value: '10.00',
   });
   await db
-    .insert(schema.dealProducts)
-    .values({ deal_id: productScopedDealId, product_id: otherProductId });
+    .insert(schema.offerProducts)
+    .values({ offer_id: productScopedDealId, product_id: otherProductId });
 
   minDealId = await seedDeal({
     title: `MinOrder ${suffix}`,
@@ -847,5 +852,738 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
     const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
     expect(coupon!.status).toBe('available');
     expect(coupon!.used_at).toBeNull();
+  });
+});
+
+// ─── ADM-008: offer-coupon redemption + is_deal guard + bulk claim race ──────
+describe('POST /orders — offer coupon + is_deal guard (ADM-008)', () => {
+  let offerId: string; // agnostic percentage_discount 20% — no scope, no minimum
+  let dealProductId: string; // products.is_deal = true, available at branch20
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  beforeAll(async () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [offer] = await db
+      .insert(schema.offers)
+      .values({
+        title: `OrdOffer ${uid()}`,
+        deal_type: 'percentage_discount',
+        discount_value: '20.00',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    offerId = offer!.id;
+
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({ name: `DealCat ${uid()}`, slug: `deal-cat-${uid()}`, sort_order: 8 })
+      .returning();
+    const [dealProduct] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `Bundle ${uid()}`,
+        slug: `bundle-${uid()}`,
+        base_price: '9.00',
+        is_deal: true,
+      })
+      .returning();
+    dealProductId = dealProduct!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: dealProductId, is_available: true });
+  });
+
+  // AC5 (order half) + re-apply-after-use: a targeted offer coupon redeems once,
+  // burns, and a second placement of the now-used code is rejected (409).
+  it('places an order redeeming a targeted offer coupon, then rejects re-use (409)', async () => {
+    const { and, eq } = await import('drizzle-orm');
+    const u = await freshUser('ofr5');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const first = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(first.status).toBe(201);
+    // subtotal 1300 (650 unit × 2); 20% => 260 discount; total 1040.
+    expect(first.json.order.subtotalCents).toBe(1300);
+    expect(first.json.order.discountTotalCents).toBe(260);
+    expect(first.json.order.totalCents).toBe(1040);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+    expect(coupon!.user_id).toBe(u);
+    // The consumed offer-coupon is persisted as the order's audit link.
+    expect(first.json.order.couponId).toBe(coupon!.id);
+
+    // C13: an offer coupon is NOT a reward redemption — it must NOT write a
+    // "Redeemed reward" star_transactions ledger row (the atomic burn is shared,
+    // but the loyalty ledger is reward-only).
+    const ledger = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(ledger).toHaveLength(0);
+
+    // Re-use of the now-used coupon by the same owner is rejected (single-use).
+    const second = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(second.status).toBe(409);
+  });
+
+  // AC6 (LD6): a coupon code cannot be combined with an is_deal product. The guard
+  // fires inside the placement tx before any write → 400, no order, coupon intact.
+  it('rejects (400) a coupon code combined with an is_deal product; places no order', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrDeal');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: dealProductId, quantity: 1, selectedOptions: [] }],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('Coupon codes cannot be combined with Deal products.');
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+  });
+
+  // Claim-on-redeem atomicity — a BULK (user_id NULL) two-racer. Added ALONGSIDE
+  // the STAR-004 reward-coupon race test (commit 43e9c13); exercises the COALESCE
+  // claim path under concurrency: exactly one racer claims+burns, the other 409s.
+  it('two racers claiming the SAME bulk offer code: exactly one 201, one 409; claimed to winner', async () => {
+    const { eq } = await import('drizzle-orm');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: null, offer_id: offerId, code });
+    const u1 = await freshUser('ofrRace1');
+    const u2 = await freshUser('ofrRace2');
+
+    const [a, b] = await Promise.all([
+      post('/orders', { user: u1, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+      post('/orders', { user: u2, body: { ...singleItemBody(branch20Id), couponCode: code } }),
+    ]);
+    expect([a.status, b.status].sort((x, y) => x - y)).toEqual([201, 409]);
+
+    // Claimed exactly once, to the winner (COALESCE set user_id on redeem).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+    const winner = a.status === 201 ? u1 : u2;
+    expect(coupon!.user_id).toBe(winner);
+  });
+});
+
+// ─── ADM-008 Fix 6 (P1): unconfigured free-mechanic offer coupons at placement ──
+// A free_item/free_upgrade offer with no benefit_product_id has no real redemption
+// meaning. The permanent resolver guard rejects it at placement BEFORE any burn or
+// order write (single resolver, symmetric with the apply-preview reject) — killing
+// the legacy cheapest-line mis-discount. The coupon stays available; no order lands.
+describe('POST /orders — unconfigured free-mechanic offer coupon reject (ADM-008 Fix 6 P1)', () => {
+  let freeItemOfferId: string;
+  let freeUpgradeOfferId: string;
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  beforeAll(async () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [fi] = await db
+      .insert(schema.offers)
+      .values({
+        title: `FreeItemUnconfig ${uid()}`,
+        deal_type: 'free_item',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    freeItemOfferId = fi!.id;
+    const [fu] = await db
+      .insert(schema.offers)
+      .values({
+        title: `FreeUpgradeUnconfig ${uid()}`,
+        deal_type: 'free_upgrade',
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+      })
+      .returning();
+    freeUpgradeOfferId = fu!.id;
+  });
+
+  it('rejects (400) an unconfigured free_item offer coupon; coupon not burned, no order placed', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrFiUnconfig');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: freeItemOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+
+    // No burn (still available, no used_at) and the whole placement rolled back.
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('rejects (400) an unconfigured free_upgrade offer coupon; coupon not burned, no order placed', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('ofrFuUnconfig');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: freeUpgradeOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+});
+
+// ─── ADM-008 P1b→P2: permanent deny-guard at placement ──────────────────────
+// buy_one_take_one / bundle offer coupons are PERMANENTLY denied at placement by
+// the single shared resolver — symmetric with the apply-preview deny (b1t1/bundle
+// deny survives P2 untouched). Two-line carts (finding 5) prove no cheapest-line
+// discount is persisted: absent the guard the order would land with a 300c discount.
+// Reason precedence is locked (eligibility runs BEFORE the mechanic deny), and a
+// bulk (user_id NULL) coupon is denied BEFORE the claim-on-redeem. The CONFIGURED
+// free-mechanic cases that P1b denied now REDEEM under P2 — see the P2 block below.
+describe('POST /orders — P1b permanent deny-guard (ADM-008 Fix 6 P1b/P2)', () => {
+  let b1t1OfferId: string;
+  let bundleOfferId: string;
+  let outOfWindowB1t1OfferId: string; // b1t1 offer whose window has closed
+  let cheapProductId: string; // 300c second line, available at branch20
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  const seedOffer = async (
+    values: Partial<typeof schema.offers.$inferInsert> &
+      Pick<typeof schema.offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(schema.offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  // Two-line cart: seeded product (650c w/ size) + cheaper product (300c). Absent
+  // the guard, the cheapest-line path would persist a 300c discount.
+  const twoLineBody = (branchId: string) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch',
+    items: [
+      { productId, quantity: 1, selectedOptions: [{ optionId: sizeOptionId }] },
+      { productId: cheapProductId, quantity: 1, selectedOptions: [] },
+    ],
+  });
+
+  beforeAll(async () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    b1t1OfferId = await seedOffer({ title: `P1bBt1 ${uid()}`, deal_type: 'buy_one_take_one' });
+    bundleOfferId = await seedOffer({ title: `P1bBundle ${uid()}`, deal_type: 'bundle' });
+    // Out-of-window b1t1 — proves checkDealEligibility (not_in_window) runs BEFORE
+    // the mechanic deny (deterministic reason precedence).
+    const [oow] = await db
+      .insert(schema.offers)
+      .values({
+        title: `P1bBt1Oow ${uid()}`,
+        deal_type: 'buy_one_take_one',
+        start_at: new Date(nowMs - 2 * DAY),
+        end_at: new Date(nowMs - DAY),
+        is_active: true,
+      })
+      .returning();
+    outOfWindowB1t1OfferId = oow!.id;
+
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({ name: `P1bCat ${uid()}`, slug: `p1b-cat-${uid()}`, sort_order: 9 })
+      .returning();
+    const [cheap] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `P1bCheap ${uid()}`,
+        slug: `p1b-cheap-${uid()}`,
+        base_price: '3.00',
+      })
+      .returning();
+    cheapProductId = cheap!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: cheapProductId, is_available: true });
+  });
+
+  const expectDeniedAtPlacement = async (
+    offerId: string,
+    label: string,
+    expectedMessage: string,
+  ): Promise<void> => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser(label);
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...twoLineBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    // Per-branch message pin (b1t1/bundle vs free-mechanic deny messages differ).
+    expect(res.json.error).toBe(expectedMessage);
+
+    // No burn + no order (the whole placement tx rolled back → no 300c leak lands).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  };
+
+  it('denies a buy_one_take_one offer coupon at placement (permanent)', async () => {
+    await expectDeniedAtPlacement(
+      b1t1OfferId,
+      'p1bBt1',
+      'This offer type cannot be redeemed with a coupon.',
+    );
+  });
+
+  it('denies a bundle offer coupon at placement (permanent)', async () => {
+    await expectDeniedAtPlacement(
+      bundleOfferId,
+      'p1bBundle',
+      'This offer type cannot be redeemed with a coupon.',
+    );
+  });
+
+  it('reason precedence: an out-of-window b1t1 coupon rejects with the eligibility message, not the deny', async () => {
+    // checkDealEligibility runs BEFORE the mechanic deny, so an out-of-window offer
+    // surfaces the not_in_window message — never the b1t1 deny message.
+    await expectDeniedAtPlacement(
+      outOfWindowB1t1OfferId,
+      'p1bBt1Oow',
+      'This deal is not currently available.',
+    );
+  });
+
+  it('deny-before-claim: a BULK (user_id NULL) b1t1 coupon is denied without being claimed', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p1bBulkDeny');
+    const code = offerCode();
+    // Bulk coupon: user_id NULL. If the deny ran AFTER the claim, the COALESCE
+    // burn UPDATE would have set user_id — it must not, since the deny precedes it.
+    await db.insert(schema.coupons).values({ user_id: null, offer_id: b1t1OfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...twoLineBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.user_id).toBeNull(); // never claimed to the placing user
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+});
+
+// ─── ADM-008 P2: CONFIGURED free-mechanic redemption at placement ────────────
+// free_item waives one unit of the benefit product (reward math verbatim, NOT the
+// cheapest cart line); free_upgrade waives one unit's paid size-upgrade delta. Exact
+// cents on the stored total + atomic burn + re-use reject (409); reject on
+// not_in_cart / no_upgrade_to_waive (no ₱0-and-burn), no order. The placement
+// zero-floor clamp (AC7) keeps a corrupt negative discount_value from making the
+// total exceed the subtotal, and AC8 proves preview == placement (single resolver).
+describe('POST /orders — P2 configured free-mechanic redemption (ADM-008 Fix 6 P2)', () => {
+  let fiOfferId: string; // free_item, benefit = productId (650c w/ size in cart)
+  let fuOfferId: string; // free_upgrade, benefit = productId (150c size delta)
+  let negativeFixedOfferId: string; // fixed_discount, NEGATIVE discount_value (SQL-only)
+  let neutralProductId: string; // available at branch20, never a benefit product
+  let zeroPercentOfferId: string; // percentage_discount, discount_value 0 (F1, SQL-only)
+  let nullFixedOfferId: string; // fixed_discount, NULL discount_value (F1, SQL-only)
+  let freeProductId: string; // ₱0-priced product (F7b: pins the free-branch <=0 guard)
+  let fiZeroOfferId: string; // free_item, benefit = the ₱0 product (F7b)
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+  const offerCode = () => `JP-OFR-${uid().slice(0, 4).toUpperCase()}`;
+
+  const seedOffer = async (
+    values: Partial<typeof schema.offers.$inferInsert> &
+      Pick<typeof schema.offers.$inferInsert, 'title' | 'deal_type'>,
+  ): Promise<string> => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const nowMs = Date.now();
+    const [row] = await db
+      .insert(schema.offers)
+      .values({
+        start_at: new Date(nowMs - HOUR),
+        end_at: new Date(nowMs + DAY),
+        is_active: true,
+        ...values,
+      })
+      .returning();
+    return row!.id;
+  };
+
+  beforeAll(async () => {
+    fiOfferId = await seedOffer({
+      title: `P2Fi ${uid()}`,
+      deal_type: 'free_item',
+      benefit_product_id: productId,
+    });
+    fuOfferId = await seedOffer({
+      title: `P2Fu ${uid()}`,
+      deal_type: 'free_upgrade',
+      benefit_product_id: productId,
+    });
+    // Negative discount_value — only reachable by direct SQL now that admin Zod
+    // forbids a non-positive value. ADM-008 Fix 6 F1: this now REJECTS at the resolver
+    // (no zero-value burn), rather than clamping to a 0-discount placement.
+    negativeFixedOfferId = await seedOffer({
+      title: `P2Neg ${uid()}`,
+      deal_type: 'fixed_discount',
+      discount_value: '-5.00',
+    });
+    // ADM-008 Fix 6 F1: zero-redeemable-value percentage/fixed offers (SQL-only —
+    // admin Zod forbids them). Both reject at placement, no burn, no order.
+    zeroPercentOfferId = await seedOffer({
+      title: `P2ZeroPct ${uid()}`,
+      deal_type: 'percentage_discount',
+      discount_value: '0.00',
+    });
+    nullFixedOfferId = await seedOffer({
+      // discount_value omitted → NULL.
+      title: `P2NullFixed ${uid()}`,
+      deal_type: 'fixed_discount',
+    });
+
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({ name: `P2Cat ${uid()}`, slug: `p2-cat-${uid()}`, sort_order: 7 })
+      .returning();
+    const [neutral] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `P2Neutral ${uid()}`,
+        slug: `p2-neutral-${uid()}`,
+        base_price: '3.00',
+      })
+      .returning();
+    neutralProductId = neutral!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: neutralProductId, is_available: true });
+
+    // ADM-008 Fix 6 F7b: a ₱0-priced product + a free_item offer whose benefit is it.
+    // free_item waives one unit = ₱0 → computed 0 → the free-branch <=0 guard rejects.
+    const [freeProd] = await db
+      .insert(schema.products)
+      .values({
+        category_id: cat!.id,
+        name: `P2Free ${uid()}`,
+        slug: `p2-free-${uid()}`,
+        base_price: '0.00',
+      })
+      .returning();
+    freeProductId = freeProd!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branch20Id, product_id: freeProductId, is_available: true });
+    fiZeroOfferId = await seedOffer({
+      title: `P2FiZero ${uid()}`,
+      deal_type: 'free_item',
+      benefit_product_id: freeProductId,
+    });
+  });
+
+  // AC3
+  it('redeems a free_item offer coupon at the exact benefit price, burns, rejects re-use (409)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2fi');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fiOfferId, code });
+
+    const first = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(first.status).toBe(201);
+    // singleItemBody: productId qty 2 + size → unit 650, subtotal 1300. free_item
+    // waives ONE unit of the benefit (productId) = 650. total 650.
+    expect(first.json.order.subtotalCents).toBe(1300);
+    expect(first.json.order.discountTotalCents).toBe(650);
+    expect(first.json.order.totalCents).toBe(650);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+    expect(coupon!.used_at).not.toBeNull();
+    expect(first.json.order.couponId).toBe(coupon!.id);
+
+    // Re-use of the now-burned coupon by the owner is rejected (single-use).
+    const second = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(second.status).toBe(409);
+  });
+
+  // AC5
+  it('redeems a free_upgrade offer coupon at the exact size-upgrade delta, burns', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2fu');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fuOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(201);
+    // size delta 150 waived. subtotal 1300, discount 150, total 1150.
+    expect(res.json.order.subtotalCents).toBe(1300);
+    expect(res.json.order.discountTotalCents).toBe(150);
+    expect(res.json.order.totalCents).toBe(1150);
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('used');
+  });
+
+  // AC6
+  it('rejects a free_upgrade coupon when the benefit has no paid size upgrade (no_upgrade_to_waive)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2fuNo');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fuOfferId, code });
+
+    // Cart holds the benefit product but with NO size option → nothing to waive.
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId, quantity: 1, selectedOptions: [] }],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('Add a size upgrade to the eligible item to use this offer.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available'); // no ₱0-and-burn
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  // AC4
+  it('rejects a free_item coupon when the benefit product is absent from the cart (not_in_cart)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2fiAbsent');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fiOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [{ productId: neutralProductId, quantity: 1, selectedOptions: [] }],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('Add the eligible item to your cart to use this offer.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  // AC7 / F1 — a corrupt NEGATIVE discount_value now REJECTS at placement (ADM-008 Fix
+  // 6 F1: a percentage/fixed offer with no positive redeemable value must never burn a
+  // coupon for zero benefit). The coupon stays available and no order is written.
+  it('rejects a negative discount_value fixed offer coupon (F1: no zero-value burn)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2neg');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: negativeFixedOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer has no redeemable value.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  // F1 — a percentage_discount(0) and a fixed_discount(NULL) offer coupon both reject
+  // at placement (zero redeemable value), no burn, no order.
+  const expectZeroValueRejectAtPlacement = async (
+    offerId: string,
+    label: string,
+  ): Promise<void> => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser(label);
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer has no redeemable value.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  };
+
+  it('rejects a percentage_discount offer with discount_value 0 (F1)', async () => {
+    await expectZeroValueRejectAtPlacement(zeroPercentOfferId, 'p2pctZero');
+  });
+
+  it('rejects a fixed_discount offer with a NULL discount_value (F1)', async () => {
+    await expectZeroValueRejectAtPlacement(nullFixedOfferId, 'p2nullFixed');
+  });
+
+  // F7b — a free_item offer whose benefit product is ₱0-priced computes a 0 discount,
+  // so the free-branch <=0 guard rejects it (no ₱0-and-burn). Cart holds the ₱0 benefit
+  // product + a normal product (so the subtotal is non-zero).
+  it('rejects a free_item coupon whose benefit product is ₱0-priced (F7b, no burn)', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('p2fiZero');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fiZeroOfferId, code });
+
+    const res = await post('/orders', {
+      user: u,
+      body: {
+        branchId: branch20Id,
+        paymentMethod: 'pay_at_branch',
+        items: [
+          { productId: freeProductId, quantity: 1, selectedOptions: [] },
+          { productId: neutralProductId, quantity: 1, selectedOptions: [] },
+        ],
+        couponCode: code,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe('This offer is not configured for redemption.');
+
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  // AC8 — single-resolver symmetry: the preview amount equals the placement amount
+  // for the identical cart + code.
+  it('computes the identical free_item discount at preview and at placement', async () => {
+    const u = await freshUser('p2sym');
+    const code = offerCode();
+    await db.insert(schema.coupons).values({ user_id: u, offer_id: fiOfferId, code });
+
+    const cartItems = [{ productId, quantity: 2, selectedOptions: [{ optionId: sizeOptionId }] }];
+    const preview = await post('/coupons/apply', {
+      user: u,
+      body: { code, pickupBranchId: branch20Id, cartItems },
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.json.discount.amountCents).toBe(650);
+
+    const placed = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(placed.status).toBe(201);
+    expect(placed.json.order.discountTotalCents).toBe(preview.json.discount.amountCents);
   });
 });

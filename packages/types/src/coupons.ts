@@ -19,7 +19,9 @@ export type CouponStatus = 'available' | 'used' | 'expired';
  */
 export interface DbCoupon {
   id: string;
-  userId: string;
+  // ADM-008 LD2: coupons.user_id is now nullable (bulk-issued coupons claimed on
+  // redeem). No live path emits a null yet; the type reflects the schema.
+  userId: string | null;
   dealId: string | null;
   rewardId: string | null;
   code: string;

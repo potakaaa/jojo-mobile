@@ -1,0 +1,88 @@
+{
+  "steps": [
+    {
+      "step": "Byte-identity: computeDealDiscountCents / checkDealEligibility never modified across the full fix range (35981fa~1..cceb66b)",
+      "command": "git diff 35981fa~1 cceb66b -- packages/utils/src/discount.ts | grep -B2 -A2 'computeDealDiscountCents\\|checkDealEligibility'",
+      "result": "PASS",
+      "notes": "Live check this session. Both function names produce zero diff-hunk matches — neither function appears anywhere in the range diff except as an unchanged caller reference inside coupon-apply.ts's own diff. All discount.ts changes in the range are: one added union member on EligibilityFailReason, and two brand-new append-only exported functions (computeFreeUpgradeDiscountCents, checkFreeBenefit)."
+    },
+    {
+      "step": "apps/mobile eligibility twin (apps/mobile/src/features/deals/lib/eligibility.ts) untouched across the fix range",
+      "command": "git diff 35981fa~1 cceb66b -- apps/mobile/src/features/deals/lib/eligibility.ts",
+      "result": "PASS",
+      "notes": "Live check this session. Empty diff output — zero lines changed. Confirms the DO-NOT-TOUCH constraint on the mobile twin held across all 4 commits (P1/P1b/P3/P2)."
+    },
+    {
+      "step": "Migration surface: exactly one migration (0014) across the entire fix range, additive-nullable only",
+      "command": "git diff --stat 35981fa~1 cceb66b -- packages/api/drizzle/",
+      "result": "PASS",
+      "notes": "Live check this session. Only 0014_icy_korg.sql + its meta/journal entries; no migrations added by P1b/P2/P3. Migration body (packages/api/drizzle/0014_icy_korg.sql) is a 2-line additive nullable FK column with ON DELETE/UPDATE NO ACTION — no backfill, no destructive DDL, confirmed by direct read."
+    },
+    {
+      "step": "packages/utils test-file count cross-check against the P2 commit-message claim ('utils 35/35')",
+      "command": "grep -rcE \"^\\s*(it|test)\\(\" packages/utils/src/__tests__/*.test.ts",
+      "result": "PASS",
+      "notes": "Live structural grep this session: discount.test.ts=18, order-display.test.ts=2, product-options.test.ts=9, reorder.test.ts=6 — sums to exactly 35, matching the cceb66b commit message's claimed 'utils 35/35'. discount.test.ts is confirmed as a NEW file in this range (packages/utils' first tests for discount.ts, per the plan's Test Infra Improvement Notes)."
+    },
+    {
+      "step": "API and admin structural test-block cross-check against the claimed live counts (API 411/411, admin 49/49)",
+      "command": "find packages/api/src -name '*.test.ts' | xargs grep -cE \"^\\s*(it|test)\\(\" ; find apps/admin/src -name '*.test.tsx' -o -name '*.test.ts' | xargs grep -cE \"^\\s*(it|test)\\(\"",
+      "result": "PASS (approximate corroboration only — not authoritative)",
+      "notes": "Live structural grep this session: API top-level it()/test() blocks sum to 396, admin to 47 — both close to but below the claimed 411/49 (grep on '^\\s*(it|test)\\(' misses it.each(...)( call forms and some nested-describe indentation, so this undercounts; it is not a substitute for a live suite run). The authoritative counts (API 411/411, utils 35/35, admin 49/49) are cited from the developer's own frozen-tree run the night of 16/17-07-26 (see cceb66b + ad3e937 commit messages and the plan's Dependencies/Validate-Contract sections), not independently re-run in this evidence-pack pass — running the full suites requires a live local Postgres instance, out of scope for this read-only pack-generation session per task instructions."
+    },
+    {
+      "step": "P1: unconfigured free_item/free_upgrade offer-coupon rejected at preview + placement, no burn (AC1)",
+      "command": "pnpm --filter @jojopotato/api test (coupons.integration.test.ts + orders.test.ts)",
+      "result": "PASS",
+      "notes": "Cited from the frozen-tree run recorded at P1 EXECUTE closure (commit 35981fa, EVL-confirmed per the plan's Phase Loop Progress — 'P1 EVL-green'). Not re-run live this pass."
+    },
+    {
+      "step": "P1b: all 4 cheapest-line-vulnerable mechanics (buy_one_take_one, bundle, free_item, free_upgrade) reject at both preview and placement, no burn, two-line-cart fixtures assert zero cheapest-line discount; CONFIGURED free-mechanic offer (non-null benefit_product_id) still rejects in P1b (window-hole lock); one fixed_discount offer-coupon exact-cents case unaffected by the guard restructure (P1b-1..P1b-4)",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "Cited from the PVL re-run validate-contract dated 2026-07-17 ('Gate: PASS', generated-by: outer-pvl) in the plan file itself — the validate-agent independently confirmed API 368/368 live at that pass before P1b's own EVL run. Not re-run live in this evidence-pack session; corroborated structurally by the byte-identity and migration checks above (P1b's diff is scoped to coupon-apply.ts + 2 test files only, confirmed via `git show --stat 66cbb0e`)."
+    },
+    {
+      "step": "P2: free_item exact one-unit-price discount at preview (AC2) and placement + atomic burn + re-use reject (AC3); designated product absent -> not_in_cart reject both paths, no burn (AC4); free_upgrade exact size-delta discount both paths (AC5); free_upgrade with nothing to waive -> no_upgrade_to_waive reject, no zero-and-burn (AC6); clamp invariant 0<=discount<=subtotal incl. benefit priced above rest of cart (AC7); preview amount == placement amount, same-fixture symmetry (AC8)",
+      "command": "pnpm --filter @jojopotato/api test && pnpm --filter @jojopotato/utils test",
+      "result": "PASS",
+      "notes": "Cited from the developer's frozen-tree run the night of 16/17-07-26 reported in the cceb66b commit message ('API 411/411, utils 35/35; money ACs Fully-Automated, Known-Gap unused'). Not re-run live this pass (requires local Postgres). Corroborated this session by: (a) reading the actual resolver dispatch code and confirming it implements exactly this logic (see context-snippets.json); (b) the utils test-file count cross-check above landing exactly on 35."
+    },
+    {
+      "step": "P2: wire freeze holds; AppliedDiscount + public response shapes unchanged (AC9)",
+      "command": "pnpm --filter @jojopotato/api test (wire-freeze shape assertions) + git diff feat/deals_unification -- packages/utils/src/discount.ts (byte-identity)",
+      "result": "PASS",
+      "notes": "The byte-identity half was independently re-verified live this session (see the first two rows above) against the full 35981fa~1..cceb66b range, a stronger check than the single-commit diff named in the plan. Wire-freeze test-suite result cited from the same frozen-tree run as the AC2-AC8 row above."
+    },
+    {
+      "step": "P2: admin create/PATCH cross-validation (require/reject benefit per mechanic; merged-state PATCH; read-back; generate block) (AC10)",
+      "command": "pnpm --filter @jojopotato/api test (admin-offers.integration.test.ts + admin-coupon-issuance.integration.test.ts)",
+      "result": "PASS",
+      "notes": "Cited from the same frozen-tree run. Independently corroborated this session by reading the actual mechanicBenefitError()/PATCH-merged-state/assertBenefitProductExists code in admin/offers.ts and the 3-guard block in admin/coupons.ts's POST /generate (see context-snippets.json) — the code matches every AC10 requirement in the plan's Touchpoints table."
+    },
+    {
+      "step": "P3: admin UI picker required only for free mechanics; generate-panel blocked for unconfigured free offer (AC11, logic half)",
+      "command": "pnpm --filter @jojopotato/admin test (offer-form.test.tsx, benefit-product-field.test.tsx, generate-coupons-panel.test.tsx)",
+      "result": "PASS",
+      "notes": "Cited from the frozen-tree run reported alongside ad3e937. AC11's VISUAL half (pixel-level walkthrough) is explicitly Hybrid per the validate-contract — user-run per the repo's standing convention (memory: user verifies UI manually) — and the plan's checklist item 24 records it as user-verified this morning (17-07-26)."
+    },
+    {
+      "step": "Full-suite regression: no regression on percentage/fixed/reward coupons + is_deal guard (AC12)",
+      "command": "pnpm --filter @jojopotato/api test (full suite) && pnpm --filter @jojopotato/api typecheck",
+      "result": "PASS",
+      "notes": "Cited from the frozen-tree run (API 411/411 reported twice back-to-back per the task's ground truth, plus the P1b-era validate-agent's independent live re-confirmation of 368/368 before P2/P3 landed). Not re-run live this pass."
+    },
+    {
+      "step": "Three typechecks clean (api, utils, admin) + admin build",
+      "command": "pnpm --filter @jojopotato/api typecheck && pnpm --filter @jojopotato/utils typecheck && pnpm --filter @jojopotato/admin typecheck && pnpm --filter @jojopotato/admin build",
+      "result": "PASS",
+      "notes": "Cited from the frozen-tree run per the task's ground truth. Not re-run live this pass (would require full workspace install/build, out of scope for a read-only evidence-pack session)."
+    },
+    {
+      "step": "AC13 process artifacts (backlog note corrections + SPEC annotation) — open gap check",
+      "command": "find process/features/admin-dashboard/backlog -iname '*free*'",
+      "result": "FAIL (expected — matches known open gap, not a regression)",
+      "notes": "Live check this session. Only the ORIGINAL stale note (adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md) exists; the plan's owed corrections — the AC13 note correction, the D6 usage-limit backlog note, and the finding-3 (coupons reward_id/offer_id mutual-exclusivity CHECK) backlog note — have NOT been filed yet, and the SPEC's out-of-scope claim has not been annotated. This is UPDATE PROCESS closeout work (Agent-Probe/process-artifact tier per the validate-contract), explicitly deferred, not part of this evidence pack's scope, and does not gate the money-path finalize decision."
+    }
+  ]
+}

@@ -28,6 +28,16 @@ export interface AdminDealProduct {
   isDeal: boolean;
   /** Populated on the detail response; `[]` on the list response. */
   components: AdminDealComponent[];
+  /**
+   * Branch-visibility indicator (ADM-008 post-merge Fix 3). `availableBranchCount`
+   * = active branches where this deal has an `is_available = true` row (i.e. where
+   * it's actually visible on the customer menu); `activeBranchCount` = total active
+   * branches (the denominator). Present on the list/detail read paths; `undefined`
+   * on the create response. `availableBranchCount === 0` on an active deal means it
+   * is invisible everywhere.
+   */
+  availableBranchCount?: number;
+  activeBranchCount?: number;
 }
 
 /** One seeded component on a create-with-components request (Enhancement E1). */
@@ -50,6 +60,13 @@ export interface DealCreateInput {
    * the whole input as the request body, so no function-body change is needed.
    */
   components?: DealComponentInput[];
+  /**
+   * Optional branch selection (post-merge Fix 4). Omitting seeds availability for
+   * every active branch (the default seed-all behavior); a subset limits it to the
+   * listed branches (each must be an active branch — unknown → 400). An empty array
+   * creates the deal available at no branch (invisible until toggled on).
+   */
+  branchIds?: string[];
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

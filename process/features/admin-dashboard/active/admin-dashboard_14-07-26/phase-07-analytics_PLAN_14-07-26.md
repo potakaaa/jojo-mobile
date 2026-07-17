@@ -1,6 +1,6 @@
 ---
 name: plan:admin-phase-07-analytics
-description: "Admin dashboard Phase 7 — read-only analytics aggregation routes + dashboard screen (ADM-007, #45)"
+description: "Admin dashboard Phase 7 — read-only analytics aggregation route + dashboard screen (ADM-007, #45). Full DRAFT plan pending user review of Open Decisions."
 date: 14-07-26
 metadata:
   node_type: memory
@@ -9,11 +9,32 @@ metadata:
   phase: 7
 ---
 
-# Phase 7 — Analytics Dashboard (ADM-007, #45)
+# Phase 7 — Basic Analytics Dashboard (ADM-007, #45)
 
-**Date**: 14-07-26
-**Complexity**: COMPLEX (last phase of an 8-phase program; flexible depth per instruction)
-**Status**: ⏳ PLANNED
+**Date**: 14-07-26 (stub) — fleshed out to full DRAFT 17-07-26
+**Complexity**: COMPLEX (last phase of the 8-phase program; money-adjacent correctness)
+**Status**: 📝 DRAFT — pending user review of `## Open Decisions For Review`
+
+> **TL;DR:** One new read-only route `GET /api/admin/analytics?from=&to=[&branchId=]` returning all
+> six #45 metrics in one payload, computed in cents server-side with Drizzle `sql` aggregates; one
+> new `apps/admin/src/features/analytics/**` screen of stat tiles + a per-branch table (no chart
+> library at MVP); exact-value seeded-fixture tests per AC. Six product decisions are recommended
+> below but held open for user sign-off.
+
+## Open Decisions For Review
+
+Each decision below has a recommended choice already baked into the checklist/ACs. Approving the
+plan as-is locks the recommendations; any override triggers a PLAN-SUPPLEMENT pass before PVL.
+
+| # | Decision | Recommendation (recommended — pending user review) |
+|---|---|---|
+| D1 | **"Orders using deals" definition** (post-ADM-004/008 there are 3 possible signals) | An order "uses a deal" iff ANY of: (a) `orders.coupon_id IS NOT NULL` (offer/reward coupon applied), (b) `orders.deal_id IS NOT NULL` (legacy dormant column — near-zero rows, included for correctness), (c) the order has ≥1 `order_items` line whose `products.is_deal = true` (bundle deal). This is a boolean per order, so deal-orders + non-deal-orders is an exact partition and AC3's sum-to-total property holds by construction. |
+| D2 | **Order status filter for order-count + AOV** | Exclude `cancelled` and `rejected`; include all other placed statuses (`pending…completed`). Rationale: reflects real demand without waiting for completion; matches "what the customer committed to pay". AC4 repeat-rate numerator uses `completed` only per issue #45 verbatim. |
+| D3 | **Timezone for date ranges** | Interpret `from`/`to` as **Asia/Manila calendar dates** (fixed `+08:00`, PH has no DST), converted server-side to UTC timestamp bounds (`from 00:00:00+08` inclusive → `to+1day 00:00:00+08` exclusive) against `orders.placed_at` / `star_transactions.created_at` / `coupons.created_at|used_at`. Rationale: admins think in local business days; a UTC boundary silently shifts late-evening orders into the wrong day. |
+| D4 | **"Rewards unlocked" / "rewards redeemed" definitions** | Unlocked = `COUNT(coupons) WHERE reward_id IS NOT NULL AND created_at IN range` (a reward coupon is minted exactly when a reward is unlocked, STAR-003). Redeemed = `COUNT(coupons) WHERE reward_id IS NOT NULL AND used_at IN range`. (Alternative rejected: `star_transactions.type='redeemed'` — that tracks star spends, which STAR-side flows may not 1:1 mirror coupon burns.) |
+| D5 | **"Stars earned" definition** | `SUM(star_transactions.stars) WHERE type = 'earned' AND created_at IN range`. `adjusted`/`expired`/`redeemed` excluded from the headline number. |
+| D6 | **Chart library** | NONE at MVP. Plain stat tiles (new small `metric-card` composite) + the existing `data-table` composite for the per-branch breakdown. Consistent with issue #45's explicit "basic — no BI tooling". Charts are a possible later enhancement, not in scope. |
+| D7 | **Endpoint + query shape** | ONE combined `GET /api/admin/analytics` returning all metrics in a single `{ resource }` payload (one screen = one fetch); Drizzle `sql`-template aggregate helpers (`sql<string>\`sum(...)\``, `count()`) — NOT raw `db.execute` — staying inside the codebase's Drizzle idiom. |
 
 ## Phase Completion Rules
 
@@ -27,260 +48,251 @@ reported as `🔨 CODE DONE`, never `✅ VERIFIED`.
 
 ## Overview
 
-Phase 7 is the LAST and LEAST-PRECEDENTED phase of the admin-dashboard program. It adds one new
-read-only route file, `packages/api/src/routes/admin/analytics.ts`, exposing time-range-filterable
-aggregation metrics over data produced by Phases 2-6 (branches, products/deals, rewards, orders), plus
-one new `apps/admin/src/features/analytics/**` screen to display them.
+Phase 7 adds the program's final surface: a read-only analytics endpoint and dashboard screen for
+the six #45 metrics — pickup orders per branch, average order value (AOV), deals-vs-no-deals split,
+repeat purchase rate, stars earned, rewards unlocked/redeemed — all time-range filterable (last
+7/30 days presets client-side; arbitrary `from`/`to` server-side).
 
-Metrics in scope (all P2 priority, per umbrella Phase Map):
-- Pickup orders per branch (count, over a time range)
-- Average order value (AOV)
-- Deals-vs-no-deals comparison / lift
-- Repeat-purchase rate
-- Stars issued (over a time range)
-- Rewards redeemed (over a time range)
+Ground truth this draft is written against (verified 17-07-26, branch `feat/deals_unification`):
 
-**No aggregation-query precedent exists anywhere in `packages/api`** — every existing route
-(`packages/api/src/routes/orders.ts:77,90,106,232,242,268,278`) does single-row/simple-filter
-`db.select().from(...).where(...)` reads, never a `GROUP BY`/aggregate/join-heavy analytics query.
-This is the single biggest risk of this phase (see umbrella Phase Map "Biggest risk" column) and is
-carried forward into `## Implementation Steps` as an explicitly OPEN INNOVATE decision: whether to
-use Drizzle's `sql` template / aggregate helpers (`sql<number>\`count(*)\``, `avg()`, etc.) or hand-
-written raw SQL via `db.execute(sql\`...\`)`. **This plan does NOT decide that** — it is deferred to
-this phase's own inner-loop INNOVATE step, per the umbrella's HYBRID build strategy (Phases 3-7 are
-"reassessed per-domain during their own RESEARCH step").
+- **Money is stored as `numeric(10,2)` pesos in Postgres** (`orders.subtotal/discount_total/total`,
+  `order_items.unit_price/total_price`). The program-wide API convention converts to **cents at the
+  boundary** via `numericToCents` (`routes/lib/serializers.ts`). All analytics aggregates are
+  therefore computed as: SQL `SUM(...)` returns a numeric string → converted to cents integer →
+  any division (AOV) done in integer cents with `Math.round` — never float peso math.
+- **Deal signal is 3-way post-ADM-004/008** (see D1): legacy `orders.deal_id` (dormant),
+  `orders.coupon_id` (live — offer + reward coupons), and `is_deal` bundle products via
+  `order_items → products` join. There is no single order-level "deal" flag.
+- **`star_transactions`** carries `type ∈ {earned, redeemed, adjusted, expired}`, `stars` (int),
+  `created_at`. **`coupons`** distinguishes reward coupons (`reward_id IS NOT NULL`) from offer
+  coupons (`offer_id IS NOT NULL`), with `created_at` (mint) and `used_at` (burn).
+- **No aggregation-query precedent** exists in `packages/api` — this phase establishes it (D7:
+  Drizzle `sql` aggregates). This remains the phase's biggest technical risk.
+- **No chart library** exists in `apps/admin` (D6: none added).
 
-Because query shapes depend on the real schema/data shapes finalized by Phases 2-6 (which do not yet
-exist as executed code at PLAN time), this plan is intentionally kept **HIGH-LEVEL**. The
-`## Implementation Steps` section below is an outline, not an EXECUTE-ready checklist.
+---
+
+## Metric Definitions (locked to Open Decisions above)
+
+All ranges use the D3 Asia/Manila day-boundary convention. All money values are cents integers in
+the response.
+
+| Metric | Definition |
+|---|---|
+| `ordersPerBranch` | Per branch: `COUNT(orders)` where `placed_at` in range and `status NOT IN ('cancelled','rejected')` (D2). Includes branch id + name (join `branches`). Branches with 0 orders in range appear with count 0 (LEFT JOIN from `branches`). |
+| `averageOrderValueCents` | `Math.round(sumTotalCents / orderCount)` over the same filtered set as `ordersPerBranch` (post-discount `orders.total` — what the customer pays). `null` when orderCount = 0 (never divide by zero, never fake a 0 AOV). |
+| `dealsSplit` | Partition the same filtered order set by the D1 boolean. Returns `{ withDeals: { count, sumTotalCents }, withoutDeals: { count, sumTotalCents } }`. Invariant (AC3): `withDeals.count + withoutDeals.count === total order count` and the two sums add to the total sum. |
+| `repeatPurchaseRate` | `distinct users with ≥2 COMPLETED orders in range ÷ distinct users with ≥1 order (any non-cancelled/rejected status, D2) in range` (issue #45 AC4 verbatim numerator). Returned as `{ numerator, denominator, rate }` with `rate: null` when denominator = 0. |
+| `starsEarned` | D5: `SUM(star_transactions.stars) WHERE type='earned' AND created_at IN range`. 0 when no rows. |
+| `rewardsUnlocked` / `rewardsRedeemed` | D4: reward-coupon rows (`reward_id IS NOT NULL`) counted by `created_at` (unlocked) / `used_at` (redeemed) in range. |
+
+`branchId` query param (optional) scopes `ordersPerBranch`/`averageOrderValueCents`/`dealsSplit`/
+`repeatPurchaseRate` to one branch; `starsEarned`/`rewardsUnlocked`/`rewardsRedeemed` are
+program-wide (star/coupon rows carry no branch) and are returned unchanged with a
+`branchScoped: false` note in the response shape — the UI labels them "all branches".
 
 ---
 
 ## Cross-Cutting Compliance
 
-1. **Modularity** — one new route file `packages/api/src/routes/admin/analytics.ts`, mounted inside
-   the existing `adminRouter` (established in Phase 1, mirroring `staffRouter` at
-   `packages/api/src/index.ts:51`) behind `requireAdmin(auth)` — no new mount point, no per-handler
-   auth checks. One new `apps/admin/src/features/analytics/**` feature folder (hooks + components),
-   following the same feature-folder convention as `features/branches/`, `features/orders/`, etc.
-   from earlier phases. Shared money/serializer helpers (`numericToCents`,
-   `packages/api/src/routes/lib/serializers.ts:105-107`) are reused, not reimplemented, for any
-   currency-shaped metric (AOV, discount lift).
-
-2. **Clarity** — Zod `safeParse` validation for the time-range query params (`from`/`to`/branch
-   filter), same pattern as `routes/orders.ts`/`routes/branches.ts`. Response envelope
-   `{ resource: { ...metrics } }` (singular — analytics is one aggregate object, not a list),
-   consistent with the `{ resource }`/`{ resources }` family used program-wide. Errors mirror
-   `OrderError` (`orders.ts:39-47`) via a shared `AdminApiError` (established earlier phases) rather
-   than bare `throw new Error(...)`. Naming: kebab-case files, camelCase functions, PascalCase
-   components (repo-wide convention).
-
-3. **Safety** — this phase is READ-ONLY: no writes, no deletes, no schema mutation. It cannot
-   violate the two program-level hard invariants (order_items snapshot integrity, star_transactions
-   retroactivity) because it never writes to any table. The only safety-relevant judgment is
-   **metric-definition correctness** (see below) — a wrong AOV or repeat-purchase-rate definition is
-   a correctness bug, not a destructive-action risk, but it is treated with equivalent rigor because
-   it directly informs business decisions.
-
-4. **Security** — `requireAdmin(auth)` gate inherited automatically via the `adminRouter` mount
-   (established Phase 1); no route in this file is reachable by `staff`/`customer` roles. Aggregates
-   only — no per-customer row-level data is returned by any metric in scope (all six metrics are
-   counts/sums/averages/ratios over anonymized groups: per-branch, per-time-bucket, or program-wide).
-   If a future metric needed per-customer detail (e.g. "top customers"), it would need the same PII
-   boundary note Phase 6 (orders view) already flagged — **no such metric is in this phase's scope**,
-   so no PII exposure risk is introduced here. Flag explicitly: if RESEARCH/INNOVATE discovers a need
-   to expose any customer-identifying row, treat it as a scope change requiring the same design note
-   pattern as Phase 6, not a silent addition.
-
-5. **UI component modularity & reusability** — `features/analytics/` reuses the P2 `page-header`,
-   `query-states`, and (where a shared filter-bar was promoted in P6) the branch/time-range filter
-   controls. Analytics-specific UI is limited to genuinely new pieces: stat/metric cards and any chart
-   component. If more than one metric needs the same card/chart shape, build it ONCE as a shared
-   `metric-card`/`chart` composite in `components/`, not per-metric. Token-driven styling only; charts
-   consume the ported Tailwind color tokens rather than a separate palette.
-
----
-
-## Metric Definitions Requiring Explicit Sign-Off
-
-**These are PROPOSED definitions only.** None of them may be treated as "obviously correct" —
-each requires explicit user/acceptance sign-off before EXECUTE, because a wrong definition produces
-plausible-looking but incorrect business numbers that nobody would notice from the UI alone.
-
-| Metric | Proposed definition | Open question(s) |
-|---|---|---|
-| Pickup orders per branch | `COUNT(orders.id)` grouped by `orders.branch_id`, filtered to `orders.placed_at BETWEEN :from AND :to` | Should cancelled orders (`status = 'cancelled'`) be excluded from the count, or counted separately as a cancellation-rate signal? Proposed: exclude cancelled from the headline count, but not decided here. |
-| Average order value (AOV) | `AVG(orders.total)` over the same time-range/branch filter | (a) Which statuses count — `completed` only, or all non-cancelled placed orders? (b) Should discounted orders' `total` (post-discount) or `subtotal` (pre-discount) be used? Proposed: `total` (post-discount, what the customer actually paid), status = all non-cancelled. |
-| Deals-vs-no-deals comparison/lift | Split orders into `discount_total > 0` (deal-orders) vs `discount_total = 0` (non-deal-orders); compare each group's AOV and order count; "lift" = `(deal-group AOV - non-deal-group AOV) / non-deal-group AOV` | Is `discount_total > 0` a reliable proxy for "used a deal" (vs. e.g. a coupon unrelated to a deal, per the `coupons.ts` schema)? Needs confirmation once Phase 4's coupon/deal linkage is finalized. |
-| Repeat-purchase rate | `(COUNT DISTINCT user_id WHERE order-count-in-window >= 2) / COUNT DISTINCT user_id WHERE order-count-in-window >= 1`, computed over the selected time-range window | Should the window be the same `from`/`to` filter as other metrics, or a fixed lookback (e.g. "customers who ordered ≥2 times in the last 90 days" regardless of the displayed range)? Proposed: same `from`/`to` filter as the rest of the dashboard, for consistency — flagged as needing sign-off since a fixed-lookback definition is equally defensible. |
-| Stars issued | `SUM(star_transactions.stars) WHERE type = 'earned' AND created_at BETWEEN :from AND :to` | Should `'adjusted'` (manual staff adjustments, if positive) also count toward "issued"? Proposed: `'earned'` only; `'adjusted'` and `'expired'` excluded. |
-| Rewards redeemed | `COUNT(star_transactions.id) WHERE type = 'redeemed' AND created_at BETWEEN :from AND :to` (count of redemption events) — alternative: `SUM(ABS(stars))` for total stars spent redeeming | Count of redemption events, or total stars spent? Proposed: count of events as the headline number, with total-stars-spent as a secondary stat if UI space allows. |
-
-**Acceptance criteria below require each of these definitions to be locked (via user sign-off during
-this phase's inner-loop RESEARCH/INNOVATE step) before the corresponding fixture-based test is
-written.** A metric shipped against an un-signed-off definition is not acceptable, even if the query
-runs and returns a plausible number.
+1. **Modularity** — one new route file `packages/api/src/routes/admin/analytics.ts`, appended to
+   the existing `adminRouter` aggregator (`routes/admin/index.ts`, append-only per its own doc
+   comment — this is the 5th confirmed consumer). One new `apps/admin/src/features/analytics/**`
+   feature folder. `numericToCents` reused from `routes/lib/serializers.ts`, never reimplemented.
+2. **Clarity** — Zod `safeParse` for `from`/`to`/`branchId` (400 on invalid; `from > to` → 400).
+   Response envelope `{ resource: {...} }` (singular). Errors via the shared admin error helpers in
+   `routes/admin/lib/errors.ts`.
+3. **Safety** — READ-ONLY phase: zero writes, zero schema mutation, zero migrations. The risk is
+   metric-definition correctness (business-decision-informing numbers), addressed by exact-value
+   fixture tests + the Open Decisions sign-off.
+4. **Security** — `requireAdmin(auth)` inherited via the aggregator mount. Aggregates only — no
+   per-customer identifying field in any response. If any future metric needs customer rows, that
+   is a scope change, not a silent addition.
+5. **UI reusability** — reuses `page-header`, `query-states`, `data-table` composites. New shared
+   piece: a small `metric-card` stat-tile component (built once, used by all headline metrics).
 
 ---
 
 ## Touchpoints
 
-- `packages/api/src/routes/admin/analytics.ts` (new) — aggregation route(s) for the 6 metrics above
-- `packages/api/src/routes/admin/index.ts` or equivalent adminRouter mount file (established Phase 1)
-  — register the new analytics sub-router
-- `packages/api/src/routes/lib/serializers.ts` — reuse `numericToCents`/money helpers for any
-  currency-shaped metric (AOV, per-branch totals); do not reimplement
-- `apps/admin/src/features/analytics/**` (new) — hooks (`use-analytics.ts` or similar, React Query),
-  components (metric cards, time-range picker, per-branch breakdown table/chart)
-- `apps/admin/src/routes/` or equivalent TanStack Start route file wiring the analytics screen into
-  the dashboard nav (established Phase 0/1 shell)
-- Read (no changes): `packages/api/src/db/schema/orders.ts` (`orders.placed_at`, `.status`,
-  `.total`, `.discount_total`, `.branch_id`), `packages/api/src/db/schema/order_items.ts`,
-  `packages/api/src/db/schema/star_transactions.ts` (`.type`, `.stars`, `.created_at`, `.user_id`),
-  `packages/api/src/db/schema/user_stars.ts`, `packages/api/src/db/schema/deals.ts`,
-  `packages/api/src/db/schema/coupons.ts` (if deal-linkage needs it), `packages/api/src/db/schema/
-  branches.ts`
-- Read: `packages/api/src/lib/require-admin.ts` (established Phase 1) — auth guard reused, not
-  modified
-- Read: `packages/types/src/admin.ts` (established Phase 1) — extend with analytics response types
-  if not already covered by a generic shape
-
----
+- `packages/api/src/routes/admin/analytics.ts` (NEW) — the single combined analytics route
+- `packages/api/src/routes/admin/index.ts` (MODIFIED) — append `adminRouter.use('/analytics', analyticsRouter)`
+- `packages/api/src/routes/admin/__tests__/admin-analytics.integration.test.ts` (NEW) — seeded exact-value fixture suite
+- `packages/types/src/admin.ts` (MODIFIED, additive) — `AdminAnalytics` response type
+- `apps/admin/src/features/analytics/lib/admin-analytics-api.ts` (NEW) — fetch wrapper (`credentials:'include'`, mirrors `admin-branches-api.ts`)
+- `apps/admin/src/features/analytics/hooks/use-analytics.ts` (NEW) — react-query hook keyed on `['admin','analytics',from,to,branchId]`
+- `apps/admin/src/features/analytics/components/{metric-card,time-range-picker,branch-orders-table}.tsx` (NEW)
+- `apps/admin/src/routes/(dashboard)/analytics.tsx` (NEW) — TanStack Start route (single screen — no detail child, so no `<Outlet/>` split needed; if a detail view is ever added, apply the layout+index split gotcha from Phase 3)
+- `apps/admin/src/config/nav-config.ts` (MODIFIED) — flip the Analytics nav item from `disabled: true` to live (or add it)
+- Read-only (no changes): `db/schema/{orders,order_items,products,star_transactions,coupons,branches,users}.ts`, `lib/require-admin.ts`, `routes/lib/serializers.ts`
 
 ## Public Contracts
 
-- New route(s) under `/api/admin/analytics/*` (exact sub-paths decided at INNOVATE — e.g. one
-  combined `GET /api/admin/analytics?from=&to=&branchId=` returning all 6 metrics in one payload, vs.
-  6 separate endpoints — this is an open INNOVATE decision, not locked here).
-- Request: query params `from` (ISO date), `to` (ISO date), optional `branchId` (uuid) for
-  branch-scoped views. All validated server-side via Zod `safeParse` — missing/invalid params
-  rejected with 400, not silently defaulted to "all time" without the client knowing.
-- Response envelope: `{ resource: { ordersPerBranch: [...], aov: number, dealsLift: {...},
-  repeatPurchaseRate: number, starsIssued: number, rewardsRedeemed: number } }` (exact shape decided
-  at INNOVATE/EXECUTE — this is the proposed contour, not final).
-- No mutation contract — this phase introduces zero writable endpoints.
-- Auth contract: `requireAdmin(auth)` — admin and super_admin only; staff/customer roles get 403 (or
-  the equivalent rejection the adminRouter mount already produces for non-admin roles, established
-  Phase 1).
+- **NEW** `GET /api/admin/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD[&branchId=uuid]` —
+  `requireAdmin`-gated (admin/super_admin only; staff/customer rejected by the inherited guard).
+  `from`/`to` required (no silent all-time default), validated `YYYY-MM-DD`, `from <= to`,
+  interpreted per D3 (Asia/Manila days). Unknown `branchId` → empty-scoped results (not 404).
+- Response (all money in cents integers):
 
----
+```
+{ resource: {
+    range: { from, to, timezone: "Asia/Manila" },
+    ordersPerBranch: [{ branchId, branchName, orderCount }],
+    averageOrderValueCents: number | null,
+    orderCount: number,
+    dealsSplit: { withDeals: { count, sumTotalCents }, withoutDeals: { count, sumTotalCents } },
+    repeatPurchaseRate: { numerator, denominator, rate: number | null },
+    starsEarned: number,
+    rewardsUnlocked: number,
+    rewardsRedeemed: number,
+    branchScoped: boolean
+} }
+```
+
+- No mutation contract. No schema change. Wire-frozen surfaces from earlier phases untouched.
 
 ## Blast Radius
 
-- **Packages touched:** `packages/api` (1 new route file + adminRouter registration), `apps/admin`
-  (1 new feature folder: hooks + components + route wiring), `packages/types` (possible extension of
-  `admin.ts` for analytics response types).
-- **Files (new):** `packages/api/src/routes/admin/analytics.ts`,
-  `apps/admin/src/features/analytics/hooks/use-analytics.ts` (or similar),
-  `apps/admin/src/features/analytics/components/*` (metric cards, time-range filter, per-branch
-  table), 1 new route file wiring the screen into TanStack Start routing.
-- **Files (modified):** adminRouter mount file (register new sub-router), possibly
-  `packages/types/src/admin.ts` (add analytics response types).
-- **Risk class:** READ-ONLY aggregation — no schema/auth/billing/migration surface touched. Low
-  Safety risk (no writes possible). Security risk is bounded to the standard `requireAdmin` gate +
-  no-PII-in-aggregates rule stated in Cross-Cutting Compliance #4.
-- **Dependency on earlier phases:** requires real data shapes from P2 (branches), P3 (products —
-  indirectly, via `order_items`/`orders.total`), P4 (deals — via `orders.discount_total`), P5
-  (rewards — via `star_transactions`), P6 (orders view — shares the branch/status/date filter
-  pattern this phase's query params should mirror for UI consistency). This phase cannot start
-  meaningfully until P3-P6 have real, committed schema/route code to query against — per umbrella
-  Phase Ordering, P7 depends on P3, P4, P5, P6.
+- **Packages:** `packages/api` (1 new route + 1-line aggregator append + 1 new test file),
+  `apps/admin` (1 new feature folder + 1 new route file + nav-config line), `packages/types`
+  (additive type).
+- **Risk class:** LOW — read-only aggregation; no schema/auth/billing/migration surface. The
+  money-adjacent correctness risk is covered by exact-value Fully-Automated fixture tests (the
+  program's Known-Gap ban for money ACs applies here — see Verification Evidence).
+- **Dependencies:** P2–P5 schema/data shapes all exist and are committed on
+  `feat/deals_unification` (verified 17-07-26) — the stub's "cannot start until P3-P6 land"
+  blocker is now cleared, except P5 (Rewards CRUD, ADM-005) and P6 (Orders view, ADM-006) admin
+  UIs are not built; this phase only READS the underlying tables, which all exist, so P7 is no
+  longer hard-blocked on P5/P6 execution. Note for inner-loop RESEARCH: re-confirm this claim at
+  phase entry.
 
 ---
 
-## Implementation Checklist (Implementation Steps — FLEXIBLE OUTLINE)
+## Implementation Checklist
 
-**FLEXIBLE OUTLINE — not an EXECUTE-ready checklist.**
+Server (packages/api):
 
-> EXECUTE-level checklist finalized at this phase's inner-loop PLAN-SUPPLEMENT after RESEARCH — kept
-> flexible; query shapes depend on data produced by P2-P6.
+1. Add `AdminAnalytics` (+ sub-shapes) to `packages/types/src/admin.ts` — additive export.
+2. Create `packages/api/src/routes/admin/analytics.ts`:
+   a. Zod query schema: `from`/`to` as `YYYY-MM-DD` strings (required), optional `branchId` uuid;
+      reject `from > to` with 400 via the shared admin error helper.
+   b. Range helper: convert `from`/`to` Manila dates to UTC `Date` bounds — `[from 00:00+08:00,
+      (to+1d) 00:00+08:00)` half-open interval (D3). Pure function, unit-testable.
+   c. Query 1 — orders base set: Drizzle select over `orders` filtered by `placed_at >= lower AND
+      placed_at < upper AND status NOT IN ('cancelled','rejected')` (+ optional `branch_id`),
+      selecting `id, branch_id, user_id, status, total, coupon_id, deal_id`.
+      **Implementation note:** with "basic" scale, fetch the filtered order rows once and compute
+      count/sum/AOV/deals-split/repeat-rate groupings in TypeScript from that single result set
+      (exact integer-cents math via `numericToCents` per row) — one indexed query, zero float SQL,
+      trivially fixture-testable. Switch to SQL `GROUP BY` only if row volume ever makes this a
+      problem (noted in Test Infra Improvement Notes; no index changes needed — `orders_branch_status_idx` exists).
+   d. Query 2 — deal-bundle order ids: `SELECT DISTINCT order_items.order_id FROM order_items JOIN
+      products ON products.id = order_items.product_id WHERE products.is_deal = true AND
+      order_items.order_id IN (base set ids)` — used for D1 signal (c).
+   e. Query 3 — `ordersPerBranch` branch names: `LEFT JOIN` from `branches` (or fetch branches list
+      and merge in TS) so zero-order branches appear with 0. When `branchId` given, restrict to it.
+   f. Query 4 — stars earned: `SUM(stars)` where `type='earned'` and `created_at` in range.
+   g. Query 5 — rewards unlocked/redeemed: two counts over `coupons` with `reward_id IS NOT NULL`,
+      by `created_at` / `used_at` in range.
+   h. Assemble response per Public Contracts; AOV = `Math.round(sumTotalCents / count)`, `null` on
+      zero count; repeat rate per definition table (`completed` numerator, D2 denominator).
+3. Append `adminRouter.use('/analytics', analyticsRouter)` to `routes/admin/index.ts` (append-only).
+4. Write `admin-analytics.integration.test.ts` (hermetic self-seeding, mirroring
+   `require-admin.integration.test.ts` / `admin-deals.integration.test.ts` patterns) — cases in
+   Verification Evidence. Includes the Manila-boundary edge fixture (an order at 23:30 Manila on
+   the range's last day = 15:30 UTC must be INCLUDED; 00:30 Manila the next day excluded).
 
-High-level shape (subject to change at PLAN-SUPPLEMENT):
+Client (apps/admin):
 
-1. RESEARCH: confirm final schema/columns actually shipped by P2-P6 (branches, products, deals,
-   coupons, rewards, orders, order_items, star_transactions, user_stars) — do not assume this plan's
-   cited columns are still exactly right; re-verify against the committed code at phase entry.
-2. RESEARCH: get explicit sign-off on the 6 metric definitions in the table above (or revised
-   definitions if RESEARCH surfaces new evidence — e.g. coupon/deal linkage nuance).
-3. INNOVATE (open decision, not decided here): Drizzle `sql` template helpers vs. raw SQL via
-   `db.execute(sql\`...\`)` for the aggregation queries; single combined endpoint vs. per-metric
-   endpoints; whether time-bucketing (e.g. daily/weekly breakdown) is in scope or only a single
-   aggregate over the whole range.
-4. Implement `packages/api/src/routes/admin/analytics.ts` per the INNOVATE decision — Zod-validated
-   query params, `requireAdmin`-gated, response envelope per Public Contracts.
-5. Register the new sub-router on the existing `adminRouter` mount (no new top-level mount).
-6. Build seeded-fixture-backed automated tests proving each metric's KNOWN expected value (see
-   Acceptance Criteria) — written against the real schema, not mocked.
-7. Build `apps/admin/src/features/analytics/**`: React Query hook(s) calling the new endpoint(s),
-   time-range picker component, metric-card/table components, wire into dashboard nav.
-8. Manual/agent-probe pass: confirm the dashboard screen renders all 6 metrics correctly for a known
-   seeded scenario and that changing the time-range filter changes the displayed numbers as expected.
+5. `admin-analytics-api.ts` fetch wrapper + `use-analytics.ts` react-query hook (query key includes
+   the full param tuple so a range change re-fetches — AC5's UI half).
+6. `time-range-picker.tsx`: "Last 7 days" / "Last 30 days" presets (computed in Manila local dates)
+   + custom from/to date inputs. Presets are pure date math — unit-testable.
+7. `metric-card.tsx` stat tile (label, value, sub-label) — shared composite for AOV, repeat rate,
+   stars, rewards, deals split; `branch-orders-table.tsx` on the existing `data-table` composite.
+8. `(dashboard)/analytics.tsx` route composing `page-header` + picker + cards + table +
+   `query-states` for loading/error/empty; register/enable the nav item in `nav-config.ts`.
+9. Component tests (vitest + @testing-library/react): picker preset math; screen renders all six
+   metrics from a mocked payload; changing the range updates the hook params (mock-level assert).
+10. `pnpm --filter @jojopotato/admin typecheck` + `build` clean; api typecheck clean. (Test-suite
+    runs deferred per the concurrent-workflow DB lock — see Verification Evidence note.)
 
 ---
 
 ## Acceptance Criteria
 
-1. Each of the 6 metrics is computed correctly against a seeded fixture with a KNOWN expected value
-   — not merely "returns a number of the right type." Example shape: seed 3 orders for branch A
-   (2 completed at $100/$150, 1 cancelled at $200) and assert AOV computes to exactly the value implied
-   by the signed-off definition (e.g. `(100+150)/2 = 125` if cancelled orders are excluded and AOV
-   uses `total`).
-2. Each metric's definition (from the Metric Definitions table) has explicit sign-off recorded
-   (in the phase report or a validate-contract note) before its fixture test is treated as
-   authoritative — a green test against an un-signed-off definition does not satisfy this criterion.
-3. Changing the `from`/`to` time-range query params changes the returned metric values in the
-   expected direction for a seeded fixture spanning multiple time buckets (e.g. orders both inside
-   and outside the queried range — the metric must exclude the out-of-range orders).
-4. Only `admin`/`super_admin` roles can read `/api/admin/analytics*` — a `staff` or `customer` role
-   request is rejected (403 or equivalent, matching the existing `adminRouter` rejection behavior
-   established Phase 1). Cite `packages/api/src/lib/require-admin.ts` (Phase 1) as the enforcing
-   mechanism — no new auth logic is written in this phase.
-5. No response payload from any analytics endpoint contains per-customer identifying fields (name,
-   email, phone, address) — aggregates only, per Cross-Cutting Compliance #4.
-6. The `apps/admin` analytics screen renders all 6 metrics and its time-range filter control actually
-   triggers a re-fetch with updated query params (agent-probe verified).
+1. **(#45 AC1)** `ordersPerBranch` matches hand-computed counts for a seeded multi-branch fixture
+   over a known range, excluding cancelled/rejected per D2.
+2. **(#45 AC2)** `averageOrderValueCents` equals a hand-computed exact cents value for a seeded
+   fixture (regression-style — including a cancelled order that must NOT move the number, and a
+   discounted order proving post-discount `total` is used).
+3. **(#45 AC3)** `dealsSplit.withDeals.count + withoutDeals.count === orderCount` AND the two
+   `sumTotalCents` add to the fixture's total — with the fixture containing all three D1 signal
+   kinds (coupon order, legacy deal_id order, is_deal bundle order) plus plain orders, and an order
+   carrying BOTH a coupon and a bundle line counted exactly once.
+4. **(#45 AC4)** `repeatPurchaseRate` matches a hand-computed fixture: users with 2+ completed
+   orders ÷ users with ≥1 (non-cancelled/rejected) order, incl. a user whose 2 orders are only
+   `pending` (in denominator, not numerator).
+5. **(#45 AC5)** Changing `from`/`to` recalculates ALL metrics: a fixture spanning two ranges
+   proves every one of the six metrics changes between range A and range B, including the D3
+   Manila-boundary edge case.
+6. `starsEarned` / `rewardsUnlocked` / `rewardsRedeemed` match hand-computed fixtures per D4/D5
+   (earned-only stars; reward-coupon mint vs burn counting; offer coupons excluded).
+7. Non-admin roles (staff/customer) are rejected on `/api/admin/analytics` (inherited guard —
+   regression assert, no new auth logic).
+8. Invalid params rejected with 400: missing `from`/`to`, malformed date, `from > to`.
+9. The analytics screen renders all six metrics and the range picker triggers a re-fetch with
+   updated params (component test for wiring + user Agent-Probe walkthrough for visuals).
+10. No per-customer identifying field in any response payload (code-review check).
 
 ---
 
 ## Verification Evidence
 
+> Note: per this session's constraint, no test suite or DB command is run at PLAN time (a
+> concurrent workflow owns the test DB). All Fully-Automated gates below run at EXECUTE/EVL via
+> `pnpm --filter @jojopotato/api test` (needs migrated Postgres) and
+> `pnpm --filter @jojopotato/admin test`.
+
 | Gate / Scenario | Strategy | Proves SPEC criterion |
 |---|---|---|
-| Seeded-fixture test: orders-per-branch count matches known expected value across 2+ branches | Fully-Automated | AC1 |
-| Seeded-fixture test: AOV computes to the exact signed-off-definition value for a known order set (incl. cancelled-order exclusion check) | Fully-Automated | AC1, AC2 |
-| Seeded-fixture test: deals-vs-no-deals lift computed correctly for a mixed known order set (some `discount_total > 0`, some `= 0`) | Fully-Automated | AC1, AC2 |
-| Seeded-fixture test: repeat-purchase rate matches known expected ratio for a seeded customer set (some with 1 order, some with 2+) | Fully-Automated | AC1, AC2 |
-| Seeded-fixture test: stars-issued sum matches known expected value, excluding `'adjusted'`/`'expired'` types per signed-off definition | Fully-Automated | AC1, AC2 |
-| Seeded-fixture test: rewards-redeemed count matches known expected value for a seeded set of `'redeemed'` star_transactions rows | Fully-Automated | AC1, AC2 |
-| Seeded-fixture test: time-range filter change excludes out-of-range orders/transactions from all 6 metrics | Fully-Automated | AC3 |
-| Integration test: `staff`/`customer` role request to `/api/admin/analytics*` is rejected | Hybrid (requires seeded non-admin session against running Postgres, mirrors existing `require-staff.integration.test.ts` pattern) | AC4 |
-| Manual code-review check: no per-customer identifying field appears in any analytics response shape | Agent-Probe | AC5 |
-| Agent-probe walkthrough: analytics screen renders all 6 metrics; changing time-range filter re-fetches with updated params and visibly changes displayed numbers | Agent-Probe | AC6 |
-| Metric-definition sign-off record: each of the 6 metrics in the Metric Definitions table has an explicit accept/revise decision on file (phase report or validate-contract note) before its fixture test is authoritative | Agent-Probe (process gate, not a runtime test) | AC2 |
+| Seeded fixture: orders-per-branch counts exact across 2+ branches, cancelled/rejected excluded, zero-order branch shows 0 | Fully-Automated (api vitest) | AC1 |
+| Seeded fixture: AOV exact cents value; cancelled order and discount handling proven | Fully-Automated (api vitest) | AC2 |
+| Seeded fixture: deals split partition sums to total across all 3 D1 signals; double-signal order counted once | Fully-Automated (api vitest) | AC3 |
+| Seeded fixture: repeat purchase rate exact ratio incl. pending-only user edge | Fully-Automated (api vitest) | AC4 |
+| Seeded fixture: two-range recalculation of all 6 metrics + Manila 23:30/00:30 boundary edge | Fully-Automated (api vitest) | AC5 |
+| Seeded fixture: starsEarned (earned-only), rewardsUnlocked (mint), rewardsRedeemed (burn), offer-coupon exclusion | Fully-Automated (api vitest) | AC6 |
+| Integration: staff/customer request → rejected by inherited requireAdmin | Fully-Automated (api vitest, existing hermetic session pattern) | AC7 |
+| Integration: 400s for missing/malformed/inverted range params | Fully-Automated (api vitest) | AC8 |
+| Component tests: screen renders 6 metrics from mocked payload; picker preset math; range change updates query params | Fully-Automated (admin vitest/jsdom) | AC9 (wiring half) |
+| User walkthrough: analytics screen visual render + live range-change behavior against dev DB | Agent-Probe (user-run, per repo convention) | AC9 (visual half) |
+| Code-review scan: response shapes contain no customer-identifying field | Agent-Probe | AC10 |
+
+Money-adjacent gates (AC2, AC3, AC6) are HARD: Known-Gap is banned for them per the program
+charter — each must be a real passing Fully-Automated test before this phase can be VERIFIED.
 
 ---
 
 ## Test Infra Improvement Notes
 
-Testing context: this phase's fully-automated tiers rely on seeded-fixture integration tests against
-the running Postgres test DB (mirroring the existing `packages/api` vitest+supertest pattern, e.g.
-`require-staff.integration.test.ts`), run via `pnpm --filter @jojopotato/api test` after
-`docker compose up -d` + `pnpm --filter @jojopotato/api db:migrate`. No aggregation-query test
-pattern exists yet in this repo — the fixture/assertion style for multi-row `GROUP BY`/aggregate
-results is new territory for this test suite and should be captured as a reusable pattern once
-written, for reuse if the program ever adds more analytics metrics.
-
-(otherwise: none identified yet)
+- First aggregation-metric fixture pattern in the api suite — capture the seeded
+  multi-branch/multi-user/multi-range fixture builder as a reusable helper if more metrics are
+  ever added.
+- If order volume ever makes the fetch-rows-compute-in-TS approach (checklist 2c) slow, the
+  follow-up is SQL `GROUP BY` + possibly a partial index on `orders.placed_at` — deferred as
+  premature at MVP (no materialized views, per issue #45 "basic").
 
 ---
 
 ## Phase Loop Progress
 
-- [ ] 1. RESEARCH — confirm real P2-P6 schema/columns; get metric-definition sign-off
-- [ ] 2. INNOVATE — decide Drizzle-aggregate vs raw-SQL query approach; decide endpoint shape
-- [ ] 3. PLAN-SUPPLEMENT — finalize EXECUTE-level checklist based on RESEARCH+INNOVATE findings (or mark "n/a — research clean")
+- [x] 1. RESEARCH — schema/columns re-verified against `feat/deals_unification` ground truth
+      17-07-26 (this draft pass); metric-definition sign-off PENDING via `## Open Decisions For
+      Review`
+- [ ] 2. INNOVATE — largely pre-resolved by D6/D7 recommendations; confirm or override at review
+- [ ] 3. PLAN-SUPPLEMENT — apply user's Open-Decision overrides (or mark "n/a — decisions accepted")
 - [ ] 4. PVL — vc-validate-agent writes validate-contract (V1-V7)
-- [ ] 5. EXECUTE — implement per finalized checklist
+- [ ] 5. EXECUTE — implement per checklist
 - [ ] 6. EVL — independent gate re-run confirmation
 - [ ] 7. UPDATE PROCESS — archive phase, capture learnings, commit
 
@@ -289,21 +301,22 @@ written, for reuse if the program ever adds more analytics metrics.
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-07-analytics_PLAN_14-07-26.md`
-2. **Last completed phase or step:** none — this plan file has just been written; Phase Loop Progress
-   step 1 (RESEARCH) has not yet started. This phase itself cannot meaningfully begin until Phases
-   P2-P6 have committed, executed code (see Blast Radius — Dependency on earlier phases).
-3. **Validate-contract status:** pending — no validate-contract written yet (placeholder below).
-4. **Supporting context files loaded:**
-   `process/features/admin-dashboard/active/admin-dashboard_14-07-26/admin-dashboard_UMBRELLA_PLAN_14-07-26.md`,
-   `process/context/all-context.md`,
-   `packages/api/src/db/schema/{orders,order_items,deals,star_transactions,user_stars,rewards}.ts`,
-   `packages/api/src/routes/orders.ts` (Drizzle query-style reference),
-   `docs/jojo-potato-mobile-prd.md` (analytics mentions at lines ~105, 658, 746, 1219, 1386, 1567, 1706, 1748).
-5. **Next step for a fresh agent picking up mid-execution:** confirm Phases P2-P6 are actually
-   committed and merged (check `git log`/`process/features/admin-dashboard/active/`|`completed/` for
-   their phase reports and status), then run this phase's Step 1 RESEARCH — re-verify schema/columns
-   against the committed reality and secure explicit sign-off on the 6 metric definitions before any
-   INNOVATE or EXECUTE work begins.
+2. **Last completed phase or step:** DRAFT fleshed out 17-07-26 from the 14-07-26 stub against live
+   schema ground truth (branch `feat/deals_unification`). Awaiting user review of
+   `## Open Decisions For Review` (D1–D7). No code written.
+3. **Validate-contract status:** pending — placeholder below. PVL must not run until the Open
+   Decisions are accepted or overridden.
+4. **Supporting context files loaded:** umbrella plan (`admin-dashboard_UMBRELLA_PLAN_14-07-26.md`,
+   Current Execution State + composite rules), `process/context/all-context.md`,
+   `process/context/tests/all-tests.md`,
+   `packages/api/src/db/schema/{orders,order_items,star_transactions,coupons,rewards,products}.ts`,
+   `packages/api/src/routes/admin/index.ts`, `apps/admin/src/{features,components}` listing.
+5. **Next step for a fresh agent picking up:** present D1–D7 to the user; on acceptance run
+   PLAN-SUPPLEMENT (usually "n/a — decisions accepted") then PVL. On any override, update the
+   Metric Definitions table + checklist + ACs to match before PVL. Note the umbrella's Current
+   Execution State says Phase 5 (ADM-005) is nominally next — sequencing this phase ahead of P5/P6
+   is itself subject to user confirmation, though no hard code dependency blocks it (see Blast
+   Radius — Dependencies).
 
 ---
 

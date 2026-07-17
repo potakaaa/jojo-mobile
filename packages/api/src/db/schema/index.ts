@@ -11,12 +11,15 @@ export * from './products';
 export * from './product_options';
 export * from './branch_product_availability';
 
-// 4. No FK dependencies (enum-carrying)
-export * from './deals';
+// 4a. No FK dependencies (ADM-008 — parent of offers)
+export * from './promotions';
 
-// 5. Depends on deals / products / branches
-export * from './deal_products';
-export * from './deal_branches';
+// 4b. Depends on promotions (enum-carrying) — ADM-008: renamed from deals
+export * from './offers';
+
+// 5. Depends on offers / products / branches — ADM-008: renamed from deal_products/deal_branches
+export * from './offer_products';
+export * from './offer_branches';
 
 // 5b. Depends on products (self-referential — ADM-004 deals-as-products)
 export * from './deal_components';
@@ -32,7 +35,7 @@ export * from './session';
 export * from './account';
 export * from './verification';
 
-// 8. Depends on users / deals / rewards (lazy ref)
+// 8. Depends on users / offers / rewards (lazy ref)
 export * from './coupons';
 
 // 9. Depends on users / branches

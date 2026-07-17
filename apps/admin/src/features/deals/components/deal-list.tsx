@@ -1,5 +1,7 @@
 import { DataTable, type DataTableColumn } from '@/components/data-table';
+import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { dealStatus } from '@/lib/entity-status';
 
 import type { AdminDealProduct } from '../lib/admin-deals-api';
 
@@ -43,7 +45,14 @@ export function DealList({
       cell: (d) => formatPeso(d.basePriceCents),
       className: 'font-mono text-xs',
     },
-    { key: 'status', header: 'Status', cell: (d) => (d.isActive ? 'Active' : 'Inactive') },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (d) => {
+        const status = dealStatus(d);
+        return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>;
+      },
+    },
     {
       key: 'actions',
       header: 'Actions',

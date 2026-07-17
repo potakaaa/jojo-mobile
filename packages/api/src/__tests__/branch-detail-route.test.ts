@@ -1,4 +1,5 @@
 import { and, eq, gte, lte, notExists, sql } from 'drizzle-orm';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
@@ -29,16 +30,23 @@ process.env.DATABASE_URL ??= 'postgres://jojo:jojo@localhost:5432/jojopotato';
 
 type DbModule = typeof import('../db/client');
 type SchemaModule = typeof import('../db/schema/index');
+type IndexModule = typeof import('../index');
 
 let db: DbModule['db'];
+let app: IndexModule['app'];
 let branches: SchemaModule['branches'];
-let deals: SchemaModule['deals'];
-let dealBranches: SchemaModule['dealBranches'];
+// ADM-008: schema symbols renamed deals→offers, dealBranches→offerBranches.
+// Bind to the same local names (aliased) so the mirror-query body below is
+// unchanged apart from the .deal_id → .offer_id column rename.
+let deals: SchemaModule['offers'];
+let dealBranches: SchemaModule['offerBranches'];
 let dbAvailable = false;
 
 beforeAll(async () => {
   ({ db } = await import('../db/client'));
-  ({ branches, deals, dealBranches } = await import('../db/schema/index'));
+  ({ app } = await import('../index'));
+  ({ offers: deals, offerBranches: dealBranches } = await import('../db/schema/index'));
+  ({ branches } = await import('../db/schema/index'));
   try {
     // Cheap connectivity + migration probe: if this select throws (no DB, or
     // migrations weren't applied), skip.
@@ -73,7 +81,7 @@ async function visibleDealsForBranch(branchId: string) {
   const explicitRows = await db
     .select({ deal: deals })
     .from(deals)
-    .innerJoin(dealBranches, eq(dealBranches.deal_id, deals.id))
+    .innerJoin(dealBranches, eq(dealBranches.offer_id, deals.id))
     .where(
       and(
         eq(dealBranches.branch_id, branchId),
@@ -92,7 +100,7 @@ async function visibleDealsForBranch(branchId: string) {
           db
             .select({ one: sql`1` })
             .from(dealBranches)
-            .where(eq(dealBranches.deal_id, deals.id)),
+            .where(eq(dealBranches.offer_id, deals.id)),
         ),
         eq(deals.is_active, true),
         lte(deals.start_at, now),
@@ -158,5 +166,37 @@ describe('GET /api/branches/:id query logic', () => {
     expect(branchRow!.slug).toBe('jojo-sm-downtown');
     // SM Downtown is open but pickup-paused (is_accepting_pickup: false).
     expect(branchRow!.is_accepting_pickup).toBe(false);
+  });
+
+  // AC10b wire-freeze (Locked Decision 7B): the GET /api/branches/:id
+  // `{ branch, deals: [...] }` array items must expose the frozen legacy public
+  // deal fields and NOTHING internal. This exercises the real HTTP route (not the
+  // query mirror) so it proves the handler's projection: the ADM-008 deals→offers
+  // rename kept the public `deal_*` column names, and the ADM-008-added internal
+  // columns (`promotion_id`, `benefit_product_id`) must NOT leak into the response.
+  it('deals array items expose the frozen public field set and hide internal columns (AC10b)', async () => {
+    if (!dbAvailable) return;
+    const centrioId = await branchIdBySlug('jojo-centrio');
+    expect(centrioId).not.toBeNull();
+
+    const res = await request(app).get(`/api/branches/${centrioId}`);
+    expect(res.status).toBe(200);
+    const deals = res.body.deals as Record<string, unknown>[];
+    expect(deals.length).toBeGreaterThan(0);
+    const sample = deals[0]!;
+
+    for (const key of [
+      'id',
+      'title',
+      'deal_type',
+      'discount_value',
+      'is_active',
+      'start_at',
+      'end_at',
+    ]) {
+      expect(sample).toHaveProperty(key);
+    }
+    expect(sample).not.toHaveProperty('promotion_id');
+    expect(sample).not.toHaveProperty('benefit_product_id');
   });
 });

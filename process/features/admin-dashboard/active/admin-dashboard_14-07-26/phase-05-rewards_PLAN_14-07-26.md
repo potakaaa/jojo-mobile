@@ -1,6 +1,6 @@
 ---
 name: plan:admin-phase-05-rewards
-description: "Phase 5 (ADM-005, #43) — Rewards CRUD for the admin dashboard program"
+description: "Phase 5 (ADM-005, #43) — Rewards Configuration CRUD for the admin dashboard program. DRAFT fleshed out 17-07-26 against post-ADM-008 ground truth; open product decisions marked for user review."
 date: 14-07-26
 metadata:
   node_type: memory
@@ -9,202 +9,308 @@ metadata:
   phase: 5
 ---
 
-# Phase 5 — Rewards CRUD (ADM-005, #43)
+# Phase 5 — Rewards Configuration CRUD (ADM-005, #43)
 
-**Date:** 14-07-26
-**Complexity:** COMPLEX (phase-program phase plan)
-**Status:** ⏳ PLANNED
+**Date:** 14-07-26 (stub) — **DRAFT fleshed out 17-07-26**
+**Complexity:** COMPLEX (phase-program phase plan — carries a program HARD invariant)
+**Status:** 📝 DRAFT — pending user review of `## Open Decisions For Review`
 
-Date: 14-07-26
-Status: PLANNED
+Date: 14-07-26 (draft updated 17-07-26)
+Status: DRAFT — pending user review
 Complexity: COMPLEX (phase-program phase plan)
+
+**TL;DR:** Full admin CRUD for the existing `rewards` table (zero schema change needed —
+verified column-by-column), following the ADM-008 offers/promotions route + UI patterns.
+The correctness core is proving three non-retroactivity invariants with Fully-Automated
+tests: (1) `required_stars` edits never rewrite `star_transactions` history, (2) they never
+mutate already-issued reward coupons, (3) deactivation stops NEW unlocks without
+invalidating issued unused coupons. STAR-002 threshold pickup is live-read by construction
+— the test locks it against future caching.
+
+---
+
+## Open Decisions For Review
+
+All four are recommended choices baked into this draft; flip any and the affected
+checklist items are called out inline.
+
+| # | Decision | Recommendation |
+|---|---|---|
+| D1 | Issue AC4 — single-active-default vs multiple-concurrent reward rules | **Multiple-concurrent, documented + tested as deterministic** (recommended — pending user review). Ground truth: the seed already ships 4 concurrent active tiers (4/5/6/8 stars) and the STAR-003 unlock path is an explicitly battle-pass cumulative model (`star-earning.ts` `unlockRewardsForLifetime` — one coupon per crossed active tier; `GET /rewards/summary` targets the MIN active tier). Enforcing single-active would be a behavior regression against live, tested code. This plan satisfies AC4 via the "explicitly documented as deterministic tested behavior" branch of the issue, with a dedicated multi-tier determinism test. |
+| D2 | `reward_type` app-level allow-list values | **`['free_item', 'fixed_discount', 'percentage_discount']`** (recommended — pending user review). These are the only 3 values used by the seed (`SeedReward` union, `seed/data.ts:336`), the only 3 with label rendering (`rewardDiscountLabel`, `serializers.ts:732`), and `free_item` is the only one with redemption math (`computeRewardDiscountCents`). NOT including `free_upgrade` — avoids repeating the ADM-008 known-gap where a selectable mechanic silently redeems for ₱0. The DB column is a plain `varchar` (no pgEnum), so this Zod enum is the ONLY gate. |
+| D3 | Deactivate convention | **`PATCH /api/admin/rewards/:id` with `isActive: false`** (recommended — pending user review). Matches the freshest precedent (ADM-008 `offers.ts` `updateOfferSchema` carries `isActive`), rather than Phase 2's older dedicated `PATCH .../deactivate` route. Soft-delete only either way — no hard `DELETE` ever. |
+| D4 | Cross-field validation on create/update | **Enforce type-conditional required fields** (recommended — pending user review): `reward_type = 'free_item'` ⇒ `eligibleProductId` required + `rewardValueCents` must be null; discount types ⇒ `rewardValueCents` required (positive) + `eligibleProductId` must be null. Prevents mint-able-but-worthless rewards (a `free_item` reward without a product has no redemption math path — `computeRewardDiscountCents(eligibleProductId, cart)` needs the product id). Stricter than the DB (which allows all-null); if user prefers looser, drop the Zod `.superRefine` in checklist item 3. |
+
+---
 
 ### Phase Completion Rules
 
-This phase is CODE DONE when all Implementation Checklist items are complete and fully-automated
+This phase is CODE DONE when all Implementation Checklist items are complete and Fully-Automated
 test gates in Verification Evidence are green. It is VERIFIED only after EVL confirms all gates
-independently and the reward-retroactivity regression test (AC1) passes — Known-Gap is banned for
-AC1 per the umbrella charter.
+independently and the retroactivity regression tests (AC1/AC2 below) pass — Known-Gap is banned
+for the retroactivity invariants per the umbrella charter.
 
 ---
 
 ## Overview
 
-Add CRUD for `rewards` (`packages/api/src/db/schema/rewards.ts:4-14`) behind the admin dashboard:
-name, `required_stars` (integer), `reward_type` (free-text `varchar` — **not** a DB `pgEnum`),
-`reward_value` (`numeric(10,2)`, nullable), `eligible_product_id` (nullable FK → `products.id`), and
-the existing `is_active` boolean for soft-delete.
+Add admin CRUD for `rewards` (`packages/api/src/db/schema/rewards.ts:4-14`) behind the
+admin dashboard: `name`, `required_stars` (integer), `reward_type` (free-text `varchar` —
+**not** a DB `pgEnum`), `reward_value` (`numeric(10,2)`, nullable, decimal pesos → cents at
+the boundary), `eligible_product_id` (nullable FK → `products.id`), `is_active` (soft-delete).
 
-Because `reward_type` has no DB-level constraint, the admin API MUST validate it against an
-app-level allow-list (Zod enum) — the database will silently accept any string, so correctness here
-is entirely an application-layer responsibility (Safety/Clarity cross-cutting principles).
+### Schema verification (column-by-column vs issue #43) — NO migration needed
 
-The umbrella's second named **HARD invariant** lives in this phase: editing a reward's
-`required_stars` must affect **future** redemptions only, and must **never** rewrite historical
-`star_transactions` rows. Confirmed structurally safe by inspection — `star_transactions`
-(`packages/api/src/db/schema/star_transactions.ts:7-20`) has columns `id, user_id, order_id, type
-(earned|redeemed|adjusted|expired), stars, description, created_at` and **carries no FK or column
-referencing `rewards` at all** (no `reward_id`), so a reward row's `required_stars` value can never
-be structurally reachable from a `star_transactions` row — there is no join path for an UPDATE to
-`rewards` to cascade into. This phase must still add an automated regression test that PROVES this
-byte-for-byte (see Acceptance Criteria #1) — the charter bans Known-Gap for this invariant even
-though the schema shape makes accidental violation unlikely; the test exists to catch a future
-schema/route change that introduces a join and silently breaks the invariant.
+| Issue field | Schema column | Status |
+|---|---|---|
+| name | `name varchar NOT NULL` | ✅ exists |
+| required_stars | `required_stars integer NOT NULL` | ✅ exists |
+| reward_type | `reward_type varchar NOT NULL` (no enum — app-layer gate only, D2) | ✅ exists |
+| reward_value | `reward_value numeric(10,2)` nullable | ✅ exists |
+| eligible_product_id | `eligible_product_id uuid REFERENCES products(id)` nullable | ✅ exists |
+| is_active | `is_active boolean DEFAULT true NOT NULL` | ✅ exists |
 
-Dependency per Phase Map: depends on P0 (scaffold) + P1 (auth/RBAC — `requireAdmin`), **not** on
-P2/P3/P4 (branches/products/deals) — `eligible_product_id` is a nullable, unenforced-at-write-time
-reference for display/filtering only in this phase's scope (no product-existence validation is
-required beyond FK integrity; product picker UI is a nice-to-have, not a hard requirement, since
-Phase 5 has no ordering dependency on Phase 3's products UI existing yet in a HYBRID build).
+No column gaps. `created_at`/`updated_at` also exist. **Zero schema change; zero migration.**
+(Non-gap noted: `rewards` has no unique constraint on `name` — the seed handles idempotency
+app-side by find-by-name. Duplicate names are allowed; not an issue-#43 requirement.)
+
+### How the retroactivity invariants hold (mechanism, then proof)
+
+**Ground-truth correction vs the 14-07 stub:** the stub claimed "no table references
+`rewards` at all." That is now stale — **`coupons.reward_id` exists** (STAR-003/004,
+`coupons.ts:20`), so issued reward coupons ARE structurally reachable from a reward row.
+The invariants therefore have two distinct surfaces:
+
+1. **`star_transactions` (issue AC2 first half):** still carries NO reward reference
+   (`star_transactions.ts:17-41` — columns: id, user_id, order_id, type, stars,
+   description, created_at). No join path exists for a `rewards` UPDATE to touch history.
+   The regression test exists to catch a FUTURE schema/route change that adds one.
+2. **Issued coupons (issue AC2 second half + AC3):** a coupon row snapshots nothing from
+   the reward except the FK — redemption reads the reward live at apply time
+   (`routes/lib/coupon-apply.ts` / STAR-004), and unlock-time minting is the only writer.
+   Editing `required_stars` or `reward_value` must leave existing `coupons` rows
+   byte-for-byte unchanged (they will, since the admin PATCH only writes `rewards`), and
+   deactivating a reward must (a) stop NEW unlocks — guaranteed by the
+   `eq(rewards.is_active, true)` filter in `unlockRewardsForLifetime`
+   (`star-earning.ts:110`) — while (b) leaving already-issued `available` coupons
+   redeemable. **(b) requires a RESEARCH-step verification**: confirm the STAR-004
+   coupon-apply path does NOT filter on `rewards.is_active` for reward-coupons (checklist
+   item 1). If it does, that is a product-behavior conflict to surface, not silently
+   change.
+
+**Issue AC1 (STAR-002 pickup without deploy):** automatic by construction — both
+`GET /rewards/summary` (`routes/rewards.ts:54-59`, live MIN-active query per request) and
+the unlock path read `rewards` live; no constant, cache, or env var carries the threshold.
+The test locks this: create/edit a reward via the admin API, immediately read
+`/rewards/summary` and `/rewards/available` in the same process, assert the new values.
+
+**Unlock-crossing semantics when lowering 5→3 (deterministic, documented per D1):** the
+model is cumulative-lifetime. Lowering a threshold does NOT retroactively mint coupons for
+users already past it; they unlock on their NEXT star credit (the unlock runs only inside
+`creditStarForCompletedOrder`). Raising a threshold does not revoke previously unlocked
+coupons. Both directions get determinism tests.
+
+### Dependencies
+
+Per the umbrella Phase Map: depends on P0 (scaffold) + P1 (auth/RBAC `requireAdmin`) — both
+✅ delivered. Product picker UI additionally benefits from P3 (products CRUD, ✅ delivered) —
+the `eligible_product_id` select can reuse the admin products list endpoint. No dependency
+on ADM-008 code, but ADM-008's `offers.ts`/`promotions.ts` routes and
+`apps/admin/src/features/offers/**` are the freshest patterns to mirror.
 
 ---
 
 ## Cross-Cutting Compliance
 
-1. **Modularity** — one route file `packages/api/src/routes/admin/rewards.ts` (new), mounted once
-   inside the shared `adminRouter` (established in Phase 1) behind `requireAdmin`. One feature folder
-   `apps/admin/src/features/rewards/**` (new: list, create/edit form, delete/deactivate action).
-   Reuses Phase 1's shared `requireAdmin` guard, shared `AdminApiError`/error-envelope pattern, and
-   Phase 2's established serializer file convention (`admin/lib/serializers.ts`-style helper) rather
-   than reimplementing money/shape conversion locally.
-2. **Clarity** — Zod `safeParse` request validation (mirrors `routes/orders.ts:24-34`); response
-   envelopes `{ resource: reward }` / `{ resources: reward[] }` matching the branches/orders/staff
-   convention; typed errors via the shared admin error class (mirrors `OrderError`,
-   `packages/api/src/routes/orders.ts:39-47`); serializer helper converts DB row → API shape,
-   including `reward_value` decimal-string → cents via the existing `numericToCents`
-   (`packages/api/src/routes/lib/serializers.ts:105-107`) — reused, not reimplemented.
-3. **Safety** — soft-delete via existing `rewards.is_active` (`rewards.ts:11`) — no hard `DELETE`.
-   Editing `required_stars` requires an explicit UI confirmation step ("this only affects future
-   redemptions") since it is logically destructive to in-flight customer expectations even though no
-   row is deleted. The reward-retroactivity regression test (Acceptance Criteria #1) is the
-   non-negotiable proof for this section — Known-Gap is banned.
-4. **Security** — `/api/admin/rewards/*` mounted behind `requireAdmin` at the router level (same
-   pattern as `app.use('/api/staff', requireStaff(auth), staffRouter)`,
-   `packages/api/src/index.ts:51`) — never a per-handler inline role check. All request bodies
-   validated server-side with Zod; a client-side rejection is never trusted as the only gate.
-
-5. **UI component modularity & reusability** — `features/rewards/` reuses the P2 composites; no
-   re-implementation. Reward-specific UI is limited to the `reward_type` select (Zod allow-list) and
-   the `required_stars` numeric input. Token-driven styling only. Any reusable piece a later domain
-   would copy gets promoted to `components/` under the second-consumer rule.
+1. **Modularity** — one new route file `packages/api/src/routes/admin/rewards.ts`, appended
+   to the aggregator (`routes/admin/index.ts` — 5th consumer of the append-only pattern;
+   guard + CORS inherited from the `/api/admin` mount, never re-applied). One new feature
+   folder `apps/admin/src/features/rewards/**` mirroring `features/offers/**`
+   (lib/admin-rewards-api.ts, hooks/use-admin-rewards.ts, components/*). Reuses shared
+   composites: `data-table`, `form-dialog`, `confirm-dialog`, `query-states`,
+   `page-header`, `status-badge` (+ `entity-status.ts`) — no local re-implementations.
+2. **Clarity** — Zod schemas mirroring `offers.ts` (`createOfferSchema` shape, `.partial()`
+   + non-empty `.refine` for PATCH); `AdminApiError`/`handleAdminError` from
+   `routes/admin/lib/errors.ts`; serializer added to the shared
+   `routes/lib/serializers.ts` (`serializeAdminReward` — extends the existing public
+   `ApiReward`/`serializeReward` there with `createdAt`/`updatedAt`; cents at the boundary
+   via existing `numericToCents`/`centsToNumeric`, never re-implemented).
+3. **Safety** — soft-delete only via `is_active` (D3); no hard `DELETE`. Editing
+   `required_stars` gets an explicit UI confirmation dialog ("affects future unlock
+   crossings only — past history and issued coupons are untouched"). The two
+   retroactivity regression tests are the non-negotiable proof — Known-Gap BANNED.
+4. **Security** — all routes inherit `requireAdmin` (admin + super_admin; rewards CRUD is
+   not super_admin-only). All bodies validated server-side with Zod; the allow-list (D2)
+   is the ONLY `reward_type` gate since the DB accepts any string.
+5. **UI component modularity** — reward-specific UI limited to the `reward_type` select
+   (sourced from the shared allow-list constant), the `required_stars` numeric input with
+   its edit-confirmation, and the type-conditional field toggling (D4). Token-driven
+   styling only; second-consumer rule governs any promotion to `components/`.
 
 ---
 
 ## Touchpoints
 
-- `packages/api/src/routes/admin/rewards.ts` (new) — CRUD route handlers
-- `packages/api/src/routes/admin/lib/serializers.ts` (shared, established Phase 1/2 — extended with
-  `serializeReward`)
-- `packages/api/src/routes/admin/index.ts` (established Phase 1) — mount `rewardsRouter` into the
-  shared `adminRouter`
-- `packages/types/src/admin.ts` (established Phase 1) — extend with `AdminReward`, `RewardType`
-  allow-list type, request/response DTOs
-- `apps/admin/src/features/rewards/**` (new) — list screen, create/edit form, deactivate action,
-  API client hook(s)
-- `packages/api/src/db/schema/rewards.ts` — READ ONLY, no schema change expected (confirm during
-  RESEARCH; only touch if `is_active` or another column is found missing)
-- Regression test file (new, exact location TBD at PLAN-SUPPLEMENT / EXECUTE) — proves
-  reward-retroactivity invariant
+- `packages/api/src/routes/admin/rewards.ts` (new) — CRUD handlers (list/get/create/update
+  incl. deactivate-via-PATCH per D3)
+- `packages/api/src/routes/admin/index.ts` (edit, append-only) — `adminRouter.use('/rewards', rewardsRouter)`
+- `packages/api/src/routes/lib/serializers.ts` (edit, additive) — `AdminReward` interface +
+  `serializeAdminReward` (existing `ApiReward`/`serializeReward` untouched — the public
+  STAR-002 wire shape stays frozen)
+- `packages/types/src/rewards.ts` (edit, additive) — `REWARD_TYPES` runtime constant +
+  `RewardType` union (shared by API Zod enum and admin UI select; mirrors the
+  `STAFF_ROLES` precedent). Note: placed in `rewards.ts` next to the existing `Reward`
+  type, NOT `admin.ts` — domain colocation.
+- `apps/admin/src/features/rewards/**` (new) — `lib/admin-rewards-api.ts`,
+  `hooks/use-admin-rewards.ts`, `components/{reward-list,reward-form}.tsx` (+ component
+  tests), route files `(dashboard)/rewards.tsx` (thin `<Outlet/>` layout) +
+  `(dashboard)/rewards.index.tsx` (list) per the P3 layout+index gotcha
+- `apps/admin/src/config/nav-config.ts` (edit) — enable the Rewards nav item
+- `packages/api/src/routes/admin/__tests__/admin-rewards.integration.test.ts` (new) — all
+  Fully-Automated gates incl. both retroactivity regressions
+- READ-ONLY (verified, no change): `packages/api/src/db/schema/rewards.ts`,
+  `star_transactions.ts`, `coupons.ts`, `lib/star-earning.ts`, `routes/rewards.ts`,
+  `routes/lib/coupon-apply.ts` (checklist item 1 verifies its `is_active` behavior)
 
 ## Public Contracts
 
-- `GET /api/admin/rewards` → `{ resources: AdminReward[] }` (list, includes inactive unless
-  `?active=true` filter — confirm exact query-param shape during RESEARCH/EXECUTE against Phase 2's
-  established list-filter convention)
-- `GET /api/admin/rewards/:id` → `{ resource: AdminReward }`
-- `POST /api/admin/rewards` → validates body against Zod schema (name, `requiredStars: number
-  (int, positive)`, `rewardType: z.enum([...allow-list])`, `rewardValueCents: number | null`,
-  `eligibleProductId: string uuid | null`) → `{ resource: AdminReward }`
-- `PATCH /api/admin/rewards/:id` → partial update, same validation rules per field present →
-  `{ resource: AdminReward }`
-- `PATCH /api/admin/rewards/:id/deactivate` (or `is_active` toggle via the same PATCH — decide
-  during EXECUTE which convention Phase 2/3 established and match it) → soft-delete
-- All routes require `requireAdmin` session; `admin` and `super_admin` both permitted (rewards CRUD
-  is not a `super_admin`-only action, per the umbrella's role-management scoping — only role
-  promotion/demotion itself is `super_admin`-gated)
+- `GET /api/admin/rewards` → `{ rewards: AdminReward[] }` — ALL rewards incl. inactive
+  (admin surface shows everything; `status-badge` renders active/inactive), ordered
+  `required_stars` asc. (Matches ADM-008 offers list-all convention.)
+- `GET /api/admin/rewards/:id` → `{ reward: AdminReward }` (404 on missing/malformed id)
+- `POST /api/admin/rewards` → body `{ name, requiredStars: int > 0, rewardType:
+  z.enum(REWARD_TYPES), rewardValueCents?: int > 0 | null, eligibleProductId?: uuid |
+  null, isActive?: boolean }` + D4 cross-field rules → 201 `{ reward: AdminReward }`.
+  `eligibleProductId` existence pre-checked (404 `Product not found`, mirroring
+  `assertPromotionExists`) so an FK violation never surfaces as a raw 500.
+- `PATCH /api/admin/rewards/:id` → `createSchema.partial()` + non-empty refine + D4 rules
+  re-evaluated against the merged row → `{ reward: AdminReward }`. `isActive: false` IS the
+  deactivate path (D3).
+- **Wire-frozen (unchanged by this phase):** public `GET /rewards/summary`,
+  `GET /rewards/available`, `GET /rewards/history`, `POST /rewards/:id/redeem`,
+  `POST /coupons/apply`, and the `coupons` redemption/burn path. This phase only ADDS an
+  admin surface over the same table.
+- `AdminReward` wire shape: `ApiReward` fields (`id, name, requiredStars, rewardType,
+  rewardValue (cents|null), eligibleProductId, isActive`) + `createdAt`/`updatedAt` ISO
+  strings.
 
 ## Blast Radius
 
-- **Packages touched:** `packages/api` (new route file + shared admin router mount + serializer
-  extension), `packages/types` (new/extended `admin.ts` types), `apps/admin` (new feature folder)
-- **Estimated file count:** ~6-9 new/modified files (1 route, 1 serializer extension, 1 types
-  extension, 1 router-mount edit, 3-4 new `apps/admin` files, 1 new regression test file)
-- **Risk class:** MEDIUM — no schema migration expected, no destructive-by-default operation
-  (soft-delete only), but carries one of the program's two named HARD invariants
-  (reward-retroactivity) — elevates this phase's test-gate bar above a normal CRUD phase despite the
-  otherwise-low blast radius
+- **Packages:** `packages/api` (1 new route file, 1 aggregator append, 1 additive
+  serializer edit, 1 new test file), `packages/types` (1 additive edit),
+  `apps/admin` (1 new feature folder ~6 files + 2 route files + nav-config edit)
+- **File count:** ~12-14 new/modified
+- **Risk class:** MEDIUM-HIGH — no migration, soft-delete only, but this phase owns one of
+  the program's named HARD invariants (reward retroactivity) AND sits upstream of live
+  money-adjacent paths (reward coupons redeem into real order discounts via
+  `computeRewardDiscountCents`). The public rewards/coupons wire shapes are frozen; any
+  test failure in `rewards.integration.test.ts` / `star-earning.integration.test.ts` /
+  `admin-offers.integration.test.ts` after this phase is a regression, not acceptable drift.
 
 ---
 
 ## Implementation Checklist
 
-**EXECUTE-level checklist finalized at this phase's inner-loop PLAN-SUPPLEMENT after RESEARCH — kept flexible so earlier phases' CRUD pattern informs the exact steps.**
+DRAFT-level checklist; finalized at inner-loop PLAN-SUPPLEMENT after Step 1 RESEARCH.
 
-High-level outline only:
-
-1. RESEARCH: confirm Phase 1/2/3's established `admin/lib/serializers.ts` and `AdminApiError`
-   conventions exist and are reusable as-is (do not re-derive independently); confirm whether
-   `rewards.reward_type` should have an app-level allow-list sourced from a shared constant
-   (mirroring `STAFF_ROLES` in `packages/types/src/staff.ts`) — propose `REWARD_TYPES` in
-   `packages/types/src/admin.ts` if none exists yet.
-2. Add `rewards.ts` route file: list/get/create/update/deactivate handlers, Zod schemas, `requireAdmin`
-   already applied at router-mount (no per-handler check needed).
-3. Extend `packages/types/src/admin.ts`: `AdminReward` type, `RewardType` allow-list constant + type,
-   request/response DTOs.
-4. Extend admin serializer helper: `serializeReward` (DB row → API shape; `reward_value` numeric →
-   cents via `numericToCents`).
-5. Mount `rewardsRouter` into the shared `adminRouter` (established Phase 1).
-6. Build `apps/admin/src/features/rewards/**`: list screen (table: name, required_stars, reward_type,
-   is_active), create/edit form (with reward_type dropdown sourced from the allow-list, not free
-   text), deactivate action with confirmation dialog per Cross-Cutting Compliance #3.
-7. Write the reward-retroactivity regression test (Acceptance Criteria #1) — this is the
-   highest-priority test in the phase and should be written before/alongside the CRUD handlers
-   (TDD-first), not deferred to the end.
-8. Write remaining fully-automated + hybrid test gates per the Verification Evidence table.
+1. **RESEARCH verifications (read-only):** (a) confirm `routes/lib/coupon-apply.ts` does
+   NOT reject an `available` reward-coupon whose parent reward has `is_active = false` —
+   this decides whether issue AC3's "already-issued coupons stay valid" holds today or
+   needs a product decision; (b) confirm `admin/lib/errors.ts` exports cover the FK/404
+   translation needed; (c) confirm the admin products list endpoint shape for the product
+   picker; (d) re-confirm no other live reader of `rewards` exists beyond
+   `routes/rewards.ts`, `star-earning.ts`, coupon-apply, and serializer label paths.
+2. Add `REWARD_TYPES` const + `RewardType` type to `packages/types/src/rewards.ts` (D2).
+3. Write `packages/api/src/routes/admin/rewards.ts`: Zod schemas (create + partial update
+   with non-empty refine + D4 `.superRefine` cross-field rules), `assertProductExists`
+   helper, handlers GET-list / GET-:id / POST / PATCH; errors via
+   `AdminApiError`/`handleAdminError`.
+4. Add `AdminReward` + `serializeAdminReward` to `routes/lib/serializers.ts` (additive).
+5. Append `adminRouter.use('/rewards', rewardsRouter)` in `routes/admin/index.ts`.
+6. **TDD-first:** write `admin-rewards.integration.test.ts` retroactivity tests BEFORE/
+   alongside handlers — (i) star-history snapshot test, (ii) issued-coupon snapshot test,
+   (iii) deactivation unlock-stop + issued-coupon-survival test, (iv) STAR-002 live-pickup
+   test, (v) 5→3 lowering + raising determinism tests, (vi) CRUD round-trips, allow-list
+   rejection, 403s, FK 404, D4 cross-field 4xx. Reuse the hermetic self-seeding
+   `makeUser(role)` fixture pattern (`require-admin.integration.test.ts` /
+   `admin-offers.integration.test.ts`).
+7. Build `apps/admin/src/features/rewards/**`: api lib (`credentials:'include'`),
+   react-query hooks (list/detail/create/update mutations with invalidation), `reward-list`
+   (data-table: name, required_stars, reward_type, value, status-badge), `reward-form`
+   (form-dialog: type select from `REWARD_TYPES`, D4 conditional fields, product picker for
+   free_item), `required_stars`-edit confirmation + deactivate confirmation
+   (confirm-dialog). Route files: `rewards.tsx` (`<Outlet/>` layout) + `rewards.index.tsx`
+   (P3 gotcha). Enable nav item in `nav-config.ts`.
+8. Component tests for `reward-list` + `reward-form` (vitest + @testing-library/react,
+   mirroring `offer-list.test.tsx`/`offer-form.test.tsx`).
+9. Run gates: api typecheck, admin typecheck, `pnpm --filter @jojopotato/api test` (full
+   suite — regression guard over rewards/star-earning/coupon suites),
+   `pnpm --filter @jojopotato/admin test`, admin build.
 
 ---
 
 ## Acceptance Criteria
 
-1. **[TOP-BILLED — HARD INVARIANT]** Editing a reward's `required_stars` (via `PATCH
-   /api/admin/rewards/:id`) leaves every existing `star_transactions` row byte-for-byte unchanged.
-   Proven by a dedicated automated regression test that: seeds a reward + at least one
-   `star_transactions` row referencing the same user (not the reward — there is no FK, confirmed at
-   `packages/api/src/db/schema/star_transactions.ts:7-20`), snapshots all `star_transactions` rows,
-   performs the `required_stars` update, re-reads all `star_transactions` rows, and asserts deep
-   equality against the snapshot. Known-Gap is BANNED for this criterion per the umbrella charter.
-2. `POST /api/admin/rewards` and `PATCH /api/admin/rewards/:id` create/update a reward with valid
-   fields and persist correctly (round-trip read matches write). Cite the route handler once written
-   (file:line to be confirmed at EXECUTE).
-3. An invalid `reward_type` value (not in the app-level allow-list) is rejected with a 4xx response
-   at the API layer — proven by a test asserting the DB itself has NO enum constraint (confirmed:
-   `rewards.ts:8` is a plain `varchar`, so app-level Zod validation is the *only* gate) and that the
-   Zod schema rejects an out-of-list value before it reaches the DB.
-4. Only `admin`/`super_admin` roles can write to `/api/admin/rewards/*` — a `customer` or `staff`
-   session receives 403 (mirrors the `requireStaff` 403 pattern at `require-staff.ts:65`, via the
-   Phase 1 `requireAdmin` equivalent). A read from a non-admin session is also rejected (no read-only
-   admin-lite exception in this program).
-5. Deactivating a reward (`is_active` → false) hides it from the default admin list view but the row
-   is retained (soft-delete, per Cross-Cutting Compliance #3) — no hard `DELETE` statement is issued
-   against `rewards`.
-6. `eligible_product_id`, when provided, must reference an existing `products.id` row — enforced by
-   the existing DB FK (`rewards.ts:10`); a nonexistent product id surfaces as a clear 4xx (FK
-   violation caught and translated), not a raw 500.
+Issue-#43 ACs are the SPEC criteria; each names its proving gate (REQ-TEST-LINK).
+
+1. **[Issue AC1]** A reward created/edited via the admin API is picked up by STAR-002's
+   displayed threshold without deploy — `GET /rewards/summary` + `/rewards/available`
+   reflect the change on the immediately-following request.
+   — proven by: gate G4 (live-pickup test); strategy: Fully-Automated.
+2. **[Issue AC2 — HARD invariant, Known-Gap BANNED]** `PATCH` changing `required_stars`
+   5→3 leaves (a) every existing `star_transactions` row and (b) every previously-issued
+   `coupons` row byte-for-byte unchanged (deep-equality snapshot before/after).
+   — proven by: gates G1 + G2; strategy: Fully-Automated.
+3. **[Issue AC3 — HARD invariant, Known-Gap BANNED]** Deactivating a reward
+   (`isActive: false`) stops new unlock minting (a subsequent star credit crossing the
+   threshold mints NO coupon for it) while an already-issued `available` coupon row is
+   unchanged and still applies at `POST /coupons/apply` (pending checklist-1a
+   verification of current apply behavior).
+   — proven by: gate G3; strategy: Fully-Automated.
+4. **[Issue AC4, per D1]** Multiple concurrent active rewards are deterministic, tested
+   behavior: summary targets MIN-active tier; a credit crossing multiple tiers mints one
+   coupon per tier; lowering a threshold unlocks existing users only on their next credit;
+   raising one never revokes issued coupons.
+   — proven by: gate G5; strategy: Fully-Automated.
+5. CRUD round-trips persist correctly; invalid `reward_type` (outside D2 allow-list) and
+   D4 cross-field violations are rejected 4xx before any write; nonexistent
+   `eligibleProductId` → clean 404, never a raw 500.
+   — proven by: gates G6 + G7; strategy: Fully-Automated.
+6. Non-admin (customer/staff) sessions receive 403 on all `/api/admin/rewards/*` routes,
+   read and write.
+   — proven by: gate G8; strategy: Fully-Automated.
+7. Admin UI: list renders with status badges, create/edit form round-trips with
+   type-conditional fields, `required_stars` edit and deactivate each show a confirmation
+   dialog.
+   — proven by: gate G9 (component tests) + G10 (walkthrough); strategy: Hybrid
+   (component-test portion Fully-Automated in-runner; full-flow visual judgment
+   Agent-Probe — user-run walkthrough per repo convention).
 
 ---
 
 ## Verification Evidence
 
+Preconditions for all api-suite gates: local Postgres up + migrated (native instance on
+this dev box — see tests/all-tests.md gotcha). Command for G1-G8:
+`pnpm --filter @jojopotato/api test`.
+
 | Gate / Scenario | Strategy | Proves SPEC criterion |
 |---|---|---|
-| Reward-retroactivity regression: update `required_stars`, assert all `star_transactions` rows unchanged | Fully-Automated | AC1 (HARD invariant — Known-Gap banned) |
-| Create reward with valid fields, round-trip read matches write | Fully-Automated | AC2 |
-| Update reward fields (name, reward_value, eligible_product_id), round-trip read matches write | Fully-Automated | AC2 |
-| Zod schema rejects `reward_type` value outside app-level allow-list | Fully-Automated | AC3 |
-| Non-admin (customer/staff) session receives 403 on all `/api/admin/rewards/*` routes (read + write) | Fully-Automated | AC4 |
-| Deactivate reward — `is_active` flips false, row still present, excluded from default list query | Fully-Automated | AC5 |
-| Create reward with `eligible_product_id` pointing at a nonexistent product — clean 4xx, not 500 | Fully-Automated | AC6 |
-| Admin UI: reward list renders, create/edit form round-trips, deactivate shows confirmation dialog | Agent-Probe | AC2, AC3, AC5 (UI-layer judgment call — Vitest + `@testing-library/react` (jsdom) IS available in `apps/admin`, wired by the P0 scaffold; prefer a component test where practical, Agent-Probe for full-flow visual judgment) |
+| G1: seed reward + user + star history; PATCH required_stars 5→3; deep-equal snapshot of all `star_transactions` rows | Fully-Automated | AC2(a) — HARD, Known-Gap banned |
+| G2: seed reward + issued reward-coupon; PATCH required_stars + reward_value; deep-equal snapshot of all `coupons` rows | Fully-Automated | AC2(b) — HARD, Known-Gap banned |
+| G3: deactivate reward; next crossing credit mints no coupon; pre-issued `available` coupon row unchanged + still applies | Fully-Automated | AC3 — HARD, Known-Gap banned |
+| G4: create/edit reward via admin API → immediate `GET /rewards/summary` + `/available` reflect it | Fully-Automated | AC1 |
+| G5: multi-tier determinism — MIN-active summary target; multi-cross mints one coupon per tier; lower→next-credit unlock; raise→no revocation | Fully-Automated | AC4 (D1) |
+| G6: CRUD round-trips (create/read/update incl. isActive flip); no hard DELETE issued | Fully-Automated | AC5 |
+| G7: allow-list rejection, D4 cross-field 4xx, nonexistent eligibleProductId → 404 | Fully-Automated | AC5 |
+| G8: customer + staff sessions → 403 on every rewards admin route | Fully-Automated | AC6 |
+| G9: `pnpm --filter @jojopotato/admin test` — reward-list + reward-form component tests (render, conditional fields, confirm dialogs) | Fully-Automated (jsdom) | AC7 |
+| G10: admin browser walkthrough — list→create(free_item w/ product picker)→edit required_stars (confirm dialog)→deactivate→verify mobile Rewards screen reflects | Agent-Probe (user-run) | AC7 |
+| G11: full api suite green (~368+ baseline) — regression guard over rewards/star-earning/coupon-apply/offers suites | Fully-Automated | Blast-radius wire-freeze |
+| G12: `pnpm --filter @jojopotato/api typecheck` + `pnpm --filter @jojopotato/admin typecheck` + `pnpm --filter @jojopotato/admin build` | Fully-Automated | Structural integrity |
+
+No Known-Gap rows for developed behavior. Residual: navigation-level E2E remains the
+standing project-wide gap (backlog-tracked in `tests/all-tests.md`), not new to this phase.
 
 ## Test Infra Improvement Notes
 
@@ -214,7 +320,7 @@ High-level outline only:
 
 ## Phase Loop Progress
 
-- [ ] Step 1 — RESEARCH
+- [ ] Step 1 — RESEARCH (checklist item 1 verifications; esp. coupon-apply `is_active` behavior)
 - [ ] Step 2 — INNOVATE
 - [ ] Step 3 — PLAN-SUPPLEMENT
 - [ ] Step 4 — PVL (validate-contract)
@@ -227,19 +333,22 @@ High-level outline only:
 ## Resume and Execution Handoff
 
 1. **Selected plan file path:** `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-05-rewards_PLAN_14-07-26.md`
-2. **Last completed phase or step:** none — plan just written, Step 1 (RESEARCH) not yet started
-3. **Validate-contract status:** pending (placeholder below — vc-validate-agent writes this section
+2. **Last completed phase or step:** DRAFT fleshed out (17-07-26) from post-ADM-008 ground
+   truth; user review of `## Open Decisions For Review` pending; Step 1 (RESEARCH) not
+   formally run (draft included substantial read-only scouting — see item 4).
+3. **Validate-contract status:** pending (placeholder below — vc-validate-agent writes it
    before EXECUTE)
 4. **Supporting context files loaded:** `process/context/all-context.md`,
-   `process/features/admin-dashboard/active/admin-dashboard_14-07-26/admin-dashboard_UMBRELLA_PLAN_14-07-26.md`,
-   `packages/api/src/db/schema/rewards.ts`, `packages/api/src/db/schema/star_transactions.ts`,
-   `packages/api/src/db/schema/user_stars.ts`, `packages/api/src/db/schema/products.ts`,
-   `packages/api/src/routes/orders.ts`, `packages/api/src/lib/require-staff.ts`,
-   `packages/api/src/routes/lib/serializers.ts`
-5. **Next step for a fresh agent picking up mid-execution:** run Phase Loop Progress Step 1
-   (RESEARCH) — re-confirm P1/P2/P3 have landed the shared `requireAdmin`/`AdminApiError`/serializer
-   conventions this plan assumes exist, then proceed to Step 3 (PLAN-SUPPLEMENT) to finalize the
-   `## Implementation Checklist` checklist before PVL.
+   `process/context/tests/all-tests.md`, umbrella plan, `packages/api/src/db/schema/{rewards,star_transactions,coupons}.ts`,
+   `packages/api/src/lib/star-earning.ts`, `packages/api/src/routes/rewards.ts`,
+   `packages/api/src/routes/admin/{index,offers}.ts`,
+   `packages/api/src/routes/lib/serializers.ts` (reward/coupon section),
+   `packages/api/src/db/seed/data.ts` (seedRewards), `packages/types/src/rewards.ts`,
+   `apps/admin/src/features/offers/**` (structure).
+5. **Next step for a fresh agent picking up mid-execution:** get user sign-off on D1-D4,
+   then run Phase Loop Progress Step 1 (RESEARCH — checklist item 1, especially the
+   coupon-apply `is_active` verification which gates AC3's exact wording), then Step 3
+   (PLAN-SUPPLEMENT) to lock the checklist, then PVL.
 
 ---
 

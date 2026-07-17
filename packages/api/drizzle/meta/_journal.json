@@ -92,6 +92,34 @@
       "when": 1784172628973,
       "tag": "0012_fearless_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0013_rename_deals_to_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784215781536,
+      "tag": "0014_icy_korg",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784250666069,
+      "tag": "0015_lazy_zeigeist",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784250726069,
+      "tag": "0016_rename_offer_fk_constraints",
+      "breakpoints": true
     }
   ]
 }
