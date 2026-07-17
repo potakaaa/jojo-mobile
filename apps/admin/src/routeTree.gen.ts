@@ -21,6 +21,7 @@ import { Route as dashboardDealsRouteImport } from './routes/(dashboard)/deals'
 import { Route as dashboardComponentsRouteImport } from './routes/(dashboard)/components'
 import { Route as dashboardCategoriesRouteImport } from './routes/(dashboard)/categories'
 import { Route as dashboardBranchesRouteImport } from './routes/(dashboard)/branches'
+import { Route as dashboardAnalyticsRouteImport } from './routes/(dashboard)/analytics'
 import { Route as dashboardRewardsIndexRouteImport } from './routes/(dashboard)/rewards.index'
 import { Route as dashboardPromotionsIndexRouteImport } from './routes/(dashboard)/promotions.index'
 import { Route as dashboardProductsIndexRouteImport } from './routes/(dashboard)/products.index'
@@ -91,6 +92,11 @@ const dashboardBranchesRoute = dashboardBranchesRouteImport.update({
   path: '/branches',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardAnalyticsRoute = dashboardAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
 const dashboardRewardsIndexRoute = dashboardRewardsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -146,6 +152,7 @@ const dashboardDealsDealIdRoute = dashboardDealsDealIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
+  '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(dashboard)': typeof dashboardRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/(dashboard)/analytics': typeof dashboardAnalyticsRoute
   '/(dashboard)/branches': typeof dashboardBranchesRoute
   '/(dashboard)/categories': typeof dashboardCategoriesRoute
   '/(dashboard)/components': typeof dashboardComponentsRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/login'
+    | '/analytics'
     | '/branches'
     | '/categories'
     | '/components'
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/analytics'
     | '/branches'
     | '/categories'
     | '/components'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/(dashboard)'
     | '/login'
+    | '/(dashboard)/analytics'
     | '/(dashboard)/branches'
     | '/(dashboard)/categories'
     | '/(dashboard)/components'
@@ -365,6 +377,13 @@ declare module '@tanstack/react-router' {
       path: '/branches'
       fullPath: '/branches'
       preLoaderRoute: typeof dashboardBranchesRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/analytics': {
+      id: '/(dashboard)/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof dashboardAnalyticsRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
     '/(dashboard)/rewards/': {
@@ -518,6 +537,7 @@ const dashboardRewardsRouteWithChildren =
   dashboardRewardsRoute._addFileChildren(dashboardRewardsRouteChildren)
 
 interface dashboardRouteRouteChildren {
+  dashboardAnalyticsRoute: typeof dashboardAnalyticsRoute
   dashboardBranchesRoute: typeof dashboardBranchesRoute
   dashboardCategoriesRoute: typeof dashboardCategoriesRoute
   dashboardComponentsRoute: typeof dashboardComponentsRoute
@@ -531,6 +551,7 @@ interface dashboardRouteRouteChildren {
 }
 
 const dashboardRouteRouteChildren: dashboardRouteRouteChildren = {
+  dashboardAnalyticsRoute: dashboardAnalyticsRoute,
   dashboardBranchesRoute: dashboardBranchesRoute,
   dashboardCategoriesRoute: dashboardCategoriesRoute,
   dashboardComponentsRoute: dashboardComponentsRoute,
