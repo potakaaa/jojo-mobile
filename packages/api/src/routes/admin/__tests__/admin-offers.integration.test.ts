@@ -330,6 +330,24 @@ describe('POST/PATCH /api/admin/offers — free-mechanic cross-validation (AC10)
     expect(res.status).toBe(200);
     expect(res.body.offer.benefitProductId).toBe(benefitProductId);
   });
+
+  it('PATCH promotionId: null unlinks the parent promotion', async () => {
+    const promotionId = await createPromotionId();
+    const created = await createOffer(adminCookies, { promotionId });
+    const id = created.body.offer.id as string;
+    expect(created.body.offer.promotionId).toBe(promotionId);
+
+    const res = await request(app)
+      .patch(`/api/admin/offers/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ promotionId: null })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.offer.promotionId).toBeNull();
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, id));
+    expect(row!.promotion_id).toBeNull();
+  });
 });
 
 // ADM-008 Fix 6 F2/F4/F5 supplement fixes.

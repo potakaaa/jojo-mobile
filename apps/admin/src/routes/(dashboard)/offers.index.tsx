@@ -56,10 +56,14 @@ function OffersPage() {
     if (editing) {
       updateMutation.mutate({ id: editing.id, input }, { onSuccess: () => setFormOpen(false) });
     } else {
-      // Create never clears a column — a lingering null benefit (only produced in edit
-      // mode) is stripped so the payload matches OfferCreateInput.
-      const { benefitProductId, ...rest } = input;
-      const createInput = benefitProductId != null ? { ...rest, benefitProductId } : rest;
+      // Create never clears a column — a lingering null benefit/promotion (only produced
+      // in edit mode) is stripped so the payload matches OfferCreateInput.
+      const { benefitProductId, promotionId, ...rest } = input;
+      const createInput = {
+        ...rest,
+        ...(benefitProductId != null ? { benefitProductId } : {}),
+        ...(promotionId != null ? { promotionId } : {}),
+      };
       createMutation.mutate(createInput, { onSuccess: () => setFormOpen(false) });
     }
   }

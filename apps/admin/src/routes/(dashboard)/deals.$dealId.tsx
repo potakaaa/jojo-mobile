@@ -99,7 +99,7 @@ function DealDetailPage() {
           <>
             <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-h2 font-bold text-primary">{deal.name}</h1>
+                <h1 className="font-display text-h2 font-bold text-foreground">{deal.name}</h1>
                 <StatusBadge tone={dealStatus(deal).tone}>{dealStatus(deal).label}</StatusBadge>
               </div>
               <p className="text-sm text-muted-foreground">

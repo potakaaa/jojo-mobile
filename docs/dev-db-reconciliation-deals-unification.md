@@ -95,35 +95,46 @@ under-recorded) — go apply that migration in Step 3.
 
 ## 3. Manual reconciliation (keep your data)
 
-For every `MISSING` migration from Step 2, in **ascending idx order**:
+For every `MISSING` migration from Step 2, in **ascending idx order**, first decide which case you
+are in using the **Step 2 schema probe** — a `MISSING` bookkeeping row means either the SQL never
+ran, or it was hand-applied but the bookkeeping row was never inserted (this repo's own reconciled
+dev DB is the latter). Applying the SQL in the second case would error on the already-existing
+objects, so split the two:
 
-1. **Apply the raw SQL** (each `drizzle/*.sql` file is a plain, self-contained Postgres script
-   — no need to hand-split on the `--> statement-breakpoint` markers, `psql -f` runs the whole
-   file):
+- **Case A — schema ABSENT** (the probe shows `NULL`/`0` for that migration's objects): apply the
+  SQL (step 1), then record the bookkeeping row (step 2).
+- **Case B — schema PRESENT but bookkeeping row MISSING** (hand-applied earlier): skip step 1; do
+  step 2 only.
+
+1. **Apply the raw SQL — fail-fast and atomic** (Case A only). `-v ON_ERROR_STOP=1` aborts on the
+   first error instead of limping on; `--single-transaction` wraps the whole file so it commits
+   all-or-nothing and can never leave a half-applied migration:
    ```bash
-   psql "$DATABASE_URL" -f drizzle/0007_wet_ser_duncan.sql
-   psql "$DATABASE_URL" -f drizzle/0008_amusing_night_nurse.sql
-   psql "$DATABASE_URL" -f drizzle/0009_round_menace.sql
-   psql "$DATABASE_URL" -f drizzle/0010_nosy_genesis.sql
-   psql "$DATABASE_URL" -f drizzle/0011_windy_dexter_bennett.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0007_wet_ser_duncan.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0008_amusing_night_nurse.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0009_round_menace.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0010_nosy_genesis.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f drizzle/0011_windy_dexter_bennett.sql
    ```
-   (Only run the ones Step 2 reported `MISSING` for your DB — every statement here is
-   **non-idempotent** — `ALTER TABLE ... ADD COLUMN`, `CREATE TABLE`, `CREATE UNIQUE INDEX`,
-   none use `IF NOT EXISTS`. Re-running an already-applied file will error. Order matters: 0008
-   drops a constraint 0007 creates.)
+   (Run only the migrations the probe reported schema-ABSENT for, in ascending idx order — each
+   file is **non-idempotent** (`ALTER TABLE ... ADD COLUMN`, `CREATE TABLE`, `CREATE UNIQUE INDEX`,
+   no `IF NOT EXISTS`); order matters, e.g. 0008 drops a constraint 0007 creates.)
 
-2. **Backfill the bookkeeping row** for each one you just applied, so future `db:migrate` runs
-   stay consistent and don't re-attempt it:
+2. **Backfill the bookkeeping row** for every migration you handled above (both cases), so future
+   `db:migrate` runs stay consistent and don't re-attempt it:
    ```bash
    for tag in 0007_wet_ser_duncan 0008_amusing_night_nurse 0009_round_menace \
               0010_nosy_genesis 0011_windy_dexter_bennett; do
      hash=$(sha256sum "drizzle/${tag}.sql" | awk '{print $1}')
      when=$(jq -r ".entries[] | select(.tag==\"${tag}\") | .when" drizzle/meta/_journal.json)
-     psql "$DATABASE_URL" -c \
-       "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('${hash}', ${when});"
+     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+       "INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+        SELECT '${hash}', ${when}
+        WHERE NOT EXISTS (SELECT 1 FROM drizzle.__drizzle_migrations WHERE hash = '${hash}');"
    done
    ```
-   (Only loop over the tags you actually applied.)
+   (Loop only over the tags you actually handled — Case A applied + Case B hand-applied. The
+   `WHERE NOT EXISTS` guard makes this safe to re-run: it never writes a duplicate bookkeeping row.)
 
 3. **Re-check the cursor and re-run the normal migrate path** for anything still pending
    (e.g. `0012`/`0013` if Step 2 flagged them too):

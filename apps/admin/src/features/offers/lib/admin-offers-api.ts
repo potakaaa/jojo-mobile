@@ -108,21 +108,27 @@ export interface OfferCreateInput {
 }
 
 /**
- * Update payload. `benefitProductId` may be explicit `null` to CLEAR the column
- * (ADM-008 fix 6 F2) — sent when a free mechanic is switched to a discount mechanic
- * in edit mode. `undefined`/omitted leaves the column unchanged.
+ * Update payload. `benefitProductId` and `promotionId` may be explicit `null` to
+ * CLEAR the column (edit-mode clear — a free→discount mechanic flip clears the
+ * benefit; unselecting the promotion unlinks it). `undefined`/omitted leaves the
+ * column unchanged.
  */
-export type OfferUpdateInput = Partial<Omit<OfferCreateInput, 'benefitProductId'>> & {
+export type OfferUpdateInput = Partial<
+  Omit<OfferCreateInput, 'benefitProductId' | 'promotionId'>
+> & {
   benefitProductId?: string | null;
+  promotionId?: string | null;
 };
 
 /**
  * What `OfferForm` emits on submit. Same as a create payload but `benefitProductId`
- * may be explicit `null` (edit-mode clear). The create branch strips the null (a new
- * offer never needs to clear a column); the update branch passes it through.
+ * and `promotionId` may be explicit `null` (edit-mode clear). The create branch
+ * strips the null (a new offer never needs to clear a column); the update branch
+ * passes it through.
  */
-export type OfferSubmitInput = Omit<OfferCreateInput, 'benefitProductId'> & {
+export type OfferSubmitInput = Omit<OfferCreateInput, 'benefitProductId' | 'promotionId'> & {
   benefitProductId?: string | null;
+  promotionId?: string | null;
 };
 
 export interface GenerateCouponsInput {

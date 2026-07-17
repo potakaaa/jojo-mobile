@@ -163,7 +163,14 @@ export function OfferForm({
       }
       input.totalUsageLimit = n;
     }
-    if (promotionId) input.promotionId = promotionId;
+    if (promotionId) {
+      input.promotionId = promotionId;
+    } else if (initial?.promotionId != null) {
+      // EDIT mode: the offer was linked to a promotion but the admin cleared the
+      // selector — send an explicit null to UNLINK it (mirrors the benefit clear
+      // above). Create mode never reaches here with a lingering link.
+      input.promotionId = null;
+    }
 
     onSubmit(input);
   }

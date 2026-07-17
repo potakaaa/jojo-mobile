@@ -46,7 +46,9 @@ const baseOfferSchema = z.object({
   usageLimitPerUser: z.number().int().positive().optional(),
   totalUsageLimit: z.number().int().positive().optional(),
   isActive: z.boolean().optional(),
-  promotionId: z.uuid().optional(),
+  // Nullable so a PATCH can explicitly UNLINK the parent promotion (edit-mode
+  // clear sends `promotionId: null`); null on create behaves as absent.
+  promotionId: z.uuid().nullable().optional(),
   // Nullable so a PATCH can explicitly CLEAR the column (free→discount mechanic
   // flip sends `benefitProductId: null`). On create an explicit null behaves as
   // absent (mechanicBenefitError treats null as "no benefit").
@@ -189,7 +191,7 @@ adminOffersRouter.post('/', async (req, res) => {
     }
     const o = parsed.data;
 
-    if (o.promotionId !== undefined) {
+    if (o.promotionId != null) {
       await assertPromotionExists(o.promotionId);
     }
     if (o.benefitProductId != null) {
@@ -287,7 +289,7 @@ adminOffersRouter.patch('/:offerId', async (req, res) => {
       }
     }
 
-    if (o.promotionId !== undefined) {
+    if (o.promotionId != null) {
       await assertPromotionExists(o.promotionId);
     }
     if (o.benefitProductId != null) {

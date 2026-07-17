@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 import { StatusBadge } from '@/components/status-badge';
@@ -43,6 +44,7 @@ function OfferDetailPage() {
   const updateMutation = useUpdateOffer();
 
   const [lastIssuedCount, setLastIssuedCount] = useState<number | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   const offer = offerQuery.data;
   const mechanicLabel = offer
@@ -74,7 +76,7 @@ function OfferDetailPage() {
         {offer ? (
           <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-h2 font-bold text-primary">{offer.title}</h1>
+              <h1 className="font-display text-h2 font-bold text-foreground">{offer.title}</h1>
               <StatusBadge tone={offerStatus(offer).tone}>{offerStatus(offer).label}</StatusBadge>
             </div>
             {offer.description ? (
@@ -88,9 +90,15 @@ function OfferDetailPage() {
               <Button
                 variant={offer.isActive ? 'destructive' : 'default'}
                 isLoading={updateMutation.isPending}
-                onClick={() =>
-                  updateMutation.mutate({ id: offerId, input: { isActive: !offer.isActive } })
-                }
+                onClick={() => {
+                  // Deactivation hides the offer from customers — gate it behind a
+                  // confirm (parity with the deal manage page). Activation is direct.
+                  if (offer.isActive) {
+                    setConfirmDeactivate(true);
+                  } else {
+                    updateMutation.mutate({ id: offerId, input: { isActive: true } });
+                  }
+                }}
               >
                 {offer.isActive ? 'Deactivate offer' : 'Activate offer'}
               </Button>
@@ -135,6 +143,23 @@ function OfferDetailPage() {
           </section>
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title="Deactivate offer?"
+        description="Customers will no longer see or be able to redeem this offer until you reactivate it."
+        confirmLabel="Deactivate offer"
+        pendingLabel="Deactivating…"
+        pending={updateMutation.isPending}
+        error={updateMutation.error instanceof Error ? updateMutation.error.message : null}
+        onOpenChange={setConfirmDeactivate}
+        onConfirm={() =>
+          updateMutation.mutate(
+            { id: offerId, input: { isActive: false } },
+            { onSuccess: () => setConfirmDeactivate(false) },
+          )
+        }
+      />
     </main>
   );
 }

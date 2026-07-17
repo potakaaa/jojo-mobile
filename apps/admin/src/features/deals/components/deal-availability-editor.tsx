@@ -54,7 +54,7 @@ export function DealAvailabilityEditor({ dealId }: DealAvailabilityEditorProps) 
               >
                 <span>
                   {branch.name}{' '}
-                  <span className={isAvailable ? 'text-primary' : 'text-muted-foreground'}>
+                  <span className={isAvailable ? 'text-foreground' : 'text-muted-foreground'}>
                     · {isAvailable ? 'Available' : 'Unavailable'}
                   </span>
                 </span>
