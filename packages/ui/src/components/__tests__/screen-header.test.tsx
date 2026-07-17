@@ -19,6 +19,11 @@ test('exposes the back control as an accessible button labelled "Go back"', asyn
   expect(getByLabelText('Go back').props.accessibilityRole).toBe('button');
 });
 
+test('exposes the title as a heading for assistive tech', async () => {
+  const { getByText } = await render(<ScreenHeader title="Active Orders" onBack={() => {}} />);
+  expect(getByText('Active Orders').props.accessibilityRole).toBe('header');
+});
+
 test('renders no back control when onBack is omitted', async () => {
   const { queryByLabelText, getByText } = await render(<ScreenHeader title="Staff" />);
   expect(queryByLabelText('Go back')).toBeNull();

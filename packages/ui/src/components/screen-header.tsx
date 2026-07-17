@@ -26,11 +26,12 @@ export interface ScreenHeaderProps {
  * or left inset from the outside. Rendering the header in content instead puts
  * that spacing under our control and keeps it identical across screens.
  *
- * Extracted verbatim from the six `(staff)` screens that each hand-rolled this
- * same block (active-orders, completed-orders, branch-pickup-settings,
- * order-detail, product-availability, pickup-lookup). The visual spec — gap,
- * paddings, glyph, size, type — is preserved exactly so those screens can adopt
- * it with zero pixel change.
+ * Extracted from the six `(staff)` screens that each hand-rolled this same block
+ * (active-orders, completed-orders, branch-pickup-settings, order-detail,
+ * product-availability, pickup-lookup). Gap, paddings and type are preserved from
+ * that original spec; the back glyph is `chevron-back` rather than the staff
+ * screens' original `arrow-back` — a deliberate later design change applied here
+ * once, so every consumer gets it.
  *
  * Supplies NO safe-area inset of its own: the host screen owns that, matching
  * the staff screens, which wrap it in `<SafeAreaView edges={['top', ...]}>`.
@@ -47,10 +48,17 @@ export function ScreenHeader({ title, onBack, mode = 'light', style }: ScreenHea
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
+          <Ionicons name="chevron-back" size={24} color={theme.text} />
         </Pressable>
       ) : null}
-      <Text style={[styles.headerTitle, { color: theme.text }]}>{title}</Text>
+      {/*
+        `header` role: the native navigation header this component replaces exposed
+        its title as a heading to VoiceOver/TalkBack for free. Without this, every
+        screen that adopts ScreenHeader loses heading-based navigation.
+      */}
+      <Text accessibilityRole="header" style={[styles.headerTitle, { color: theme.text }]}>
+        {title}
+      </Text>
     </View>
   );
 }
