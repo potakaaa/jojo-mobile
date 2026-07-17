@@ -76,7 +76,7 @@ export default function DealDetailsScreen() {
   // available (`true`); no options apply to a deal-product (`[]`).
   const handleAddToCart = () => {
     addItem(productToMenuItem(deal, true), []);
-    router.push('/(tabs)/order/cart');
+    router.push('/(tabs)/cart');
   };
 
   return (

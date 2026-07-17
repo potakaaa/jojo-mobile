@@ -69,7 +69,7 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
         }
         setConflicts(unavailable);
 
-        router.push('/(tabs)/order/cart');
+        router.push('/(tabs)/cart');
       } catch {
         Alert.alert(
           "Couldn't reorder",

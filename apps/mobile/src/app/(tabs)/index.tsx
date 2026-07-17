@@ -142,7 +142,7 @@ export default function HomeScreen() {
   const openBranch = () => {
     if (!branchId) return;
     router.push({
-      pathname: '/(tabs)/branches/[branchId]',
+      pathname: '/(tabs)/branch/[branchId]',
       params: { branchId },
     });
   };
@@ -150,7 +150,7 @@ export default function HomeScreen() {
   const openProduct = (productId: string) => {
     if (!branchId) return;
     router.push({
-      pathname: '/(tabs)/order/product/[productId]',
+      pathname: '/(tabs)/product/[productId]',
       params: { productId, branchId },
     });
   };

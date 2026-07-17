@@ -109,7 +109,7 @@ export default function BranchLocatorScreen() {
 
   const onOrderPress = (id: string) => {
     router.push({
-      pathname: '/(tabs)/branches/[branchId]',
+      pathname: '/(tabs)/branch/[branchId]',
       params: { branchId: id },
     });
   };

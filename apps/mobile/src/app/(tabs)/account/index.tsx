@@ -88,7 +88,7 @@ export default function AccountScreen() {
             />
             <AccountLink
               label="Order History"
-              onPress={() => router.push('/(tabs)/order/history')}
+              onPress={() => router.push('/(tabs)/history')}
               color={theme.accent}
             />
           </View>
