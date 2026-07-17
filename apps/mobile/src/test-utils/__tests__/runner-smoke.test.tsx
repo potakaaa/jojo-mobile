@@ -10,7 +10,12 @@ import { renderWithProviders } from '../render';
  */
 test('jest-expo runner renders a trivial component (EmptyState) without throwing', async () => {
   const { getByText } = await renderWithProviders(
-    <EmptyState iconName="star-outline" title="Smoke test" description="Runner boots" />,
+    <EmptyState
+      iconName="star-outline"
+      title="Smoke test"
+      description="Runner boots"
+      mode="light"
+    />,
   );
 
   expect(getByText('Smoke test')).toBeTruthy();
