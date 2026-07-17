@@ -1,0 +1,4 @@
+cycle	date	domain	gap_count	gate	loop_status	notes
+0	2026-07-17	plan	2	CONDITIONAL	BASELINE	outer-pvl first pass; 0 FAIL 2 CONCERN (E1 lazy-mount cold-start, E2 AC5 structural-only proof)
+1	2026-07-17	plan	0	CONDITIONAL	HALTED_GAPS_RESOLVED	supplement no-op: E1/E2 already covered inline; validator clean; probe VIABLE; awaiting user EXECUTE acceptance
+1	2026-07-17	tests	0	PASS	HALTED_SUCCESS	EVL confirmation run (spawned vc-tester): all 5 gates independently re-run green; numbers match EXECUTE exactly; no regressions; 8 ACs remain Agent-Probe
