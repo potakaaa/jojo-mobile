@@ -8,7 +8,12 @@ feature: general-plans
 # Mobile Dark-Mode Bug-Class Fix + StatusBar Legibility — PLAN
 
 **Date**: 17-07-26
-**Status**: Draft — pending VALIDATE
+**Status**: CODE DONE, EVL-green (17-07-26) — NOT VERIFIED. Sections A-F all complete and
+committed (`spec/mobile-dark-mode-audit`, commits `fcd8e10`..`71357d7`, not pushed/merged).
+Remaining before VERIFIED: the Android + separate iOS on-device Agent-Probe StatusBar walkthroughs,
+restart-persistence check, and OS-background-resume check (all Agent-Probe, owed by the user — see
+`process/general-plans/backlog/dark-mode-on-device-agent-probe-walkthroughs_NOTE_17-07-26.md`).
+Kept in `active/` per this plan's own Phase Completion Rules until those are performed.
 **Complexity**: COMPLEX (touches ~26 shared components across `packages/ui` + an unknown-until-discovered
 number of `apps/mobile` call sites + a new durable CI guard + a StatusBar behavior change — a cross-cutting
 required-prop signature change, not a single-file fix).

@@ -8,7 +8,7 @@ date: 14-07-26
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -70,6 +70,11 @@ DB the app itself uses. `packages/ui` has component tests for
 `order-status-badge`/`order-status-timeline` and others — check `packages/ui/package.json` for the
 runner wiring before assuming.
 
+`apps/mobile` runs BOTH vitest (pure-TS, `*.test.ts`) and jest (jest-expo, RN component `*.test.tsx`)
+sequentially via one `test` script — as of 17-07-26 that's **40 vitest tests + 37 jest tests**
+(grew from the mobile-dark-mode-audit fix's new `status-bar.test.ts`, `cart-dark-mode.test.tsx`,
+`history-screen-dark-mode.test.tsx`, and `use-color-scheme-appearance.test.tsx`).
+
 `apps/mobile` gained its first runner — `vitest` (`"test": "vitest run --passWithNoTests"`,
 `apps/mobile/vitest.config.ts`, `environment: 'node'`, scoped to `src/**/__tests__/**/*.test.ts` —
 pure-TS logic only, no RN component rendering). Added by the checkout-flow (CART-002) plan; current
@@ -104,7 +109,12 @@ count: 23 tests across 6 suites.
 
 `packages/ui` has `jest`/`jest-expo` (`"test": "jest"`, `packages/ui/jest.config.js`) with component
 tests for `OrderStatusBadge`/`OrderStatusTimeline` and others (from the shared-ui-component-library
-work). `packages/{types,utils}` still declare no runner.
+work), plus **`Card` coverage added 17-07-26** by the mobile-dark-mode-audit fix
+(`src/components/__tests__/card.test.tsx` — 4 tests asserting RESOLVED style output for `mode="dark"`
+vs `mode="light"`, including one asserting the two modes resolve to DIFFERENT colours — a real
+mutation check, not a prop-presence-only assertion). 27 component files / 24 test suites total (grew
+from a stale "3 source files" claim — see `all-context.md` correction, 17-07-26).
+`packages/{types,utils}` still declare no runner.
 
 `apps/admin` (added 14-07-26, admin-dashboard Phase 0 — Scaffold) is the FIRST WEB-APP test runner
 precedent in the repo: `vitest` (`"test": "vitest run --passWithNoTests"`) + `@testing-library/react`
@@ -159,6 +169,8 @@ Unless the task clearly needs a different path:
 | `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
 | `apps/mobile` (pure-TS logic + RN component) | vitest + jest/jest-expo | `pnpm --filter @jojopotato/mobile test` | runs `vitest run --passWithNoTests && jest` sequentially — vitest owns `*.test.ts` (node env, no rendering), jest owns `*.test.tsx` (RN component rendering via `test-utils/render.tsx` + `jest-setup.ts`) |
 | `packages/ui` (component) | jest / jest-expo | `pnpm --filter @jojopotato/ui test` | `packages/ui/jest.config.js` |
+| `packages/ui` (raw hex-literal guard) | node script | `pnpm --filter @jojopotato/ui check-tokens` | `packages/ui/scripts/check-raw-tokens.mjs` — scans `packages/ui/src/components/**` only, does NOT reach `apps/mobile` (pre-existing, previously undocumented here) |
+| `apps/mobile` (theme-mode guard) | node script | `pnpm --filter @jojopotato/mobile guard:theme-mode` | `apps/mobile/scripts/check-theme-mode.mjs` (added 17-07-26 by mobile-dark-mode-audit) — derives its tracked component list from source, hard-fails on spread attrs on tracked components, bans raw RN `useColorScheme` imports outside the 2 wrapper hook files, and extends hex-literal checking into `apps/mobile` (closing the gap the `check-tokens` row above leaves open) |
 | `apps/admin` (component) | vitest + @testing-library/react | `pnpm --filter @jojopotato/admin test` | jsdom env, `apps/admin/vitest.config.ts` (separate from `vite.config.ts`) — first web-app component-test runner in the repo |
 | `apps/admin` | tsc | `pnpm --filter @jojopotato/admin typecheck` | single-package typecheck |
 | `apps/admin` | eslint | `pnpm --filter @jojopotato/admin lint` | single-package lint |
