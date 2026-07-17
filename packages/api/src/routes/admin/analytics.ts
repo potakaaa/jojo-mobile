@@ -9,9 +9,11 @@ import {
   inArray,
   isNotNull,
   lt,
+  min,
   notInArray,
   sum,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
@@ -54,6 +56,10 @@ const adminAnalyticsRouter: ExpressRouter = Router();
 /** Order statuses excluded from every demand metric (D2). Mutable (not `as const`)
  * so drizzle's `notInArray` accepts it. */
 const EXCLUDED_STATUSES: (typeof orderStatusEnum.enumValues)[number][] = ['cancelled', 'rejected'];
+
+/** Self-join alias for the new-vs-returning all-time history lookup, so an
+ * `orders` subquery can be nested under an `orders` select unambiguously. */
+const historyOrders = alias(orders, 'history_orders');
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 
@@ -107,17 +113,19 @@ adminAnalyticsRouter.get('/', async (req, res) => {
       .from(orders)
       .where(baseWhere);
 
-    const baseIds = baseRows.map((r) => r.id);
     const orderCount = baseRows.length;
 
     // ── Query 2 — order ids carrying an is_deal bundle line (D1 signal c). ──
-    const bundleRows = baseIds.length
-      ? await db
-          .selectDistinct({ orderId: orderItems.order_id })
-          .from(orderItems)
-          .innerJoin(products, eq(products.id, orderItems.product_id))
-          .where(and(inArray(orderItems.order_id, baseIds), eq(products.is_deal, true)))
-      : [];
+    // Joins back to `orders` and re-uses `baseWhere` verbatim rather than passing
+    // the base order ids as an `inArray` parameter list: identical branch/date/
+    // status scoping BY CONSTRUCTION, and no unbounded bind-parameter list (the
+    // join self-limits, so no empty-set guard is needed either).
+    const bundleRows = await db
+      .selectDistinct({ orderId: orderItems.order_id })
+      .from(orderItems)
+      .innerJoin(products, eq(products.id, orderItems.product_id))
+      .innerJoin(orders, eq(orders.id, orderItems.order_id))
+      .where(and(baseWhere, eq(products.is_deal, true)));
     const bundleOrderIds = new Set(bundleRows.map((r) => r.orderId));
 
     // ── Query 3 — branch names (all branches, or just the scoped one). ──
@@ -161,24 +169,24 @@ adminAnalyticsRouter.get('/', async (req, res) => {
     const rewardsRedeemed = Number(redeemedRow?.c ?? 0);
 
     // ── Query 6 — top-selling products across the base order set (D8a). ──
-    const topRows = baseIds.length
-      ? await db
-          .select({
-            productId: products.id,
-            productName: products.name,
-            quantity: sum(orderItems.quantity),
-            revenue: sum(orderItems.total_price),
-          })
-          .from(orderItems)
-          .innerJoin(products, eq(products.id, orderItems.product_id))
-          .where(inArray(orderItems.order_id, baseIds))
-          .groupBy(products.id, products.name)
-          // Rank by quantity DESC; `products.name` ASC is a stable tiebreak so
-          // quantity ties order deterministically (the plan specifies no other
-          // tie rule — name-asc keeps the response repeatable).
-          .orderBy(desc(sum(orderItems.quantity)), asc(products.name))
-          .limit(10)
-      : [];
+    // Same `orders` join + `baseWhere` re-use as Query 2 (see there).
+    const topRows = await db
+      .select({
+        productId: products.id,
+        productName: products.name,
+        quantity: sum(orderItems.quantity),
+        revenue: sum(orderItems.total_price),
+      })
+      .from(orderItems)
+      .innerJoin(products, eq(products.id, orderItems.product_id))
+      .innerJoin(orders, eq(orders.id, orderItems.order_id))
+      .where(baseWhere)
+      .groupBy(products.id, products.name)
+      // Rank by quantity DESC; `products.name` ASC is a stable tiebreak so
+      // quantity ties order deterministically (the plan specifies no other
+      // tie rule — name-asc keeps the response repeatable).
+      .orderBy(desc(sum(orderItems.quantity)), asc(products.name))
+      .limit(10);
     const topSellingProducts: AdminTopSellingProduct[] = topRows.map((r) => ({
       productId: r.productId,
       productName: r.productName,
@@ -190,20 +198,31 @@ adminAnalyticsRouter.get('/', async (req, res) => {
     // COUNTED order across all time (D2 filter applied — Execute-Agent E1) falls
     // inside the range; otherwise "returning". The status filter matches the base
     // set, so a user whose only prior order was cancelled/rejected is NEW. ──
+    // The per-user earliest is computed DB-side (`min` + `GROUP BY`) instead of
+    // fetching every counted order ever placed by every in-range user and taking
+    // a minimum in TS. `historyOrders` is an alias so the unaliased `orders` in
+    // `baseWhere` unambiguously binds to the subquery that picks WHICH users to
+    // look at — that subquery is branch/date-scoped, while the history rows
+    // themselves stay deliberately unscoped by branch and by date ("earliest
+    // COUNTED order across ALL TIME"). Only the D2 status filter applies to them.
     const baseUserIds = [...new Set(baseRows.map((r) => r.userId))];
-    const historyRows = baseUserIds.length
-      ? await db
-          .select({ userId: orders.user_id, placedAt: orders.placed_at })
-          .from(orders)
-          .where(
-            and(inArray(orders.user_id, baseUserIds), notInArray(orders.status, EXCLUDED_STATUSES)),
-          )
-      : [];
+    const earliestRows = await db
+      .select({ userId: historyOrders.user_id, earliest: min(historyOrders.placed_at) })
+      .from(historyOrders)
+      .where(
+        and(
+          notInArray(historyOrders.status, EXCLUDED_STATUSES),
+          inArray(
+            historyOrders.user_id,
+            db.selectDistinct({ userId: orders.user_id }).from(orders).where(baseWhere),
+          ),
+        ),
+      )
+      .groupBy(historyOrders.user_id);
     const earliestByUser = new Map<string, number>();
-    for (const row of historyRows) {
-      const t = row.placedAt.getTime();
-      const current = earliestByUser.get(row.userId);
-      if (current === undefined || t < current) earliestByUser.set(row.userId, t);
+    for (const row of earliestRows) {
+      if (row.earliest === null) continue;
+      earliestByUser.set(row.userId, new Date(row.earliest).getTime());
     }
     let newCount = 0;
     let returningCount = 0;

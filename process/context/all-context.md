@@ -1067,16 +1067,16 @@ Scanned against the canonical Context Group Detection Table
   planned follow-up exploration work, not archived; Phase 5 — Rewards Configuration CRUD (ADM-005)
   delivered 17-07-26, ✅ VERIFIED, MERGED via PR #112 (commit `772e2fd`); Phase 6 — Orders View by
   Branch (ADM-006) delivered 17-07-26, ✅ VERIFIED, user UI walkthrough passed (commit `7bb0918`,
-  branch `feat/adm-006-branchview`); Phase 7 — Analytics (ADM-007) DECISIONS LOCKED with the user
-  17-07-26, now UNPARKED (D9 condition — Phase 6 execution — satisfied), ready for its inner-loop
-  RESEARCH pass — the sole remaining phase of the 8-phase program).
+  branch `feat/adm-006-branchview`); Phase 7 — Basic Analytics Dashboard (ADM-007) delivered
+  17-07-26, ✅ VERIFIED, EVL-green (commit `ba88318`, branch `feat/adm-007-analytics`) — the final
+  phase, completing the 8-phase program (8/8 ✅ VERIFIED)).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
   (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; the
   `adm-008-coupons_16-07-26/` task folder stays in `active/`; 3 Phase-2 + 2 Phase-4a + 1 new
   ADM-008 backlog note — see the Coupons entry above). This is an 8-phase program (P0 scaffold
   through P7 analytics, ADM-001..007) with ADM-008 as an inserted sub-program between Phase 4 and
-  Phase 5 — see the umbrella plan's `## Current Execution State` for the current phase (6/8
-  phases ✅ VERIFIED; Phase 7 — Analytics, ADM-007, is next).
+  Phase 5 — see the umbrella plan's `## Current Execution State` for the closeout summary (8/8
+  phases ✅ VERIFIED; the program is COMPLETE — no next phase).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group

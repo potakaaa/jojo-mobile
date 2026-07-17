@@ -689,9 +689,11 @@ All 8 per-phase plan files are written (flat in this task folder). Each carries 
 `## Cross-Cutting Compliance` subsection (per the 5 hard gates), Touchpoints, Public Contracts,
 Blast Radius, Acceptance Criteria, Verification Evidence, Test Infra Improvement Notes, 7-step
 `## Phase Loop Progress`, Resume and Execution Handoff, and a placeholder `## Validate Contract`.
-Depth: P0–P2 are FULL (executable-ready); P3–P7 are FULL-PICTURE-BUT-FLEXIBLE (scope, contracts
-sketch, acceptance criteria, risks locked; line-level EXECUTE checklist finalized at each phase's
-inner-loop PLAN-SUPPLEMENT after RESEARCH).
+Depth: P0–P2, P6, and P7 are FULL (executable-ready — P6/P7 reached FULL post-EXECUTE, their
+line-level checklists finalized at their inner-loop PLAN-SUPPLEMENT); P3–P5 are
+FULL-PICTURE-BUT-FLEXIBLE (scope, contracts sketch, acceptance criteria, risks locked; line-level
+EXECUTE checklist finalized at each phase's inner-loop PLAN-SUPPLEMENT after RESEARCH). See the
+Depth column below for the authoritative per-phase classification.
 
 | Phase | Plan file | Depth | Carried open items |
 |---|---|---|---|

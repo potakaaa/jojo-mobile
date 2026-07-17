@@ -3,6 +3,7 @@ import type { AdminAnalytics } from '@jojopotato/types';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 
+import { formatPeso } from '../lib/format';
 import { BranchOrdersTable } from './branch-orders-table';
 import { MetricCard } from './metric-card';
 import { TimeRangePicker, type DateRange } from './time-range-picker';
@@ -22,10 +23,6 @@ interface AnalyticsDashboardProps {
   range: DateRange;
   onRangeChange: (next: DateRange) => void;
   onBack: () => void;
-}
-
-function formatPeso(cents: number | null): string {
-  return cents === null ? '—' : `₱${(cents / 100).toFixed(2)}`;
 }
 
 function formatRate(rate: number | null): string {
