@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrder } from '@/features/orders/hooks/use-order';
+import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { FontFamily, MaxContentWidth, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -32,6 +33,7 @@ export default function OrderConfirmationScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, loading, error, refetch } = useOrder(orderId);
   const { branches } = useBranch();
+  const navigateToOrderTracking = useNavigateToOrderTracking();
 
   if (loading) {
     return (
@@ -136,12 +138,7 @@ export default function OrderConfirmationScreen() {
         <View style={styles.footer}>
           <Button
             label="Track your order"
-            onPress={() =>
-              router.push({
-                pathname: '/(tabs)/order/tracking/[orderId]',
-                params: { orderId: order.id },
-              })
-            }
+            onPress={() => navigateToOrderTracking(order.id)}
             mode={mode}
           />
           <Button

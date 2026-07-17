@@ -1,5 +1,5 @@
-import { OrderStatusTimeline, Palette } from '@jojopotato/ui';
-import { useLocalSearchParams } from 'expo-router';
+import { OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -9,10 +9,12 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { isTerminalStatus, useOrderQuery } from '@/features/orders/hooks/use-order-query';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 function EtaCard({ iso }: { iso: string }) {
@@ -53,18 +55,43 @@ function LiveBadge() {
 
 export default function OrderTrackingScreen() {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error, refetch } = useOrderQuery(orderId);
 
-  if (isLoading) return <ScreenLoader />;
+  /*
+    All three return paths (loading / error / loaded) render the SAME header
+    inside the SAME safe-area wrapper. The native header used to cover the
+    loading and error branches for free — with `headerShown:false` (see
+    ../_layout.tsx) an unwrapped early return would lose both its status-bar
+    clearance and its only way back, visible whenever the fetch is slow or the
+    order id is bad.
+  */
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+          <ScreenHeader title="Order Tracking" onBack={() => router.back()} mode={mode} />
+          <ScreenLoader />
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   if (error || !order) {
     return (
-      <ScreenMessage
-        title="Couldn't load your order"
-        subtitle={error?.message ?? 'Order not found.'}
-        actionLabel="Retry"
-        onAction={refetch}
-      />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+          <ScreenHeader title="Order Tracking" onBack={() => router.back()} mode={mode} />
+          <ScreenMessage
+            title="Couldn't load your order"
+            subtitle={error?.message ?? 'Order not found.'}
+            actionLabel="Retry"
+            onAction={refetch}
+          />
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -72,29 +99,47 @@ export default function OrderTrackingScreen() {
   const showEta = order.estimatedReadyAt != null && live;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>Order number</Text>
-          <Text style={[styles.orderNumber, { color: theme.text }]}>{order.orderNumber}</Text>
-        </View>
-        {live && <LiveBadge />}
-      </View>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/*
+        'top' AND 'bottom' (NAV-003): this screen previously had NO SafeAreaView
+        and no device inset at all — its bottom padding was a static Spacing.six.
+        This stack now runs `headerShown:false`, so 'top' is required for the
+        ScreenHeader; 'bottom' supplies the device inset that was missing.
+        The static `paddingBottom: Spacing.six` on styles.content stays as-is —
+        it is breathing room, a different concern from the device inset, so the
+        two together are NOT a double-count. This screen has no bottom CTA and no
+        resolveTabBarClearance call: this SafeAreaView is the only inset source.
+      */}
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <ScreenHeader title="Order Tracking" onBack={() => router.back()} mode={mode} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Order number</Text>
+              <Text style={[styles.orderNumber, { color: theme.text }]}>{order.orderNumber}</Text>
+            </View>
+            {live && <LiveBadge />}
+          </View>
 
-      {showEta && <EtaCard iso={order.estimatedReadyAt!} />}
+          {showEta && <EtaCard iso={order.estimatedReadyAt!} />}
 
-      <View style={styles.timelineCard}>
-        <OrderStatusTimeline currentStatus={order.status} liveMode={live} />
-      </View>
-    </ScrollView>
+          <View style={styles.timelineCard}>
+            <OrderStatusTimeline currentStatus={order.status} liveMode={live} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  scroll: { flex: 1 },
   content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
   headerRow: {
     flexDirection: 'row',

@@ -10,13 +10,15 @@ import {
   CouponCard,
   EmptyState,
   Input,
+  ScreenHeader,
 } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT } from '@/components/floating-tab-bar';
+import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
@@ -265,7 +267,21 @@ export default function CartScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={[]}>
+      {/*
+        NESTED screen: the floating tab bar is hidden here, so the clearance
+        calls below drop its ~85dp footprint (see resolveTabBarClearance).
+
+        TOP edge only (NAV-003). This stack now runs `headerShown:false` (see
+        ../_layout.tsx), so the top inset is ours to supply — without it the
+        ScreenHeader title would sit under the status bar.
+
+        'bottom' is deliberately GONE, resolving the double-count NAV-001's
+        EXECUTE report flagged: the device bottom inset now arrives exactly ONCE,
+        via the two resolveTabBarClearance(true, …) calls below (scroll content +
+        footer). Keeping 'bottom' here would count it a second time.
+      */}
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScreenHeader title="Cart" onBack={() => router.back()} mode={mode} />
         {conflictNotice}
         {isEmpty ? (
           // When the cart is empty AND there are conflicts (all-unavailable reorder),
@@ -297,8 +313,15 @@ export default function CartScreen() {
               contentContainerStyle={[
                 styles.content,
                 Platform.OS !== 'web' && {
+                  // isNested hardcoded true: cart.tsx is always pushed inside the
+                  // Order tab's Stack — never that tab's root — so isNestedTabRoute()
+                  // would also evaluate true here; hardcoded per INNOVATE's
+                  // static-per-screen-fact decision (see PLAN "Locked Inputs"). If this
+                  // file ever moves to a tab root, this literal must change.
                   paddingBottom:
-                    getFloatingTabBarClearance(insets.bottom) + Spacing.six + Spacing.two,
+                    resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) +
+                    Spacing.six +
+                    Spacing.two,
                 },
               ]}
               showsVerticalScrollIndicator={false}
@@ -411,7 +434,10 @@ export default function CartScreen() {
               style={[
                 styles.footer,
                 Platform.OS !== 'web' && {
-                  paddingBottom: getFloatingTabBarClearance(insets.bottom) + Spacing.two,
+                  // isNested hardcoded true — same structural invariant as the scroll
+                  // content above (cart.tsx is always a pushed screen in Order's Stack).
+                  paddingBottom:
+                    resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.two,
                 },
               ]}
             >

@@ -1,4 +1,4 @@
-import { Button, Card, Input } from '@jojopotato/ui';
+import { Button, Card, Input, ScreenHeader } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
@@ -76,7 +76,19 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['bottom']}>
+    /*
+      'top' is ADDED (NAV-003): this stack now runs `headerShown:false` (see
+      ./_layout.tsx), so the top inset is ours to supply or the ScreenHeader would
+      sit under the status bar. 'bottom' is KEPT — this screen has no
+      resolveTabBarClearance call, so this SafeAreaView is its ONLY source of the
+      device bottom inset; dropping it would count the inset zero times and leave
+      the Save/Cancel actions flush against the home indicator.
+    */
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: theme.background }]}
+      edges={['top', 'bottom']}
+    >
+      <ScreenHeader title="Edit Profile" onBack={() => router.back()} mode={mode} />
       <KeyboardAvoidingView
         style={styles.avoider}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
