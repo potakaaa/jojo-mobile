@@ -1,10 +1,11 @@
 import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from '@jojopotato/types';
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
-import { ConfirmDialog } from '@jojopotato/ui';
+import { ConfirmDialog, ScreenHeader } from '@jojopotato/ui';
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
@@ -137,68 +138,96 @@ export default function ProductDetailsScreen() {
     setAddedNotice(true);
   };
 
+  /*
+    Loading / error early returns get the SAME header + top inset as the loaded
+    branch below. The native header used to cover these branches for free (React
+    Navigation renders it from the Stack regardless of which return path this
+    component takes); with `headerShown:false` (see ../_layout.tsx) they would
+    otherwise lose BOTH their status-bar clearance and their only way back.
+  */
   if (isLoading) {
     return (
-      <View style={[styles.stateContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={theme.accent} />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Product Details" onBack={() => router.back()} mode={mode} />
+          <View style={styles.stateContainer}>
+            <ActivityIndicator color={theme.accent} />
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   if (isError || !product) {
     return (
-      <View style={[styles.stateContainer, { backgroundColor: theme.background }]}>
-        <Text style={[styles.stateText, { color: theme.textSecondary }]}>
-          This product isn’t available.
-        </Text>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Product Details" onBack={() => router.back()} mode={mode} />
+          <View style={styles.stateContainer}>
+            <Text style={[styles.stateText, { color: theme.textSecondary }]}>
+              This product isn’t available.
+            </Text>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
-          {product.imageUrl ? (
-            <Image
-              source={{ uri: product.imageUrl }}
-              style={styles.image}
-              contentFit="cover"
-              accessibilityLabel={product.name}
-            />
-          ) : (
-            <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
-          )}
-        </View>
+      {/*
+        TOP edge only. This screen's stack runs `headerShown:false`, so the top
+        inset is ours to supply — without it the ScreenHeader title would sit
+        under the status bar. Deliberately NO 'bottom' edge: `AddToCartBar` is a
+        SIBLING outside this SafeAreaView and computes the device bottom inset
+        itself (`insets.bottom + Spacing.four`), so it stays the single source —
+        adding 'bottom' here would count it twice.
+      */}
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScreenHeader title="Product Details" onBack={() => router.back()} mode={mode} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
+            {product.imageUrl ? (
+              <Image
+                source={{ uri: product.imageUrl }}
+                style={styles.image}
+                contentFit="cover"
+                accessibilityLabel={product.name}
+              />
+            ) : (
+              <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
+            )}
+          </View>
 
-        <Text style={[styles.name, { color: theme.text }]}>{product.name}</Text>
-        {product.description ? (
-          <Text style={[styles.description, { color: theme.textSecondary }]}>
-            {product.description}
+          <Text style={[styles.name, { color: theme.text }]}>{product.name}</Text>
+          {product.description ? (
+            <Text style={[styles.description, { color: theme.textSecondary }]}>
+              {product.description}
+            </Text>
+          ) : null}
+          <Text style={[styles.basePrice, { color: theme.text }]}>
+            {formatCurrency(product.basePriceCents)}
           </Text>
-        ) : null}
-        <Text style={[styles.basePrice, { color: theme.text }]}>
-          {formatCurrency(product.basePriceCents)}
-        </Text>
 
-        {groups.map((group) => (
-          <OptionGroupSelector
-            key={group.type}
-            group={group}
-            required={requiredTypes.includes(group.type)}
-            selectedIds={selection[group.type] ?? []}
-            onChange={(optionId) => handleChange(group.type, optionId)}
-          />
-        ))}
+          {groups.map((group) => (
+            <OptionGroupSelector
+              key={group.type}
+              group={group}
+              required={requiredTypes.includes(group.type)}
+              selectedIds={selection[group.type] ?? []}
+              onChange={(optionId) => handleChange(group.type, optionId)}
+            />
+          ))}
 
-        {addedNotice ? (
-          <Text style={[styles.addedNotice, { color: theme.accent }]}>Added to cart ✓</Text>
-        ) : null}
-      </ScrollView>
+          {addedNotice ? (
+            <Text style={[styles.addedNotice, { color: theme.accent }]}>Added to cart ✓</Text>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
 
       <AddToCartBar
         unitPriceCents={unitPriceCents}
@@ -224,6 +253,9 @@ export default function ProductDetailsScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  safeArea: {
     flex: 1,
   },
   stateContainer: {

@@ -1,4 +1,4 @@
-import { Badge, Button, Card, DealCard } from '@jojopotato/ui';
+import { Badge, Button, Card, DealCard, ScreenHeader } from '@jojopotato/ui';
 import {
   buildDirectionsUrl,
   distanceKm,
@@ -19,7 +19,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT } from '@/components/floating-tab-bar';
+import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { BranchDetailResponse, mapApiBranch, mapApiBranchDeal } from '@/features/branches/api';
 import { useBranch } from '@/features/branch/hooks/use-branch';
@@ -89,21 +90,39 @@ export default function BranchDetailsScreen() {
       : null;
   const canOrder = isOpen && branch?.isAcceptingPickup === true;
 
+  /*
+    Loading / error early returns get the SAME header + top inset as the loaded
+    branch below. The native header used to cover them for free; with
+    `headerShown:false` (see ./_layout.tsx) the loading branch would have NO way
+    back at all, and the error branch's existing "Go back" Button would sit under
+    the status bar. No 'bottom' edge: neither branch has a bottom CTA or a
+    clearance call — their content is centered.
+  */
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={theme.accent} />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Branch Details" onBack={() => router.back()} mode={mode} />
+          <View style={[styles.container, styles.centered]}>
+            <ActivityIndicator color={theme.accent} />
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   if (error || !branch) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.background }]}>
-        <Text style={[styles.message, { color: theme.textSecondary }]}>
-          {error ?? 'Branch not found'}
-        </Text>
-        <Button label="Go back" variant="outline" mode={mode} onPress={() => router.back()} />
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScreenHeader title="Branch Details" onBack={() => router.back()} mode={mode} />
+          <View style={[styles.container, styles.centered]}>
+            <Text style={[styles.message, { color: theme.textSecondary }]}>
+              {error ?? 'Branch not found'}
+            </Text>
+            <Button label="Go back" variant="outline" mode={mode} onPress={() => router.back()} />
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
@@ -127,11 +146,35 @@ export default function BranchDetailsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/*
+        NESTED screen — see cart.tsx for the full note.
+
+        TOP edge only (NAV-003). 'top' is still required — more so now, since this
+        stack runs `headerShown:false` and the ScreenHeader below would otherwise
+        sit under the status bar. 'bottom' is deliberately GONE, resolving the
+        double-count NAV-001's EXECUTE report flagged: the device bottom inset now
+        arrives exactly ONCE, via the resolveTabBarClearance(true, …) call on the
+        scroll content below.
+      */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScreenHeader title="Branch Details" onBack={() => router.back()} mode={mode} />
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+            Platform.OS !== 'web' && {
+              // isNested hardcoded true: branches/[branchId].tsx is always pushed inside
+              // the Branches tab's Stack — never that tab's root — so isNestedTabRoute()
+              // would also evaluate true here; hardcoded per INNOVATE's
+              // static-per-screen-fact decision (see PLAN "Locked Inputs").
+              //
+              // `+ Spacing.four` restores styles.scrollContent's own paddingVertical:
+              // paddingBottom overrides that shorthand's bottom half, so without it the
+              // content would end exactly at the home-indicator boundary with no gap.
+              // The clearance term supplies the device inset; this term is the design's
+              // breathing room. Same split as notifications/cart/checkout.
+              paddingBottom:
+                resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.four,
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -218,12 +261,23 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
+    // NO paddingHorizontal here: <ScreenHeader> is a direct child and brings its own
+    // (Spacing.four). Padding this wrapper too would indent the header twice, offsetting
+    // it against every other client screen (Product Details, Cart, Checkout, …), whose
+    // wrappers are unpadded. The children that need the gutter carry it themselves —
+    // scrollContent below, and `centered` for the loading/error branches.
   },
   scrollContent: {
     gap: Spacing.two,
-    paddingTop: Spacing.two,
+    // BRN-006: split the former `paddingVertical: Spacing.four` so the top gap under
+    // <ScreenHeader> isn't oversized. `paddingTop: Spacing.three` matches the sibling
+    // ScreenHeader screens (order/cart, order/checkout); `paddingBottom` stays
+    // Spacing.four (the inline clearance override below re-adds it on native).
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.four,
+    // paddingHorizontal moved down from `safeArea` (NAV-003) so the gutter applies to the
+    // scroll body only, not to <ScreenHeader> (which pads itself).
+    paddingHorizontal: Spacing.four,
   },
   centered: {
     alignItems: 'center',

@@ -1,5 +1,5 @@
 import type { PaymentMethod } from '@jojopotato/types';
-import { PaymentMethodSelector } from '@jojopotato/ui';
+import { PaymentMethodSelector, ScreenHeader } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,7 +30,15 @@ export default function PaymentMethodScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      {/*
+        'top' is ADDED (NAV-003): this stack now runs `headerShown:false`, so the
+        top inset is ours to supply or the ScreenHeader would sit under the status
+        bar. 'bottom' is KEPT — unlike cart/checkout, this screen has NO
+        resolveTabBarClearance call, so this SafeAreaView is its ONLY source of
+        the device bottom inset. Dropping it would count the inset zero times.
+      */}
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <ScreenHeader title="Payment Method" onBack={() => router.back()} mode={mode} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}

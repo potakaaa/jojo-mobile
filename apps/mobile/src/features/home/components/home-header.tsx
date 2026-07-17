@@ -41,7 +41,7 @@ export function HomeHeader() {
           accessibilityLabel={
             unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
           }
-          onPress={() => router.push('/(tabs)/account/notifications')}
+          onPress={() => router.push('/(tabs)/notifications')}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={({ pressed }) => [styles.bellButton, pressed && styles.bellButtonPressed]}
         >
