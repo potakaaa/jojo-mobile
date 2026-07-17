@@ -46,12 +46,17 @@ let branchId: string;
 let productId: string;
 let rewardWithProductId: string;
 let rewardNullEligibleId: string;
+// ADM-005 G13: free_upgrade REWARD coupons (distinct from the offer-side free_upgrade).
+let rewardFuSizedId: string; // free_upgrade reward → sizedProductId (has a +2.00 size upgrade)
+let rewardFuNoSizeId: string; // free_upgrade reward → productId (no size option → nothing to waive)
 const createdUserIds: string[] = [];
 
 // Coupon codes we control (so we can apply them by value).
 const REWARD_CODE_A = `JP-RWD-A${uid().slice(0, 3).toUpperCase()}`;
 const REWARD_CODE_NULL = `JP-RWD-N${uid().slice(0, 3).toUpperCase()}`;
 const REWARD_CODE_B = `JP-RWD-B${uid().slice(0, 3).toUpperCase()}`; // userB's, for scoping
+const REWARD_CODE_FU_SIZED = `JP-RWD-FS${uid().slice(0, 2).toUpperCase()}`; // G13a success
+const REWARD_CODE_FU_NOSIZE = `JP-RWD-FN${uid().slice(0, 2).toUpperCase()}`; // G13b reject
 
 // Offer-coupon fixtures (ADM-008). Cleaned up (incl. the bulk user_id NULL row)
 // in afterAll by offer_id, then the parent offers.
@@ -417,6 +422,34 @@ beforeAll(async () => {
     .returning();
   fuSizedOfferId = fuSizedOffer!.id;
 
+  // ADM-005 G13: two free_upgrade REWARD rows — one bound to the sized product (a
+  // +2.00 paid size upgrade to waive), one bound to the plain product (no size
+  // option → the reward-side zero-guard must reject, coupon unburned).
+  const [rwdFuSized] = await db
+    .insert(schema.rewards)
+    .values({
+      name: `FreeUpgradeSizedReward ${suffix}`,
+      required_stars: 5,
+      reward_type: 'free_upgrade',
+      eligible_product_id: sizedProductId,
+    })
+    .returning();
+  rewardFuSizedId = rwdFuSized!.id;
+  const [rwdFuNoSize] = await db
+    .insert(schema.rewards)
+    .values({
+      name: `FreeUpgradeNoSizeReward ${suffix}`,
+      required_stars: 5,
+      reward_type: 'free_upgrade',
+      eligible_product_id: productId,
+    })
+    .returning();
+  rewardFuNoSizeId = rwdFuNoSize!.id;
+  await db.insert(schema.coupons).values([
+    { user_id: userA, reward_id: rewardFuSizedId, code: REWARD_CODE_FU_SIZED },
+    { user_id: userA, reward_id: rewardFuNoSizeId, code: REWARD_CODE_FU_NOSIZE },
+  ]);
+
   // ADM-008 Fix 6 F1: zero-redeemable-value percentage/fixed offers. All in-window,
   // branch-agnostic, no minimum → checkDealEligibility PASSES, so the F1 amount<=0
   // guard is provably what rejects them (AFTER eligibility, deterministic ordering).
@@ -515,7 +548,14 @@ afterAll(async () => {
     .where(eq(schema.branchProductAvailability.branch_id, branchId));
   await db
     .delete(schema.rewards)
-    .where(inArray(schema.rewards.id, [rewardWithProductId, rewardNullEligibleId]));
+    .where(
+      inArray(schema.rewards.id, [
+        rewardWithProductId,
+        rewardNullEligibleId,
+        rewardFuSizedId,
+        rewardFuNoSizeId,
+      ]),
+    );
   await db.delete(schema.users).where(inArray(schema.users.id, createdUserIds));
   vi.restoreAllMocks();
   server?.close();
@@ -943,6 +983,57 @@ describe('POST /coupons/apply — F1 zero-value discount offer reject (ADM-008 F
 
   it('rejects a percentage_discount that rounds to 0 on a micro subtotal', async () => {
     await expectNoRedeemableValue(OFFER_PCT_MICRO);
+  });
+});
+
+// ADM-005 G13 (D2/checklist 3b, HARD, Known-Gap BANNED): the REWARD-side free_upgrade
+// dispatch. A free_upgrade reward coupon waives one unit's paid size-upgrade delta
+// (exact cents); when the bound product has no paid size upgrade in cart the resolver
+// REJECTS (no_upgrade_to_waive) and leaves the coupon available — never a ₱0-and-burn.
+describe('POST /coupons/apply — G13 free_upgrade reward coupon (ADM-005)', () => {
+  async function couponStatus(code: string): Promise<string> {
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    return coupon!.status;
+  }
+
+  it('G13a — a free_upgrade reward coupon should waive the exact size-upgrade delta at POST /coupons/apply when an eligible upgrade exists in cart', async () => {
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: REWARD_CODE_FU_SIZED,
+        pickupBranchId: branchId,
+        cartItems: [
+          {
+            productId: sizedProductId,
+            quantity: 1,
+            selectedOptions: [{ optionId: sizedSizeOptionId }],
+          },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.discount.source).toBe('reward');
+    expect(res.json.discount.amountCents).toBe(200); // +2.00 size delta
+    // Apply is zero-mutation — the coupon stays available on success.
+    expect(await couponStatus(REWARD_CODE_FU_SIZED)).toBe('available');
+  });
+
+  it('G13b — a free_upgrade reward coupon should be rejected 400 (coupon left available, unburned) at POST /coupons/apply when nothing in cart has a paid size upgrade to waive', async () => {
+    // REWARD_CODE_FU_NOSIZE is bound to `productId`, which has NO size option — the
+    // product is in cart (passes checkRewardEligibility) but there is nothing to
+    // waive → zero-guard reject, never a ₱0-and-burn.
+    const res = await post('/coupons/apply', {
+      user: userA,
+      body: {
+        code: REWARD_CODE_FU_NOSIZE,
+        pickupBranchId: branchId,
+        cartItems: [{ productId, quantity: 1 }],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('no_upgrade_to_waive');
+    expect(res.json.discount).toBeUndefined();
+    expect(await couponStatus(REWARD_CODE_FU_NOSIZE)).toBe('available');
   });
 });
 
