@@ -502,6 +502,172 @@ describe('AC7 — GET /branches/:id/menu excludes deals by default; ?isDeal=true
   });
 });
 
+// ─── Auto-seed branch availability on deal create ────────────────────────────
+
+describe('creating a deal seeds branch_product_availability for every active branch', () => {
+  it('a newly created deal (fast path) appears in ?isDeal=true menu with no explicit availability write', async () => {
+    // Branch must exist BEFORE the deal so create-time seeding covers it.
+    const branchId = await seedBranch();
+
+    const dealRes = await createDeal();
+    const dealId = dealRes.body.deal.id as string;
+
+    // A branch_product_availability row (available) was auto-seeded.
+    const [bpa] = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(
+        and(
+          eq(schema.branchProductAvailability.branch_id, branchId),
+          eq(schema.branchProductAvailability.product_id, dealId),
+        ),
+      );
+    expect(bpa!.is_available).toBe(true);
+
+    // End-to-end: the deal is visible on the deals menu without any setAvailability call.
+    const dealsMenu = await request(app).get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(dealsMenu.status).toBe(200);
+    const dealsMenuIds = (dealsMenu.body.categories as { products: { id: string }[] }[]).flatMap(
+      (c) => c.products.map((p) => p.id),
+    );
+    expect(dealsMenuIds).toContain(dealId);
+  });
+
+  it('a deal created with components (transactional path) also auto-seeds availability', async () => {
+    const branchId = await seedBranch();
+    const componentId = await seedRegularProduct();
+
+    const res = await createDealWith([{ productId: componentId, quantity: 1 }]);
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const [bpa] = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(
+        and(
+          eq(schema.branchProductAvailability.branch_id, branchId),
+          eq(schema.branchProductAvailability.product_id, dealId),
+        ),
+      );
+    expect(bpa!.is_available).toBe(true);
+  });
+});
+
+// ─── Branch selection on deal create (post-merge Fix 4) ──────────────────────
+
+describe('creating a deal with an explicit branchIds selection', () => {
+  it('seeds availability ONLY for the selected branches, not the excluded ones', async () => {
+    const included = await seedBranch();
+    const excluded = await seedBranch();
+
+    const res = await createDeal({ branchIds: [included] });
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    const rowByBranch = new Map(rows.map((r) => [r.branch_id, r.is_available]));
+    expect(rowByBranch.get(included)).toBe(true);
+    expect(rowByBranch.has(excluded)).toBe(false);
+  });
+
+  it('rejects a branchIds selection containing an unknown branch id with 400', async () => {
+    const before = await db.select().from(schema.products).where(eq(schema.products.is_deal, true));
+    const res = await createDeal({ branchIds: ['00000000-0000-0000-0000-000000000000'] });
+    expect(res.status).toBe(400);
+
+    // The deal-product write rolled back — no new deal row landed.
+    const after = await db.select().from(schema.products).where(eq(schema.products.is_deal, true));
+    expect(after.length).toBe(before.length);
+  });
+
+  it('an omitted branchIds field still seeds every active branch (backward compatible)', async () => {
+    const b1 = await seedBranch();
+    const b2 = await seedBranch();
+
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    const seededBranchIds = new Set(rows.map((r) => r.branch_id));
+    expect(seededBranchIds.has(b1)).toBe(true);
+    expect(seededBranchIds.has(b2)).toBe(true);
+  });
+
+  it('an empty branchIds array creates a deal with no availability rows (invisible)', async () => {
+    await seedBranch();
+
+    const res = await createDeal({ branchIds: [] });
+    expect(res.status).toBe(201);
+    const dealId = res.body.deal.id as string;
+
+    const rows = await db
+      .select()
+      .from(schema.branchProductAvailability)
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+    expect(rows.length).toBe(0);
+  });
+});
+
+// ─── Visibility indicator counts (ADM-008 post-merge Fix 3) ──────────────────
+
+describe('deal responses carry branch-availability counts for the visibility indicator', () => {
+  it('GET /:id reports availableBranchCount matching the seeded active branches', async () => {
+    // Branch created BEFORE the deal so create-time seeding covers it → the deal
+    // is available at ≥1 active branch, never more than the active-branch total.
+    await seedBranch();
+    const dealId = await seedDeal();
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(typeof detail.body.deal.availableBranchCount).toBe('number');
+    expect(typeof detail.body.deal.activeBranchCount).toBe('number');
+    expect(detail.body.deal.availableBranchCount).toBeGreaterThanOrEqual(1);
+    expect(detail.body.deal.activeBranchCount).toBeGreaterThanOrEqual(
+      detail.body.deal.availableBranchCount,
+    );
+  });
+
+  it('reports availableBranchCount 0 when a deal has no available branch rows', async () => {
+    await seedBranch();
+    const dealId = await seedDeal();
+
+    // Zero out every seeded availability row for this deal → invisible everywhere.
+    await db
+      .update(schema.branchProductAvailability)
+      .set({ is_available: false })
+      .where(eq(schema.branchProductAvailability.product_id, dealId));
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.deal.availableBranchCount).toBe(0);
+  });
+
+  it('GET / (list) carries the count fields on every deal row', async () => {
+    await seedDeal();
+    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    expect(list.status).toBe(200);
+    const deals = list.body.deals as {
+      availableBranchCount: unknown;
+      activeBranchCount: unknown;
+    }[];
+    expect(deals.length).toBeGreaterThanOrEqual(1);
+    expect(deals.every((d) => typeof d.availableBranchCount === 'number')).toBe(true);
+    expect(deals.every((d) => typeof d.activeBranchCount === 'number')).toBe(true);
+  });
+});
+
 // ─── AC8: admin products/deals lists mutually exclusive ──────────────────────
 
 describe('AC8 — admin products list excludes deals by default; deals list is deals-only', () => {

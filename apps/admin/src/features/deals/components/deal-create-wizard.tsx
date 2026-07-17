@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { QueryStates } from '@/components/query-states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAdminBranches } from '@/features/branches/hooks/use-admin-branches';
 import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
 
 import type { DealCreateInput } from '../lib/admin-deals-api';
@@ -48,6 +49,7 @@ function formatPeso(cents: number): string {
 
 export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: DealCreateWizardProps) {
   const productsQuery = useAdminProducts();
+  const branchesQuery = useAdminBranches();
 
   const [step, setStep] = useState<1 | 2>(1);
 
@@ -61,6 +63,12 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
   // Step 2 state.
   const [items, setItems] = useState<WizardItem[]>([]);
   const [selected, setSelected] = useState('');
+
+  // Branch availability — every active branch is ON by default (preserving the
+  // server's seed-all behavior); the admin opts branches OUT here. Tracked as an
+  // exclude set so a branch created after the wizard opened is still ON by default.
+  const [excludedBranchIds, setExcludedBranchIds] = useState<Set<string>>(new Set());
+  const activeBranches = (branchesQuery.data ?? []).filter((b) => b.isActive);
 
   function handleNameChange(value: string) {
     setName(value);
@@ -114,6 +122,15 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
     setItems((prev) => prev.filter((i) => i.productId !== productId));
   }
 
+  function toggleBranch(branchId: string) {
+    setExcludedBranchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(branchId)) next.delete(branchId);
+      else next.add(branchId);
+      return next;
+    });
+  }
+
   function handleCreate() {
     if (items.length === 0 || !step1Valid || !priceValid) return;
     const input: DealCreateInput = {
@@ -123,6 +140,11 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
       basePriceCents: dealPriceCents,
       components: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
     };
+    // Only send branchIds when the admin opted a branch OUT — omitting keeps the
+    // server's default (seed every active branch), so the common case is unchanged.
+    if (excludedBranchIds.size > 0) {
+      input.branchIds = activeBranches.filter((b) => !excludedBranchIds.has(b.id)).map((b) => b.id);
+    }
     onSubmit(input);
   }
 
@@ -337,6 +359,44 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
                 </p>
               ) : null}
             </div>
+          </div>
+
+          {/* Branch availability — all active branches ON by default; opt out here. */}
+          <div className="flex flex-col gap-2 rounded-lg border-2 border-border p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Branch availability</span>
+              <span className="text-xs text-muted-foreground">
+                On by default — toggle off to hide this deal at a branch.
+              </span>
+            </div>
+            <QueryStates
+              isLoading={branchesQuery.isLoading}
+              error={branchesQuery.error}
+              isEmpty={activeBranches.length === 0}
+              loadingLabel="Loading branches…"
+              errorLabel="Failed to load branches"
+              emptyLabel="No active branches — the deal will be created with no availability."
+            >
+              <ul className="flex flex-wrap gap-2">
+                {activeBranches.map((branch) => {
+                  const on = !excludedBranchIds.has(branch.id);
+                  return (
+                    <li key={branch.id}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={on ? 'default' : 'secondary'}
+                        aria-pressed={on}
+                        onClick={() => toggleBranch(branch.id)}
+                      >
+                        {on ? '✓ ' : ''}
+                        {branch.name}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </QueryStates>
           </div>
 
           <div className="mt-2 flex justify-between gap-2">

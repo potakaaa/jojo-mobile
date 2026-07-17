@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { db } from '../db/client';
-import { dealBranches, dealProducts, deals } from '../db/schema/index';
+import { offerBranches, offerProducts, offers } from '../db/schema/index';
 import { serializeDeal } from './lib/serializers';
 
 const uuidSchema = z.string().uuid();
@@ -29,8 +29,8 @@ dealsRouter.get('/', async (req, res) => {
   // Active + currently in-window deals (SQL-level filter).
   const dealRows = await db
     .select()
-    .from(deals)
-    .where(and(eq(deals.is_active, true), lte(deals.start_at, now), gte(deals.end_at, now)));
+    .from(offers)
+    .where(and(eq(offers.is_active, true), lte(offers.start_at, now), gte(offers.end_at, now)));
 
   if (dealRows.length === 0) {
     res.json({ deals: [] });
@@ -42,25 +42,25 @@ dealsRouter.get('/', async (req, res) => {
   // Flatten the branch/product join tables into per-deal id maps.
   const branchRows = await db
     .select()
-    .from(dealBranches)
-    .where(inArray(dealBranches.deal_id, dealIds));
+    .from(offerBranches)
+    .where(inArray(offerBranches.offer_id, dealIds));
   const productRows = await db
     .select()
-    .from(dealProducts)
-    .where(inArray(dealProducts.deal_id, dealIds));
+    .from(offerProducts)
+    .where(inArray(offerProducts.offer_id, dealIds));
 
   const branchMap = new Map<string, string[]>();
   for (const row of branchRows) {
-    const list = branchMap.get(row.deal_id) ?? [];
+    const list = branchMap.get(row.offer_id) ?? [];
     list.push(row.branch_id);
-    branchMap.set(row.deal_id, list);
+    branchMap.set(row.offer_id, list);
   }
 
   const productMap = new Map<string, string[]>();
   for (const row of productRows) {
-    const list = productMap.get(row.deal_id) ?? [];
+    const list = productMap.get(row.offer_id) ?? [];
     list.push(row.product_id);
-    productMap.set(row.deal_id, list);
+    productMap.set(row.offer_id, list);
   }
 
   // Branch-scope filter (JS): keep branch-agnostic deals always; keep scoped
@@ -88,16 +88,16 @@ dealsRouter.get('/:id', async (req, res) => {
 
   const [deal] = await db
     .select()
-    .from(deals)
-    .where(and(eq(deals.id, id), eq(deals.is_active, true)));
+    .from(offers)
+    .where(and(eq(offers.id, id), eq(offers.is_active, true)));
 
   if (!deal) {
     res.status(404).json({ error: 'Deal not found' });
     return;
   }
 
-  const branchRows = await db.select().from(dealBranches).where(eq(dealBranches.deal_id, id));
-  const productRows = await db.select().from(dealProducts).where(eq(dealProducts.deal_id, id));
+  const branchRows = await db.select().from(offerBranches).where(eq(offerBranches.offer_id, id));
+  const productRows = await db.select().from(offerProducts).where(eq(offerProducts.offer_id, id));
 
   res.json({
     deal: serializeDeal(
