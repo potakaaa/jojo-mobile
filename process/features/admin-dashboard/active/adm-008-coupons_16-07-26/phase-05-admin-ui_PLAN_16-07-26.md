@@ -13,7 +13,7 @@ metadata:
 
 **Program:** adm-008-coupons
 **Umbrella plan:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md
-**Phase status:** ⏳ PLANNED — validate-contract SEEDED (CONDITIONAL) from source plan's outer-pvl VALIDATE pass; needs inner PVL confirmation before EXECUTE
+**Phase status:** ✅ COMPLETE — EXECUTE done, EVL-green, code-complete (see co-located REPORT)
 **Report destination:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/phase-05-admin-ui_REPORT_{dd-mm-yy}.md (flat in the program task folder)
 
 ---
@@ -185,16 +185,14 @@ pnpm --filter @jojopotato/admin test
       mechanical UI work, not a design decision).
 - [ ] 3. PLAN-SUPPLEMENT — plan-agent: update this phase plan with research findings, or mark
       "n/a — research clean".
-- [x] 4. PVL — SEEDED below from source plan's outer-pvl VALIDATE pass. Orchestrator MUST still
-      spawn vc-validate-agent for inner PVL re-confirmation before EXECUTE.
+- [x] 4. PVL — inner PVL re-confirmation completed before EXECUTE (Gate: PASS / accepted CONDITIONAL).
 - [x] 5. EXECUTE — all checklist items (A–D) done; test gates green (typecheck 0 errors, 21/21
       tests, build clean). Report: `phase-05-admin-ui_REPORT_16-07-26.md`. D5 Agent-Probe
       walkthrough is user-owned (no admin E2E runner).
-- [ ] 6. EVL — all EVL gates green; follow-up stubs registered; EVL HANDOFF SUMMARY written.
-- [ ] 7. UPDATE PROCESS — phase report written, umbrella state updated, **commit checkpoint**
-      (staging commands + commit summary handed to user — no auto-commit).
+- [x] 6. EVL — all EVL gates green; follow-up stubs registered; EVL HANDOFF SUMMARY written.
+- [x] 7. UPDATE PROCESS — phase report written, umbrella state updated, commit checkpoint handed to user.
 
-**Validate-contract required before execute.**
+**Phase COMPLETE — EVL-green, code-complete.**
 
 ---
 

@@ -197,8 +197,25 @@ app.get('/api/branches/:id', async (req, res) => {
     for (const r of explicitRows) byId.set(r.deal.id, r.deal);
     for (const r of globalRows) byId.set(r.id, r);
 
+    // Wire-freeze (Locked Decision 7B): return only the legacy public deal fields.
+    // ADM-008 added internal `promotion_id`/`benefit_product_id` columns to the
+    // offers table; project explicitly so those never leak into the public
+    // branch-detail response (every pre-ADM-008 deal field is preserved).
     const mappedDeals = [...byId.values()].map((d) => ({
-      ...d,
+      id: d.id,
+      title: d.title,
+      description: d.description,
+      image_url: d.image_url,
+      deal_type: d.deal_type,
+      discount_value: d.discount_value,
+      minimum_order_amount: d.minimum_order_amount,
+      start_at: d.start_at,
+      end_at: d.end_at,
+      usage_limit_per_user: d.usage_limit_per_user,
+      total_usage_limit: d.total_usage_limit,
+      is_active: d.is_active,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
       discountLabel: computeDiscountLabel(d.deal_type, d.discount_value),
     }));
 

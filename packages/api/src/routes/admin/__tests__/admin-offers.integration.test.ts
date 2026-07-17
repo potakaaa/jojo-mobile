@@ -199,6 +199,14 @@ describe('POST /api/admin/offers (AC2)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects an inverted window (endAt <= startAt) with 400', async () => {
+    const res = await createOffer(adminCookies, {
+      startAt: '2026-12-31T00:00:00.000Z',
+      endAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('accepts every value of the reused 6-value offerType enum', async () => {
     const types = [
       'percentage_discount',

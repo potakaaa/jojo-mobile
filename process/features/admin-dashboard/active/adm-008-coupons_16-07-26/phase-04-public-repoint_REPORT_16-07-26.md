@@ -78,13 +78,19 @@ the wire fields.)
 - `deals.test.ts:243-258` — `GET /deals/:id` freezes the `{ deal }` envelope + full ApiDeal field guard.
 - Result: **13/13 passed.** No new code added (task rule: existing full-shape assertion satisfies AC10).
 
-### AC10b (GET /api/branches/:id `{branch, deals:[...]}` array frozen) — proven by NEW passing assertion
+### AC10b (GET /api/branches/:id `{branch, deals:[...]}` array frozen) — PARTIALLY verified
 
-- `branch-detail-route.test.ts` — new `it('deals array items expose the frozen public field set
-  after the offers rename (AC10b)')` asserts the frozen deal-item field set on a returned row.
+- **Field-set evidence (present):** `branch-detail-route.test.ts` — new `it('deals array items
+  expose the frozen public field set after the offers rename (AC10b)')` asserts the frozen deal-item
+  field set on a returned row via the `visibleDealsForBranch` query-mirror helper.
 - Supported by pre-existing content assertions (L126-153) confirming the correct deals still surface
   by title through the renamed tables.
 - Result: **5/5 passed** (was 4, +1 new). File went 4→5 tests confirming the new assertion ran and passed.
+- **Gap (not yet proven):** the assertion runs against the `visibleDealsForBranch` query-mirror
+  helper, NOT an actual `GET /api/branches/:id` supertest call, and does NOT assert that the
+  internal `promotion_id`/`benefit_product_id` columns are ABSENT from the response. Full
+  HTTP-envelope verification + field-absence assertion is pending — a follow-up supertest
+  assertion should be added to close this.
 
 ### Exit-gate command output
 

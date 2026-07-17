@@ -3,7 +3,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
-import { coupons, offers } from '../../db/schema/index';
+import { coupons, offers, users } from '../../db/schema/index';
 import { offerCouponCodeGenerator } from '../../lib/reward-coupon-code';
 import { couponIdentityIsExclusive } from '../lib/coupon-identity';
 import { serializeAdminCoupon } from '../lib/serializers';
@@ -25,13 +25,16 @@ const uuidSchema = z.uuid();
 /** Max attempts to dodge a `coupons.code` UNIQUE collision (mirrors star-earning). */
 const COUPON_CODE_MAX_ATTEMPTS = 5;
 
+/** Upper bound on codes minted per request — a serial-insert loop, so cap it. */
+const MAX_COUPON_QUANTITY = 500;
+
 // Whole-batch validation FIRST (AC11): a malformed request (quantity<=0, missing
 // offerId) is rejected with 400 by `safeParse` BEFORE any DB write, so no partial
 // rows are ever written. `userId` is only valid for a single targeted coupon.
 const generateSchema = z
   .object({
     offerId: z.uuid(),
-    quantity: z.number().int().min(1),
+    quantity: z.number().int().min(1).max(MAX_COUPON_QUANTITY),
     userId: z.uuid().optional(),
     expiresAt: z.coerce.date().optional(),
   })
@@ -117,6 +120,19 @@ adminCouponsRouter.post('/generate', async (req, res) => {
     // Persist user_id ONLY for a targeted single issue; bulk coupons stay NULL
     // (claimed on redeem via COALESCE in the Phase 2 atomic burn UPDATE).
     const targetedUserId = quantity === 1 && userId !== undefined ? userId : null;
+
+    // Validate the target user exists BEFORE any coupon write — otherwise the
+    // `coupons.user_id → users` FK (23503) surfaces as an unmapped 500 instead of
+    // a clean 404.
+    if (targetedUserId !== null) {
+      const [userRow] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, targetedUserId));
+      if (!userRow) {
+        throw new AdminApiError(404, 'User not found');
+      }
+    }
 
     const created = await db.transaction(async (tx) => {
       const rows: CouponRow[] = [];

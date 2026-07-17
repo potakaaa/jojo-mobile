@@ -1,6 +1,6 @@
 ---
 name: report:adm-008-coupons-phase-01-schema-migration
-description: "ADM-008 Coupons Phase 01 EXECUTE report — deals→offers atomic rename + promotions table (migration 0011)"
+description: "ADM-008 Coupons Phase 01 EXECUTE report — deals→offers atomic rename + promotions table (migration 0013, originally generated as 0011)"
 date: 16-07-26
 metadata:
   node_type: memory
@@ -21,7 +21,8 @@ Atomic, non-destructive `deals`→`offers` rename + new `promotions` foundation,
 Option-A expanded scope (schema + hand-authored migration + all consumer repoints so the build
 and full test suite stay green).
 
-- **Migration `0011_rename_deals_to_offers.sql`** (hand-authored — `db:generate` NOT trusted for
+- **Migration `0013_rename_deals_to_offers.sql`** (originally generated as 0011, renumbered to 0013
+  in the PR #93 merge; hand-authored — `db:generate` NOT trusted for
   renames per the Drizzle hardening rules). RENAME + additive only, zero `DROP TABLE`/`DROP COLUMN`.
 - **Schema files:** `deals.ts`→`offers.ts` (+ `promotion_id` FK), `deal_products.ts`→`offer_products.ts`
   (`deal_id`→`offer_id`), `deal_branches.ts`→`offer_branches.ts` (`deal_id`→`offer_id`),

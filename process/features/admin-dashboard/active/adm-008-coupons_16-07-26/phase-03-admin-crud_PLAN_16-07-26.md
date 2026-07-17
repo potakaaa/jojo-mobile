@@ -13,7 +13,7 @@ metadata:
 
 **Program:** adm-008-coupons
 **Umbrella plan:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md
-**Phase status:** ⏳ PLANNED — validate-contract SEEDED (CONDITIONAL) from source plan's outer-pvl VALIDATE pass; needs inner PVL confirmation before EXECUTE
+**Phase status:** ✅ COMPLETE — EXECUTE done, EVL-green, code-complete (see co-located REPORT)
 **Report destination:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/phase-03-admin-crud_REPORT_{dd-mm-yy}.md (flat in the program task folder)
 
 ---
@@ -200,7 +200,7 @@ pnpm --filter @jojopotato/api test
 | `PATCH /api/admin/promotions/:id` | `requireAdmin` | partial | `AdminPromotion` | |
 | `GET /api/admin/offers` | `requireAdmin` | `?promotionId=` optional filter | `AdminOffer[]` | |
 | `GET /api/admin/offers/:id` | `requireAdmin` | — | `AdminOffer` | |
-| `POST /api/admin/offers` | `requireAdmin` | `{title, description?, offerType, discountValue?, minimumOrderAmountCents, startAt, endAt, usageLimitPerUser?, totalUsageLimit?, promotionId?}` | `AdminOffer` (201) | cents at boundary; `offerType` reuses the existing 6-value enum verbatim |
+| `POST /api/admin/offers` | `requireAdmin` | `{title, description?, offerType, discountValueCents?, minimumOrderAmountCents, startAt, endAt, usageLimitPerUser?, totalUsageLimit?, promotionId?}` | `AdminOffer` (201) | cents at boundary; `offerType` reuses the existing 6-value enum verbatim |
 | `PATCH /api/admin/offers/:id` | `requireAdmin` | partial | `AdminOffer` | |
 | `POST /api/admin/coupons/generate` | `requireAdmin` | `{offerId, quantity, userId?, expiresAt?}` — `quantity>=1`, `userId` only valid when `quantity===1` (single-targeted) OR omitted for bulk | `{coupons: AdminCoupon[]}` (201) | 400 on `quantity<=0`/missing `offerId` before any write (AC11) |
 | `GET /api/admin/coupons?offerId=` | `requireAdmin` | query filter required | `AdminCoupon[]` | |

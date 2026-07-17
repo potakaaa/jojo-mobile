@@ -149,11 +149,19 @@ export function OfferForm({
 
     if (perUser.trim().length > 0) {
       const n = Number(perUser);
-      if (Number.isInteger(n) && n > 0) input.usageLimitPerUser = n;
+      if (!Number.isInteger(n) || n <= 0) {
+        setLocalError('Per-user usage limit must be a positive whole number.');
+        return;
+      }
+      input.usageLimitPerUser = n;
     }
     if (totalLimit.trim().length > 0) {
       const n = Number(totalLimit);
-      if (Number.isInteger(n) && n > 0) input.totalUsageLimit = n;
+      if (!Number.isInteger(n) || n <= 0) {
+        setLocalError('Total usage limit must be a positive whole number.');
+        return;
+      }
+      input.totalUsageLimit = n;
     }
     if (promotionId) input.promotionId = promotionId;
 

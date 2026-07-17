@@ -19,15 +19,25 @@ const adminPromotionsRouter: ExpressRouter = Router();
 
 const uuidSchema = z.uuid();
 
-const createPromotionSchema = z.object({
+// Base object — the create refine and the `.partial()` update both derive from it
+// (a `ZodEffects` from `.refine()` has no `.partial()`).
+const basePromotionSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1).optional(),
   startAt: z.coerce.date(),
   endAt: z.coerce.date(),
 });
 
+// Reject an inverted or zero-length campaign window on create.
+const createPromotionSchema = basePromotionSchema.refine((v) => v.endAt > v.startAt, {
+  message: 'endAt must be after startAt',
+  path: ['endAt'],
+});
+
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
-const updatePromotionSchema = createPromotionSchema
+// The window invariant is re-checked on the MERGED state in the handler (a partial
+// body may supply only one of the two dates).
+const updatePromotionSchema = basePromotionSchema
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
@@ -94,6 +104,22 @@ adminPromotionsRouter.patch('/:promotionId', async (req, res) => {
       return;
     }
     const p = parsed.data;
+
+    // Re-check the window invariant on the MERGED (existing + patch) state so a
+    // single-date patch can't create an inverted window (e.g. move startAt past
+    // the stored endAt). Load existing only when a date field is actually touched.
+    if (p.startAt !== undefined || p.endAt !== undefined) {
+      const [existing] = await db.select().from(promotions).where(eq(promotions.id, promotionId));
+      if (!existing) {
+        throw new AdminApiError(404, 'Promotion not found');
+      }
+      const mergedStartAt = p.startAt ?? existing.start_at;
+      const mergedEndAt = p.endAt ?? existing.end_at;
+      if (mergedEndAt <= mergedStartAt) {
+        res.status(400).json({ error: 'endAt must be after startAt' });
+        return;
+      }
+    }
 
     const updates: Partial<typeof promotions.$inferInsert> = { updated_at: new Date() };
     if (p.name !== undefined) updates.name = p.name;

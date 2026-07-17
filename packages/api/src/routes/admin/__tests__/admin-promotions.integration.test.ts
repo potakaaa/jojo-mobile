@@ -143,6 +143,14 @@ describe('POST /api/admin/promotions (AC1)', () => {
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(400);
   });
+
+  it('rejects an inverted window (endAt <= startAt) with 400', async () => {
+    const res = await createPromotion(adminCookies, {
+      startAt: '2026-12-31T00:00:00.000Z',
+      endAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('GET /api/admin/promotions + /:id (AC1)', () => {
@@ -204,6 +212,18 @@ describe('PATCH /api/admin/promotions/:id (AC1)', () => {
       .send({ name: 'nope' })
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(404);
+  });
+
+  it('rejects a PATCH that inverts the window against the stored dates with 400', async () => {
+    const created = await createPromotion(adminCookies);
+    const id = created.body.promotion.id as string;
+    // Move startAt past the stored endAt (2026-12-31) with a single-date patch.
+    const patch = await request(app)
+      .patch(`/api/admin/promotions/${id}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send({ startAt: '2027-06-01T00:00:00.000Z' })
+      .set('Content-Type', 'application/json');
+    expect(patch.status).toBe(400);
   });
 });
 

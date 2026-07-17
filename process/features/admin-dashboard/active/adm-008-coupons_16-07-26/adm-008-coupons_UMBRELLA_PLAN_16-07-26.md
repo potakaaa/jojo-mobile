@@ -78,7 +78,9 @@ Explicitly out of scope (deferred tier):
   enforced only at `POST /orders` placement time, per Locked Decision 6).
 
 Hard safety constraints (non-negotiable, per phase):
-- Never edit an already-applied migration file (0011 is new; 0000-0010 are locked history).
+- Never edit an already-applied migration file (the rename migration lands in journal slot
+  `0013_rename_deals_to_offers`, originally generated as the superseded 0011 slot; all earlier
+  slots are locked history).
 - Never rename/repoint `GET /deals`/`GET /deals/:id`/`GET /api/branches/:id`'s response SHAPE —
   only their internal table symbols rename (Locked Decision 4 + 7B).
 - Never let a bulk (`user_id IS NULL`) coupon and a targeted (`user_id` set) coupon double-claim —
@@ -374,21 +376,18 @@ the source plan's single 18-row table, one AC-cluster per phase).
 ## Resume and Execution Handoff
 
 - Selected plan file path (umbrella): `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md`
-- Last completed phase: none — program just split from the source single-plan artifact; no EXECUTE
-  has happened yet for any phase.
-- Validate-contract status: seeded (CONDITIONAL, from source plan's outer-pvl VALIDATE pass) into
-  each phase plan below — needs a fresh inner PVL confirmation pass per phase before EXECUTE.
-- Next step for a fresh agent: Read this umbrella plan, read `phase-01-schema-migration_PLAN_16-07-26.md`
-  in full (including its seeded Validate Contract), run Phase 1's RESEARCH step (re-verify the real
-  branch state — schema/route files may have drifted since the source plan's VALIDATE pass), then
-  proceed through the 7-step inner loop.
-- Current phase: Phase 1 — Schema migration.
-- Next action: Spawn vc-research-agent for Phase 1 (or, since the source plan's research/validate
-  content is already very fresh — same-day, same-branch — orchestrator may elect to spawn
-  vc-validate-agent directly for Phase 1's PVL re-confirmation; either is acceptable, PVL must not
-  be skipped either way).
-- Execute-agent start instruction: Do NOT spawn execute-agent until Phase 1's `## Validate Contract`
-  reads a confirmed (not placeholder, not stale) Gate: PASS or accepted CONDITIONAL.
+- Program status: **CODE-COMPLETE.** All five phases (1 schema-migration, 2 resolver-burn-guard,
+  3 admin-crud, 4 public-repoint, 5 admin-ui) are COMPLETE / EVL-green — see each phase's co-located
+  REPORT for evidence.
+- Validate-contract status: all five phases passed their inner PVL and EXECUTE; no phase is pending
+  validation or execution.
+- Shipped via: `feat/deals_unification` (PR #109 → `development`). The old `feat/adm-008-coupons`
+  PR is closed.
+- Held OPEN in `active/` (not archived) for planned follow-up exploration work + the post-merge fix
+  batch tracked in `## Current Execution State` below.
+- Next step for a fresh agent: this program requires NO fresh Phase 1 start — do NOT begin Phase 1
+  or spawn a research/execute agent for the delivered phases. For follow-up work, read the
+  `## Current Execution State` section below and the relevant backlog notes.
 
 ---
 

@@ -13,7 +13,7 @@ metadata:
 
 **Program:** adm-008-coupons
 **Umbrella plan:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md
-**Phase status:** ⏳ PLANNED — validate-contract SEEDED (CONDITIONAL) from source plan's outer-pvl VALIDATE pass; needs inner PVL confirmation before EXECUTE
+**Phase status:** ✅ COMPLETE — EXECUTE done, EVL-green, code-complete (see co-located REPORT)
 **Report destination:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/phase-04-public-repoint_REPORT_{dd-mm-yy}.md (flat in the program task folder)
 
 ---

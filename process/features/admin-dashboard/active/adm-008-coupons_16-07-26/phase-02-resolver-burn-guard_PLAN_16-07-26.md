@@ -13,7 +13,7 @@ metadata:
 
 **Program:** adm-008-coupons
 **Umbrella plan:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md
-**Phase status:** ⏳ PLANNED — validate-contract SEEDED (CONDITIONAL) from source plan's outer-pvl VALIDATE pass; needs inner PVL confirmation before EXECUTE
+**Phase status:** ✅ COMPLETE — EXECUTE done, EVL-green, code-complete (see co-located REPORT)
 **Report destination:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/phase-02-resolver-burn-guard_REPORT_{dd-mm-yy}.md (flat in the program task folder)
 
 ---
@@ -138,8 +138,10 @@ phase starts — re-read the file fresh at RESEARCH time.
 - [ ] D4. **(VALIDATE correction)** Extend `routes/__tests__/orders.test.ts` (the real location of
       commit `43e9c13`'s concurrency race test, NOT `coupons.integration.test.ts`) with a NEW
       two-racer case: two simultaneous requests racing to claim+burn the SAME bulk
-      (`user_id IS NULL`) code, asserting exactly one succeeds (200) and one gets the existing
-      `already_used` rejection — use the same `Promise.all([...])` pattern against two concurrent
+      (`user_id IS NULL`) code, asserting exactly one succeeds (200) and the loser gets an HTTP 409
+      from the atomic burn guard at placement (placement passes `allowUsedReward:true`, deferring to
+      the burn `UPDATE`, which throws 409 "already been redeemed" — NOT a 400/`already_used`
+      resolver rejection) — use the same `Promise.all([...])` pattern against two concurrent
       supertest requests, alongside (not replacing) the existing `43e9c13` race test.
 - [ ] D5. Run `pnpm --filter @jojopotato/api typecheck`.
 - [ ] D6. Run full `pnpm --filter @jojopotato/api test` — confirm zero regressions.

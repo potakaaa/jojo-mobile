@@ -93,6 +93,10 @@ const createOfferSchema = baseOfferSchema.superRefine((data, ctx) => {
   if (message !== null) {
     ctx.addIssue({ code: 'custom', message });
   }
+  // Reject an inverted or zero-length offer window on create.
+  if (data.endAt <= data.startAt) {
+    ctx.addIssue({ code: 'custom', message: 'endAt must be after startAt', path: ['endAt'] });
+  }
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -241,6 +245,17 @@ adminOffersRouter.patch('/:offerId', async (req, res) => {
     const [existing] = await db.select().from(offers).where(eq(offers.id, offerId));
     if (!existing) {
       throw new AdminApiError(404, 'Offer not found');
+    }
+
+    // Re-check the window invariant on the MERGED state when a date is touched, so a
+    // single-date patch can't create an inverted/zero-length window.
+    if (o.startAt !== undefined || o.endAt !== undefined) {
+      const mergedStartAt = o.startAt ?? existing.start_at;
+      const mergedEndAt = o.endAt ?? existing.end_at;
+      if (mergedEndAt <= mergedStartAt) {
+        res.status(400).json({ error: 'endAt must be after startAt' });
+        return;
+      }
     }
 
     // ADM-008 Fix 6 F4: only run the mechanic⇄benefit⇄value cross-validation when the

@@ -13,7 +13,7 @@ metadata:
 
 **Program:** adm-008-coupons
 **Umbrella plan:** process/features/admin-dashboard/active/adm-008-coupons_16-07-26/adm-008-coupons_UMBRELLA_PLAN_16-07-26.md
-**Phase status:** ⏳ PLANNED — validate-contract SEEDED (CONDITIONAL) from source plan's outer-pvl VALIDATE pass; needs inner PVL confirmation before EXECUTE
+**Phase status:** ✅ COMPLETE — EXECUTE done, EVL-green, code-complete (see co-located REPORT)
 
 **Phase-boundary correction (Option A, approved 16-07-26):** EXECUTE discovered the deals→offers
 Drizzle rename is ATOMIC — renaming the physical junction column `deal_products.deal_id`/
@@ -55,7 +55,7 @@ those repoints are symbol/column-name changes only, no behavior/wire-shape chang
 
 ## Blast Radius
 
-- `packages/api/drizzle/0011_{name}.sql` (new migration file)
+- `packages/api/drizzle/0013_rename_deals_to_offers.sql` (new migration file — originally generated as 0011, renumbered to 0013 in the PR #93 merge)
 - `packages/api/src/db/schema/deals.ts` → renamed to `offers.ts`
 - `packages/api/src/db/schema/deal_products.ts` → renamed to `offer_products.ts`
 - `packages/api/src/db/schema/deal_branches.ts` → renamed to `offer_branches.ts`

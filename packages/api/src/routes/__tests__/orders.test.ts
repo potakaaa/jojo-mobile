@@ -909,7 +909,7 @@ describe('POST /orders — offer coupon + is_deal guard (ADM-008)', () => {
   // AC5 (order half) + re-apply-after-use: a targeted offer coupon redeems once,
   // burns, and a second placement of the now-used code is rejected (409).
   it('places an order redeeming a targeted offer coupon, then rejects re-use (409)', async () => {
-    const { eq } = await import('drizzle-orm');
+    const { and, eq } = await import('drizzle-orm');
     const u = await freshUser('ofr5');
     const code = offerCode();
     await db.insert(schema.coupons).values({ user_id: u, offer_id: offerId, code });
@@ -930,6 +930,17 @@ describe('POST /orders — offer coupon + is_deal guard (ADM-008)', () => {
     expect(coupon!.user_id).toBe(u);
     // The consumed offer-coupon is persisted as the order's audit link.
     expect(first.json.order.couponId).toBe(coupon!.id);
+
+    // C13: an offer coupon is NOT a reward redemption — it must NOT write a
+    // "Redeemed reward" star_transactions ledger row (the atomic burn is shared,
+    // but the loyalty ledger is reward-only).
+    const ledger = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(ledger).toHaveLength(0);
 
     // Re-use of the now-used coupon by the same owner is rejected (single-use).
     const second = await post('/orders', {

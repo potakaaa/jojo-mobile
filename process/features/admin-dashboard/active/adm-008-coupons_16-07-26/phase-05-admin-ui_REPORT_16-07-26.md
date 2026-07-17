@@ -120,14 +120,14 @@ were `--write`-normalized during EXECUTE).
 - **Selected plan:** `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/phase-05-admin-ui_PLAN_16-07-26.md`
 - **Finished:** All A–D checklist items; 15 new source files + 5 new test files + 1 nav-config edit.
 - **Verified:** typecheck 0 errors, 21/21 tests, build clean (route tree regenerated), Prettier clean.
-- **Unverified:** D5 Agent-Probe manual walkthrough (user's job — no admin E2E runner). "Generate
-  Coupons" → redemption end-to-end is only meaningful once Phase 2 (resolver/burn) also lands.
-- **Remaining:** UPDATE PROCESS (archive, umbrella state, all-context delta) + user commit checkpoint.
+- **Unverified:** D5 Agent-Probe manual walkthrough (user's job — no admin E2E runner). Phase 2
+  (resolver/burn) has since landed, so "Generate Coupons" → redemption end-to-end is now exercisable.
+- **Remaining:** none — UPDATE PROCESS complete; program shipped via `feat/deals_unification`.
 - **High-risk pack:** N/A for Phase 5 — pure UI consumption, no schema/auth/billing/API surface.
   The program's high-risk evidence pack applies to Phases 1–4 (schema migration + public API +
   discount logic), not this UI phase.
-- **Best next state:** Keep plan active pending the user's D5 walkthrough + commit; then
-  UPDATE PROCESS to close Phase 5 and the ADM-008 program.
+- **Best next state:** Phase 5 CODE-COMPLETE / EVL-green; program held OPEN in `active/` for
+  follow-up exploration (not archived).
 
 ## Follow-up Stubs Created
 - None. No new backlog artifacts required (the admin-E2E-runner gap is pre-existing and already

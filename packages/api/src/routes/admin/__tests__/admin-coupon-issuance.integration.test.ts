@@ -234,6 +234,28 @@ describe('POST /api/admin/coupons/generate — malformed (AC11)', () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it('rejects an oversized quantity (>500) with 400 and writes zero rows', async () => {
+    const offerId = await createOfferId();
+    const res = await generate(adminCookies, { offerId, quantity: 100_000 });
+    expect(res.status).toBe(400);
+
+    const rows = await db.select().from(coupons).where(eq(coupons.offer_id, offerId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('404s a targeted issue to a non-existent user with no DB write', async () => {
+    const offerId = await createOfferId();
+    const res = await generate(adminCookies, {
+      offerId,
+      quantity: 1,
+      userId: '00000000-0000-0000-0000-000000000000',
+    });
+    expect(res.status).toBe(404);
+
+    const rows = await db.select().from(coupons).where(eq(coupons.offer_id, offerId));
+    expect(rows).toHaveLength(0);
+  });
 });
 
 // ADM-008 Fix 6 (P2): a free_item/free_upgrade offer with no benefit product cannot

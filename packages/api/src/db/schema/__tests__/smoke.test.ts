@@ -9,6 +9,7 @@ describe('schema exports', () => {
     'products',
     'productOptions',
     'branchProductAvailability',
+    'promotions',
     'offers',
     'offerProducts',
     'offerBranches',

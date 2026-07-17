@@ -343,6 +343,9 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       let couponDiscountCents = 0;
       let rewardCouponIdToConsume: string | null = null;
       let rewardLabel = '';
+      // Distinguishes coupon family: only a reward coupon writes the "Redeemed
+      // reward" loyalty-ledger row (the atomic burn stays shared by both families).
+      let couponIsReward = false;
       if (body.couponCode !== undefined) {
         const cart: Cart = { id: 'order-cart', items: cartLines, pickupBranchId: body.branchId };
         const resolution = await resolveCouponDiscount(tx, {
@@ -359,6 +362,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         couponDiscountCents = resolution.discount.amountCents;
         rewardCouponIdToConsume = resolution.rewardCouponId;
         rewardLabel = resolution.discount.label;
+        couponIsReward = resolution.discount.source === 'reward';
       }
 
       // Unified discount: deal + reward-coupon amounts, dual-clamped to [0, subtotal].
@@ -444,15 +448,20 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         if (consumed.length === 0) {
           throw new OrderError(409, 'This reward has already been redeemed.');
         }
-        // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
-        // redemption spends reward VALUE, it does not change the star COUNT.
-        await tx.insert(starTransactions).values({
-          user_id: userId,
-          order_id: createdOrder.id,
-          type: 'redeemed',
-          stars: 0,
-          description: `Redeemed reward: ${rewardLabel}`,
-        });
+        // Loyalty ledger is REWARD-only: an offer coupon is not a reward redemption,
+        // so it must not write a "Redeemed reward" star_transactions row (that would
+        // pollute the customer's loyalty history). The burn above stays shared.
+        if (couponIsReward) {
+          // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
+          // redemption spends reward VALUE, it does not change the star COUNT.
+          await tx.insert(starTransactions).values({
+            user_id: userId,
+            order_id: createdOrder.id,
+            type: 'redeemed',
+            stars: 0,
+            description: `Redeemed reward: ${rewardLabel}`,
+          });
+        }
       }
 
       const insertedItems = await tx
