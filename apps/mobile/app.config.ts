@@ -14,6 +14,11 @@ import type { ExpoConfig } from 'expo/config';
 // (`npx expo run:ios` or `npx expo run:android`) before the map can be tested —
 // it cannot run in Expo Go.
 
+// WARNING: android/ is a committed bare project, so EAS Build never runs prebuild and
+// this value is inert there — the real key reaches the APK via the GOOGLE_MAPS_API_KEY
+// EAS env var + the manifestPlaceholders wiring in android/app/build.gradle. Do NOT run
+// `expo prebuild`: it writes the literal key into the TRACKED AndroidManifest.xml, and
+// this repo is public. Kept only for a future managed/CNG switch.
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY ?? '';
 
 // EAS project + owner default to the team's shared `jojo-potato` Expo project. A
