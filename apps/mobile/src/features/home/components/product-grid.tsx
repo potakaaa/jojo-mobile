@@ -3,7 +3,7 @@ import { ProductCard } from '@jojopotato/ui';
 import { FlatList, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
-import { getProductImage } from '../product-images';
+import { resolveImageUrl } from '@/lib/image-url';
 
 export interface ProductGridProps {
   products: MenuItem[];
@@ -23,13 +23,16 @@ export function ProductGrid({ products, onProductPress }: ProductGridProps) {
       keyExtractor={(item) => item.id}
       numColumns={2}
       scrollEnabled={false}
-      renderItem={({ item }) => (
-        <ProductCard
-          product={item}
-          imageSource={getProductImage(item.categoryId)}
-          onPress={onProductPress ? () => onProductPress(item.id) : undefined}
-        />
-      )}
+      renderItem={({ item }) => {
+        const imageUri = resolveImageUrl(item.imageUrl);
+        return (
+          <ProductCard
+            product={item}
+            imageSource={imageUri ? { uri: imageUri } : undefined}
+            onPress={onProductPress ? () => onProductPress(item.id) : undefined}
+          />
+        );
+      }}
       columnWrapperStyle={styles.row}
       contentContainerStyle={styles.content}
     />
