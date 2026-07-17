@@ -679,6 +679,27 @@ export function serializeReward(reward: RewardRow): ApiReward {
 }
 
 /**
+ * Admin-facing reward shape (ADM-005). Extends the PUBLIC `ApiReward` fields with
+ * `createdAt`/`updatedAt` (the admin surface shows audit timestamps; the public
+ * STAR-002 wire shape stays frozen — `serializeReward`/`ApiReward` above are
+ * untouched). Declared LOCALLY here matching the `AdminBranch`/`AdminOffer`
+ * convention. Money (`rewardValue`) is integer cents at the boundary.
+ */
+export interface AdminReward extends ApiReward {
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Serialize a `rewards` row to the admin `AdminReward` shape (money → cents). */
+export function serializeAdminReward(reward: RewardRow): AdminReward {
+  return {
+    ...serializeReward(reward),
+    createdAt: reward.created_at.toISOString(),
+    updatedAt: reward.updated_at.toISOString(),
+  };
+}
+
+/**
  * An issued coupon at the HTTP boundary. Mirrors `@jojopotato/types` `Coupon`
  * (schema-based — no display `title`/`discountLabel`). Timestamps are ISO strings.
  */
@@ -736,6 +757,8 @@ export function rewardDiscountLabel(
       return `${Number(rewardValue ?? '0')}% OFF`;
     case 'free_item':
       return rewardName.trim().length > 0 ? rewardName : 'Free item';
+    case 'free_upgrade':
+      return rewardName.trim().length > 0 ? rewardName : 'Free upgrade';
     default:
       return rewardName.trim().length > 0 ? rewardName : 'Reward';
   }

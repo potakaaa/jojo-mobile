@@ -156,6 +156,7 @@ export async function resolveCouponDiscount(
     .select({
       coupon: coupons,
       rewardName: rewards.name,
+      rewardType: rewards.reward_type,
       rewardEligibleProductId: rewards.eligible_product_id,
     })
     .from(coupons)
@@ -163,7 +164,7 @@ export async function resolveCouponDiscount(
     .where(and(eq(coupons.code, code), eq(coupons.user_id, userId), isNotNull(coupons.reward_id)));
 
   if (couponRow) {
-    const { coupon } = couponRow;
+    const { coupon, rewardType } = couponRow;
     const reward =
       coupon.reward_id !== null ? { eligibleProductId: couponRow.rewardEligibleProductId } : null;
     const result = checkRewardEligibility(
@@ -175,7 +176,34 @@ export async function resolveCouponDiscount(
     if (!result.eligible) {
       return { ok: false, status: 400, reason: result.reason, message: result.message };
     }
-    const amountCents = computeRewardDiscountCents(reward!.eligibleProductId!, cart);
+
+    // ADM-005 (D2/checklist 3b) reward_type dispatch. `free_item` waives one unit
+    // of the bound product (reward math verbatim); `free_upgrade` waives one unit's
+    // paid size-upgrade delta (reuses the offer-side helper — signature-identical,
+    // no adapter). `computeRewardDiscountCents` stays a pure single-purpose helper
+    // (no reward_type dispatch inside it). Dual-clamped to [0, subtotal] mirroring
+    // the offer-side free-mechanic branch below.
+    const rawAmount =
+      rewardType === 'free_upgrade'
+        ? computeFreeUpgradeDiscountCents(reward!.eligibleProductId!, cart)
+        : computeRewardDiscountCents(reward!.eligibleProductId!, cart);
+    const amountCents = Math.max(0, Math.min(rawAmount, subtotalCents(cart)));
+
+    // Zero-guard reject (money-path, Known-Gap BANNED): a `free_upgrade` reward
+    // coupon whose bound product has no paid size upgrade in the cart computes to 0
+    // — REJECT and leave the coupon UNBURNED (never a ₱0-and-burn), mirroring the
+    // offer-side pattern. Scoped to `free_upgrade`: `free_item` cannot reach here
+    // with a 0 (checkRewardEligibility already required the bound product in cart,
+    // so its unit price is > 0). Closes the latent ₱0-burn hole for the new case.
+    if (rewardType === 'free_upgrade' && amountCents <= 0) {
+      return {
+        ok: false,
+        status: 400,
+        reason: 'no_upgrade_to_waive',
+        message: 'Add a size upgrade to the eligible item to use this reward.',
+      };
+    }
+
     return {
       ok: true,
       rewardCouponId: coupon.id,

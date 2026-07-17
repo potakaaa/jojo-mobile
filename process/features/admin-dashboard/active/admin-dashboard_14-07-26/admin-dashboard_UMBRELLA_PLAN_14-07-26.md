@@ -284,10 +284,11 @@ incomplete and must be sent back to PLAN.
 | 1 | P1 — Auth/RBAC (ADM-001) | P0 | ✅ VERIFIED |
 | 2 | P2 — Branches CRUD (ADM-002) | P1 | ✅ VERIFIED |
 | 3 | P3 — Products/Categories CRUD (ADM-003) | P2 | ✅ VERIFIED |
-| 4 | P4 — Deals CRUD (ADM-004) | P2, P3 | ⏳ PLANNED |
-| 5 | P5 — Rewards CRUD (ADM-005) | P0, P1 | ⏳ PLANNED |
-| 6 | P6 — Orders view (ADM-006) | P2 | ⏳ PLANNED |
-| 7 | P7 — Analytics (ADM-007) | P3, P4, P5, P6 | ⏳ PLANNED |
+| 4 | P4a — Deals-as-Products (ADM-004 RE-PLAN) | P2, P3 | ✅ VERIFIED (merged PR #92, `fedcfcb`) |
+| — | ADM-008 Coupons + Fix 6 (sub-program, inserted between P4 and P5, not phase-numbered) | P4a | CODE-COMPLETE, EVL-green, USER-REVIEWED — held OPEN in `active/` |
+| 5 | P5 — Rewards CRUD (ADM-005) | P0, P1 | 🔨 CODE DONE (EVL-green, `feat/adm-005-rewards`, G10 owed, not yet merged) |
+| 6 | P6 — Orders view (ADM-006) | P2 | ⏳ PLANNED — D1-D8 DECISIONS LOCKED, PARKED pending P5 merge (D8) |
+| 7 | P7 — Analytics (ADM-007) | P3, P4, P5, P6 | ⏳ PLANNED — D1-D9 DECISIONS LOCKED, PARKED pending P6 execution (D9) |
 
 No phase depends on a later phase's output — ordering verified by inspection (P4/P7 have the widest
 fan-in but still only depend on strictly earlier phases).
@@ -302,10 +303,11 @@ fan-in but still only depend on strictly earlier phases).
 | P1 — Auth/RBAC (ADM-001) | ✅ VERIFIED |
 | P2 — Branches CRUD (ADM-002) | ✅ VERIFIED |
 | P3 — Products/Categories CRUD (ADM-003) | ✅ VERIFIED |
-| P4 — Deals CRUD (ADM-004) | ⏳ PLANNED |
-| P5 — Rewards CRUD (ADM-005) | ⏳ PLANNED |
-| P6 — Orders view (ADM-006) | ⏳ PLANNED |
-| P7 — Analytics (ADM-007) | ⏳ PLANNED |
+| P4a — Deals-as-Products (ADM-004 RE-PLAN) | ✅ VERIFIED |
+| ADM-008 Coupons + Fix 6 (sub-program) | CODE-COMPLETE (held OPEN) |
+| P5 — Rewards CRUD (ADM-005) | 🔨 CODE DONE |
+| P6 — Orders view (ADM-006) | ⏳ PLANNED (decisions locked, PARKED) |
+| P7 — Analytics (ADM-007) | ⏳ PLANNED (decisions locked, PARKED) |
 
 Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧 BLOCKED | ✅ COMPLETE
 
@@ -354,59 +356,86 @@ Status values: ⏳ PLANNED | 🔨 CODE DONE | 🧪 TESTING | ✅ VERIFIED | 🚧
 
 ## Current Execution State
 
-Last updated: 16-07-26 (Phase 4a — Deals-as-Products, EVL-green; UPDATE PROCESS doc reconciliation
-  pass; branch `feat/adm-004-deals` NOT YET MERGED, PR pending review)
+Last updated: 17-07-26 (Phase 5 — Rewards Configuration CRUD, ADM-005; UPDATE PROCESS doc
+  reconciliation pass; branch `feat/adm-005-rewards`, commit `7a198b9`, not yet merged)
 Completed phases: Phase 0 — Scaffold (✅ VERIFIED, 14-07-26); Phase 1 — Auth/RBAC (✅ VERIFIED,
   14-07-26); Phase 2 — Branches CRUD (✅ VERIFIED, 14-07-26); Phase 3 — Products/Categories CRUD
-  (✅ VERIFIED, 15-07-26); Phase 4a — Deals-as-Products, ADM-004 RE-PLAN (EVL-green, 16-07-26 —
-  see status note below on why this is not yet stamped ✅ VERIFIED at the umbrella level)
+  (✅ VERIFIED, 15-07-26); Phase 4a — Deals-as-Products, ADM-004 RE-PLAN (✅ VERIFIED — MERGED via
+  PR #92, commit `fedcfcb`; previously held at "NOT YET MERGED" in a stale snapshot, corrected
+  this pass)
 Completed cross-cutting tasks: Sidebar Navigation (✅ COMPLETE, 15-07-26)
-Current phase N of total: 4 of 8 (Phase 4a — Deals-as-Products, ADM-004 RE-PLAN) — delivered;
-  Phase 5 (Rewards CRUD, ADM-005) is next once Phase 4a's PR merges
-Phase N name: Phase 4a — Deals-as-Products (ADM-004 RE-PLAN; supersedes and discards the
-  discount-shaped "Phase 4 — Deals CRUD" model built on commit `d5070d8`)
-Phase N status: EVL-green, code-complete, NOT YET MERGED (branch `feat/adm-004-deals`, PR pending
-  review — held at "Keep in active/testing" rather than stamped ✅ VERIFIED until the PR lands).
-  Phase 4 PIVOTED mid-program: the original discount-object deals model (a standalone `deals` table
-  + `deal_products`/`deal_branches` junctions + a coupon-cascade deactivate flow) was fully EXECUTEd
-  on commit `d5070d8` (31/31 new tests, 214/214 full API suite, Gate: PASS) and is now SUPERSEDED —
-  its code was discarded (content replaced at the same file paths, not `git revert`; not deleted from
-  git history; the `deals`/`deal_products`/`deal_branches`/`coupons` schema stays dormant, preserved
-  for a future ADM-008). The new model: a "Deal" is a `products` row with `is_deal = true`, described
-  by a new self-referential `deal_components` junction (member products + quantity), priced at its
-  own `base_price` — reusing the entire existing product → menu → cart → checkout → order_items
-  pipeline with zero new pricing/cart/order code. `phase-04-deals_PLAN_14-07-26.md` was rewritten in
-  full for this new model and carried a fresh Step 4 PVL pass (Gate: CONDITIONAL, 1 accepted
-  non-blocking concern) before EXECUTE. Delivered on top of the base 4a scope: **Enhancement E1**
-  (2-step create wizard, transactional `db.transaction()` create-with-components, commit `680427f`,
-  Gate: PASS) and, this session (16-07-26, uncommitted at session start — see below), a live
-  deal-manage "Price comparison" panel (commit `1ca08f7`) plus 3 PR-review fixes (staged, uncommitted
-  as of this pass): (1) wizard `step1Valid` now also requires a non-empty slug; (2) `PATCH
-  /api/admin/deals/:id` now serializes existing components instead of `[]`; (3) deal-detail price
-  formatting routed through the shared `formatPeso` helper. EVL evidence this session: admin
-  typecheck ✅, api typecheck ✅, API suite 222/222 ✅, admin 8/8 ✅, Prettier clean.
-Phase N EVL: green for the full delivered scope (4a base + E1 + this session's price-comparison
-  panel + PR-review fixes) — see `phase-04a-deals-as-products_REPORT_15-07-26.md` `## Test Gate
-  Outcomes` for the 4a-base evidence table; this session's 3-file diff was independently re-verified
-  (typecheck + full API/admin suites + format) as summarized above. AC12/AC-E6 (Agent-Probe UI
-  walkthroughs) were user-verified.
-Phase N report: `phase-04a-deals-as-products_REPORT_15-07-26.md` is the CURRENT, AUTHORITATIVE
-  EXECUTE report for Phase 4a. `phase-04-deals_REPORT_15-07-26.md` (the original file, dated the same
-  day) documents the now-discarded discount-model EXECUTE pass on commit `d5070d8` and is marked
-  SUPERSEDED at its own header — do not read it as current truth.
-Companion (non-executed) artifact: `deals-mobile-repoint_HANDOFF_15-07-26.md` — a standalone,
-  plain-language handoff spec for a different (non-RIPER-aware) teammate to repoint the mobile Deals
-  tab onto the new `?isDeal=true` menu-read contract once Phase 4a ships (and, separately, once a
-  customer-facing deal-detail-with-components read route exists — the handoff doc's read-contract
-  section was corrected this pass to stop implying `deal_components` are exposed via the menu-list
-  response; they are not — see the phase plan's `## Public Contracts` note). This is NOT part of this
-  program's own EXECUTE scope and is never routed through this program's phase loop.
-Next phase: (a) merge the `feat/adm-004-deals` PR — no further RIPER work is pending on Phase 4a
-  itself; (b) once merged, move `phase-04-deals_PLAN_14-07-26.md` +
-  `phase-04a-deals-as-products_REPORT_15-07-26.md` (+ the now-superseded
-  `phase-04-deals_REPORT_15-07-26.md`, kept for history) into `completed/admin-dashboard_14-07-26/`
-  and stamp Phase 4a ✅ VERIFIED in the Phase Map/Ordering/Program Status tables below; (c) start
-  Phase 5 — Rewards CRUD (ADM-005), Step 1 RESEARCH.
+Completed sub-program (inserted between P4 and P5, NOT part of the 8-phase numbering): ADM-008
+  Coupons (Promotion→Offer→Coupon, 5 phases, CODE-COMPLETE + EVL-green, 16-07-26) plus its 6-item
+  post-merge fix batch (6/6 COMPLETE, 17-07-26 — Fix 6 = `adm-008-free-mechanics_16-07-26`, the
+  free_item/free_upgrade offer-coupon redemption-math program, USER-REVIEWED 17-07-26 via a
+  5-artifact risk evidence pack). Shipped on `feat/deals_unification`, merged into `development`
+  via PR #109 (merge commit `95e7aeb`, confirmed present in `feat/adm-005-rewards`'s own git
+  history). Held OPEN in `active/` (not archived) per standing decision — user has further
+  follow-up exploration planned on the coupons domain. Full account:
+  `process/context/all-context.md` (ADM-008 + Fix 6 bullets) — not duplicated here.
+Current phase N of total: 5 of 8 (Phase 5 — Rewards Configuration CRUD, ADM-005) —
+  CODE-COMPLETE, EVL-confirmed green; G10 (Agent-Probe admin UI walkthrough) owed (user-run,
+  standing project-wide gap — no `apps/admin` browser/E2E runner). Not yet merged.
+Phase N name: Phase 5 — Rewards Configuration CRUD (ADM-005, #43)
+Phase N status: CODE-COMPLETE + EVL-green (branch `feat/adm-005-rewards`, commit `7a198b9`, not
+  yet merged) — held at "Keep in active/testing" rather than stamped ✅ VERIFIED until G10's
+  manual admin UI walkthrough is user-confirmed and the branch merges. Delivered: admin Rewards
+  CRUD (`packages/api/src/routes/admin/rewards.ts`, 5th confirmed append-only aggregator
+  consumer), additive `AdminReward`/`serializeAdminReward` (public `ApiReward` wire-frozen),
+  `REWARD_TYPES` incl. `free_upgrade` (D2), and the reward-side `free_upgrade` money-path in
+  `coupon-apply.ts`'s `resolveCouponDiscount` (reward_type dispatch: `free_item` →
+  `computeRewardDiscountCents`, `free_upgrade` → `computeFreeUpgradeDiscountCents`, with a
+  zero-guard reject — 400, coupon left unburned — when nothing to upgrade). `apps/admin` gained
+  `features/rewards/**` (list/form + hooks/lib), an Outlet+index route split (Phase 3's
+  nested-detail-route precedent applied proactively), and a new, non-disabled Rewards nav entry
+  (no prior placeholder existed — Execute-Agent Instruction E4). D1-D4 locked with the user
+  17-07-26: multiple-concurrent battle-pass reward tiers; 4 reward types incl. `free_upgrade`;
+  `isActive:false` soft-deactivate only (no hard DELETE); type-conditional D4 cross-field
+  validation.
+Phase N EVL: independently confirmed green — API 448/448 (incl. 19 new `admin-rewards`
+  integration tests + 2 new G13 `coupons.integration.test.ts` free_upgrade cases), admin 58/58,
+  both typechecks clean, admin build clean, `pnpm format:check` clean. HARD gates G1/G2/G3
+  (retroactivity — `required_stars`/`reward_value` edits never mutate `star_transactions`
+  history or issued coupons; deactivation stops new unlocks but pre-issued available coupons
+  survive + still redeem) and G13 (`free_upgrade` exact-cents waive + reject-when-unburned) all
+  proven by real passing Fully-Automated tests — Known-Gap banned and unused for every developed
+  money behavior, per the program's own HARD-invariant charter language. 3 execution deviations
+  recorded honestly in the phase report (none hard-stop): (1) reward-side zero-guard reason code
+  is `no_upgrade_to_waive`, not the offer-side `no_eligible_product` the plan cited by analogy —
+  semantically clearer, money behavior identical, proven by G13b; (2) no new
+  `packages/utils/discount.test.ts` tests added — the validate-contract explicitly said none
+  were required (`computeFreeUpgradeDiscountCents` reused verbatim, already 35/35-covered;
+  dispatch wiring proven by G13 instead) — matches contract, not a gap; (3) execute-agent added
+  `!build` to `.claude/.vcignore` to unblock the admin build gate per the scout-block hook's own
+  instruction — benign harness allowance, no source impact.
+Phase N report: `phase-05-rewards_REPORT_17-07-26.md` (this pass).
+Next phase: Phase 6 — Orders view (ADM-006, #44). D1-D8 decisions LOCKED with the user 17-07-26
+  (read-only MVP, name+phone-only PII, cursor pagination, composed serializers, IDs-only
+  discount context, inclusive date-range semantics, `data-table` + polling for freshness) but
+  the phase is explicitly **PARKED (D8)** — do NOT run PLAN-SUPPLEMENT/PVL/EXECUTE for Phase 6
+  until Phase 5 has merged into `development` (keeps the shared aggregator/serializer/nav edits
+  serialized). Phase 7 — Analytics (ADM-007, #45) is similarly DECISIONS-LOCKED (D1-D9, incl. 2
+  competitor-research-informed additions — top-selling products + new-vs-returning customers, 8
+  KPIs total) but PARKED (D9) behind Phase 6's execution. Both are DRAFT-complete
+  (research + decisions done), not yet RIPER-activated (no PLAN-SUPPLEMENT/PVL run).
+
+**Phase 4a merge + ADM-008 + Fix 6 (free-mechanics) closeout summary (16→17-07-26, reconciled
+this pass):** `feat/adm-004-deals` merged via PR #92 (commit `fedcfcb`) — Phase 4a now stands
+✅ VERIFIED at the umbrella level (a prior Current Execution State snapshot incorrectly showed
+"NOT YET MERGED"; corrected this pass). ADM-008 Coupons (Promotion→Offer→Coupon, 5-phase
+sub-program) shipped CODE-COMPLETE + EVL-green via `feat/deals_unification` (superseding the
+closed `feat/adm-008-coupons` PR); its 6-item post-merge fix batch reached 6/6 COMPLETE
+17-07-26, closing with Fix 6 — a standalone COMPLEX plan (`adm-008-free-mechanics_16-07-26`)
+that fixed a live money leak where `free_item`/`free_upgrade`/`buy_one_take_one`/`bundle` offer
+mechanics all routed through the cheapest-eligible-line discount branch instead of real
+redemption math (or, for the first two, no redemption math at all). Delivered a new
+`offers.benefit_product_id` FK, real `free_item`/`free_upgrade` money-path math, and a resolver
+allowlist restructure that independently closed a second, separately-found zero/negative-
+discount money leak. USER-REVIEWED 17-07-26 via a 5-artifact risk evidence pack.
+`feat/deals_unification` then merged into `development` via PR #109 (merge commit `95e7aeb`)
+after one further user-approved fix (coupon reward/offer mutual-exclusivity DB CHECK, commit
+`31a574f`). See `process/context/all-context.md` for the full account (ADM-008 + Fix 6 bullets)
+— not duplicated in full here to avoid drift between two sources of truth.
 
 **Phase 3 closeout summary (15-07-26):** Full real vertical slice for the product catalog surface —
 `packages/api/src/routes/admin/{products,categories}.ts` (new), mounted on the existing append-only
@@ -541,8 +570,10 @@ Report: `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-
 
 Orchestrator rule: read "Phase N status" and the named phase plan's `## Phase Loop Progress`
 before spawning any subagent. Never spawn execute-agent when loop step is RESEARCH, INNOVATE,
-PLAN-SUPPLEMENT, or PVL. Phase 4's plan file already exists (FLEXIBLE depth) but has NOT started
-its inner loop — spawn vc-research-agent next, not vc-execute-agent.
+PLAN-SUPPLEMENT, or PVL. Phase 5's `## Phase Loop Progress` has Steps 1-6 ticked (EVL-green);
+Step 7 (UPDATE PROCESS) is this pass. Phase 6/7 plan files exist with D1-D8/D1-D9 decisions
+LOCKED but are explicitly PARKED (D8/D9) — do not spawn any agent for them until their stated
+unpark condition (Phase 5 merge / Phase 6 execution, respectively) is met.
 
 Note: this section is the only part of the umbrella plan expected to change over the program's
 life — update-process-agent rewrites it after every phase closeout (overwrite, not append — git
