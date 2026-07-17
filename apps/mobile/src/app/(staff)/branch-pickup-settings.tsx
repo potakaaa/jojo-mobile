@@ -97,6 +97,7 @@ export default function BranchPickupSettingsScreen() {
                         setPrepTimeText(text);
                         if (prepTimeError) setPrepTimeError(null);
                       }}
+                      mode={mode}
                       keyboardType="number-pad"
                       returnKeyType="done"
                       maxLength={3}

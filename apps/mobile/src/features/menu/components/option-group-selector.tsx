@@ -3,6 +3,7 @@ import { AddOnSelector, Badge, FlavorSelector, SizeSelector } from '@jojopotato/
 import { StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -46,6 +47,8 @@ export function OptionGroupSelector({
   onChange,
 }: OptionGroupSelectorProps) {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const selectedId = selectedIds[0];
 
   return (
@@ -55,6 +58,7 @@ export function OptionGroupSelector({
         <Badge
           label={required ? 'Required' : 'Optional'}
           variant={required ? 'warning' : 'default'}
+          mode={mode}
         />
       </View>
 
@@ -63,18 +67,21 @@ export function OptionGroupSelector({
           flavors={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
           selectedFlavorId={selectedId}
           onSelect={(flavor) => onChange(flavor.id)}
+          mode={mode}
         />
       ) : group.type === 'size' ? (
         <SizeSelector
           sizes={group.options.map((option) => ({ id: option.optionId, label: option.name }))}
           selectedSizeId={selectedId}
           onSelect={(size) => onChange(size.id)}
+          mode={mode}
         />
       ) : (
         <AddOnSelector
           options={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
           selectedIds={selectedIds}
           onToggle={(id) => onChange(id)}
+          mode={mode}
         />
       )}
     </View>

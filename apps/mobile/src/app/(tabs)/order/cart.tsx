@@ -236,7 +236,7 @@ export default function CartScreen() {
   // bare "Your cart is empty" (AC13: never silently dropped). Conflicts are held
   // out-of-band (they never enter cart.items), so totals/checkout stay clean.
   const conflictNotice = hasConflicts ? (
-    <Card style={styles.conflictCard}>
+    <Card style={styles.conflictCard} mode={mode}>
       <Text style={[styles.conflictTitle, { color: theme.text }]}>Some items are unavailable</Text>
       <Text style={[styles.conflictBody, { color: theme.textSecondary }]}>
         These items from your past order can&apos;t be added at this branch today, so they were left

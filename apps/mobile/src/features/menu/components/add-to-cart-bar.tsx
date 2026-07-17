@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Spacing, TypeScale } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 export interface AddToCartBarProps {
@@ -26,6 +27,8 @@ export interface AddToCartBarProps {
  */
 export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: AddToCartBarProps) {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
   const [showHint, setShowHint] = useState(false);
 
@@ -65,6 +68,7 @@ export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: Add
             label="Add to Cart"
             onPress={handlePress}
             style={StyleSheet.flatten([styles.addButton, !canAdd && styles.addButtonDim])}
+            mode={mode}
           />
         ) : (
           <Button
@@ -73,6 +77,7 @@ export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: Add
             variant="outline"
             disabled
             style={styles.addButton}
+            mode={mode}
           />
         )}
       </View>

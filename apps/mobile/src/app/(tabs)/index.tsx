@@ -253,7 +253,7 @@ export default function HomeScreen() {
           {/* Deals strip */}
           <View style={styles.sectionTitleRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Deals & offers</Text>
-            <Badge label="Save" />
+            <Badge label="Save" mode={mode} />
           </View>
           {dealsQuery.isPending ? (
             <SectionLoader />
@@ -321,7 +321,7 @@ export default function HomeScreen() {
               <CategorySelector categories={menuView.categories} />
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
-                <Badge label="Popular" />
+                <Badge label="Popular" mode={mode} />
               </View>
               <ProductGrid products={menuView.products} onProductPress={openProduct} />
             </>

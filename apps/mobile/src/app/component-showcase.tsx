@@ -9,7 +9,7 @@ import type {
   PickupTime,
   Size,
 } from '@jojopotato/types';
-import type { RewardProgress, StarProgress } from '@jojopotato/ui';
+import type { RewardProgress, StarProgress, ThemeMode } from '@jojopotato/ui';
 import {
   Badge,
   BranchCard,
@@ -28,14 +28,15 @@ import {
   RewardProgressCard,
   SizeSelector,
   StarProgressBar,
+  Toggle,
 } from '@jojopotato/ui';
 import { Stack } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Colors, FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 /**
  * Dev-only component gallery. Renders every `@jojopotato/ui` component with
@@ -187,11 +188,12 @@ const ORDER_STATUSES: OrderStatus[] = [
 
 interface SectionProps {
   title: string;
+  mode: ThemeMode;
   children: ReactNode;
 }
 
-function Section({ title, children }: SectionProps) {
-  const theme = useTheme();
+function Section({ title, mode, children }: SectionProps) {
+  const theme = Colors[mode];
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
@@ -201,7 +203,17 @@ function Section({ title, children }: SectionProps) {
 }
 
 export default function ComponentShowcaseScreen() {
-  const theme = useTheme();
+  const scheme = useColorScheme();
+  const appMode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
+
+  // Dev-only preview override. Null = follow the app's resolved theme (so the
+  // gallery tracks the Account-tab toggle by default); flipping the switch pins
+  // the whole gallery to one mode so both themes can be browsed from here
+  // without leaving the screen. This is a local preview control only — it never
+  // touches the persisted theme preference.
+  const [modeOverride, setModeOverride] = useState<ThemeMode | null>(null);
+  const mode = modeOverride ?? appMode;
+  const theme = Colors[mode];
 
   // Local state so the interactive selectors and inputs actually respond.
   const [inputValue, setInputValue] = useState('Juan Dela Cruz');
@@ -224,40 +236,48 @@ export default function ComponentShowcaseScreen() {
             Dev-only gallery of every @jojopotato/ui component. Temporary — not shipped UI.
           </Text>
 
-          <Section title="BrandWordmark">
-            <BrandWordmark />
-            <BrandWordmark size={22} />
+          <Toggle
+            label={`Dark preview (${mode})`}
+            value={mode === 'dark'}
+            onValueChange={(next) => setModeOverride(next ? 'dark' : 'light')}
+            mode={mode}
+          />
+
+          <Section title="BrandWordmark" mode={mode}>
+            <BrandWordmark mode={mode} />
+            <BrandWordmark size={22} mode={mode} />
           </Section>
 
-          <Section title="Button">
-            <Button label="Primary" onPress={log('Button primary')} />
-            <Button label="Accent" variant="accent" onPress={log('Button accent')} />
-            <Button label="Ink" variant="ink" onPress={log('Button ink')} />
-            <Button label="Outline" variant="outline" onPress={log('Button outline')} />
-            <Button label="Disabled" disabled onPress={noop} />
+          <Section title="Button" mode={mode}>
+            <Button label="Primary" onPress={log('Button primary')} mode={mode} />
+            <Button label="Accent" variant="accent" onPress={log('Button accent')} mode={mode} />
+            <Button label="Ink" variant="ink" onPress={log('Button ink')} mode={mode} />
+            <Button label="Outline" variant="outline" onPress={log('Button outline')} mode={mode} />
+            <Button label="Disabled" disabled onPress={noop} mode={mode} />
           </Section>
 
-          <Section title="Card">
-            <Card>
+          <Section title="Card" mode={mode}>
+            <Card mode={mode}>
               <Text style={[styles.cardText, { color: theme.text }]}>
                 A plain themed container surface. Compose any content inside it.
               </Text>
             </Card>
           </Section>
 
-          <Section title="Badge">
-            <Badge label="Default" />
-            <Badge label="Success" variant="success" />
-            <Badge label="Warning" variant="warning" />
-            <Badge label="Danger" variant="danger" />
+          <Section title="Badge" mode={mode}>
+            <Badge label="Default" mode={mode} />
+            <Badge label="Success" variant="success" mode={mode} />
+            <Badge label="Warning" variant="warning" mode={mode} />
+            <Badge label="Danger" variant="danger" mode={mode} />
           </Section>
 
-          <Section title="Input">
+          <Section title="Input" mode={mode}>
             <Input
               label="Full name"
               value={inputValue}
               onChangeText={setInputValue}
               placeholder="Enter your name"
+              mode={mode}
             />
             <Input
               label="Email"
@@ -265,52 +285,63 @@ export default function ComponentShowcaseScreen() {
               onChangeText={noop}
               placeholder="you@example.com"
               error="Enter a valid email address"
+              mode={mode}
             />
           </Section>
 
-          <Section title="ProductCard">
-            <ProductCard product={SAMPLE_PRODUCT} />
-            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} />
+          <Section title="ProductCard" mode={mode}>
+            <ProductCard product={SAMPLE_PRODUCT} mode={mode} />
+            <ProductCard product={SAMPLE_PRODUCT_SOLD_OUT} mode={mode} />
           </Section>
 
-          <Section title="DealCard">
-            <DealCard deal={SAMPLE_DEAL} onPress={log('DealCard')} />
+          <Section title="DealCard" mode={mode}>
+            <DealCard deal={SAMPLE_DEAL} onPress={log('DealCard')} mode={mode} />
           </Section>
 
-          <Section title="BranchCard">
-            <BranchCard branch={SAMPLE_BRANCH} isOpen onPress={log('BranchCard open')} />
+          <Section title="BranchCard" mode={mode}>
+            <BranchCard
+              branch={SAMPLE_BRANCH}
+              isOpen
+              onPress={log('BranchCard open')}
+              mode={mode}
+            />
             <BranchCard
               branch={SAMPLE_BRANCH_CLOSED}
               isOpen={false}
               onPress={log('BranchCard closed')}
+              mode={mode}
             />
           </Section>
 
-          <Section title="RewardProgressCard">
-            <RewardProgressCard rewards={SAMPLE_REWARDS} onPress={log('RewardProgressCard')} />
+          <Section title="RewardProgressCard" mode={mode}>
+            <RewardProgressCard
+              rewards={SAMPLE_REWARDS}
+              onPress={log('RewardProgressCard')}
+              mode={mode}
+            />
           </Section>
 
-          <Section title="StarProgressBar">
-            <StarProgressBar progress={SAMPLE_PROGRESS} />
-            <StarProgressBar progress={{ currentStars: 5, requiredStars: 5 }} />
+          <Section title="StarProgressBar" mode={mode}>
+            <StarProgressBar progress={SAMPLE_PROGRESS} mode={mode} />
+            <StarProgressBar progress={{ currentStars: 5, requiredStars: 5 }} mode={mode} />
           </Section>
 
-          <Section title="OrderStatusBadge">
+          <Section title="OrderStatusBadge" mode={mode}>
             {ORDER_STATUSES.map((status) => (
-              <OrderStatusBadge key={status} status={status} />
+              <OrderStatusBadge key={status} status={status} mode={mode} />
             ))}
           </Section>
 
-          <Section title="OrderStatusTimeline">
-            <OrderStatusTimeline currentStatus="preparing" />
+          <Section title="OrderStatusTimeline" mode={mode}>
+            <OrderStatusTimeline currentStatus="preparing" mode={mode} />
           </Section>
 
-          <Section title="CouponCard">
-            <CouponCard coupon={SAMPLE_COUPON} onPress={log('CouponCard')} />
-            <CouponCard coupon={SAMPLE_COUPON_REDEEMED} />
+          <Section title="CouponCard" mode={mode}>
+            <CouponCard coupon={SAMPLE_COUPON} onPress={log('CouponCard')} mode={mode} />
+            <CouponCard coupon={SAMPLE_COUPON_REDEEMED} mode={mode} />
           </Section>
 
-          <Section title="CartItem">
+          <Section title="CartItem" mode={mode}>
             <CartItem
               item={{ ...SAMPLE_CART_ITEM, quantity }}
               product={SAMPLE_PRODUCT}
@@ -318,28 +349,31 @@ export default function ComponentShowcaseScreen() {
               size={SAMPLE_SIZES.find((s) => s.id === selectedSizeId)}
               onIncrement={() => setQuantity((q) => q + 1)}
               onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
+              mode={mode}
             />
           </Section>
 
-          <Section title="FlavorSelector">
+          <Section title="FlavorSelector" mode={mode}>
             <FlavorSelector
               flavors={SAMPLE_FLAVORS}
               selectedFlavorId={selectedFlavorId}
               onSelect={(flavor) => setSelectedFlavorId(flavor.id)}
+              mode={mode}
             />
           </Section>
 
-          <Section title="SizeSelector">
+          <Section title="SizeSelector" mode={mode}>
             <SizeSelector
               sizes={SAMPLE_SIZES}
               selectedSizeId={selectedSizeId}
               onSelect={(size) => setSelectedSizeId(size.id)}
+              mode={mode}
             />
           </Section>
 
-          <Section title="PickupTimeBadge">
-            <PickupTimeBadge pickupTime={SAMPLE_PICKUP_TIME} />
-            <PickupTimeBadge pickupTime={SAMPLE_PICKUP_TIME_FULL} />
+          <Section title="PickupTimeBadge" mode={mode}>
+            <PickupTimeBadge pickupTime={SAMPLE_PICKUP_TIME} mode={mode} />
+            <PickupTimeBadge pickupTime={SAMPLE_PICKUP_TIME_FULL} mode={mode} />
           </Section>
         </ScrollView>
       </SafeAreaView>

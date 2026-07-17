@@ -71,7 +71,7 @@ export default function OrderHistoryScreen() {
           const itemsSummary = summarizeOrderItems(item.items);
           return (
             <Pressable accessibilityRole="button" onPress={() => openOrder(item)}>
-              <Card>
+              <Card mode={mode}>
                 <View style={styles.row}>
                   <Text style={[styles.orderNumber, { color: theme.text }]}>
                     {item.orderNumber}
@@ -90,7 +90,7 @@ export default function OrderHistoryScreen() {
                   {formatPlacedDate(item.placedAt)}
                 </Text>
                 <View style={styles.badgeRow}>
-                  <OrderStatusBadge status={item.status} />
+                  <OrderStatusBadge status={item.status} mode={mode} />
                 </View>
                 {reorderEligibility(item.status) ? (
                   <View style={styles.reorderRow} onStartShouldSetResponder={() => true}>

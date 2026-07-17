@@ -13,6 +13,12 @@ export interface PromoBannerProps {
  * Hero-style promotional banner mirroring the jojopotato.ph landing hero: bold
  * headline copy, a CTA button, and the real product-trio photography bleeding
  * off the right edge. Purely presentational — no mock-data dependency.
+ *
+ * Deliberately fixed-mode: the banner surface is a hardcoded brand yellow
+ * (`Palette.jyellow`) with fixed `Palette.ink` copy in BOTH themes, so it is a
+ * permanently-light surface. The CTA is therefore pinned to `mode="light"` to
+ * match the surface it sits on, per CLAUDE.md §Theming — threading the device
+ * scheme would render a dark-mode button on a permanently-yellow card.
  */
 export function PromoBanner({ onPress }: PromoBannerProps) {
   return (
@@ -26,6 +32,7 @@ export function PromoBanner({ onPress }: PromoBannerProps) {
           onPress={onPress ?? (() => {})}
           variant="accent"
           style={styles.cta}
+          mode="light"
         />
       </View>
       <Image
