@@ -65,8 +65,11 @@ const HEX_EXEMPT_FILES = ['src/features/branches/map-style.ts'];
  */
 const HEX_BASELINE = [
   {
+    // Line drifts whenever this file is edited above it — the baseline is keyed
+    // by line number. Moved 408 → 412 by the alert/toast pass (Alert.alert ->
+    // ConfirmDialog); the literal itself is untouched and still pre-existing.
     file: 'src/app/(staff)/order-detail/[orderId].tsx',
-    line: 408,
+    line: 412,
     reason: 'pre-existing brand red',
   },
   {
