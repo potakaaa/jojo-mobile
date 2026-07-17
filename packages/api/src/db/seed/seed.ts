@@ -960,7 +960,9 @@ export async function runSeed(): Promise<void> {
   console.log(`  branches: ${branchIdBySlug.size}`);
   console.log(`  staff users: 1 (${STAFF_EMAIL})`);
   console.log(`  categories: ${categoryIdBySlug.size}`);
-  console.log(`  products: ${productIdBySlug.size} (incl. ${dealProductIdBySlug.size} deal-products)`);
+  console.log(
+    `  products: ${productIdBySlug.size} (incl. ${dealProductIdBySlug.size} deal-products)`,
+  );
   console.log(`  deals: ${dealIdByTitle.size}`);
   console.log(
     `  rewards: ${REWARD_ROADMAP.length} (roadmap: ${REWARD_ROADMAP.map((r) => `${r.required_stars}★`).join(', ')})`,
