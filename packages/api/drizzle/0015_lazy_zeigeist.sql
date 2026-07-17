@@ -1,0 +1,1 @@
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_reward_offer_mutex" CHECK ("coupons"."reward_id" IS NULL OR "coupons"."offer_id" IS NULL);

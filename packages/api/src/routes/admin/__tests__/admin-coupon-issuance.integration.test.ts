@@ -37,6 +37,7 @@ let db: DbModule['db'];
 let users: SchemaModule['users'];
 let offers: SchemaModule['offers'];
 let coupons: SchemaModule['coupons'];
+let rewards: SchemaModule['rewards'];
 let categories: SchemaModule['categories'];
 let products: SchemaModule['products'];
 let app: IndexModule['app'];
@@ -106,7 +107,8 @@ beforeAll(async () => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   ({ auth } = await import('../../../lib/auth'));
   ({ db } = await import('../../../db/client'));
-  ({ users, offers, coupons, categories, products } = await import('../../../db/schema/index'));
+  ({ users, offers, coupons, rewards, categories, products } =
+    await import('../../../db/schema/index'));
   ({ app } = await import('../../../index'));
   ({ offerCouponCodeGenerator } = await import('../../../lib/reward-coupon-code'));
 
@@ -395,5 +397,78 @@ describe('requireAdmin guard on /api/admin/coupons/* (AC9)', () => {
       .set('Content-Type', 'application/json');
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'Forbidden' });
+  });
+});
+
+/**
+ * DB CHECK `coupons_reward_offer_mutex` (migration 0015) — proves the reward XOR
+ * offer mutual-exclusivity invariant is enforced at the database, not just the
+ * application boundary. A raw dual-FK insert (bypassing every route) must be
+ * rejected; the three legitimate identities (reward-only, offer-only, neither)
+ * must still insert. Both FK targets are real rows so the failure is the CHECK
+ * (Postgres 23514), not a foreign-key violation.
+ */
+describe('coupons reward/offer mutual-exclusivity DB CHECK (migration 0015)', () => {
+  /** Insert a real reward row directly, returning its id (a valid FK target). */
+  async function makeRewardId(): Promise<string> {
+    const [row] = await db
+      .insert(rewards)
+      .values({ name: `Mutex Reward ${unique()}`, required_stars: 10, reward_type: 'free_item' })
+      .returning({ id: rewards.id });
+    return row!.id;
+  }
+
+  it('rejects a raw insert with BOTH reward_id and offer_id set', async () => {
+    const offerId = await createOfferId();
+    const rewardId = await makeRewardId();
+
+    let caught: unknown;
+    try {
+      await db.insert(coupons).values({
+        offer_id: offerId,
+        reward_id: rewardId,
+        code: `JP-MUTEX-${unique()}`,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    // Postgres check_violation is 23514; drizzle wraps the pg error on `.cause`.
+    const code =
+      (caught as { code?: string }).code ?? (caught as { cause?: { code?: string } }).cause?.code;
+    expect(code).toBe('23514');
+    const text = String((caught as { cause?: { message?: string } }).cause?.message ?? caught);
+    expect(text).toContain('coupons_reward_offer_mutex');
+
+    // No row was written.
+    const rows = await db.select().from(coupons).where(eq(coupons.offer_id, offerId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('accepts a reward-only coupon (offer_id NULL)', async () => {
+    const rewardId = await makeRewardId();
+    const code = `JP-RWD-${unique()}`;
+    await db.insert(coupons).values({ reward_id: rewardId, user_id: customerId, code });
+    const [row] = await db.select().from(coupons).where(eq(coupons.code, code));
+    expect(row?.reward_id).toBe(rewardId);
+    expect(row?.offer_id).toBeNull();
+  });
+
+  it('accepts an offer-only coupon (reward_id NULL)', async () => {
+    const offerId = await createOfferId();
+    const code = `JP-OFR-MTX-${unique()}`;
+    await db.insert(coupons).values({ offer_id: offerId, code });
+    const [row] = await db.select().from(coupons).where(eq(coupons.code, code));
+    expect(row?.offer_id).toBe(offerId);
+    expect(row?.reward_id).toBeNull();
+  });
+
+  it('accepts a coupon with NEITHER reward_id nor offer_id set', async () => {
+    const code = `JP-NONE-${unique()}`;
+    await db.insert(coupons).values({ code });
+    const [row] = await db.select().from(coupons).where(eq(coupons.code, code));
+    expect(row?.offer_id).toBeNull();
+    expect(row?.reward_id).toBeNull();
   });
 });

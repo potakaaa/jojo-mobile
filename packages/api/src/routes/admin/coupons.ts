@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '../../db/client';
 import { coupons, offers } from '../../db/schema/index';
 import { offerCouponCodeGenerator } from '../../lib/reward-coupon-code';
+import { couponIdentityIsExclusive } from '../lib/coupon-identity';
 import { serializeAdminCoupon } from '../lib/serializers';
 import { AdminApiError, handleAdminError, isUniqueViolation } from './lib/errors';
 
@@ -101,6 +102,16 @@ adminCouponsRouter.post('/generate', async (req, res) => {
         400,
         'This offer has no discount value configured — set one before generating coupons.',
       );
+    }
+
+    // Reward XOR offer invariant (DB CHECK coupons_reward_offer_mutex, migration
+    // 0015). This route only ever sets offer_id — reward_id is never in scope — so
+    // this guard is a non-reachable assertion today; it enforces the invariant in
+    // code so a future edit that adds reward_id here is rejected at the boundary
+    // (400) before the DB CHECK fires. An admin wanting both benefits mints two
+    // separate coupons.
+    if (!couponIdentityIsExclusive({ offer_id: offerId, reward_id: null })) {
+      throw new AdminApiError(400, 'A coupon cannot be both a reward coupon and an offer coupon.');
     }
 
     // Persist user_id ONLY for a targeted single issue; bulk coupons stay NULL

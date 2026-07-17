@@ -1,6 +1,15 @@
 import { sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { index, pgEnum, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { offers } from './offers';
 import { rewards } from './rewards';
 import { users } from './users';
@@ -35,5 +44,12 @@ export const coupons = pgTable(
     uniqueIndex('coupons_user_reward_unique')
       .on(t.user_id, t.reward_id)
       .where(sql`${t.reward_id} IS NOT NULL`),
+    // Reward XOR offer mutual-exclusivity (migration 0015). A coupon row is one
+    // identity: reward-coupon (reward_id set), offer-coupon (offer_id set), or
+    // neither (pre-issuance/targeting) — never BOTH. Without this, a dual-FK row
+    // would silently take the resolver's reward branch (checked first) and skip
+    // the entire offer path, including the free-mechanic guard. An admin wanting
+    // both benefits mints two separate coupons.
+    check('coupons_reward_offer_mutex', sql`${t.reward_id} IS NULL OR ${t.offer_id} IS NULL`),
   ],
 );
