@@ -197,6 +197,8 @@ export default function BranchLocatorScreen() {
         ref={mapRef}
         branches={filteredBranches}
         coords={coords}
+        isLocationEnabled={locationStatus === 'granted'}
+        contentBottomInset={getFloatingTabBarClearance(insets.bottom)}
         onBranchPress={onOrderPress}
       />
 

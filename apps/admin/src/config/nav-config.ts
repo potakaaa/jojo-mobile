@@ -9,6 +9,8 @@ import {
   Megaphone,
   Ticket,
   Gift,
+  ClipboardList,
+  BarChart3,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -83,6 +85,18 @@ export const navConfig: NavGroup[] = [
         label: 'Rewards',
         icon: Gift,
         to: '/rewards',
+      },
+      {
+        id: 'orders',
+        label: 'Orders',
+        icon: ClipboardList,
+        to: '/orders',
+      },
+      {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        to: '/analytics',
       },
       {
         id: 'users',

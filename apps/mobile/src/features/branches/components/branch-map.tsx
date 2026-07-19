@@ -24,6 +24,17 @@ import { useTheme } from '@/hooks/use-theme';
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
+  /**
+   * Gates the native "my location" layer (the OS blue dot). True ONLY when the
+   * runtime location permission is granted — enabling it without the grant
+   * throws SecurityException on Android's setMyLocationEnabled.
+   */
+  isLocationEnabled: boolean;
+  /**
+   * Bottom inset (px) applied to the Android map's `contentPadding` so the native
+   * Google controls/logo clear the floating tab bar. (Android-only in expo-maps v57.)
+   */
+  contentBottomInset: number;
   onBranchPress: (branchId: string) => void;
 }
 
