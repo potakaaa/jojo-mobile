@@ -103,8 +103,15 @@ export default function HomeScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
 
-  /** Active Home category filter; `null` = no filter, grid shows every product. */
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  /**
+   * Active Home category filter, tagged with the branch it was chosen in.
+   * `null` = no filter, grid shows every product. Read it back through
+   * `selectedCategoryId` below rather than using this directly.
+   */
+  const [categorySelection, setCategorySelection] = useState<{
+    branchId: string;
+    categoryId: string;
+  } | null>(null);
 
   const {
     selectedBranch,
@@ -143,9 +150,16 @@ export default function HomeScreen() {
   // the branch they just left (which could strand them in an empty state for a
   // category the new branch doesn't carry). Deliberately unconditional: there is
   // no "persist if the category still exists here" path.
-  useEffect(() => {
-    setSelectedCategoryId(null);
-  }, [branchId]);
+  //
+  // ponytail: the reset is derived, not an effect. Tagging the selection with
+  // its branch means a mismatch already reads as "no filter", so switching
+  // branches clears it for free — no reset effect, no cascading extra render.
+  const selectedCategoryId =
+    categorySelection?.branchId === branchId ? (categorySelection?.categoryId ?? null) : null;
+
+  const selectCategory = (categoryId: string | null) => {
+    setCategorySelection(categoryId && branchId ? { branchId, categoryId } : null);
+  };
 
   const menuView = useMemo(
     () => (menuQuery.data ? flattenMenuForHome(menuQuery.data) : { categories: [], products: [] }),
@@ -342,7 +356,7 @@ export default function HomeScreen() {
               <CategorySelector
                 categories={menuView.categories}
                 selectedId={selectedCategoryId}
-                onSelect={setSelectedCategoryId}
+                onSelect={selectCategory}
               />
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
