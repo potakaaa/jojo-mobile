@@ -26,13 +26,6 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
     async (order: Order) => {
       setIsReordering(true);
       try {
-        // Fresh cart for the order's branch. `setBranch` no-ops (and does NOT
-        // clear) when the id is unchanged, so `clearCart()` guarantees a clean
-        // reorder cart in every case.
-        clearConflicts();
-        setBranch(order.branchId);
-        clearCart();
-
         // MENU-003: fetch the regular menu AND the deals menu, then merge their
         // categories into one `MenuResponse`. The regular menu structurally
         // excludes every deal-product (`is_deal=false` server-side), so fetching
@@ -62,6 +55,18 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
           ...regularMenu,
           categories: [...regularMenu.categories, ...dealsMenu.categories],
         };
+
+        // Fresh cart for the order's branch. `setBranch` no-ops (and does NOT
+        // clear) when the id is unchanged, so `clearCart()` guarantees a clean
+        // reorder cart in every case.
+        //
+        // ponytail: these three MUST stay below the fetches above. Both
+        // `setBranch` (on a branch change) and `clearCart` empty `cart.items`,
+        // and the `catch` below only alerts — it cannot restore. Running them
+        // first meant a failed menu fetch silently destroyed the user's cart.
+        clearConflicts();
+        setBranch(order.branchId);
+        clearCart();
 
         const { available, unavailable } = reconcileReorder(order, menu);
         for (const line of available) {

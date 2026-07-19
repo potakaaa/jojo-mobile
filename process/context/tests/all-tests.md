@@ -141,7 +141,7 @@ means:
 4. `pnpm --filter @jojopotato/mobile test` (vitest, pure-TS logic) / `pnpm --filter @jojopotato/ui test` (jest-expo, component logic) / `pnpm --filter @jojopotato/api test` (vitest, integration) — whichever package was touched
 
 When a plan introduces real logic worth unit-testing on a package with no runner yet
-(`packages/types`, `packages/utils`), the plan should explicitly propose adding one (Vitest for
+(`packages/types`), the plan should explicitly propose adding one (Vitest for
 TS-only packages is the proven pattern in this repo) rather than assuming one already exists.
 
 ## Default Verification Order

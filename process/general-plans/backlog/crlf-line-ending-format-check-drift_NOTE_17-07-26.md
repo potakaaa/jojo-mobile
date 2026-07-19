@@ -50,7 +50,7 @@ only ~8-12 actually have real content diffs). CI on Linux is unaffected — this
 
 ## Diagnostic for future agents hitting this
 
-```
+```sh
 git diff -w --numstat        # or: git diff --ignore-cr-at-eol --numstat
 ```
 This is the reliable way to separate real content diffs from CRLF-only rewrites on this
