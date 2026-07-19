@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express';
 
+import analyticsRouter from './analytics';
 import branchesRouter from './branches';
 import categoriesRouter from './categories';
 import couponsRouter from './coupons';
@@ -51,5 +52,10 @@ adminRouter.use('/rewards', rewardsRouter);
 // only, no mutation. Same inherited guard; append-only, never restructure. 10th
 // consumer of the append-only aggregator pattern.
 adminRouter.use('/orders', ordersRouter);
+
+// Analytics view (ADM-007 — READ-ONLY aggregation dashboard) — GET only, no
+// mutation. Same inherited guard; append-only, never restructure. 11th consumer
+// of the append-only aggregator pattern.
+adminRouter.use('/analytics', analyticsRouter);
 
 export default adminRouter;

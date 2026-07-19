@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-17 (Phase 6 — Orders View by Branch, ADM-006, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, user UI walkthrough passed; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, EVL-confirmed green; **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -61,6 +61,49 @@ top of it later without re-plumbing the project.
 
 ## Current Implementation State (as of 17-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
+- **Admin dashboard Basic Analytics Dashboard (`apps/admin` + `packages/api`, Phase 7 — ADM-007,
+  #45, delivered 17-07-26, branch `feat/adm-007-analytics`, commit `ba88318`, ✅ VERIFIED —
+  EVL-green. THIS IS THE FINAL PHASE — the admin-dashboard program is now 8/8 phases COMPLETE.):**
+  one combined read-only aggregation route, `GET /api/admin/analytics?from=&to=[&branchId=]`,
+  returning **8 KPIs** in a single payload — orders per branch, average order value (AOV), a
+  deals-vs-no-deals split, repeat-purchase rate, stars earned, rewards unlocked/redeemed,
+  top-selling products, and new-vs-returning customers (the last two are competitor-research-
+  informed additions locked during Phase 5/6 planning, beyond the original 6-KPI PRD scope). The
+  **11th confirmed consumer** of the append-only `/api/admin` aggregator. Money is computed in
+  integer cents throughout via the existing `numericToCents` helper (never reimplemented); date
+  ranges use **Asia/Manila local-day semantics** (fixed +08:00, no DST) — a documented, deliberate
+  divergence from Phase 6's UTC-day convention for `orders.ts`, noted in a file-header comment
+  rather than silently inconsistent. The "orders using a deal" signal is a 3-way union
+  (`coupon_id`, legacy `deal_id`, or an `is_deal` bundle line) computed as one explicit per-order
+  boolean so a coupon+bundle order is never double-counted (a PVL-found correctness fix, E2). The
+  `newVsReturning` metric's "earliest order ever" lookup applies the same cancelled/rejected
+  exclusion as every other metric in this family, so a user whose only-ever order was cancelled is
+  correctly classified `new` on their first real order (another PVL-found fix, E1) — both fixes
+  landed via Execute-Agent Instructions before EXECUTE completed, with 3 further minor/docs-only
+  instructions (E3-E5). Zero schema change, zero migration (latest remains `0016`) — this phase
+  only reads existing tables. **All 4 money-adjacent ACs (AOV, deals-split, stars/rewards,
+  top-selling-products) are real passing Fully-Automated exact-value fixture tests — Known-Gap is
+  banned for these per the program charter and was not used anywhere.** `apps/admin` gained
+  `features/analytics/**` (fetch wrapper + react-query hook + `metric-card`/`time-range-picker`/
+  `branch-orders-table`/`top-products-table` components, the first two stat-tile/table composites
+  new to this phase) + a single-screen `(dashboard)/analytics.tsx` route (no `<Outlet/>` split
+  needed — no detail child) + a new Analytics nav entry. Final gates: API 468→493 (+25: 18
+  integration + 7 range-helper unit tests), admin 58→72 (+14 component tests), both typechecks/
+  build/format clean — all independently EVL-reconfirmed matching execute-agent's own report
+  exactly. **Known residual, not new debt:** AC9's visual half (live screen render + range-picker
+  behavior against a real dev DB) and AC10 (PII code-review scan) remain owed as user-run
+  Agent-Probe items — the same standing project-wide `apps/admin` E2E-runner gap carried by every
+  prior phase in this program (P2 AC7, P3 AC8 partial, Phase 5 G10), not a new gap and not
+  blocking VERIFIED status. **Program completion:** with Phase 7 VERIFIED, all 8 phases of the
+  admin-dashboard program (P0 Scaffold → P7 Analytics) are now ✅ VERIFIED — the program's Program
+  Goal Charter Definition of Done is met, including both HARD non-negotiable invariants (P3's
+  order_items snapshot integrity, P5's star_transactions retroactivity), each proven by a real
+  passing regression test, Known-Gap never used for either. The inserted ADM-008 Coupons + Fix 6
+  sub-program remains CODE-COMPLETE and held OPEN in `active/` per the user's standing decision for
+  further follow-up exploration — a deliberate, tracked exception, not an oversight. Delivered by:
+  `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-07-analytics_PLAN_14-07-26.md`
+  (+ co-located `phase-07-analytics_REPORT_17-07-26.md` in the same task folder).
+
 - **Admin dashboard Orders View by Branch (`apps/admin` + `packages/api`, Phase 6 — ADM-006, #44,
   delivered 17-07-26, branch `feat/adm-006-branchview`, commit `7bb0918`, ✅ VERIFIED — CODE-COMPLETE,
   EVL-green, user-run Agent-Probe UI walkthrough PASSED):** read-only admin oversight of orders
@@ -104,8 +147,9 @@ top of it later without re-plumbing the project.
   (P2 AC7, Phase 5 G10), this residual is NOT owed for Phase 6. Delivered by:
   `process/features/admin-dashboard/active/admin-dashboard_14-07-26/phase-06-orders_PLAN_14-07-26.md`
   (+ co-located `phase-06-orders_REPORT_17-07-26.md` in the same task folder). With this phase, the
-  program is 6/8 phases ✅ VERIFIED — Phase 7 (Analytics, ADM-007) is the sole remaining phase,
-  D1-D9 decisions already locked with the user and unparked (its D9 unpark condition — Phase 6
+  program reached 6/8 phases ✅ VERIFIED — Phase 7 (Analytics, ADM-007) was then the sole
+  remaining phase, D1-D9 decisions already locked with the user and unparked (its D9 unpark
+  condition — Phase 6
   execution — is now satisfied).
 
 - **Admin dashboard Rewards Configuration CRUD (`apps/admin` + `packages/api`, Phase 5 — ADM-005,
@@ -1023,16 +1067,16 @@ Scanned against the canonical Context Group Detection Table
   planned follow-up exploration work, not archived; Phase 5 — Rewards Configuration CRUD (ADM-005)
   delivered 17-07-26, ✅ VERIFIED, MERGED via PR #112 (commit `772e2fd`); Phase 6 — Orders View by
   Branch (ADM-006) delivered 17-07-26, ✅ VERIFIED, user UI walkthrough passed (commit `7bb0918`,
-  branch `feat/adm-006-branchview`); Phase 7 — Analytics (ADM-007) DECISIONS LOCKED with the user
-  17-07-26, now UNPARKED (D9 condition — Phase 6 execution — satisfied), ready for its inner-loop
-  RESEARCH pass — the sole remaining phase of the 8-phase program).
+  branch `feat/adm-006-branchview`); Phase 7 — Basic Analytics Dashboard (ADM-007) delivered
+  17-07-26, ✅ VERIFIED, EVL-green (commit `ba88318`, branch `feat/adm-007-analytics`) — the final
+  phase, completing the 8-phase program (8/8 ✅ VERIFIED)).
   `process/features/admin-dashboard/` exists with `active/`, `completed/`, `backlog/` subdirs
   (`completed/admin-dashboard_14-07-26/` now holds the sidebar-nav plan + report; the
   `adm-008-coupons_16-07-26/` task folder stays in `active/`; 3 Phase-2 + 2 Phase-4a + 1 new
   ADM-008 backlog note — see the Coupons entry above). This is an 8-phase program (P0 scaffold
   through P7 analytics, ADM-001..007) with ADM-008 as an inserted sub-program between Phase 4 and
-  Phase 5 — see the umbrella plan's `## Current Execution State` for the current phase (6/8
-  phases ✅ VERIFIED; Phase 7 — Analytics, ADM-007, is next).
+  Phase 5 — see the umbrella plan's `## Current Execution State` for the closeout summary (8/8
+  phases ✅ VERIFIED; the program is COMPLETE — no next phase).
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
@@ -1051,7 +1095,8 @@ crossed — it will create the matching group automatically.
 | test planning or verification | `all-context.md`, `tests/all-tests.md` | no runner configured yet — `all-tests.md` documents the current typecheck/lint-only verification path |
 | new feature work | `all-context.md` | `process/features/{feature}/_GUIDE.md` for the matching product area (`ordering-cart`, `pickup-branches`, `auth-accounts`, `rewards-notifications`, `staff-dashboard`, `admin-dashboard`) if it exists, else `process/general-plans/active/` |
 | staff dashboard work (STAFF-002/003/004) | `all-context.md` | `process/features/staff-dashboard/` — read completed STAFF-001 plan for requireStaff/assertBranchScope contract and (staff) shell structure |
-| admin dashboard work (Phase 7, ADM-007) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — read the umbrella plan's `## Current Execution State` for the current phase (Phases 0-6 all ✅ VERIFIED; Phase 7 — Analytics — DECISIONS LOCKED and UNPARKED, ready for inner-loop RESEARCH), then `phase-07-analytics_PLAN_14-07-26.md`, then the backlog notes under `backlog/` (3 Phase-2 notes: AC7 owed, is_accepting_pickup Known-Gap, shared-composite extraction — RESOLVED, extracted in Phase 3/4a; 2 Phase-4a notes: `deal_components` CHECK constraints deferred, `products.is_deal` partial index deferred; ADM-008-era notes resolved/superseded — see the coupons feature bullet) |
+| admin dashboard work (program COMPLETE — 8/8 phases VERIFIED) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — the 8-phase program (P0-P7) is fully VERIFIED, no next phase; read the umbrella plan's `## Current Execution State` for the closeout summary and the flagged (not yet actioned) archival decision. Any NEW admin-dashboard work (Tier 3 Customers module, further scope) should be scoped as a fresh plan/feature-folder task, not resumed inside this umbrella. See `backlog/` for standing residuals (AC7/AC9/AC10 Agent-Probe items, `is_accepting_pickup` Known-Gap, `deal_components` CHECK deferred, `products.is_deal` partial index deferred; ADM-008-era notes — see the coupons feature bullet) |
+| admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 
 ## Context Group Lifecycle
@@ -1283,7 +1328,28 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (Phase 6 — Orders View by Branch, ADM-006, UPDATE PROCESS — doc-only
+- Last delta: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, UPDATE PROCESS — doc-only
+  reconciliation, no source changes this pass; source already committed by the user before this
+  pass began (commit `ba88318` on branch `feat/adm-007-analytics`). Phase 7 delivered `GET
+  /api/admin/analytics?from=&to=[&branchId=]` — one combined route returning 8 KPIs
+  (ordersPerBranch, averageOrderValueCents, dealsSplit, repeatPurchaseRate, starsEarned,
+  rewardsUnlocked, rewardsRedeemed, topSellingProducts, newVsReturning), the 11th append-only
+  aggregator consumer, all 4 money-adjacent ACs (AOV/deals-split/stars-rewards/top-products) real
+  Fully-Automated fixtures with Known-Gap banned and unused, 2 PVL-found correctness fixes
+  (newVsReturning status-filter consistency E1, D1 double-signal dedup E2) applied via
+  Execute-Agent Instructions before EXECUTE completed. EVL independently reconfirmed green: API
+  468→493 (+25), admin 58→72 (+14), both typechecks/build/format clean, matching execute-agent's
+  own report exactly. **This phase completes the admin-dashboard program — 8/8 phases now
+  ✅ VERIFIED.** Wrote `phase-07-analytics_REPORT_17-07-26.md`; ticked Phase Loop Progress Steps
+  6-7 and stamped the plan Status ✅ VERIFIED; reconciled the umbrella's `## Current Execution
+  State` (marking the entire program COMPLETE, no next phase) and its Phase Map/Ordering/Program
+  Status tables (P7 ✅ VERIFIED, program row added as ✅ COMPLETE). Flagged (not executed) an
+  archival recommendation: the `admin-dashboard_14-07-26/` task folder is eligible to move to
+  `completed/`, while the sibling ADM-008 sub-program task folders stay in `active/` per standing
+  user decision. No new backlog notes filed this pass (zero Known-Gap rows, zero new gaps found;
+  AC9 visual + AC10 are the same standing Agent-Probe residual carried by every prior phase, not
+  new debt). HEAD this delta: `ba88318`.)
+- Previous delta: 2026-07-17 (Phase 6 — Orders View by Branch, ADM-006, UPDATE PROCESS — doc-only
   reconciliation, no source changes this pass; source already committed by the user before this
   pass began. Phase 6 delivered commit `7bb0918` on branch `feat/adm-006-branchview` (`GET
   /api/admin/orders` cursor-paginated list + `GET /api/admin/orders/:orderId` detail, 10th
