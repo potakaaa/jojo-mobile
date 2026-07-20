@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-20 (CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -60,6 +60,61 @@ top of it later without re-plumbing the project.
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
 ## Current Implementation State (as of 20-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Cart server-side persistence (CART-003 #99, `packages/api` + `apps/mobile` + `packages/types`,
+  delivered 20-07-26, task folder
+  `process/features/ordering-cart/active/cart-persistence_20-07-26/`, CODE DONE + EVL-confirmed
+  green, NOT YET VERIFIED — 4 Agent-Probe walkthroughs owed, stays in `active/`, uncommitted as of
+  this delta):** the cart is no longer client-memory-only (`useState<Cart>`) — it is now a real,
+  per-user, durable Postgres record that survives app restart, sign-out/in, and device switch. New
+  `carts` (unique `user_id` FK, mirroring the `user_stars.ts` one-row-per-user idiom) and
+  `cart_items` (cascade-delete FK to `carts`, no-action FK to `products`) tables, migration
+  `0017_fast_the_hood.sql`. New session-gated (`requireSession`, matching `orders.ts`/`branches.ts`
+  — not the staff role-gated chain) route family at `/cart` (`GET`, `POST /cart/items`,
+  `PATCH`/`DELETE /cart/items/:lineId`, `DELETE /cart`, `PUT /cart/branch`, `POST`/
+  `DELETE /cart/discount`) in `packages/api/src/routes/cart.ts`, mounted
+  `app.use('/cart', requireSession, cartRouter)`. **Durable architectural pattern reused a third
+  time:** `packages/api/src/routes/lib/cart-revalidation.ts` mirrors MENU-003's
+  `resolveAvailableDealProductIds` shape — one shared function, batched queries, called by
+  `GET /cart` at read time, so a cart line's availability/price can never silently drift from what
+  order placement would actually accept; it also delegates deal-component checks to the existing
+  MENU-003 helper directly rather than reimplementing that logic. `POST /orders`'s existing request
+  contract is UNCHANGED — the client still assembles `items[]` from its (now persisted-backed)
+  cart cache; the persisted cart is a UI convenience layer, never order-placement's source of
+  truth. `apps/mobile/src/features/cart/hooks/use-cart.ts` was rewritten internally onto
+  `useQuery(['cart', userId])` + 7 `useMutation`s (optimistic `onMutate`/`onError`/
+  `onSettled`-invalidate recipe — genuinely new to this codebase, no prior precedent) while its
+  exported `useCart()` public API stayed byte-identical — confirmed by a live grep sweep finding
+  zero edits needed across all 8 real consumer files, including 3 not originally named in the plan
+  (`use-reorder.ts`, `use-deals.ts`, `use-deal-products.ts`, added to Blast Radius during
+  VALIDATE). New `apps/mobile/src/features/cart/lib/cart-api.ts` rides the session-carrying
+  `apiRequest()` wrapper (not the unauthenticated `getJson()` — a VALIDATE-caught correction),
+  with a `productId`→`menuItemId` field-name reconciliation applied at the hook boundary (the DB/
+  wire convention is `productId`; the existing, unchanged `CartItem` type already used
+  `menuItemId` — naming-only, not a behavior change). **Both HARD, Known-Gap-banned gates are real
+  passing Fully-Automated tests, independently confirmed non-vacuous:** cross-user + line-level
+  cart ownership isolation (AC4 — this is the FIRST customer-facing `:id`-scoped mutate route in
+  this codebase, `PATCH`/`DELETE /cart/items/:lineId`, with no prior line-level-ownership query to
+  copy — written fresh), and an order-snapshot-integrity regression (AC8-snapshot) mirroring the
+  ADM-003 pattern verbatim, proving that editing a product's price after a persisted-cart-sourced
+  order was placed never mutates that order's already-recorded `order_items.unit_price`/
+  `total_price`. Final gates: API suite 505→520 (+15 new cart tests), mobile vitest 65/65, mobile
+  jest 78/78, 4 typechecks clean (the pre-existing 2 NAV-005 typed-route mobile-typecheck errors
+  are unrelated, files untouched by this plan), format:check clean on touched files, migration
+  applies cleanly — all independently EVL-reconfirmed, not taken on execute-agent's own report.
+  **Known, accepted gap, owed by the user (not new debt):** 4 Agent-Probe manual walkthroughs
+  (AC1 force-quit restore, AC2 sign-out/in persistence, AC6 branch-switch on-screen UX, AC9
+  checkout-from-persisted-cart e2e on-device) — the same standing project-wide no-RN-runner gap
+  carried by every other on-device-UX-adjacent plan in this codebase (MENU-003, MENU-004,
+  mobile-dark-mode-audit). Per the plan's own Phase Completion Rules, the task folder stays in
+  `active/` until those are performed and confirmed. High-risk 5-artifact evidence pack was
+  explicitly judged NOT proportionate for this session-auth CRUD surface (narrower risk class than
+  the deploy/payment/proxy surfaces that pack is reserved for — no `:cartId` param exists anywhere,
+  only `:lineId`, structurally narrowing the ownership boundary). All 11 touched/new files remain
+  **uncommitted** on `development` as of this delta — a single logical commit is recommended but
+  was left for the orchestrator/user to invoke separately. Delivered by:
+  `process/features/ordering-cart/active/cart-persistence_20-07-26/cart-persistence_PLAN_20-07-26.md`
+  (+ co-located SPEC + REPORT in the same task folder).
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -1524,7 +1579,32 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
+- Last delta: 2026-07-20 (CART-003 #99 UPDATE PROCESS — cart server-side persistence,
+  `packages/api` + `apps/mobile` + `packages/types`. CODE DONE, EVL-confirmed green by an
+  independently spawned vc-tester (API suite 505→520 incl. 15 new cart tests, mobile vitest
+  65/65, mobile jest 78/78, 4 typechecks clean modulo 2 pre-existing unrelated NAV-005 mobile
+  errors, format:check clean on touched files, migration `0017_fast_the_hood.sql` applies
+  cleanly). Both Known-Gap-banned hard gates (AC4 cross-user + line-level ownership, AC8-snapshot
+  order-price-integrity regression mirroring ADM-003) independently confirmed non-vacuous. New
+  `carts`/`cart_items` schema + session-gated `/cart` route family + `cart-revalidation.ts`
+  (third live reuse of the MENU-003 shared-revalidation-function pattern) + `use-cart.ts`
+  rewritten onto react-query behind a byte-identical `useCart()` public API (zero consumer-file
+  edits across all 8 real call sites). No new backlog notes filed — the `checkout-real-order-api
+  _NOTE_13-07-26.md` backlog note was checked and remains accurate/unaffected (its "client
+  assembles POST /orders payload from cart" description is still true; the cart is now
+  persisted-backed but the assembly contract is unchanged). Task folder stays in `active/` — 4
+  Agent-Probe walkthroughs (AC1/AC2/AC6/AC9 on-device) are owed by the user per the plan's own
+  Phase Completion Rules. Working tree at this delta (uncommitted, not yet committed by this
+  UPDATE PROCESS pass): 6 modified files (`apps/mobile/src/features/cart/hooks/use-cart.ts`,
+  `packages/api/drizzle/meta/_journal.json`, `packages/api/src/db/schema/index.ts`,
+  `packages/api/src/index.ts`, `packages/api/src/routes/lib/serializers.ts`,
+  `packages/types/src/cart.ts`) + 8 new files (`apps/mobile/src/features/cart/lib/cart-api.ts`,
+  `packages/api/drizzle/0017_fast_the_hood.sql` + its snapshot,
+  `packages/api/src/db/schema/{carts,cart_items}.ts`,
+  `packages/api/src/routes/__tests__/cart.integration.test.ts`,
+  `packages/api/src/routes/cart.ts`, `packages/api/src/routes/lib/cart-revalidation.ts`) + the
+  new task folder; current branch at this delta: `development`.)
+- Previous delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
   reconciliation, doc-only, all 3 commits already on disk when this pass began. `ssr:false` set on
   the `(dashboard)` layout route + `typeof document` early-return removed (`4929b27`), closing a
   hard-load/direct-URL/refresh bug where a logged-out user briefly saw dashboard chrome before

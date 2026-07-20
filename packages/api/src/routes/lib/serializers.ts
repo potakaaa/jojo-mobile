@@ -10,6 +10,8 @@ import type { InferSelectModel } from 'drizzle-orm';
 import type {
   branchProductAvailability,
   branches,
+  cartItems,
+  carts,
   categories,
   coupons,
   notifications,
@@ -21,6 +23,9 @@ import type {
   promotions,
   rewards,
 } from '../../db/schema/index';
+// Type-only import (fully erased at compile time — no runtime cycle even though
+// cart-revalidation.ts transitively depends on this file via coupon-apply.ts).
+import type { CartLineValidity } from './cart-revalidation';
 
 type BranchRow = InferSelectModel<typeof branches>;
 type CategoryRow = InferSelectModel<typeof categories>;
@@ -29,6 +34,8 @@ type ProductOptionRow = InferSelectModel<typeof productOptions>;
 type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailability>;
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
+type CartRow = InferSelectModel<typeof carts>;
+type CartItemRow = InferSelectModel<typeof cartItems>;
 type DealRow = InferSelectModel<typeof offers>;
 type OfferRow = InferSelectModel<typeof offers>;
 type PromotionRow = InferSelectModel<typeof promotions>;
@@ -398,6 +405,102 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     dealId: order.deal_id,
     couponId: order.coupon_id,
     items: items.map(serializeOrderItem),
+  };
+}
+
+// ─── Cart serializer (CART-003 — server-persisted cart) ──────────────────────
+//
+// Cents-at-boundary shape for the session-gated `/cart` routes. `productId` mirrors
+// the DB column + `orders.ts` convention; the mobile hook maps it to the client
+// `CartItem.menuItemId` field name at its boundary. Every `unitPriceCents` is the
+// LIVE re-priced value (from the `resolveCartLineValidity` map), never the stored
+// snapshot — the cart shows the current price (AC8). A line's optional `conflict`
+// (unavailable / price_changed) is surfaced for the client to render (AC7/AC8).
+
+export interface ApiCartItem {
+  lineId: string;
+  productId: string;
+  quantity: number;
+  productNameSnapshot: string;
+  unitPriceCents: number;
+  selectedOptions: SelectedOption[];
+  notes?: string;
+  conflict?: { reason: 'unavailable' | 'price_changed' };
+}
+
+/** The single active discount on a cart (mirrors `@jojopotato/types` AppliedDiscount). */
+export interface ApiCartDiscount {
+  source: string;
+  refId: string;
+  label: string;
+  amountCents: number;
+}
+
+export interface ApiCart {
+  id: string;
+  pickupBranchId: string | null;
+  items: ApiCartItem[];
+  appliedDiscount?: ApiCartDiscount;
+  subtotalCents: number;
+  discountTotalCents: number;
+  totalCents: number;
+}
+
+/**
+ * Serialize a `carts` row + its `cart_items` + a per-line validity map (from
+ * `resolveCartLineValidity`) into the wire `ApiCart`. Item prices come from the
+ * validity map (live), so `subtotalCents` reflects the current price of every line.
+ * `discountTotalCents` is clamped to the subtotal (a stale/over-large stored discount
+ * can never push the total below zero) — the cart is a display convenience, and
+ * `POST /orders` independently re-derives the real discount at placement anyway.
+ */
+export function serializeCart(
+  cart: CartRow,
+  items: CartItemRow[],
+  validity: Map<string, CartLineValidity>,
+): ApiCart {
+  const apiItems: ApiCartItem[] = items.map((item) => {
+    const lineValidity = validity.get(item.id);
+    const unitPriceCents = lineValidity
+      ? lineValidity.livePriceCents
+      : numericToCents(item.unit_price);
+    return {
+      lineId: item.id,
+      productId: item.product_id,
+      quantity: item.quantity,
+      productNameSnapshot: item.product_name_snapshot,
+      unitPriceCents,
+      selectedOptions: (item.selected_options as SelectedOption[]) ?? [],
+      ...(item.notes === null ? {} : { notes: item.notes }),
+      ...(lineValidity?.conflict ? { conflict: lineValidity.conflict } : {}),
+    };
+  });
+
+  const subtotalCents = apiItems.reduce((sum, it) => sum + it.unitPriceCents * it.quantity, 0);
+
+  const hasDiscount =
+    cart.discount_source !== null && cart.discount_ref_id !== null && cart.discount_amount !== null;
+  const rawDiscountCents = hasDiscount ? numericToCents(cart.discount_amount!) : 0;
+  const discountTotalCents = Math.max(0, Math.min(rawDiscountCents, subtotalCents));
+  const totalCents = subtotalCents - discountTotalCents;
+
+  return {
+    id: cart.id,
+    pickupBranchId: cart.branch_id,
+    items: apiItems,
+    ...(hasDiscount
+      ? {
+          appliedDiscount: {
+            source: cart.discount_source!,
+            refId: cart.discount_ref_id!,
+            label: cart.discount_label ?? '',
+            amountCents: rawDiscountCents,
+          },
+        }
+      : {}),
+    subtotalCents,
+    discountTotalCents,
+    totalCents,
   };
 }
 
