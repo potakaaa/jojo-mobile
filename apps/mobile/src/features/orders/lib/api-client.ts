@@ -32,8 +32,24 @@ export async function fetchOrder(orderId: string): Promise<Order> {
   return order;
 }
 
-/** `GET /orders` — the caller's order history, newest first. */
-export async function fetchOrderHistory(): Promise<Order[]> {
-  const { orders } = await apiRequest<{ orders: Order[]; nextCursor: string | null }>('/orders');
-  return orders;
+/** One page of order history: the orders plus the cursor for the next (older) page. */
+export interface OrderHistoryPage {
+  orders: Order[];
+  nextCursor: string | null;
+}
+
+/**
+ * `GET /orders` — one page of the caller's order history, newest first.
+ * Passes `limit`/`cursor` through as query params (when present) and returns the
+ * full `{ orders, nextCursor }` envelope so callers can paginate.
+ */
+export async function fetchOrderHistory(params?: {
+  limit?: number;
+  cursor?: string | null;
+}): Promise<OrderHistoryPage> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  if (params?.cursor != null) search.set('cursor', params.cursor);
+  const query = search.toString();
+  return apiRequest<OrderHistoryPage>(query ? `/orders?${query}` : '/orders');
 }
