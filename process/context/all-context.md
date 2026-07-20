@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/, see the admin-dashboard bullet below and §Scan Metadata; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,73 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 20-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 20-07-26, incl. DEAL-005 Phase 1 scheduled deals + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **DEAL-005 Phase 1 — Scheduled Deals: Simple Window (`packages/api` + `apps/admin`, issue #127,
+  delivered 20-07-26, branch `adm-deal-005-p2`, commit `5e9261b4`, ✅ VERIFIED — EVL-confirmed
+  green AND user manual walkthrough performed and passed, task folder archived):** adds an
+  optional time window to deal-products (`products.is_deal = true`) via a new `deal_schedules`
+  table (migration `0017`, purely additive — one `CREATE TABLE`, zero changes to `products`, no
+  backfill). **The semantic rule, durable:** zero `deal_schedules` rows = always live (the
+  no-backfill guarantee, AC3, Known-Gap banned); one or more rows = live only inside the
+  **union** of their `[starts_at, ends_at)` windows (half-open — `starts_at` inclusive, `ends_at`
+  exclusive), decided ONCE in a shared pure helper
+  (`packages/api/src/routes/lib/deal-schedule.ts`'s `isDealScheduleLive()`) and called by BOTH
+  enforcement points so they cannot disagree about a window's final instant — an inline
+  comparison re-derived at either call site would have been exactly this class of bug. The two
+  enforcement points are the `?isDeal=true` menu query (`branches.ts`, targeted second query per
+  a binding Execute-Agent Instruction, not an inline SQL join, so a naive `INNER JOIN` can never
+  silently exclude every zero-schedule-row deal) and order placement (`orders.ts`, re-checks
+  against `now` at placement time, not cart-add time, rejecting with a specific message when a
+  window closed in between). **Corrects the issue's own suggestion:** deal windows are real
+  timestamps (an admin picks "starts 6pm Friday"), NOT Manila calendar-day buckets —
+  `manilaDateRangeToUtc` (`routes/admin/lib/analytics-range.ts`) is the wrong tool here (it
+  buckets whole days for KPI aggregation and would reintroduce the exact midnight-rounding
+  off-by-one the issue worried about); the correct, already-proven convention is
+  `offers.start_at`/`end_at`'s real-instant comparison, reused verbatim. **Deliberately no
+  unique constraint on `deal_schedules.deal_product_id` and no Drizzle `.onConflictDoUpdate()`**
+  — Phase 1 writes 0-or-1 rows via a transactional select-then-branch replace at the API layer;
+  a unique constraint would have to be dropped again when Phase 2 (recurrence) adds multiple
+  rows per deal, which is exactly the second-migration cost this table shape was chosen to
+  avoid. **Deliberate FK divergence, recorded so a future reader doesn't "fix" it:**
+  `deal_schedules` uses `onDelete: 'cascade'` (pure metadata, garbage without its deal) while the
+  neighbouring `deal_components` uses `NO ACTION` (describes what the deal IS, protected against
+  a hard delete) — since product deletes are soft today, neither fires in practice. **No third
+  read path exists** (verified by direct source read, not assumed): the public `GET /deals`,
+  `GET /deals/:id`, and the `GET /api/branches/:id` inline handler in `packages/api/src/index.ts`
+  all read the legacy `offers` table, never `products.is_deal`; `apps/mobile`'s
+  `useDealProduct()` is a pure client-side derivation over `useDealProducts()`, which calls the
+  same `?isDeal=true` menu route as enforcement point 1 — two enforcement points is the complete
+  set. **D2 (locked): out-of-window = HIDDEN, not annotated** — no window data reaches the
+  customer wire contract (`GET /deals`, `GET /deals/:id`, the menu response's deal-product
+  shape), so `apps/mobile` needed zero changes this phase. Consequence recorded: this makes issue
+  #127's Phase 3 (mobile "Starts Friday" affordances) a **contract change**, not additive, when
+  it is eventually built. **D1 (locked): proceeded despite the issue's stated dependency on
+  #104** — the schema and its enforcement point survive #104 regardless of how it resolves
+  branch-scoping. Admin surface: `routes/admin/deals.ts` CRUD gained optional
+  `startsAt`/`endsAt` (mirrors `offers.ts`'s `endAt <= startAt` 400-reject convention, but both
+  fields independently nullable here); `apps/admin`'s create wizard Step 1 and the deal manage
+  page (`deals.$dealId.tsx`) both gained the shared `DateTimeField` component (reusing
+  `offer-form.tsx`'s `localNow`/`min`/`endMin` pattern verbatim); a Scheduled/Live/Expired badge
+  extends `apps/admin/src/lib/entity-status.ts`'s existing `dealStatus`/`windowPhase`. **The
+  manage-page window fields are DERIVED from the loaded deal, never seeded into local `useState`**
+  — deliberately avoiding the STAFF-005 "react-query cache-hit revisit breaks useState +
+  object-identity seed guards" bug class (already recorded in this file's STAFF-005 entry); this
+  is the second occurrence of that pattern being designed around, cross-referenced rather than
+  duplicated. Gates, independently EVL-confirmed by a separately spawned tester (not
+  execute-agent's self-report): API 505→547 tests, admin 111→127 tests, both typechecks clean,
+  `pnpm format:check` clean, migration `0017` applies cleanly. All 11 ACs Fully-Automated and
+  passing (AC3, AC6 both explicitly Known-Gap-banned by the plan's own Verification Evidence
+  table and honored — no Known-Gap used anywhere in this plan). The optional user manual
+  walkthrough (empty-window/future-start-hidden+Scheduled/past-end-hidden+Expired/
+  in-window-visible+Live/cleared-window-visible/in-cart-expiry-rejection/inverted-window-wizard-
+  block) was performed and passed this session — unlike several recent phases in this program,
+  no Agent-Probe residual is owed. Phases 2 (`deal_schedules` recurrence) and 3 (mobile
+  surfacing) of issue #127 remain unbuilt and out of scope — not planned by this pass. Delivered
+  by:
+  `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/deal-005-scheduled-deals_PLAN_20-07-26.md`
+  (+ co-located `deal-005-scheduled-deals_REPORT_20-07-26.md` in the same task folder, now
+  archived).
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -1294,6 +1360,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
+| deal scheduling / `deal_schedules` / issue #127 Phase 2+3 work | `all-context.md` | `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/` — Phase 1 (nullable window, two enforcement points, admin CRUD/UI/badge) is ✅ VERIFIED and archived; read its plan + report for the shared `isDealScheduleLive()` helper, the half-open boundary convention, and the locked D1/D2/D3 decisions before starting Phase 2 (recurrence) or Phase 3 (mobile surfacing) — both need a fresh RESEARCH/PLAN cycle, neither is scoped yet |
 
 ## Context Group Lifecycle
 
@@ -1524,7 +1591,28 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
+- Last delta: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals UPDATE PROCESS — doc-only
+  reconciliation, source already committed by the user before this pass began (commit
+  `5e9261b4` on branch `adm-deal-005-p2`). Phase 1 of issue #127 added a nullable
+  `[starts_at, ends_at)` window on deal-products via a new additive `deal_schedules` table
+  (migration `0017`), enforced identically at the `?isDeal=true` menu query and order placement
+  via one shared pure helper (`isDealScheduleLive()`), plus admin CRUD/UI/badge. All 11 ACs
+  Fully-Automated and passing, Known-Gap explicitly banned for AC3 (no-backfill) and AC6
+  (window-closed-at-placement) and honored — none used anywhere in this plan. Gates
+  independently EVL-confirmed: API 505→547, admin 111→127, both typechecks clean, format clean,
+  migration applies cleanly. Corrected the EXECUTE report's test-count wording (its "6
+  tests"/"3 pre-existing" mutation-check claim and the EVL tester's independently-measured "14
+  tests across 4 files" are two different mutations against the same AC3 check, not a
+  discrepancy — both non-vacuous). **Uniquely for this program: the user's manual admin-UI
+  walkthrough was performed and passed this session, so the plan reached ✅ VERIFIED (not merely
+  CODE DONE) with zero owed Agent-Probe residual** — unlike the SSR route-guard and STAFF-005
+  deltas immediately below, which both stayed in `active/` pending exactly that kind of
+  walkthrough. Wrote `deal-005-scheduled-deals_REPORT_20-07-26.md`; stamped the plan Status line
+  and Phase Completion Rules section ✅ VERIFIED; added an implementation-state bullet and a
+  routing-table row here. No new backlog notes filed (zero Known-Gap rows, zero new gaps found;
+  Phases 2/3 of issue #127 are already-tracked future work, not new debt). Archived the task
+  folder `active/` → `completed/`. HEAD this delta: `5e9261b4`.)
+- Previous delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
   reconciliation, doc-only, all 3 commits already on disk when this pass began. `ssr:false` set on
   the `(dashboard)` layout route + `typeof document` early-return removed (`4929b27`), closing a
   hard-load/direct-URL/refresh bug where a logged-out user briefly saw dashboard chrome before
