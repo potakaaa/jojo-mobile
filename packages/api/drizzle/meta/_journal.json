@@ -120,6 +120,13 @@
       "when": 1784250726069,
       "tag": "0016_rename_offer_fk_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784524306582,
+      "tag": "0017_fast_the_hood",
+      "breakpoints": true
     }
   ]
 }
