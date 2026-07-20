@@ -45,10 +45,15 @@ async function markNotificationRead(id: string): Promise<void> {
   await apiRequest(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
 }
 
+async function markAllNotificationsRead(): Promise<void> {
+  await apiRequest('/notifications/read-all', { method: 'PATCH' });
+}
+
 export interface UseNotifications {
   notifications: AppNotification[];
   unreadCount: number;
   markRead: (id: string) => void;
+  markAllRead: () => Promise<void>;
   marketingOptIn: boolean;
   setMarketingOptIn: (value: boolean) => Promise<SignInResult>;
 }
@@ -83,6 +88,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     [markReadMutation],
   );
 
+  const markAllRead = useCallback(async () => {
+    const now = new Date().toISOString();
+    // Optimistic update: stamp every unread row with `now` so the UI clears instantly.
+    queryClient.setQueryData(
+      notificationsQueryKey(user?.id),
+      (old: AppNotification[] | undefined) =>
+        old?.map((n) => (n.readAt == null ? { ...n, readAt: now } : n)) ?? [],
+    );
+    try {
+      await markAllNotificationsRead();
+    } catch {
+      // Revert on failure by invalidating so the server state is restored.
+      queryClient.invalidateQueries({ queryKey: notificationsQueryKey(user?.id) });
+    }
+  }, [queryClient, user?.id]);
+
   // Returns the persist promise (rather than fire-and-forget) so the caller can
   // await it and surface a failure — an opt-out that silently fails must not
   // look like it succeeded.
@@ -97,8 +118,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<UseNotifications>(
-    () => ({ notifications, unreadCount, markRead, marketingOptIn, setMarketingOptIn }),
-    [notifications, unreadCount, markRead, marketingOptIn, setMarketingOptIn],
+    () => ({
+      notifications,
+      unreadCount,
+      markRead,
+      markAllRead,
+      marketingOptIn,
+      setMarketingOptIn,
+    }),
+    [notifications, unreadCount, markRead, markAllRead, marketingOptIn, setMarketingOptIn],
   );
 
   return createElement(NotificationsContext.Provider, { value }, children);
