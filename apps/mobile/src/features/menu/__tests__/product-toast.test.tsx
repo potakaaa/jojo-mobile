@@ -4,7 +4,7 @@ import { Spacing } from '@jojopotato/ui';
 import { fireEvent } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
-import ProductDetailsScreen from '@/app/(tabs)/product/[productId]';
+import ProductDetailsScreen from '@/app/(tabs)/product';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import {
