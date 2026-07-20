@@ -106,6 +106,16 @@ export function buildDateTimeValue(date: Date, time: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${time}`;
 }
 
+/**
+ * Now, in the contract shape. Lives here rather than at the call sites because it
+ * is the same string format `min`/`max`/`value` speak — two forms had drifted into
+ * two spellings of it.
+ */
+export function localNow(): string {
+  const d = new Date();
+  return buildDateTimeValue(d, `${pad(d.getHours())}:${pad(d.getMinutes())}`);
+}
+
 function formatDisplay(value: string): string | null {
   const { date, time } = parseDateTimeValue(value);
   if (!date || !time) return null;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { DateTimeField } from '@/components/date-time-field';
+import { DateTimeField, localNow } from '@/components/date-time-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -55,11 +55,6 @@ function isoToLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
     d.getMinutes(),
   )}`;
-}
-
-/** Now, in the same naive-local `"YYYY-MM-DDTHH:mm"` shape the date fields speak. */
-function localNow(): string {
-  return isoToLocal(new Date().toISOString());
 }
 
 export function OfferForm({

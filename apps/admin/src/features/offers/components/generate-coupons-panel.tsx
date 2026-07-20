@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { DateTimeField } from '@/components/date-time-field';
+import { DateTimeField, localNow } from '@/components/date-time-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -38,15 +38,6 @@ interface GenerateCouponsPanelProps {
 
 function toIso(local: string): string {
   return new Date(local).toISOString();
-}
-
-/** Now, in the same naive-local `"YYYY-MM-DDTHH:mm"` shape the expiry field speaks. */
-function localNow(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-    d.getMinutes(),
-  )}`;
 }
 
 export function GenerateCouponsPanel({
