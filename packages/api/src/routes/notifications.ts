@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -77,6 +77,21 @@ notificationsRouter.post('/device-tokens', async (req, res) => {
     });
 
   res.status(200).json({ ok: true });
+});
+
+/**
+ * `PATCH /notifications/read-all` — mark every unread notification for the
+ * caller as read in one atomic write. Idempotent (already-read rows untouched
+ * via the `read_at IS NULL` guard). Registered BEFORE `/:id/read` so Express
+ * does not treat the literal "read-all" path segment as an `:id`.
+ */
+notificationsRouter.patch('/read-all', async (req, res) => {
+  const userId = req.user!.id;
+  await db
+    .update(notifications)
+    .set({ read_at: new Date() })
+    .where(and(eq(notifications.user_id, userId), isNull(notifications.read_at)));
+  res.json({ ok: true });
 });
 
 /**

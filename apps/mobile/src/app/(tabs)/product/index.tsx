@@ -115,7 +115,7 @@ export default function ProductDetailsScreen() {
     });
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!product) return;
     if (!selectedBranch) {
       showToast('Please select a pickup branch before adding items.', 'error');
@@ -141,18 +141,26 @@ export default function ProductDetailsScreen() {
     if (cart.pickupBranchId !== selectedBranch.id) {
       setBranch(selectedBranch.id);
     }
-    addItem(menuItem, opts);
-    showToast('Added to cart', 'success');
+    // Await the real outcome — a success toast the server didn't actually
+    // confirm is worse than no toast at all (it hides a lost add).
+    const ok = await addItem(menuItem, opts);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+    );
   };
 
-  const confirmBranchSwitch = () => {
+  const confirmBranchSwitch = async () => {
     const pending = pendingSwitch;
     setPendingSwitch(null);
     if (!pending || !selectedBranch) return;
     clearCart();
     setBranch(selectedBranch.id);
-    addItem(pending.menuItem, pending.opts);
-    showToast('Added to cart', 'success');
+    const ok = await addItem(pending.menuItem, pending.opts);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+    );
   };
 
   /*

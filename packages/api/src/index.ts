@@ -19,6 +19,7 @@ import { requireStaff } from './lib/require-staff';
 import { requireSession } from './middleware/require-session';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
+import { cartRouter } from './routes/cart';
 import { couponsRouter } from './routes/coupons';
 import { dealsRouter } from './routes/deals';
 import { notificationsRouter } from './routes/notifications';
@@ -242,6 +243,11 @@ app.use('/rewards', requireSession, rewardsRouter);
 // couponsRouter assumes `req.user!.id`. `POST /coupons/apply` is zero-mutation
 // (preview only); coupon consumption happens exclusively in POST /orders.
 app.use('/coupons', requireSession, couponsRouter);
+
+// Cart routes (CART-003) — the server-persisted per-user cart, session-gated ONCE
+// at mount (same posture as /coupons). Every handler assumes `req.user!.id`; there
+// is no `:cartId` param, so a cart is only ever addressed via the session user.
+app.use('/cart', requireSession, cartRouter);
 
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.
