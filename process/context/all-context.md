@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-17 (MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-20 (STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -768,6 +768,47 @@ top of it later without re-plumbing the project.
   earlier mock-data-only plan for the same issues (never executed). Known gap: stars accrual —
   `process/features/ordering-cart/backlog/stars-accrual-and-history-display_NOTE_13-07-26.md`.
   Delivered by: `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/`.
+- **Staff dashboard home stat block + prep-time autofill fix (STAFF-005 #106, `apps/mobile` only,
+  delivered 20-07-26, task folder `process/features/staff-dashboard/active/staff-dashboard-home_20-07-26/`,
+  CODE DONE + EVL-confirmed green, NOT YET VERIFIED — Agent-Probe walkthroughs owed, stays in
+  `active/`):** the staff landing screen (`(staff)/index.tsx`) was a bare 5-card nav menu with zero
+  live data; it now has a "Branch at a glance" stat block above the cards — awaiting-acceptance
+  count, other-active-by-status counts, accepting-pickup state, current prep-time — composed
+  client-side from three EXISTING hooks (`useStaffOrders`, `useStaffBranchSettings`, `useStaffMe`)
+  plus a new pure `deriveDashboardCounts(orders)` fn. Zero new backend route; branch isolation is
+  structurally inherited (no new data path, same `requireStaff`→`resolveBranchScope`→
+  `assertBranchScope` chain). Separately fixed a real bug in `branch-pickup-settings.tsx`: the
+  prep-time input rendered blank on a cached (react-query hit) revisit. **Root cause, durable
+  pattern for future work:** the old code seeded via `useState` + an object-identity guard
+  (`if (settings !== seededSettings)`) — on a warm cache hit, react-query can return the SAME
+  settings object reference on re-render, so the identity check silently never fires and the field
+  never seeds. **This "react-query cache-hit revisit breaks useState+object-identity seed guards"
+  pattern can recur anywhere a screen tries to one-time-seed local editable state from a
+  react-query-cached value — check for this class of bug before reusing that seeding style
+  elsewhere.** Fixed with a `useReducer` state machine (`prepTimeReducer`, keyed off a `hasSeeded`
+  boolean, not object identity) driven by 3 actions: `SETTINGS_ARRIVED` (idempotent — seeds once,
+  fixes the bug AND closes a secondary mid-edit-stomp risk where a background refetch could
+  overwrite an in-progress edit), `SAVE_SUCCESS` (deterministic re-seed after save), `USER_EDIT`.
+  Seeded SYNCHRONOUSLY via a render-phase dispatch guarded by `hasSeeded` — no `useEffect`-only
+  seed, which would flash the input empty for one commit even after the fix. **New pure module
+  `staff-status-taxonomy.ts`** (not `staff-status-config.ts` as originally planned) exports
+  `NON_TERMINAL_STAFF_STATUSES`/`NonTerminalStaffStatus` — a real, durable node-env-vitest
+  constraint discovered this session: `staff-status-config.ts` transitively imports
+  `@jojopotato/ui` → `react-native`, so any module a node-env `.test.ts` statically imports must
+  stay outside that import chain or vitest fails to bundle it (Flow `import typeof` syntax);
+  `staff-status-config.ts` now re-exports from the new taxonomy module so the single-source-of-
+  truth contract holds for existing consumers. 9 new vitest unit tests (4 dashboard-counts + 5
+  prep-time-reducer), all green; mobile suite 78/78 jest + 63/63 vitest, typecheck 0 errors, api
+  STAFF-003 ETA regression 23/23 (unchanged, re-run only), format:check clean on touched files.
+  **Known, pre-existing, out-of-scope red gate:** `guard:theme-mode` fails on `development` with 25
+  violations (`map-style.ts` hex literals + the 2 `use-color-scheme` wrapper files) — confirmed
+  pre-existing via stash-baseline comparison (identical with or without this work); root cause is
+  that `mobile-dark-mode-audit_17-07-26` (which fixes this) hasn't merged into `development` yet.
+  See backlog note below. Agent-Probe residuals (dashboard visual, nav, stale-read cadence,
+  prep-time no-flash on-screen, dark-mode visual) are the standing project-wide no-RN-runner gap,
+  already tracked. Delivered by:
+  `process/features/staff-dashboard/active/staff-dashboard-home_20-07-26/staff-dashboard-home_PLAN_20-07-26.md`
+  (+ co-located SPEC + REPORT in the same task folder).
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -1446,7 +1487,25 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (MENU-003 + MENU-004 UPDATE PROCESS — doc-only reconciliation, no source
+- Last delta: 2026-07-20 (STAFF-005 #106 UPDATE PROCESS — staff dashboard home stat block +
+  prep-time autofill bug fix, `apps/mobile` only. CODE DONE, EVL-confirmed green by an
+  independently spawned vc-tester (mobile vitest 63/63 incl. 9 new, jest 78/78, typecheck 0,
+  api STAFF-003 ETA regression 23/23, format:check clean on touched files). Documented the durable
+  "react-query cache-hit revisit breaks useState+object-identity seed guards" bug pattern (root
+  cause of the prep-time-blank bug, fixed via a `hasSeeded`-keyed `useReducer`). Filed 1 new
+  backlog note (`staff-dashboard/backlog/guard-theme-mode-branch-not-merged_NOTE_20-07-26.md` —
+  `guard:theme-mode` red on `development` with 25 pre-existing violations, confirmed unrelated to
+  this work, pending `mobile-dark-mode-audit_17-07-26` merge); did not duplicate the existing
+  `staff-mobile-rn-test-runner-gap_NOTE_13-07-26.md` (already covers the Agent-Probe residuals) or
+  `dark-mode-hex-literal-baseline_NOTE_17-07-26.md` (a different, narrower, already-green finding).
+  Task folder stays in `active/` — Agent-Probe walkthroughs (dashboard visual, nav, stale-read
+  cadence, prep-time no-flash, dark-mode visual) are owed by the user per the plan's own Phase
+  Completion Rules. Working tree at this delta (uncommitted, not yet committed by this UPDATE
+  PROCESS pass): `apps/mobile/src/app/(staff)/{index,branch-pickup-settings}.tsx`,
+  `apps/mobile/src/features/staff/lib/staff-status-config.ts` (edit) + 3 new files
+  (`dashboard-counts.ts`, `prep-time-reducer.ts`, `staff-status-taxonomy.ts`) + their
+  `__tests__/`; current branch at this delta: `development`.)
+- Previous delta: 2026-07-17 (MENU-003 + MENU-004 UPDATE PROCESS — doc-only reconciliation, no source
   changes this pass. Added the missing MENU-003 (deal branch-availability + reorder fix, #98) and
   MENU-004 (Home category filter wired to product grid, #103) bullets — both CODE-COMPLETE,
   committed on `feat/menu-004-category-filter-polish`, NEITHER VERIFIED (device walkthroughs
