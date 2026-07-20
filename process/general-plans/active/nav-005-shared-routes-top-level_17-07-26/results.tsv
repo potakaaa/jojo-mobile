@@ -1,0 +1,3 @@
+cycle	date	gaps_open	gaps_closed	gate	loop_status	note
+0	17-07-26	2	0	CONDITIONAL	BASELINE	V7 first pass: 0 FAIL, 2 CONCERN (no-E2E-runner; deep-link 404 risk)
+1	17-07-26	2	4	CONDITIONAL	HALTED_ACCEPTED	Supplement applied P1-P4 (grep-count gate, codegen 3-part verify, freeze diff check, real baselines). Both remaining CONCERNs are structural known-gaps, not closable by plan text.

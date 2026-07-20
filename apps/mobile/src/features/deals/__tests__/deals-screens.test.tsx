@@ -102,6 +102,6 @@ describe('DealDetailsScreen — Product data, What’s inside, add-to-cart CTA',
       isAvailable: true,
     });
     expect(opts).toEqual([]);
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/order/cart');
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/cart');
   });
 });

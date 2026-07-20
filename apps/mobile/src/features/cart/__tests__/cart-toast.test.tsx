@@ -4,7 +4,7 @@ import { MinTouchTarget, Spacing } from '@jojopotato/ui';
 import { fireEvent } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
-import CartScreen, { getCartFooterHeight } from '@/app/(tabs)/order/cart';
+import CartScreen, { getCartFooterHeight } from '@/app/(tabs)/cart/index';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';

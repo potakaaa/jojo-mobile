@@ -19,6 +19,7 @@ import {
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
+import { resolveAvailableDealProductIds } from './lib/deal-availability';
 import { orderNumberGenerator } from './lib/order-number';
 import {
   centsToNumeric,
@@ -229,6 +230,40 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         body.items.some((line) => productById.get(line.productId)?.is_deal === true)
       ) {
         throw new OrderError(400, 'Coupon codes cannot be combined with Deal products.');
+      }
+
+      // MENU-003 (AC5 — trust boundary, money safety): a deal-product is only
+      // orderable when EVERY one of its components is available at this branch.
+      // The deal-product's OWN availability is already enforced above (it would
+      // be missing from `productById` and have thrown at the per-line check);
+      // this is the component layer that check never covered, which is how an
+      // order for a deal the branch cannot fulfil could be placed until now.
+      //
+      // Server-side and unconditional — nothing the client sends can satisfy it.
+      // Runs on `tx` (not `db`) so it reads the same snapshot as the write, and
+      // BEFORE any discount math or insert, so an `OrderError` throw rolls the
+      // whole placement back through the existing transaction semantics — no
+      // order row, no charge, no new rollback logic needed.
+      //
+      // Batched over ALL deal lines in the cart in ONE helper call — a cart may
+      // contain several different deals, and every one of them is checked.
+      const dealProductsById = new Map<string, (typeof availableRows)[number]['product']>();
+      for (const line of body.items) {
+        const product = productById.get(line.productId);
+        if (product?.is_deal === true) dealProductsById.set(product.id, product);
+      }
+      if (dealProductsById.size > 0) {
+        const availableDealIds = await resolveAvailableDealProductIds(tx, body.branchId, [
+          ...dealProductsById.keys(),
+        ]);
+        for (const [dealProductId, product] of dealProductsById) {
+          if (!availableDealIds.has(dealProductId)) {
+            throw new OrderError(
+              400,
+              `Deal "${product.name}" is no longer fully available at this branch`,
+            );
+          }
+        }
       }
 
       // ─── DORMANT (ADM-004 deals-as-products pivot / ADM-008 test debt) ─────

@@ -478,7 +478,11 @@ describe('AC7 — GET /branches/:id/menu excludes deals by default; ?isDeal=true
     const regularId = await seedRegularProduct();
     await setAvailability(regularId, branchId, true);
 
-    const dealRes = await createDeal();
+    // MENU-003: a deal is only listed when it has >=1 component and every
+    // component is available here — so this deal takes the (already available)
+    // regular product as its component. This test is about the is_deal filter
+    // split, not component count; the component keeps it listable under AC7.
+    const dealRes = await createDealWith([{ productId: regularId, quantity: 1 }]);
     const dealId = dealRes.body.deal.id as string;
     await setAvailability(dealId, branchId, true);
 
@@ -509,7 +513,14 @@ describe('creating a deal seeds branch_product_availability for every active bra
     // Branch must exist BEFORE the deal so create-time seeding covers it.
     const branchId = await seedBranch();
 
-    const dealRes = await createDeal();
+    // MENU-003 (AC7): a zero-component deal is never listed, so give the deal a
+    // component that IS available here. Availability is set on the COMPONENT
+    // only — never on the deal — which is exactly what this test asserts gets
+    // auto-seeded for the deal at create time.
+    const componentId = await seedRegularProduct();
+    await setAvailability(componentId, branchId, true);
+
+    const dealRes = await createDealWith([{ productId: componentId, quantity: 1 }]);
     const dealId = dealRes.body.deal.id as string;
 
     // A branch_product_availability row (available) was auto-seeded.
@@ -727,7 +738,16 @@ describe('AC8 — admin products list excludes deals by default; deals list is d
 describe('AC9 — editing a deal-product base_price after order placement never mutates order_items snapshot', () => {
   it('does not mutate order_items.unit_price/total_price when a deal-product base_price is edited after placement', async () => {
     const branchId = await seedBranch();
-    const dealRes = await createDeal({ basePriceCents: 10000 });
+
+    // MENU-003 (AC5/AC7): placement now requires the deal to have >=1 component,
+    // all available at this branch. Orthogonal to this test's subject (price
+    // snapshot integrity) — the component just makes the deal orderable at all.
+    const componentId = await seedRegularProduct();
+    await setAvailability(componentId, branchId, true);
+
+    const dealRes = await createDealWith([{ productId: componentId, quantity: 1 }], {
+      basePriceCents: 10000,
+    });
     const dealId = dealRes.body.deal.id as string;
     await setAvailability(dealId, branchId, true);
 
@@ -783,7 +803,16 @@ describe('AC9 — editing a deal-product base_price after order placement never 
 describe('AC10 — a deal-product is orderable via normal POST /orders with no is_deal rejection', () => {
   it('places an order containing a deal-product like any other product', async () => {
     const branchId = await seedBranch();
-    const dealRes = await createDeal({ basePriceCents: 5000 });
+
+    // MENU-003 (AC5/AC7): a deal is only orderable with >=1 component, all
+    // available here. This test's subject is "no is_deal rejection at
+    // placement", which the component leaves intact.
+    const componentId = await seedRegularProduct();
+    await setAvailability(componentId, branchId, true);
+
+    const dealRes = await createDealWith([{ productId: componentId, quantity: 1 }], {
+      basePriceCents: 5000,
+    });
     const dealId = dealRes.body.deal.id as string;
     await setAvailability(dealId, branchId, true);
 

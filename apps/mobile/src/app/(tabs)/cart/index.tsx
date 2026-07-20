@@ -13,12 +13,12 @@ import {
   ScreenHeader,
   Toast,
 } from '@jojopotato/ui';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TAB_BAR_FOOTPRINT } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
@@ -119,6 +119,9 @@ function productForLine(
  * (real deal data via `useDeal` + client-side eligibility engine), and the
  * subtotal/total summary — all driven by the in-memory `useCart()` seam wired to
  * the real branch backend.
+ *
+ * This is the ROOT of the top-level `(tabs)/cart` stack (NAV-005 moved it out of
+ * the Order tab so back returns to the calling tab; see `./_layout.tsx`).
  */
 export default function CartScreen() {
   const theme = useTheme();
@@ -126,6 +129,18 @@ export default function CartScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
   const { toast, showToast, hideToast } = useToast();
+
+  /*
+    Hide the floating tab bar on this screen. Cart is a leaf screen you enter and
+    leave, but it is now the ROOT of its own top-level stack — so
+    `isNestedTabRoute()` is false and the bar would otherwise paint here.
+    `useHideTabBarWhile` is the existing cross-tree seam for exactly this (it is
+    OR-composed with the nested check in floating-tab-bar.tsx). Gated on FOCUS,
+    not just mount: this screen stays mounted in the Tabs navigator after the user
+    navigates away, and an always-true flag would leave the bar hidden on the
+    destination. Losing focus restores it; unmount also restores.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   const {
     cart,
@@ -323,11 +338,13 @@ export default function CartScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/*
-        NESTED screen: the floating tab bar is hidden here, so the clearance
-        calls below drop its ~85dp footprint (see resolveTabBarClearance).
+        The floating tab bar is hidden here — via useHideTabBarWhile(useIsFocused())
+        above, NOT because this screen is nested (NAV-005 made it top-level). The
+        clearance calls below therefore still drop its ~85dp footprint (see
+        resolveTabBarClearance).
 
-        TOP edge only (NAV-003). This stack now runs `headerShown:false` (see
-        ../_layout.tsx), so the top inset is ours to supply — without it the
+        TOP edge only (NAV-003). This stack runs `headerShown:false` (see
+        ./_layout.tsx), so the top inset is ours to supply — without it the
         ScreenHeader title would sit under the status bar.
 
         'bottom' is deliberately GONE, resolving the double-count NAV-001's
@@ -368,11 +385,14 @@ export default function CartScreen() {
               contentContainerStyle={[
                 styles.content,
                 Platform.OS !== 'web' && {
-                  // isNested hardcoded true: cart.tsx is always pushed inside the
-                  // Order tab's Stack — never that tab's root — so isNestedTabRoute()
-                  // would also evaluate true here; hardcoded per INNOVATE's
-                  // static-per-screen-fact decision (see PLAN "Locked Inputs"). If this
-                  // file ever moves to a tab root, this literal must change.
+                  // `true` selects the no-footprint branch: the floating bar is HIDDEN
+                  // on this screen (via useHideTabBarWhile above), so reserving its
+                  // ~85dp footprint would be dead space. Only the device safe-area inset
+                  // is kept. NOTE: the helper's param is named `isNested` and this screen
+                  // is top-level, not nested (NAV-005) — what the branch actually selects
+                  // is "bar not rendered here", which is true either way. The name is not
+                  // renamed on purpose: the helper is shared with other call sites and a
+                  // unit test (NAV-001 owns it).
                   paddingBottom:
                     resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) +
                     Spacing.six +
@@ -498,7 +518,7 @@ export default function CartScreen() {
             >
               <Button
                 label={`Checkout • ${itemCount} item${itemCount === 1 ? '' : 's'}`}
-                onPress={() => router.push('/(tabs)/order/checkout')}
+                onPress={() => router.push('/(tabs)/cart/checkout')}
                 disabled={isEmpty || hasConflicts}
                 mode={mode}
               />

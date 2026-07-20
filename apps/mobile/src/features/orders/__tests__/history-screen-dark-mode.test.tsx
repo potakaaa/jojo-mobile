@@ -3,7 +3,7 @@ import type { Order, PickupBranch } from '@jojopotato/types';
 import { Colors } from '@jojopotato/ui';
 import { StyleSheet } from 'react-native';
 
-import OrderHistoryScreen from '@/app/(tabs)/order/history';
+import OrderHistoryScreen from '@/app/(tabs)/history/index';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useReorder } from '@/features/orders/hooks/use-reorder';
