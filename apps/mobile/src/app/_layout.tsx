@@ -1,4 +1,3 @@
-import { Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
@@ -32,7 +31,7 @@ import { queryClient } from '@/lib/query-client';
 import { resolveStatusBarStyle } from '@/lib/status-bar';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
-// never flashes system fonts before Fredoka / Plus Jakarta Sans load.
+// never flashes system fonts before Plus Jakarta Sans loads.
 SplashScreen.preventAutoHideAsync();
 
 /**
@@ -97,8 +96,6 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   const [fontsLoaded, fontError] = useFonts({
-    Fredoka_600SemiBold,
-    Fredoka_700Bold,
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
