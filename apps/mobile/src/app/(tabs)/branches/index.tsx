@@ -10,6 +10,7 @@ import {
   FlatList,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -53,6 +54,7 @@ export default function BranchLocatorScreen() {
     data: branches = [],
     isPending,
     isError: fetchError,
+    isRefetching,
     refetch,
   } = useQuery({ queryKey: ['branches', 'all'], queryFn: getBranches });
 
@@ -160,7 +162,7 @@ export default function BranchLocatorScreen() {
             <View style={styles.centered}>
               <ActivityIndicator testID="branches-loading" color={theme.accent} />
             </View>
-          ) : fetchError ? (
+          ) : fetchError && branches.length === 0 ? (
             <View style={styles.centered}>
               <Text style={[styles.message, { color: theme.textSecondary }]}>
                 Could not load branches — please try again
@@ -175,10 +177,20 @@ export default function BranchLocatorScreen() {
             </View>
           ) : (
             <FlatList
+              testID="branches-list"
               data={filteredBranches}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.list}
               showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  testID="branches-refresh"
+                  refreshing={isRefetching}
+                  onRefresh={() => void refetch()}
+                  tintColor={theme.text}
+                  colors={[theme.text]}
+                />
+              }
               renderItem={renderItem}
             />
           )}
@@ -261,7 +273,7 @@ export default function BranchLocatorScreen() {
           <View style={styles.sheetCentered}>
             <ActivityIndicator testID="branches-loading" color={theme.accent} />
           </View>
-        ) : fetchError ? (
+        ) : fetchError && branches.length === 0 ? (
           <View style={styles.sheetCentered}>
             <Text style={[styles.message, { color: theme.textSecondary }]}>
               Could not load branches — please try again
@@ -283,6 +295,14 @@ export default function BranchLocatorScreen() {
               { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
             ]}
             showsVerticalScrollIndicator={false}
+            // Direct props (D4): gorhom 5.2.14 auto-wires the Android refresh
+            // gesture internally via ScrollableContainer.android.tsx; no
+            // BottomSheetRefreshControl import / scrollableGesture wiring. Tint/
+            // colors are not forwarded through gorhom's Android wrapper — the
+            // native sheet spinner uses the platform-default color (known minor
+            // cosmetic gap, see plan Test Infra Improvement Notes).
+            refreshing={isRefetching}
+            onRefresh={() => void refetch()}
             renderItem={renderItem}
           />
         )}

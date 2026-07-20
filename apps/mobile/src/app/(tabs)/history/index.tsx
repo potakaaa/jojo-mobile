@@ -3,7 +3,15 @@ import { Button, Card, EmptyState, OrderStatusBadge, ScreenHeader, Toast } from 
 import { formatCurrency, reorderEligibility, summarizeOrderItems } from '@jojopotato/utils';
 import { router, useIsFocused } from 'expo-router';
 import { useEffect } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
@@ -29,7 +37,18 @@ export default function OrderHistoryScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
-  const { data: orders, loading, error, refetch } = useOrderHistory();
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useOrderHistory();
+  const orders = data?.pages.flatMap((p) => p.orders) ?? [];
   const { branches } = useBranch();
   // Aliased: `error` is already taken by useOrderHistory above.
   const { reorder, isReordering, error: reorderError } = useReorder();
@@ -62,7 +81,7 @@ export default function OrderHistoryScreen() {
     branch for free; with `headerShown:false` (see ./_layout.tsx) an unwrapped
     early return would lose both its status-bar clearance and its only way back.
   */
-  if (loading) {
+  if (isPending) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -72,22 +91,26 @@ export default function OrderHistoryScreen() {
       </View>
     );
   }
-  if (error) {
+  // Full error screen only on an INITIAL-load failure (no data yet). A FAILED
+  // REFRESH / load-more keeps `isError` true but retains prior pages in `data`, so
+  // gating on `orders.length === 0` keeps the already-loaded list visible instead
+  // of blanking it (SPEC: a failed refresh never blanks loaded orders — AC2/AC9).
+  if (isError && orders.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
           <ScreenHeader title="Order History" onBack={() => router.back()} mode={mode} />
           <ScreenMessage
             title="Couldn't load your orders"
-            subtitle={error}
+            subtitle={error?.message ?? 'Something went wrong'}
             actionLabel="Retry"
-            onAction={refetch}
+            onAction={() => void refetch()}
           />
         </SafeAreaView>
       </View>
     );
   }
-  if (!orders || orders.length === 0) {
+  if (orders.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -129,10 +152,31 @@ export default function OrderHistoryScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Order History" onBack={() => router.back()} mode={mode} />
         <FlatList
+          testID="order-history-list"
           data={orders}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              testID="order-history-refresh"
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+          }}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.footer}>
+                <ActivityIndicator color={theme.text} />
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             const branchName =
               branches.find((b) => b.id === item.branchId)?.name ?? 'Unknown branch';
@@ -216,4 +260,5 @@ const styles = StyleSheet.create({
   },
   badgeRow: { marginTop: Spacing.two },
   reorderRow: { marginTop: Spacing.two, alignItems: 'flex-start' },
+  footer: { paddingVertical: Spacing.four, alignItems: 'center' },
 });
