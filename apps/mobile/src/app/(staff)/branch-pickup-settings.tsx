@@ -5,11 +5,10 @@
  * Pickup acceptance toggling is admin-only.
  */
 
-import { Ionicons } from '@expo/vector-icons';
-import { Button, Input, type ThemeMode } from '@jojopotato/ui';
+import { Button, Input, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -56,17 +55,7 @@ export default function BranchPickupSettingsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Branch Pickup Settings</Text>
-        </View>
+        <ScreenHeader title="Branch Pickup Settings" onBack={() => router.back()} mode={mode} />
 
         <ScrollView contentContainerStyle={styles.content}>
           {isLoading ? (
@@ -133,18 +122,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
-  },
-  headerTitle: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
   },
   content: {
     paddingHorizontal: Spacing.four,

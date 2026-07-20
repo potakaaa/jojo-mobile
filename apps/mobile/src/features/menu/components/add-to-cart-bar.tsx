@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { TAB_BAR_FOOTPRINT } from '@/components/floating-tab-bar';
+import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { FontFamily, MinTouchTarget, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -22,9 +23,9 @@ import { useTheme } from '@/hooks/use-theme';
  * when the hint is hidden.
  *
  * The height is a FUNCTION of `insets.bottom`, not a static export — the same
- * reason `getFloatingTabBarClearance` is a function. On iOS/Android this bar's
- * own paddingBottom is the floating-tab-bar clearance (device-dependent), so a
- * static constant could only ever describe the web variant. A previous static
+ * reason `resolveTabBarClearance` is a function. On iOS/Android this bar's own
+ * paddingBottom is the device inset (device-dependent), so a static constant
+ * could only ever describe the web variant. A previous static
  * `ADD_TO_CART_BAR_HEIGHT` did exactly that and under-reported the real iOS/
  * Android height by ~71dp + insets, letting the Toast paint over the button.
  * ------------------------------------------------------------------ */
@@ -61,15 +62,23 @@ export const BAR_CONTENT_BLOCK_HEIGHT = BAR_HINT_HEIGHT + BAR_HINT_ROW_GAP + BAR
 /**
  * The bar's real paddingBottom. SINGLE SOURCE: both the rendered style below and
  * `getAddToCartBarHeight` read this, so the height can never drift from what the
- * bar actually paints. iOS/Android must additionally clear the floating tab bar.
+ * bar actually paints. This bar only ever renders on Product Details, which is
+ * always pushed inside a tab's Stack — never a tab root — so isNested is
+ * hardcoded true: the floating tab bar's footprint is never reserved here, only
+ * the device inset plus the bar's own base padding. If this bar is ever reused
+ * on a tab-root screen, this must change to a real isNestedTabRoute() check.
  */
 const getBarPaddingBottom = (insetsBottom: number): number =>
-  Platform.OS === 'web' ? BAR_BASE_PADDING_BOTTOM : getFloatingTabBarClearance(insetsBottom);
+  Platform.OS === 'web'
+    ? BAR_BASE_PADDING_BOTTOM
+    : resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insetsBottom) + BAR_BASE_PADDING_BOTTOM;
 
 /**
  * Total rendered height (dp) of this bar in its tallest (hint-visible) state.
  * Screens anchoring content above the bar (a Toast) size themselves off this.
- * web: 2 + 8 + 69 + 24 = 103. iOS/Android: 2 + 8 + 69 + (93 + insets) = 172 + insets.
+ * web: 2 + 8 + 69 + 24 = 103. iOS/Android: 2 + 8 + 69 + (insets + 24) = 103 + insets
+ * — no floating-tab-bar footprint term, since this bar only ever renders on a
+ * nested (pushed) screen where that bar is already hidden.
  */
 export const getAddToCartBarHeight = (insetsBottom: number): number =>
   BAR_BORDER_WIDTH + BAR_PADDING_TOP + BAR_CONTENT_BLOCK_HEIGHT + getBarPaddingBottom(insetsBottom);

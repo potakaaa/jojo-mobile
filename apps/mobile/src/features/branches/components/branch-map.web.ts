@@ -17,6 +17,18 @@ import type React from 'react';
 export interface BranchMapProps {
   branches: PickupBranch[];
   coords: { latitude: number; longitude: number } | null;
+  /**
+   * Gates the native "my location" layer. Unused on web (no map here), but the
+   * interface must mirror the native signature exactly for cross-platform
+   * type-safety at the shared `<BranchMap>` call site.
+   */
+  isLocationEnabled: boolean;
+  /**
+   * Bottom inset (px) applied to the Android map's `contentPadding`. Unused on web
+   * (no map here), but mirrored to keep this interface identical to the native
+   * signature for cross-platform type-safety at the shared `<BranchMap>` call site.
+   */
+  contentBottomInset: number;
   onBranchPress: (branchId: string) => void;
 }
 

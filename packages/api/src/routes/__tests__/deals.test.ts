@@ -95,7 +95,7 @@ beforeAll(async () => {
 
   // Branch-agnostic, active, in-window percentage_discount (value stays un-scaled).
   const [agnostic] = await db
-    .insert(schema.deals)
+    .insert(schema.offers)
     .values({
       title: `Agnostic 20% ${suffix}`,
       deal_type: 'percentage_discount',
@@ -110,7 +110,7 @@ beforeAll(async () => {
 
   // Branch-scoped, active, in-window fixed_discount (value → cents).
   const [scopedFixed] = await db
-    .insert(schema.deals)
+    .insert(schema.offers)
     .values({
       title: `Scoped ₱50 ${suffix}`,
       deal_type: 'fixed_discount',
@@ -123,12 +123,12 @@ beforeAll(async () => {
     .returning();
   scopedFixedDealId = scopedFixed!.id;
   await db
-    .insert(schema.dealBranches)
-    .values({ deal_id: scopedFixedDealId, branch_id: scopedBranchId });
+    .insert(schema.offerBranches)
+    .values({ offer_id: scopedFixedDealId, branch_id: scopedBranchId });
 
   // Expired (end_at in the past), otherwise active + agnostic.
   const [expired] = await db
-    .insert(schema.deals)
+    .insert(schema.offers)
     .values({
       title: `Expired ${suffix}`,
       deal_type: 'percentage_discount',
@@ -142,7 +142,7 @@ beforeAll(async () => {
 
   // Inactive, otherwise in-window + agnostic.
   const [inactive] = await db
-    .insert(schema.deals)
+    .insert(schema.offers)
     .values({
       title: `Inactive ${suffix}`,
       deal_type: 'percentage_discount',

@@ -12,12 +12,13 @@ import type {
   branches,
   categories,
   coupons,
-  deals,
   notifications,
+  offers,
   orderItems,
   orders,
   productOptions,
   products,
+  promotions,
   rewards,
 } from '../../db/schema/index';
 
@@ -28,7 +29,9 @@ type ProductOptionRow = InferSelectModel<typeof productOptions>;
 type BranchProductAvailabilityRow = InferSelectModel<typeof branchProductAvailability>;
 type OrderRow = InferSelectModel<typeof orders>;
 type OrderItemRow = InferSelectModel<typeof orderItems>;
-type DealRow = InferSelectModel<typeof deals>;
+type DealRow = InferSelectModel<typeof offers>;
+type OfferRow = InferSelectModel<typeof offers>;
+type PromotionRow = InferSelectModel<typeof promotions>;
 type NotificationRow = InferSelectModel<typeof notifications>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
@@ -522,19 +525,35 @@ export interface AdminDealComponent {
 
 export interface AdminDealProduct extends AdminProduct {
   components: AdminDealComponent[];
+  // ADM-008 post-merge Fix 3 (visibility indicators). A deal is a product with
+  // `is_deal = true`; it is only visible on the customer menu when it has an
+  // `is_available = true` branch_product_availability row at an ACTIVE branch. The
+  // admin surface surfaces these counts so the UI can flag an active-but-invisible
+  // deal ("Not available at any branch"). ADDITIVE, admin-only (the public
+  // `GET /deals`/`serializeDeal` wire shape is untouched). Optional: populated on
+  // the read/detail paths (GET list, GET/:id, PATCH/:id); omitted on the create
+  // response (the create hook re-fetches the list, which carries the counts).
+  availableBranchCount?: number;
+  activeBranchCount?: number;
 }
 
 /**
  * Serialize a deal-product (`products` row with `is_deal = true`) to the admin
  * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
  * and appends the resolved `components` list (fetched by the route handler; `[]`
- * on the list route to avoid per-row junction joins).
+ * on the list route to avoid per-row junction joins), plus optional
+ * branch-availability counts (visibility indicators — omitted when not supplied).
  */
 export function serializeAdminDealProduct(
   product: ProductRow,
   components: AdminDealComponent[] = [],
+  availability?: { availableBranchCount: number; activeBranchCount: number },
 ): AdminDealProduct {
-  return { ...serializeAdminProduct(product), components };
+  return {
+    ...serializeAdminProduct(product),
+    components,
+    ...(availability === undefined ? {} : availability),
+  };
 }
 
 // ─── Staff order serializers (STAFF-002) ────────────────────────────────────
@@ -660,12 +679,36 @@ export function serializeReward(reward: RewardRow): ApiReward {
 }
 
 /**
+ * Admin-facing reward shape (ADM-005). Extends the PUBLIC `ApiReward` fields with
+ * `createdAt`/`updatedAt` (the admin surface shows audit timestamps; the public
+ * STAR-002 wire shape stays frozen — `serializeReward`/`ApiReward` above are
+ * untouched). Declared LOCALLY here matching the `AdminBranch`/`AdminOffer`
+ * convention. Money (`rewardValue`) is integer cents at the boundary.
+ */
+export interface AdminReward extends ApiReward {
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Serialize a `rewards` row to the admin `AdminReward` shape (money → cents). */
+export function serializeAdminReward(reward: RewardRow): AdminReward {
+  return {
+    ...serializeReward(reward),
+    createdAt: reward.created_at.toISOString(),
+    updatedAt: reward.updated_at.toISOString(),
+  };
+}
+
+/**
  * An issued coupon at the HTTP boundary. Mirrors `@jojopotato/types` `Coupon`
  * (schema-based — no display `title`/`discountLabel`). Timestamps are ISO strings.
  */
 export interface ApiCoupon {
   id: string;
-  userId: string;
+  // ADM-008 LD2: coupons.user_id is now nullable (bulk-issued coupons are
+  // claimed on redeem). No live path emits a null yet (all current coupons are
+  // user-owned), but the type reflects the schema.
+  userId: string | null;
   code: string;
   status: CouponRow['status'];
   dealId: string | null;
@@ -682,7 +725,9 @@ export function serializeCoupon(coupon: CouponRow): ApiCoupon {
     userId: coupon.user_id,
     code: coupon.code,
     status: coupon.status,
-    dealId: coupon.deal_id,
+    // Wire-freeze (LD7B): the JSON field stays `dealId`; only the source column
+    // renamed (coupons.deal_id → offer_id in migration 0011).
+    dealId: coupon.offer_id,
     rewardId: coupon.reward_id,
     expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
     usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
@@ -712,6 +757,8 @@ export function rewardDiscountLabel(
       return `${Number(rewardValue ?? '0')}% OFF`;
     case 'free_item':
       return rewardName.trim().length > 0 ? rewardName : 'Free item';
+    case 'free_upgrade':
+      return rewardName.trim().length > 0 ? rewardName : 'Free upgrade';
     default:
       return rewardName.trim().length > 0 ? rewardName : 'Reward';
   }
@@ -741,7 +788,7 @@ export function serializeCouponWithLabel(
   reward: RewardRow | null,
 ): ApiCouponWithLabel {
   let displayLabel = 'Coupon';
-  if (coupon.deal_id !== null && deal !== null) {
+  if (coupon.offer_id !== null && deal !== null) {
     let discountValue = 0;
     if (deal.discount_value !== null) {
       if (deal.deal_type === 'percentage_discount') {
@@ -756,4 +803,194 @@ export function serializeCouponWithLabel(
   }
 
   return { ...serializeCoupon(coupon), displayLabel };
+}
+
+// ─── ADM-008 admin authoring serializers (Promotions / Offers / Coupons) ─────
+//
+// Admin-facing shapes for the ADM-008 coupon authoring surface. Declared LOCALLY
+// here matching the `AdminBranch`/`AdminProduct` convention (never in
+// `packages/types` — the admin dashboard is the only consumer). Money fields are
+// integer cents at the boundary via `numericToCents`/`centsToNumeric`. Unlike the
+// PUBLIC wire-frozen `ApiCoupon` (`dealId`), the admin coupon shape exposes the
+// real `offerId` column — this is an internal admin surface, not wire-frozen.
+
+export interface AdminPromotion {
+  id: string;
+  name: string;
+  description: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminOffer {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  offerType: DealType;
+  // Cents at the boundary (admin authoring convention, per Phase 3 plan B2).
+  discountValueCents: number | null;
+  minimumOrderAmountCents: number;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  usageLimitPerUser: number | null;
+  totalUsageLimit: number | null;
+  isActive: boolean;
+  promotionId: string | null;
+  // ADM-008 Fix 6 (free-mechanic redemption): the product a free_item/free_upgrade
+  // offer's benefit applies to. Additive, ADMIN-only (the public wire-frozen
+  // `ApiDeal`/`serializeDeal` shape is untouched). Null for non-free offers and for
+  // legacy free offers created before this fix.
+  benefitProductId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCoupon {
+  id: string;
+  offerId: string | null;
+  userId: string | null;
+  code: string;
+  status: CouponRow['status'];
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+export function serializeAdminPromotion(promotion: PromotionRow): AdminPromotion {
+  return {
+    id: promotion.id,
+    name: promotion.name,
+    description: promotion.description,
+    startAt: promotion.start_at.toISOString(),
+    endAt: promotion.end_at.toISOString(),
+    createdAt: promotion.created_at.toISOString(),
+    updatedAt: promotion.updated_at.toISOString(),
+  };
+}
+
+export function serializeAdminOffer(offer: OfferRow): AdminOffer {
+  return {
+    id: offer.id,
+    title: offer.title,
+    description: offer.description,
+    imageUrl: offer.image_url,
+    offerType: offer.deal_type,
+    discountValueCents: offer.discount_value === null ? null : numericToCents(offer.discount_value),
+    minimumOrderAmountCents: numericToCents(offer.minimum_order_amount),
+    startAt: offer.start_at.toISOString(),
+    endAt: offer.end_at.toISOString(),
+    usageLimitPerUser: offer.usage_limit_per_user,
+    totalUsageLimit: offer.total_usage_limit,
+    isActive: offer.is_active,
+    promotionId: offer.promotion_id,
+    benefitProductId: offer.benefit_product_id,
+    createdAt: offer.created_at.toISOString(),
+    updatedAt: offer.updated_at.toISOString(),
+  };
+}
+
+export function serializeAdminCoupon(coupon: CouponRow): AdminCoupon {
+  return {
+    id: coupon.id,
+    offerId: coupon.offer_id,
+    userId: coupon.user_id,
+    code: coupon.code,
+    status: coupon.status,
+    expiresAt: coupon.expires_at ? coupon.expires_at.toISOString() : null,
+    usedAt: coupon.used_at ? coupon.used_at.toISOString() : null,
+    createdAt: coupon.created_at.toISOString(),
+  };
+}
+
+// ─── Admin order serializers (ADM-006 read-only orders view) ─────────────────
+//
+// Admin-facing order shapes for the read-only cross-branch orders view. Declared
+// LOCALLY here matching the `AdminBranch`/`AdminReward` convention. By DESIGN
+// (Phase 6 D4) these COMPOSE the existing staff serializers verbatim and spread a
+// fixed admin-only field set on top — guaranteeing admin/staff detail parity (AC3)
+// structurally, never by re-implementing the staff shape. Admin adds exactly:
+// `branchId`/`branchName` (which branch), `customerName`/`customerPhone` (who
+// placed it — PII boundary D2: name + phone ONLY, never email/auth internals), and
+// the discount context `discountTotalCents`/`couponId`/`dealId` (IDs + amount, D5).
+// The public `serializeOrder`/`serializeStaffOrder*` wire shapes are UNTOUCHED.
+
+/** Minimal customer identity slice exposed on an admin order (PII boundary D2). */
+interface AdminOrderCustomer {
+  name: string;
+  phoneNumber: string | null;
+}
+
+/** Minimal branch slice exposed on an admin order. */
+interface AdminOrderBranch {
+  name: string;
+}
+
+export interface AdminOrderSummary extends StaffOrderSummary {
+  branchId: string;
+  branchName: string;
+  customerName: string;
+  customerPhone: string | null;
+  discountTotalCents: number;
+  couponId: string | null;
+  dealId: string | null;
+}
+
+export interface AdminOrderDetail extends StaffOrderDetail {
+  branchId: string;
+  branchName: string;
+  customerName: string;
+  customerPhone: string | null;
+  discountTotalCents: number;
+  couponId: string | null;
+  dealId: string | null;
+}
+
+/**
+ * Serialize an order + its items into the admin list row (ADM-006). Calls
+ * `serializeStaffOrderSummary` verbatim then spreads the admin-only field set on
+ * top — customer identity (name + phone only), branch name, and discount context.
+ */
+export function serializeAdminOrderSummary(
+  order: OrderRow,
+  items: OrderItemRow[],
+  customer: AdminOrderCustomer,
+  branch: AdminOrderBranch,
+): AdminOrderSummary {
+  return {
+    ...serializeStaffOrderSummary(order, items),
+    branchId: order.branch_id,
+    branchName: branch.name,
+    customerName: customer.name,
+    customerPhone: customer.phoneNumber,
+    discountTotalCents: numericToCents(order.discount_total),
+    couponId: order.coupon_id,
+    dealId: order.deal_id,
+  };
+}
+
+/**
+ * Serialize an order + its items into the admin detail shape (ADM-006). Calls
+ * `serializeStaffOrderDetail` verbatim (the shared item-snapshot shape staff see)
+ * then spreads the same admin-only field set — guaranteeing AC3 parity by
+ * construction.
+ */
+export function serializeAdminOrderDetail(
+  order: OrderRow,
+  items: OrderItemRow[],
+  customer: AdminOrderCustomer,
+  branch: AdminOrderBranch,
+): AdminOrderDetail {
+  return {
+    ...serializeStaffOrderDetail(order, items),
+    branchId: order.branch_id,
+    branchName: branch.name,
+    customerName: customer.name,
+    customerPhone: customer.phoneNumber,
+    discountTotalCents: numericToCents(order.discount_total),
+    couponId: order.coupon_id,
+    dealId: order.deal_id,
+  };
 }

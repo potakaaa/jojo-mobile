@@ -1,9 +1,15 @@
 import { Router, type Router as ExpressRouter } from 'express';
 
+import analyticsRouter from './analytics';
 import branchesRouter from './branches';
 import categoriesRouter from './categories';
+import couponsRouter from './coupons';
 import dealsRouter from './deals';
+import offersRouter from './offers';
+import ordersRouter from './orders';
 import productsRouter from './products';
+import promotionsRouter from './promotions';
+import rewardsRouter from './rewards';
 import usersRouter from './users';
 
 /**
@@ -31,5 +37,25 @@ adminRouter.use('/products', productsRouter);
 // Deals CRUD (ADM-004 — deals-as-products) — is_deal=true products + the
 // deal_components junction. Same inherited guard; append-only, never restructure.
 adminRouter.use('/deals', dealsRouter);
+
+// Coupon system CRUD (ADM-008 — Promotions/Offers/Coupons) — same inherited
+// guard; append-only, never restructure.
+adminRouter.use('/promotions', promotionsRouter);
+adminRouter.use('/offers', offersRouter);
+adminRouter.use('/coupons', couponsRouter);
+
+// Rewards CRUD (ADM-005 — points-earned redemption tiers) — same inherited guard;
+// append-only, never restructure. 5th consumer of the append-only aggregator pattern.
+adminRouter.use('/rewards', rewardsRouter);
+
+// Orders view (ADM-006 — READ-ONLY cross-branch order oversight) — GET handlers
+// only, no mutation. Same inherited guard; append-only, never restructure. 10th
+// consumer of the append-only aggregator pattern.
+adminRouter.use('/orders', ordersRouter);
+
+// Analytics view (ADM-007 — READ-ONLY aggregation dashboard) — GET only, no
+// mutation. Same inherited guard; append-only, never restructure. 11th consumer
+// of the append-only aggregator pattern.
+adminRouter.use('/analytics', analyticsRouter);
 
 export default adminRouter;

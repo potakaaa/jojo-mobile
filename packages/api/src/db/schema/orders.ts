@@ -1,7 +1,7 @@
 import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { branches } from './branches';
 import { coupons } from './coupons';
-import { deals } from './deals';
+import { offers } from './offers';
 import { users } from './users';
 
 export const orderStatusEnum = pgEnum('order_status', [
@@ -31,7 +31,7 @@ export const orders = pgTable(
       .notNull(),
     // Nullable FK to the applied deal (NO ACTION on delete — matches user_id/branch_id
     // precedent). NULL when no deal was applied. Usage counts derive from this column.
-    deal_id: uuid('deal_id').references(() => deals.id),
+    deal_id: uuid('deal_id').references(() => offers.id),
     // Nullable FK to the applied coupon (NO ACTION on delete — mirrors deal_id).
     // NULL when no coupon was applied. Set atomically with the coupon CAS-mark-used
     // inside the placement transaction (Phase 2 — coupon auto-apply at checkout).

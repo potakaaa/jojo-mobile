@@ -83,7 +83,9 @@ couponsRouter.get('/', async (req, res) => {
   const body: CouponWithReward[] = rows.map(({ coupon, rewardName, rewardRequiredStars }) => ({
     id: coupon.id,
     userId: coupon.user_id,
-    dealId: coupon.deal_id,
+    // Wire-freeze (LD7B): JSON field stays `dealId`; source column renamed to
+    // offer_id in migration 0011.
+    dealId: coupon.offer_id,
     rewardId: coupon.reward_id,
     code: coupon.code,
     status: coupon.status,

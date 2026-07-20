@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { listAvailability, setAvailability } from '@/features/products/lib/admin-products-api';
+
 import {
   attachComponent,
   createDeal,
@@ -19,6 +21,7 @@ import {
  */
 const DEALS_KEY = ['admin', 'deals'] as const;
 const dealKey = (id: string) => ['admin', 'deal', id] as const;
+const dealAvailabilityKey = (id: string) => ['admin', 'deal', id, 'availability'] as const;
 
 export function useAdminDeals(isActive?: boolean) {
   return useQuery({
@@ -73,5 +76,35 @@ export function useDetachComponent(dealId: string) {
   return useMutation({
     mutationFn: (componentProductId: string) => detachComponent(dealId, componentProductId),
     onSuccess: () => qc.invalidateQueries({ queryKey: dealKey(dealId) }),
+  });
+}
+
+/**
+ * A deal IS a `products` row (`is_deal = true`), so its per-branch availability is
+ * managed through the exact same `/api/admin/products/:id/availability` endpoints
+ * (they do not filter on `is_deal`) — reused here rather than duplicating a
+ * deals-scoped route (post-merge Fix 4). Keyed under the deal's own namespace so it
+ * never collides with the products editor's cache entry for the same id.
+ */
+export function useDealAvailability(dealId: string) {
+  return useQuery({
+    queryKey: dealAvailabilityKey(dealId),
+    queryFn: () => listAvailability(dealId),
+    enabled: dealId.length > 0,
+  });
+}
+
+export function useSetDealAvailability(dealId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ branchId, isAvailable }: { branchId: string; isAvailable: boolean }) =>
+      setAvailability(dealId, branchId, isAvailable),
+    onSuccess: () => {
+      // Refresh the toggle grid AND the visibility badges (list + detail), whose
+      // available/active branch counts change with every availability write.
+      void qc.invalidateQueries({ queryKey: dealAvailabilityKey(dealId) });
+      void qc.invalidateQueries({ queryKey: dealKey(dealId) });
+      void qc.invalidateQueries({ queryKey: DEALS_KEY });
+    },
   });
 }

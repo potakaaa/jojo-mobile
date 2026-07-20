@@ -1,9 +1,15 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
-import { categories, dealComponents, products } from '../../db/schema/index';
+import {
+  branchProductAvailability,
+  branches,
+  categories,
+  dealComponents,
+  products,
+} from '../../db/schema/index';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
@@ -65,6 +71,12 @@ const createDealSchema = z.object({
   isActive: z.boolean().optional(),
   isRewardEligible: z.boolean().optional(),
   components: z.array(createDealComponentSchema).optional(),
+  // OPTIONAL branch selection (post-merge Fix 4). Omitting seeds availability for
+  // EVERY active branch (backward-compatible with the Fix 1 seed-all behavior).
+  // When present, availability is seeded ONLY for the listed branches; each id must
+  // reference an active branch (unknown/inactive → 400). An empty array is a valid
+  // explicit "no branches" choice (the deal is created invisible everywhere).
+  branchIds: z.array(z.uuid()).optional(),
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -135,6 +147,89 @@ async function fetchComponents(dealProductId: string): Promise<AdminDealComponen
     .orderBy(asc(products.name));
 }
 
+/**
+ * Seed `branch_product_availability` rows (available=true) for a freshly-created
+ * deal-product, so the deal is immediately visible on the customer menu
+ * (`GET /branches/:id/menu?isDeal=true` filters on an available BPA row). Runs
+ * inside the create transaction so a seeding failure rolls back the product.
+ * `is_available` is set explicitly for clarity (schema default is true).
+ *
+ * `branchIds` selects WHICH branches to seed (post-merge Fix 4): omitted → every
+ * ACTIVE branch (the original seed-all behavior); provided → exactly those branches
+ * (each validated as an active branch, unknown/inactive → 400). An empty array
+ * seeds nothing (a valid "no branches" choice).
+ */
+async function seedBranchAvailability(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  productId: string,
+  branchIds?: string[],
+): Promise<void> {
+  const activeBranches = await tx
+    .select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.is_active, true));
+  const activeIds = new Set(activeBranches.map((b) => b.id));
+
+  let targetIds: string[];
+  if (branchIds === undefined) {
+    targetIds = [...activeIds];
+  } else {
+    // Validate the caller's selection against the active-branch set — a single
+    // source of truth for both the 400 guard and the rows we seed.
+    for (const id of branchIds) {
+      if (!activeIds.has(id)) {
+        throw new AdminApiError(400, 'Unknown or inactive branch');
+      }
+    }
+    targetIds = [...new Set(branchIds)];
+  }
+  if (targetIds.length === 0) return;
+
+  await tx.insert(branchProductAvailability).values(
+    targetIds.map((id) => ({
+      branch_id: id,
+      product_id: productId,
+      is_available: true,
+    })),
+  );
+}
+
+/**
+ * Count ACTIVE branches — the denominator for the deal-visibility indicator. A
+ * deal is only orderable at active branches, so this is the max it could ever be
+ * "available at". One cheap aggregate shared across every row of a list response.
+ */
+async function countActiveBranches(): Promise<number> {
+  const [row] = await db.select({ c: count() }).from(branches).where(eq(branches.is_active, true));
+  return Number(row?.c ?? 0);
+}
+
+/**
+ * Count, per deal-product, the number of ACTIVE branches where it has an
+ * `is_available = true` availability row — i.e. the branches where the deal is
+ * actually visible on the customer menu (`GET /branches/:id/menu?isDeal=true`
+ * filters on exactly this: an available BPA row at an active branch). A count of
+ * 0 for an active deal means it is invisible everywhere (the seeding bug this
+ * indicator surfaces). Returns a map keyed by product id; ids absent from the map
+ * have zero available branches.
+ */
+async function fetchAvailableBranchCounts(productIds: string[]): Promise<Map<string, number>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await db
+    .select({ productId: branchProductAvailability.product_id, c: count() })
+    .from(branchProductAvailability)
+    .innerJoin(branches, eq(branches.id, branchProductAvailability.branch_id))
+    .where(
+      and(
+        inArray(branchProductAvailability.product_id, productIds),
+        eq(branchProductAvailability.is_available, true),
+        eq(branches.is_active, true),
+      ),
+    )
+    .groupBy(branchProductAvailability.product_id);
+  return new Map(rows.map((r) => [r.productId, Number(r.c)]));
+}
+
 // ─── Deals CRUD (is_deal=true products) ──────────────────────────────────────
 
 // GET / — ALL deal-products (active + inactive), optional ?isActive=true|false.
@@ -158,7 +253,21 @@ adminDealsRouter.get('/', async (req, res) => {
     .where(and(...conditions))
     .orderBy(asc(products.name));
 
-  res.json({ deals: rows.map((p) => serializeAdminDealProduct(p)) });
+  // Visibility indicator: per-deal available-branch counts + the active-branch
+  // denominator (one aggregate query each, not per-row).
+  const [availableCounts, activeBranchCount] = await Promise.all([
+    fetchAvailableBranchCounts(rows.map((p) => p.id)),
+    countActiveBranches(),
+  ]);
+
+  res.json({
+    deals: rows.map((p) =>
+      serializeAdminDealProduct(p, [], {
+        availableBranchCount: availableCounts.get(p.id) ?? 0,
+        activeBranchCount,
+      }),
+    ),
+  });
 });
 
 // GET /:id — single deal-product WITH its resolved components array. 404 on a
@@ -179,8 +288,17 @@ adminDealsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  const components = await fetchComponents(id);
-  res.json({ deal: serializeAdminDealProduct(deal, components) });
+  const [components, availableCounts, activeBranchCount] = await Promise.all([
+    fetchComponents(id),
+    fetchAvailableBranchCounts([id]),
+    countActiveBranches(),
+  ]);
+  res.json({
+    deal: serializeAdminDealProduct(deal, components, {
+      availableBranchCount: availableCounts.get(id) ?? 0,
+      activeBranchCount,
+    }),
+  });
 });
 
 // POST / — create a deal-product (`is_deal = true`), `category_id` server-pinned
@@ -221,18 +339,24 @@ adminDealsRouter.post('/', async (req, res) => {
       ...(d.isRewardEligible === undefined ? {} : { is_reward_eligible: d.isRewardEligible }),
     };
 
-    // Fast path: no components → shipped single-insert behavior (backward-compat).
+    // Fast path: no components. The product insert + branch-availability seeding
+    // run in ONE transaction so a seeding failure rolls back the product (mirrors
+    // the E1 transactional path's atomicity).
     if (!d.components || d.components.length === 0) {
-      let inserted;
-      try {
-        [inserted] = await db.insert(products).values(productValues).returning();
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          throw new AdminApiError(409, 'Slug already in use');
+      const inserted = await db.transaction(async (tx) => {
+        let created;
+        try {
+          [created] = await tx.insert(products).values(productValues).returning();
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            throw new AdminApiError(409, 'Slug already in use');
+          }
+          throw err;
         }
-        throw err;
-      }
-      res.status(201).json({ deal: serializeAdminDealProduct(inserted!) });
+        await seedBranchAvailability(tx, created!.id, d.branchIds);
+        return created!;
+      });
+      res.status(201).json({ deal: serializeAdminDealProduct(inserted) });
       return;
     }
 
@@ -286,6 +410,8 @@ adminDealsRouter.post('/', async (req, res) => {
         }
         throw err;
       }
+
+      await seedBranchAvailability(tx, created!.id, d.branchIds);
 
       return created!;
     });
@@ -342,8 +468,17 @@ adminDealsRouter.patch('/:id', async (req, res) => {
       throw new AdminApiError(404, 'Deal not found');
     }
 
-    const components = await fetchComponents(id);
-    res.json({ deal: serializeAdminDealProduct(updated, components) });
+    const [components, availableCounts, activeBranchCount] = await Promise.all([
+      fetchComponents(id),
+      fetchAvailableBranchCounts([id]),
+      countActiveBranches(),
+    ]);
+    res.json({
+      deal: serializeAdminDealProduct(updated, components, {
+        availableBranchCount: availableCounts.get(id) ?? 0,
+        activeBranchCount,
+      }),
+    });
   } catch (err) {
     handleAdminError(err, res, 'updating deal');
   }

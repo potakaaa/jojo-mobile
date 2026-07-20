@@ -12,14 +12,25 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as dashboardRouteRouteImport } from './routes/(dashboard)/route'
 import { Route as dashboardIndexRouteImport } from './routes/(dashboard)/index'
+import { Route as dashboardRewardsRouteImport } from './routes/(dashboard)/rewards'
+import { Route as dashboardPromotionsRouteImport } from './routes/(dashboard)/promotions'
 import { Route as dashboardProductsRouteImport } from './routes/(dashboard)/products'
+import { Route as dashboardOrdersRouteImport } from './routes/(dashboard)/orders'
+import { Route as dashboardOffersRouteImport } from './routes/(dashboard)/offers'
 import { Route as dashboardDealsRouteImport } from './routes/(dashboard)/deals'
 import { Route as dashboardComponentsRouteImport } from './routes/(dashboard)/components'
 import { Route as dashboardCategoriesRouteImport } from './routes/(dashboard)/categories'
 import { Route as dashboardBranchesRouteImport } from './routes/(dashboard)/branches'
+import { Route as dashboardAnalyticsRouteImport } from './routes/(dashboard)/analytics'
+import { Route as dashboardRewardsIndexRouteImport } from './routes/(dashboard)/rewards.index'
+import { Route as dashboardPromotionsIndexRouteImport } from './routes/(dashboard)/promotions.index'
 import { Route as dashboardProductsIndexRouteImport } from './routes/(dashboard)/products.index'
+import { Route as dashboardOrdersIndexRouteImport } from './routes/(dashboard)/orders.index'
+import { Route as dashboardOffersIndexRouteImport } from './routes/(dashboard)/offers.index'
 import { Route as dashboardDealsIndexRouteImport } from './routes/(dashboard)/deals.index'
 import { Route as dashboardProductsProductIdRouteImport } from './routes/(dashboard)/products.$productId'
+import { Route as dashboardOrdersOrderIdRouteImport } from './routes/(dashboard)/orders.$orderId'
+import { Route as dashboardOffersOfferIdRouteImport } from './routes/(dashboard)/offers.$offerId'
 import { Route as dashboardDealsDealIdRouteImport } from './routes/(dashboard)/deals.$dealId'
 
 const LoginRoute = LoginRouteImport.update({
@@ -36,9 +47,29 @@ const dashboardIndexRoute = dashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardRewardsRoute = dashboardRewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardPromotionsRoute = dashboardPromotionsRouteImport.update({
+  id: '/promotions',
+  path: '/promotions',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
 const dashboardProductsRoute = dashboardProductsRouteImport.update({
   id: '/products',
   path: '/products',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardOrdersRoute = dashboardOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardOffersRoute = dashboardOffersRouteImport.update({
+  id: '/offers',
+  path: '/offers',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
 const dashboardDealsRoute = dashboardDealsRouteImport.update({
@@ -61,10 +92,36 @@ const dashboardBranchesRoute = dashboardBranchesRouteImport.update({
   path: '/branches',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
+const dashboardAnalyticsRoute = dashboardAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardRewardsIndexRoute = dashboardRewardsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => dashboardRewardsRoute,
+} as any)
+const dashboardPromotionsIndexRoute =
+  dashboardPromotionsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => dashboardPromotionsRoute,
+  } as any)
 const dashboardProductsIndexRoute = dashboardProductsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => dashboardProductsRoute,
+} as any)
+const dashboardOrdersIndexRoute = dashboardOrdersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => dashboardOrdersRoute,
+} as any)
+const dashboardOffersIndexRoute = dashboardOffersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => dashboardOffersRoute,
 } as any)
 const dashboardDealsIndexRoute = dashboardDealsIndexRouteImport.update({
   id: '/',
@@ -77,6 +134,16 @@ const dashboardProductsProductIdRoute =
     path: '/$productId',
     getParentRoute: () => dashboardProductsRoute,
   } as any)
+const dashboardOrdersOrderIdRoute = dashboardOrdersOrderIdRouteImport.update({
+  id: '/$orderId',
+  path: '/$orderId',
+  getParentRoute: () => dashboardOrdersRoute,
+} as any)
+const dashboardOffersOfferIdRoute = dashboardOffersOfferIdRouteImport.update({
+  id: '/$offerId',
+  path: '/$offerId',
+  getParentRoute: () => dashboardOffersRoute,
+} as any)
 const dashboardDealsDealIdRoute = dashboardDealsDealIdRouteImport.update({
   id: '/$dealId',
   path: '/$dealId',
@@ -85,82 +152,140 @@ const dashboardDealsDealIdRoute = dashboardDealsDealIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
+  '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
   '/deals': typeof dashboardDealsRouteWithChildren
+  '/offers': typeof dashboardOffersRouteWithChildren
+  '/orders': typeof dashboardOrdersRouteWithChildren
   '/products': typeof dashboardProductsRouteWithChildren
+  '/promotions': typeof dashboardPromotionsRouteWithChildren
+  '/rewards': typeof dashboardRewardsRouteWithChildren
   '/': typeof dashboardIndexRoute
   '/deals/$dealId': typeof dashboardDealsDealIdRoute
+  '/offers/$offerId': typeof dashboardOffersOfferIdRoute
+  '/orders/$orderId': typeof dashboardOrdersOrderIdRoute
   '/products/$productId': typeof dashboardProductsProductIdRoute
   '/deals/': typeof dashboardDealsIndexRoute
+  '/offers/': typeof dashboardOffersIndexRoute
+  '/orders/': typeof dashboardOrdersIndexRoute
   '/products/': typeof dashboardProductsIndexRoute
+  '/promotions/': typeof dashboardPromotionsIndexRoute
+  '/rewards/': typeof dashboardRewardsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
   '/components': typeof dashboardComponentsRoute
   '/': typeof dashboardIndexRoute
   '/deals/$dealId': typeof dashboardDealsDealIdRoute
+  '/offers/$offerId': typeof dashboardOffersOfferIdRoute
+  '/orders/$orderId': typeof dashboardOrdersOrderIdRoute
   '/products/$productId': typeof dashboardProductsProductIdRoute
   '/deals': typeof dashboardDealsIndexRoute
+  '/offers': typeof dashboardOffersIndexRoute
+  '/orders': typeof dashboardOrdersIndexRoute
   '/products': typeof dashboardProductsIndexRoute
+  '/promotions': typeof dashboardPromotionsIndexRoute
+  '/rewards': typeof dashboardRewardsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(dashboard)': typeof dashboardRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/(dashboard)/analytics': typeof dashboardAnalyticsRoute
   '/(dashboard)/branches': typeof dashboardBranchesRoute
   '/(dashboard)/categories': typeof dashboardCategoriesRoute
   '/(dashboard)/components': typeof dashboardComponentsRoute
   '/(dashboard)/deals': typeof dashboardDealsRouteWithChildren
+  '/(dashboard)/offers': typeof dashboardOffersRouteWithChildren
+  '/(dashboard)/orders': typeof dashboardOrdersRouteWithChildren
   '/(dashboard)/products': typeof dashboardProductsRouteWithChildren
+  '/(dashboard)/promotions': typeof dashboardPromotionsRouteWithChildren
+  '/(dashboard)/rewards': typeof dashboardRewardsRouteWithChildren
   '/(dashboard)/': typeof dashboardIndexRoute
   '/(dashboard)/deals/$dealId': typeof dashboardDealsDealIdRoute
+  '/(dashboard)/offers/$offerId': typeof dashboardOffersOfferIdRoute
+  '/(dashboard)/orders/$orderId': typeof dashboardOrdersOrderIdRoute
   '/(dashboard)/products/$productId': typeof dashboardProductsProductIdRoute
   '/(dashboard)/deals/': typeof dashboardDealsIndexRoute
+  '/(dashboard)/offers/': typeof dashboardOffersIndexRoute
+  '/(dashboard)/orders/': typeof dashboardOrdersIndexRoute
   '/(dashboard)/products/': typeof dashboardProductsIndexRoute
+  '/(dashboard)/promotions/': typeof dashboardPromotionsIndexRoute
+  '/(dashboard)/rewards/': typeof dashboardRewardsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/login'
+    | '/analytics'
     | '/branches'
     | '/categories'
     | '/components'
     | '/deals'
+    | '/offers'
+    | '/orders'
     | '/products'
+    | '/promotions'
+    | '/rewards'
     | '/'
     | '/deals/$dealId'
+    | '/offers/$offerId'
+    | '/orders/$orderId'
     | '/products/$productId'
     | '/deals/'
+    | '/offers/'
+    | '/orders/'
     | '/products/'
+    | '/promotions/'
+    | '/rewards/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/analytics'
     | '/branches'
     | '/categories'
     | '/components'
     | '/'
     | '/deals/$dealId'
+    | '/offers/$offerId'
+    | '/orders/$orderId'
     | '/products/$productId'
     | '/deals'
+    | '/offers'
+    | '/orders'
     | '/products'
+    | '/promotions'
+    | '/rewards'
   id:
     | '__root__'
     | '/(dashboard)'
     | '/login'
+    | '/(dashboard)/analytics'
     | '/(dashboard)/branches'
     | '/(dashboard)/categories'
     | '/(dashboard)/components'
     | '/(dashboard)/deals'
+    | '/(dashboard)/offers'
+    | '/(dashboard)/orders'
     | '/(dashboard)/products'
+    | '/(dashboard)/promotions'
+    | '/(dashboard)/rewards'
     | '/(dashboard)/'
     | '/(dashboard)/deals/$dealId'
+    | '/(dashboard)/offers/$offerId'
+    | '/(dashboard)/orders/$orderId'
     | '/(dashboard)/products/$productId'
     | '/(dashboard)/deals/'
+    | '/(dashboard)/offers/'
+    | '/(dashboard)/orders/'
     | '/(dashboard)/products/'
+    | '/(dashboard)/promotions/'
+    | '/(dashboard)/rewards/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -191,11 +316,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof dashboardIndexRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
+    '/(dashboard)/rewards': {
+      id: '/(dashboard)/rewards'
+      path: '/rewards'
+      fullPath: '/rewards'
+      preLoaderRoute: typeof dashboardRewardsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/promotions': {
+      id: '/(dashboard)/promotions'
+      path: '/promotions'
+      fullPath: '/promotions'
+      preLoaderRoute: typeof dashboardPromotionsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
     '/(dashboard)/products': {
       id: '/(dashboard)/products'
       path: '/products'
       fullPath: '/products'
       preLoaderRoute: typeof dashboardProductsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/orders': {
+      id: '/(dashboard)/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof dashboardOrdersRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/offers': {
+      id: '/(dashboard)/offers'
+      path: '/offers'
+      fullPath: '/offers'
+      preLoaderRoute: typeof dashboardOffersRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
     '/(dashboard)/deals': {
@@ -226,12 +379,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof dashboardBranchesRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
+    '/(dashboard)/analytics': {
+      id: '/(dashboard)/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof dashboardAnalyticsRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/rewards/': {
+      id: '/(dashboard)/rewards/'
+      path: '/'
+      fullPath: '/rewards/'
+      preLoaderRoute: typeof dashboardRewardsIndexRouteImport
+      parentRoute: typeof dashboardRewardsRoute
+    }
+    '/(dashboard)/promotions/': {
+      id: '/(dashboard)/promotions/'
+      path: '/'
+      fullPath: '/promotions/'
+      preLoaderRoute: typeof dashboardPromotionsIndexRouteImport
+      parentRoute: typeof dashboardPromotionsRoute
+    }
     '/(dashboard)/products/': {
       id: '/(dashboard)/products/'
       path: '/'
       fullPath: '/products/'
       preLoaderRoute: typeof dashboardProductsIndexRouteImport
       parentRoute: typeof dashboardProductsRoute
+    }
+    '/(dashboard)/orders/': {
+      id: '/(dashboard)/orders/'
+      path: '/'
+      fullPath: '/orders/'
+      preLoaderRoute: typeof dashboardOrdersIndexRouteImport
+      parentRoute: typeof dashboardOrdersRoute
+    }
+    '/(dashboard)/offers/': {
+      id: '/(dashboard)/offers/'
+      path: '/'
+      fullPath: '/offers/'
+      preLoaderRoute: typeof dashboardOffersIndexRouteImport
+      parentRoute: typeof dashboardOffersRoute
     }
     '/(dashboard)/deals/': {
       id: '/(dashboard)/deals/'
@@ -246,6 +434,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/products/$productId'
       preLoaderRoute: typeof dashboardProductsProductIdRouteImport
       parentRoute: typeof dashboardProductsRoute
+    }
+    '/(dashboard)/orders/$orderId': {
+      id: '/(dashboard)/orders/$orderId'
+      path: '/$orderId'
+      fullPath: '/orders/$orderId'
+      preLoaderRoute: typeof dashboardOrdersOrderIdRouteImport
+      parentRoute: typeof dashboardOrdersRoute
+    }
+    '/(dashboard)/offers/$offerId': {
+      id: '/(dashboard)/offers/$offerId'
+      path: '/$offerId'
+      fullPath: '/offers/$offerId'
+      preLoaderRoute: typeof dashboardOffersOfferIdRouteImport
+      parentRoute: typeof dashboardOffersRoute
     }
     '/(dashboard)/deals/$dealId': {
       id: '/(dashboard)/deals/$dealId'
@@ -271,6 +473,34 @@ const dashboardDealsRouteWithChildren = dashboardDealsRoute._addFileChildren(
   dashboardDealsRouteChildren,
 )
 
+interface dashboardOffersRouteChildren {
+  dashboardOffersOfferIdRoute: typeof dashboardOffersOfferIdRoute
+  dashboardOffersIndexRoute: typeof dashboardOffersIndexRoute
+}
+
+const dashboardOffersRouteChildren: dashboardOffersRouteChildren = {
+  dashboardOffersOfferIdRoute: dashboardOffersOfferIdRoute,
+  dashboardOffersIndexRoute: dashboardOffersIndexRoute,
+}
+
+const dashboardOffersRouteWithChildren = dashboardOffersRoute._addFileChildren(
+  dashboardOffersRouteChildren,
+)
+
+interface dashboardOrdersRouteChildren {
+  dashboardOrdersOrderIdRoute: typeof dashboardOrdersOrderIdRoute
+  dashboardOrdersIndexRoute: typeof dashboardOrdersIndexRoute
+}
+
+const dashboardOrdersRouteChildren: dashboardOrdersRouteChildren = {
+  dashboardOrdersOrderIdRoute: dashboardOrdersOrderIdRoute,
+  dashboardOrdersIndexRoute: dashboardOrdersIndexRoute,
+}
+
+const dashboardOrdersRouteWithChildren = dashboardOrdersRoute._addFileChildren(
+  dashboardOrdersRouteChildren,
+)
+
 interface dashboardProductsRouteChildren {
   dashboardProductsProductIdRoute: typeof dashboardProductsProductIdRoute
   dashboardProductsIndexRoute: typeof dashboardProductsIndexRoute
@@ -284,21 +514,53 @@ const dashboardProductsRouteChildren: dashboardProductsRouteChildren = {
 const dashboardProductsRouteWithChildren =
   dashboardProductsRoute._addFileChildren(dashboardProductsRouteChildren)
 
+interface dashboardPromotionsRouteChildren {
+  dashboardPromotionsIndexRoute: typeof dashboardPromotionsIndexRoute
+}
+
+const dashboardPromotionsRouteChildren: dashboardPromotionsRouteChildren = {
+  dashboardPromotionsIndexRoute: dashboardPromotionsIndexRoute,
+}
+
+const dashboardPromotionsRouteWithChildren =
+  dashboardPromotionsRoute._addFileChildren(dashboardPromotionsRouteChildren)
+
+interface dashboardRewardsRouteChildren {
+  dashboardRewardsIndexRoute: typeof dashboardRewardsIndexRoute
+}
+
+const dashboardRewardsRouteChildren: dashboardRewardsRouteChildren = {
+  dashboardRewardsIndexRoute: dashboardRewardsIndexRoute,
+}
+
+const dashboardRewardsRouteWithChildren =
+  dashboardRewardsRoute._addFileChildren(dashboardRewardsRouteChildren)
+
 interface dashboardRouteRouteChildren {
+  dashboardAnalyticsRoute: typeof dashboardAnalyticsRoute
   dashboardBranchesRoute: typeof dashboardBranchesRoute
   dashboardCategoriesRoute: typeof dashboardCategoriesRoute
   dashboardComponentsRoute: typeof dashboardComponentsRoute
   dashboardDealsRoute: typeof dashboardDealsRouteWithChildren
+  dashboardOffersRoute: typeof dashboardOffersRouteWithChildren
+  dashboardOrdersRoute: typeof dashboardOrdersRouteWithChildren
   dashboardProductsRoute: typeof dashboardProductsRouteWithChildren
+  dashboardPromotionsRoute: typeof dashboardPromotionsRouteWithChildren
+  dashboardRewardsRoute: typeof dashboardRewardsRouteWithChildren
   dashboardIndexRoute: typeof dashboardIndexRoute
 }
 
 const dashboardRouteRouteChildren: dashboardRouteRouteChildren = {
+  dashboardAnalyticsRoute: dashboardAnalyticsRoute,
   dashboardBranchesRoute: dashboardBranchesRoute,
   dashboardCategoriesRoute: dashboardCategoriesRoute,
   dashboardComponentsRoute: dashboardComponentsRoute,
   dashboardDealsRoute: dashboardDealsRouteWithChildren,
+  dashboardOffersRoute: dashboardOffersRouteWithChildren,
+  dashboardOrdersRoute: dashboardOrdersRouteWithChildren,
   dashboardProductsRoute: dashboardProductsRouteWithChildren,
+  dashboardPromotionsRoute: dashboardPromotionsRouteWithChildren,
+  dashboardRewardsRoute: dashboardRewardsRouteWithChildren,
   dashboardIndexRoute: dashboardIndexRoute,
 }
 

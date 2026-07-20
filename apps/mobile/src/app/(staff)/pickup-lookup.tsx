@@ -11,12 +11,11 @@
  * server-side; this screen only renders the outcome.
  */
 
-import { Ionicons } from '@expo/vector-icons';
-import { Button, Input, type ThemeMode } from '@jojopotato/ui';
+import { Button, Input, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { StaffOrderDetail } from '@jojopotato/types';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -92,17 +91,7 @@ export default function PickupLookupScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Enter Pickup Code</Text>
-        </View>
+        <ScreenHeader title="Enter Pickup Code" onBack={() => router.back()} mode={mode} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={[styles.hint, { color: theme.textSecondary }]}>
@@ -142,18 +131,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
-  },
-  headerTitle: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
   },
   content: {
     paddingHorizontal: Spacing.four,

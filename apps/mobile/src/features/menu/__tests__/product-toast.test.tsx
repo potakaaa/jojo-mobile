@@ -140,8 +140,11 @@ describe('ProductDetailsScreen — toast clearance (AC7 automated leg)', () => {
     await findByText('Added to cart');
 
     // Assert the RESOLVED `bottom`, not that a prop was passed. Native, insets 0:
-    // bar = 2 + 8 + 69 + (61 + 0 + 8 + 24) = 172; offset = 172 + 8 = 180.
-    expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(180);
+    // this bar only ever renders on Product Details, a pushed (nested) screen, so
+    // resolveTabBarClearance(true, footprint, 0) drops the floating-tab-bar
+    // footprint entirely and reserves only the device inset (0 here) — bar =
+    // 2 + 8 + 69 + (0 + 24) = 103; offset = 103 + 8 = 111.
+    expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(111);
     expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(
       getAddToCartBarHeight(0) + Spacing.two,
     );
@@ -153,10 +156,11 @@ describe('ProductDetailsScreen — toast clearance (AC7 automated leg)', () => {
    * which proves nothing on its own. This one instead measures the bar's REAL
    * rendered padding/border (post-override, read off the mounted tree) and
    * asserts the toast clears the total. It is what makes a future change to the
-   * bar's padding fail a test instead of an on-device walkthrough.
-   *
-   * Against the shipped bug this fails as required: the old offset was 109 while
-   * the bar's real rendered height on this path is 172.
+   * bar's padding fail a test instead of an on-device walkthrough. At zero device
+   * inset on this nested screen the correctly-derived padding legitimately equals
+   * the base padding (there is no dead tab-bar footprint to clear here) — the
+   * real regression guard is the insets-delta test below, which a static
+   * constant could never pass.
    */
   test("the offset clears the bar's REAL rendered height, measured off the mounted tree", async () => {
     setupCart();
@@ -172,14 +176,11 @@ describe('ProductDetailsScreen — toast clearance (AC7 automated leg)', () => {
       'paddingTop',
       'paddingBottom',
     ]);
-    // Sanity: the padding actually rendered must be the tab-bar clearance, NOT
-    // the StyleSheet's base value — the exact confusion that caused the overlap.
-    expect(bar.paddingBottom).toBe(93);
-    expect(bar.paddingBottom).not.toBe(Spacing.four);
+    expect(bar.paddingBottom).toBe(Spacing.four);
 
     const realBarHeight =
       bar.borderTopWidth + bar.paddingTop + BAR_CONTENT_BLOCK_HEIGHT + bar.paddingBottom;
-    expect(realBarHeight).toBe(172);
+    expect(realBarHeight).toBe(103);
 
     const offset = toastOverlayBottom(getByTestId('toast-card')) as number;
     expect(offset).toBeGreaterThanOrEqual(realBarHeight);
@@ -190,8 +191,8 @@ describe('ProductDetailsScreen — toast clearance (AC7 automated leg)', () => {
    * (the original defect's shape) makes these two values equal and fails here.
    */
   test('the bar height grows with the safe-area inset rather than being static', () => {
-    expect(getAddToCartBarHeight(0)).toBe(172);
-    expect(getAddToCartBarHeight(34)).toBe(206);
+    expect(getAddToCartBarHeight(0)).toBe(103);
+    expect(getAddToCartBarHeight(34)).toBe(137);
     expect(getAddToCartBarHeight(34) - getAddToCartBarHeight(0)).toBe(34);
   });
 
@@ -217,7 +218,7 @@ describe('ProductDetailsScreen — toast clearance (AC7 automated leg)', () => {
     expect(await findByText('Please choose the required options first.')).toBeTruthy();
 
     // Hint-state-independent by construction: one value, always tall.
-    expect(getAddToCartBarHeight(0)).toBe(172);
-    expect(getAddToCartBarHeight(0) + Spacing.two).toBe(180);
+    expect(getAddToCartBarHeight(0)).toBe(103);
+    expect(getAddToCartBarHeight(0) + Spacing.two).toBe(111);
   });
 });

@@ -2,11 +2,22 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { Spacing } from '@jojopotato/ui';
 import { fireEvent } from '@testing-library/react-native';
 
-import NotificationsScreen from '@/app/(tabs)/account/notifications';
+import NotificationsScreen from '@/app/(tabs)/notifications/index';
 import { useNotifications } from '@/features/notifications/hooks/use-notifications';
 import { renderWithProviders, toastOverlayBottom } from '@/test-utils/render';
 
 /** AC4 / AC7 — the marketing-preference failure notice. */
+
+// NAV-002 moved this screen to the top-level `(tabs)/notifications` stack and it
+// now calls `useIsFocused()` to gate `useHideTabBarWhile` — real expo-router's
+// `useIsFocused` needs a navigation context this bare RTL render doesn't provide,
+// so it must be mocked like the rest of expo-router already is elsewhere in this
+// suite (see branch-detail-toast.test.tsx). `true` matches this screen's real
+// focused state in every test here (no navigation-away scenario is exercised).
+jest.mock('expo-router', () => ({
+  router: { back: jest.fn(), push: jest.fn() },
+  useIsFocused: () => true,
+}));
 
 jest.mock('@/features/notifications/hooks/use-notifications', () => ({
   useNotifications: jest.fn(),

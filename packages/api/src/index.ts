@@ -11,7 +11,7 @@ import { and, asc, eq, gte, lte, notExists, sql } from 'drizzle-orm';
 import express, { type Express } from 'express';
 
 import { db } from './db/client';
-import { branches, dealBranches, deals } from './db/schema/index';
+import { branches, offerBranches, offers } from './db/schema/index';
 import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
 import { requireAdmin } from './lib/require-admin';
@@ -160,33 +160,33 @@ app.get('/api/branches/:id', async (req, res) => {
 
     // Query A — deals explicitly mapped to this branch.
     const explicitPromise = db
-      .select({ deal: deals })
-      .from(deals)
-      .innerJoin(dealBranches, eq(dealBranches.deal_id, deals.id))
+      .select({ deal: offers })
+      .from(offers)
+      .innerJoin(offerBranches, eq(offerBranches.offer_id, offers.id))
       .where(
         and(
-          eq(dealBranches.branch_id, id),
-          eq(deals.is_active, true),
-          lte(deals.start_at, now),
-          gte(deals.end_at, now),
+          eq(offerBranches.branch_id, id),
+          eq(offers.is_active, true),
+          lte(offers.start_at, now),
+          gte(offers.end_at, now),
         ),
       );
 
-    // Query B — global deals: no deal_branches rows exist for this deal at all.
+    // Query B — global deals: no offer_branches rows exist for this deal at all.
     const globalPromise = db
       .select()
-      .from(deals)
+      .from(offers)
       .where(
         and(
           notExists(
             db
               .select({ one: sql`1` })
-              .from(dealBranches)
-              .where(eq(dealBranches.deal_id, deals.id)),
+              .from(offerBranches)
+              .where(eq(offerBranches.offer_id, offers.id)),
           ),
-          eq(deals.is_active, true),
-          lte(deals.start_at, now),
-          gte(deals.end_at, now),
+          eq(offers.is_active, true),
+          lte(offers.start_at, now),
+          gte(offers.end_at, now),
         ),
       );
 
@@ -197,8 +197,25 @@ app.get('/api/branches/:id', async (req, res) => {
     for (const r of explicitRows) byId.set(r.deal.id, r.deal);
     for (const r of globalRows) byId.set(r.id, r);
 
+    // Wire-freeze (Locked Decision 7B): return only the legacy public deal fields.
+    // ADM-008 added internal `promotion_id`/`benefit_product_id` columns to the
+    // offers table; project explicitly so those never leak into the public
+    // branch-detail response (every pre-ADM-008 deal field is preserved).
     const mappedDeals = [...byId.values()].map((d) => ({
-      ...d,
+      id: d.id,
+      title: d.title,
+      description: d.description,
+      image_url: d.image_url,
+      deal_type: d.deal_type,
+      discount_value: d.discount_value,
+      minimum_order_amount: d.minimum_order_amount,
+      start_at: d.start_at,
+      end_at: d.end_at,
+      usage_limit_per_user: d.usage_limit_per_user,
+      total_usage_limit: d.total_usage_limit,
+      is_active: d.is_active,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
       discountLabel: computeDiscountLabel(d.deal_type, d.discount_value),
     }));
 

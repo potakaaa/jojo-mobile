@@ -4,7 +4,7 @@ import { FlatList, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getProductImage } from '../product-images';
+import { resolveImageUrl } from '@/lib/image-url';
 
 export interface ProductGridProps {
   products: MenuItem[];
@@ -27,14 +27,17 @@ export function ProductGrid({ products, onProductPress }: ProductGridProps) {
       keyExtractor={(item) => item.id}
       numColumns={2}
       scrollEnabled={false}
-      renderItem={({ item }) => (
-        <ProductCard
-          product={item}
-          imageSource={getProductImage(item.categoryId)}
-          onPress={onProductPress ? () => onProductPress(item.id) : undefined}
-          mode={mode}
-        />
-      )}
+      renderItem={({ item }) => {
+        const imageUri = resolveImageUrl(item.imageUrl);
+        return (
+          <ProductCard
+            product={item}
+            imageSource={imageUri ? { uri: imageUri } : undefined}
+            onPress={onProductPress ? () => onProductPress(item.id) : undefined}
+            mode={mode}
+          />
+        );
+      }}
       columnWrapperStyle={styles.row}
       contentContainerStyle={styles.content}
     />

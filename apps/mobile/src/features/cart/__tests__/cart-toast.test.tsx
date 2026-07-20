@@ -187,8 +187,11 @@ describe('CartScreen — toast clearance (AC7 automated leg)', () => {
   test('the toast overlay resolves a bottom offset that clears the sticky checkout footer', async () => {
     const { getByTestId } = await renderWithFailedCodeApply();
 
-    // Native, insets 0: footer = 16 + 48 + (61 + 0 + 8 + 24 + 8) = 165; offset = 173.
-    expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(173);
+    // Native, insets 0: cart.tsx is always a pushed (nested) screen, so
+    // resolveTabBarClearance(true, footprint, 0) drops the floating-tab-bar
+    // footprint entirely and reserves only the device inset (0 here) — footer =
+    // 16 + 48 + (0 + 8) = 72; offset = 80.
+    expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(80);
     expect(toastOverlayBottom(getByTestId('toast-card'))).toBe(
       getCartFooterHeight(0) + Spacing.two,
     );
@@ -197,20 +200,19 @@ describe('CartScreen — toast clearance (AC7 automated leg)', () => {
   /**
    * THE REGRESSION PIN — see the twin in product-toast.test.tsx. Measures the
    * footer's REAL rendered padding off the mounted tree instead of trusting the
-   * function that produced the offset. Against the shipped bug: old offset 80 vs
-   * a real footer height of 165.
+   * function that produced the offset. At zero device inset on a nested screen
+   * the correctly-derived padding legitimately equals the base padding (there is
+   * no dead tab-bar footprint to clear here) — the real regression guard is the
+   * insets-delta test below, which a static constant could never pass.
    */
   test("the offset clears the footer's REAL rendered height, measured off the mounted tree", async () => {
     const { getByTestId } = await renderWithFailedCodeApply();
 
     const footer = requiredStyleValues(getByTestId('cart-footer'), ['paddingTop', 'paddingBottom']);
-    // The padding that actually rendered is the tab-bar clearance + base padding,
-    // NOT the StyleSheet's base value alone.
-    expect(footer.paddingBottom).toBe(101);
-    expect(footer.paddingBottom).not.toBe(Spacing.two);
+    expect(footer.paddingBottom).toBe(Spacing.two);
 
     const realFooterHeight = footer.paddingTop + MinTouchTarget + footer.paddingBottom;
-    expect(realFooterHeight).toBe(165);
+    expect(realFooterHeight).toBe(72);
 
     const offset = toastOverlayBottom(getByTestId('toast-card')) as number;
     expect(offset).toBeGreaterThanOrEqual(realFooterHeight);
@@ -218,8 +220,8 @@ describe('CartScreen — toast clearance (AC7 automated leg)', () => {
 
   /** A regression to a static constant (the original defect) fails here. */
   test('the footer height grows with the safe-area inset rather than being static', () => {
-    expect(getCartFooterHeight(0)).toBe(165);
-    expect(getCartFooterHeight(34)).toBe(199);
+    expect(getCartFooterHeight(0)).toBe(72);
+    expect(getCartFooterHeight(34)).toBe(106);
     expect(getCartFooterHeight(34) - getCartFooterHeight(0)).toBe(34);
   });
 });

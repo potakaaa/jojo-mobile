@@ -31,7 +31,11 @@ export type EligibilityFailReason =
   | 'already_used'
   | 'expired'
   | 'no_eligible_product'
-  | 'not_in_cart';
+  | 'not_in_cart'
+  // free-mechanic offer-coupon reason (ADM-008 Fix 6 P2). The two DO-NOT-TOUCH deal
+  // functions never emit it and the mobile eligibility twin keeps its own local
+  // copy, so adding this member leaves both byte-identical.
+  | 'no_upgrade_to_waive';
 
 export type EligibilityResult =
   { eligible: true } | { eligible: false; reason: EligibilityFailReason; message: string };
@@ -261,4 +265,67 @@ export function computeRewardDiscountCents(eligibleProductId: string, cart: Cart
   const lines = cart.items.filter((it) => it.menuItemId === eligibleProductId);
   if (lines.length === 0) return 0;
   return Math.min(...lines.map((it) => it.unitPriceCents));
+}
+
+// ─── Free-mechanic offer-coupon side (ADM-008 Fix 6, new) ────────────────────
+//
+// Admin-authored `free_item` / `free_upgrade` OFFER coupons (distinct from the
+// points-earned reward coupons above). `free_item` reuses `computeRewardDiscountCents`
+// VERBATIM — one free unit of the benefit product = its cheapest matching line's
+// unit price. `free_upgrade` waives one unit's paid size-upgrade charge. Both are
+// framework-agnostic (no DB, no React Native): the resolver in `packages/api` reads
+// the admin-configured `offers.benefit_product_id` and dispatches to these.
+
+/**
+ * Discount (cents) for a `free_upgrade` offer coupon: waive one unit's paid size
+ * upgrade on the benefit product. A qualifying line is one whose
+ * `menuItemId === benefitProductId` carrying at least one `size`-type option with a
+ * POSITIVE `priceDeltaCents`; that line's waived amount is the SUM of its positive
+ * size deltas. Across multiple qualifying lines the smallest waived amount is taken
+ * (`Math.min`) — one unit per redemption, never scaled by `quantity`. Returns 0 when
+ * the product is absent, has no size option, or has only zero/negative size deltas
+ * (the caller rejects a computed 0 rather than resolving a ₱0-and-burn).
+ */
+export function computeFreeUpgradeDiscountCents(benefitProductId: string, cart: Cart): number {
+  const perLineWaived = cart.items
+    .filter((it) => it.menuItemId === benefitProductId)
+    .map((it) =>
+      it.selectedOptions
+        .filter((opt) => opt.optionType === 'size' && opt.priceDeltaCents > 0)
+        .reduce((sum, opt) => sum + opt.priceDeltaCents, 0),
+    )
+    .filter((waived) => waived > 0);
+  if (perLineWaived.length === 0) return 0;
+  return Math.min(...perLineWaived);
+}
+
+/**
+ * Eligibility for a CONFIGURED `free_item` / `free_upgrade` offer coupon against a
+ * cart (mirrors the reward check's short-circuit shape). `benefitProductId` is the
+ * offer's configured product — the resolver rejects a NULL benefit BEFORE calling
+ * this. Rejects a cart missing the benefit product (`not_in_cart`), and — for
+ * `free_upgrade` only — a benefit line with no paid size upgrade to waive
+ * (`no_upgrade_to_waive`), so a ₱0 upgrade never resolves as a burnable success.
+ */
+export function checkFreeBenefit(
+  dealType: 'free_item' | 'free_upgrade',
+  benefitProductId: string,
+  cart: Cart,
+): EligibilityResult {
+  const inCart = cart.items.some((it) => it.menuItemId === benefitProductId);
+  if (!inCart) {
+    return {
+      eligible: false,
+      reason: 'not_in_cart',
+      message: 'Add the eligible item to your cart to use this offer.',
+    };
+  }
+  if (dealType === 'free_upgrade' && computeFreeUpgradeDiscountCents(benefitProductId, cart) <= 0) {
+    return {
+      eligible: false,
+      reason: 'no_upgrade_to_waive',
+      message: 'Add a size upgrade to the eligible item to use this offer.',
+    };
+  }
+  return { eligible: true };
 }
