@@ -23,6 +23,7 @@ describe('dealStatus', () => {
     expect(dealStatus({ isActive: false, availableBranchCount: 3, activeBranchCount: 3 })).toEqual({
       label: 'Inactive',
       tone: 'muted',
+      recurring: false,
     });
   });
 
@@ -30,6 +31,7 @@ describe('dealStatus', () => {
     expect(dealStatus({ isActive: true, availableBranchCount: 0, activeBranchCount: 3 })).toEqual({
       label: 'Not available at any branch',
       tone: 'warning',
+      recurring: false,
     });
   });
 
@@ -37,11 +39,16 @@ describe('dealStatus', () => {
     expect(dealStatus({ isActive: true, availableBranchCount: 2, activeBranchCount: 3 })).toEqual({
       label: 'Active · 2/3 branches',
       tone: 'success',
+      recurring: false,
     });
   });
 
   it('active deal with unknown availability → plain Active (no false warning)', () => {
-    expect(dealStatus({ isActive: true })).toEqual({ label: 'Active', tone: 'success' });
+    expect(dealStatus({ isActive: true })).toEqual({
+      label: 'Active',
+      tone: 'success',
+      recurring: false,
+    });
   });
 });
 
@@ -94,15 +101,21 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
     expect(dealStatus({ ...base, startsAt: null, endsAt: null }, NOW)).toEqual({
       label: 'Active · 2/3 branches',
       tone: 'success',
+      recurring: false,
     });
     // Absent keys behave identically to explicit nulls.
-    expect(dealStatus(base, NOW)).toEqual({ label: 'Active · 2/3 branches', tone: 'success' });
+    expect(dealStatus(base, NOW)).toEqual({
+      label: 'Active · 2/3 branches',
+      tone: 'success',
+      recurring: false,
+    });
   });
 
   it('future window → Scheduled', () => {
     expect(dealStatus({ ...base, startsAt: FUTURE_START, endsAt: FUTURE_END }, NOW)).toEqual({
       label: 'Scheduled',
       tone: 'neutral',
+      recurring: false,
     });
   });
 
@@ -110,6 +123,7 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
     expect(dealStatus({ ...base, startsAt: OPEN_START, endsAt: OPEN_END }, NOW)).toEqual({
       label: 'Live · 2/3 branches',
       tone: 'success',
+      recurring: false,
     });
   });
 
@@ -117,13 +131,14 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
     expect(dealStatus({ ...base, startsAt: PAST_START, endsAt: PAST_END }, NOW)).toEqual({
       label: 'Expired',
       tone: 'muted',
+      recurring: false,
     });
   });
 
   it('inactive wins over any window state', () => {
     expect(
       dealStatus({ ...base, isActive: false, startsAt: OPEN_START, endsAt: OPEN_END }, NOW),
-    ).toEqual({ label: 'Inactive', tone: 'muted' });
+    ).toEqual({ label: 'Inactive', tone: 'muted', recurring: false });
   });
 
   it('zero-branch warning wins over an otherwise-Live window', () => {
@@ -138,7 +153,7 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
         },
         NOW,
       ),
-    ).toEqual({ label: 'Not available at any branch', tone: 'warning' });
+    ).toEqual({ label: 'Not available at any branch', tone: 'warning', recurring: false });
   });
 
   it('handles open-ended windows on either side', () => {
@@ -162,6 +177,57 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
     expect(dealStatus({ isActive: true, startsAt: OPEN_START, endsAt: OPEN_END }, NOW)).toEqual({
       label: 'Live',
       tone: 'success',
+      recurring: false,
     });
+  });
+});
+
+// ─── DEAL-005 Phase 2 — the additive `recurring` flag (AC10, derivation half) ──
+//
+// `recurring` is layered ALONGSIDE the label/tone, never folded into them: a deal
+// inside its absolute window but outside today's recurring hours must still read
+// "Live", because it returns in a few hours with no admin action. The UI half of
+// AC10 (the badge actually rendering) is asserted in `deal-list.test.tsx`.
+describe('dealStatus — DEAL-005 Phase 2 recurring flag', () => {
+  const base = { isActive: true, availableBranchCount: 2, activeBranchCount: 3 };
+  const RECUR = [1, 2, 3, 4, 5];
+
+  it('is false when recurDays is absent, null, or empty', () => {
+    expect(dealStatus(base, NOW).recurring).toBe(false);
+    expect(dealStatus({ ...base, recurDays: null }, NOW).recurring).toBe(false);
+    expect(dealStatus({ ...base, recurDays: [] }, NOW).recurring).toBe(false);
+  });
+
+  it('is true when recurDays is non-empty', () => {
+    expect(dealStatus({ ...base, recurDays: RECUR }, NOW).recurring).toBe(true);
+    // Sunday alone (day 0) must not be treated as falsy.
+    expect(dealStatus({ ...base, recurDays: [0] }, NOW).recurring).toBe(true);
+  });
+
+  it('does NOT disturb the label/tone derivation in any branch', () => {
+    // Layered against each existing branch: inactive, zero-branch, and each phase.
+    expect(dealStatus({ ...base, isActive: false, recurDays: RECUR }, NOW)).toEqual({
+      label: 'Inactive',
+      tone: 'muted',
+      recurring: true,
+    });
+    expect(dealStatus({ ...base, availableBranchCount: 0, recurDays: RECUR }, NOW)).toEqual({
+      label: 'Not available at any branch',
+      tone: 'warning',
+      recurring: true,
+    });
+    expect(
+      dealStatus({ ...base, startsAt: FUTURE_START, endsAt: FUTURE_END, recurDays: RECUR }, NOW),
+    ).toEqual({ label: 'Scheduled', tone: 'neutral', recurring: true });
+    expect(
+      dealStatus({ ...base, startsAt: PAST_START, endsAt: PAST_END, recurDays: RECUR }, NOW),
+    ).toEqual({ label: 'Expired', tone: 'muted', recurring: true });
+  });
+
+  it('still reads Live inside the absolute window, whatever the recurring hours are', () => {
+    // The deliberate design call: the badge is NOT recurrence-accurate to the minute.
+    expect(
+      dealStatus({ ...base, startsAt: OPEN_START, endsAt: OPEN_END, recurDays: [0] }, NOW),
+    ).toEqual({ label: 'Live · 2/3 branches', tone: 'success', recurring: true });
   });
 });

@@ -1938,3 +1938,201 @@ describe('POST /orders — DEAL-005 scheduled window', () => {
     expect(res.status).toBe(201);
   });
 });
+
+/**
+ * DEAL-005 Phase 2 (AC8) — the ORDER-PLACEMENT mirror of the recurrence cases in
+ * `branches.test.ts`. Same five fixtures, same expected outcomes, expressed as
+ * orderable/rejected instead of listed/hidden.
+ *
+ * This pairing is the actual proof of the "one shared helper, both call sites"
+ * invariant: `branches.ts` and `orders.ts` each delegate to
+ * `resolveLiveDealProductIds` and neither re-derives day-of-week or time-of-day, so a
+ * divergence would show up as these two suites disagreeing on identical fixtures.
+ * Asserted rather than left to code inspection.
+ */
+describe('POST /orders — DEAL-005 Phase 2 recurrence', () => {
+  let branchId: string;
+  let categoryId: string;
+
+  let recurringNowDealId: string;
+  let wrongDayDealId: string;
+  let wrongTimeDealId: string;
+  let outsideAbsoluteDealId: string;
+  let nullRecurrenceDealId: string;
+
+  // Independently computed, NOT imported from production — see the matching note in
+  // `branches.test.ts`: sharing the helper would let a regression cancel itself out.
+  const wall = ((instant: Date) => {
+    const shifted = new Date(instant.getTime() + 8 * 60 * 60 * 1000);
+    return {
+      dayOfWeek: shifted.getUTCDay(),
+      hhmm: `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`,
+    };
+  })(new Date());
+  const beforeNoon = wall.hhmm < '12:00';
+  const coversNow = beforeNoon
+    ? { start: '00:00', end: '12:00' }
+    : { start: '12:00', end: '23:59' };
+  const excludesNow = beforeNoon
+    ? { start: '12:00', end: '23:59' }
+    : { start: '00:00', end: '12:00' };
+  const today = wall.dayOfWeek;
+  const notToday = (today + 3) % 7;
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+
+  async function makeProduct(suffix: string, opts: { isDeal?: boolean } = {}): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005P2 Ord ${suffix}`,
+        slug: `deal005p2-ord-${suffix}`,
+        base_price: '9.00',
+        is_deal: opts.isDeal ?? false,
+      })
+      .returning();
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: product!.id, is_available: true });
+    return product!.id;
+  }
+
+  async function makeDeal(suffix: string): Promise<string> {
+    const component = await makeProduct(`comp-${suffix}`);
+    const dealId = await makeProduct(`deal-${suffix}`, { isDeal: true });
+    await db
+      .insert(schema.dealComponents)
+      .values({ deal_product_id: dealId, component_product_id: component });
+    return dealId;
+  }
+
+  async function scheduleRecurring(
+    dealProductId: string,
+    days: number[],
+    window: { start: string; end: string },
+    bounds: { startsAt: Date | null; endsAt: Date | null } = { startsAt: null, endsAt: null },
+  ) {
+    await db.insert(schema.dealSchedules).values({
+      deal_product_id: dealProductId,
+      starts_at: bounds.startsAt,
+      ends_at: bounds.endsAt,
+      recur_days: days,
+      recur_start_time: window.start,
+      recur_end_time: window.end,
+    });
+  }
+
+  const orderBody = (productIds: string[]) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch' as const,
+    items: productIds.map((productId) => ({ productId, quantity: 1, selectedOptions: [] })),
+  });
+
+  beforeAll(async () => {
+    const suffix = uid();
+
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `DEAL005P2 Ord Branch ${suffix}`,
+        slug: `deal005p2-ord-${suffix}`,
+        address: '7 Recurrence Rd',
+        latitude: '14.540000',
+        longitude: '120.940000',
+        phone: '+639170000023',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 15,
+      })
+      .returning();
+    branchId = branch!.id;
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({
+        name: `DEAL005P2 Ord ${suffix}`,
+        slug: `deal005p2-ord-cat-${suffix}`,
+        sort_order: 5,
+      })
+      .returning();
+    categoryId = category!.id;
+
+    recurringNowDealId = await makeDeal(`recurring-now-${suffix}`);
+    await scheduleRecurring(recurringNowDealId, [today], coversNow);
+
+    wrongDayDealId = await makeDeal(`wrong-day-${suffix}`);
+    await scheduleRecurring(wrongDayDealId, [notToday], coversNow);
+
+    wrongTimeDealId = await makeDeal(`wrong-time-${suffix}`);
+    await scheduleRecurring(wrongTimeDealId, [today], excludesNow);
+
+    outsideAbsoluteDealId = await makeDeal(`outside-absolute-${suffix}`);
+    await scheduleRecurring(outsideAbsoluteDealId, [today], coversNow, {
+      startsAt: new Date(Date.now() - 30 * 86_400_000),
+      endsAt: new Date(Date.now() - 86_400_000),
+    });
+
+    nullRecurrenceDealId = await makeDeal(`null-recurrence-${suffix}`);
+    await db.insert(schema.dealSchedules).values({
+      deal_product_id: nullRecurrenceDealId,
+      starts_at: new Date(Date.now() - 86_400_000),
+      ends_at: new Date(Date.now() + 86_400_000),
+    });
+  });
+
+  it('AC2/AC8: accepts (201) a deal recurring TODAY during the current Manila hours', async () => {
+    const u = await freshUser('deal005p2now');
+    const res = await post('/orders', { user: u, body: orderBody([recurringNowDealId]) });
+    expect(res.status).toBe(201);
+    expect(res.json.order.items[0].productId).toBe(recurringNowDealId);
+  });
+
+  it('AC2/AC8: rejects (400) a deal whose recurring day is NOT today', async () => {
+    const u = await freshUser('deal005p2wrongday');
+    const res = await post('/orders', { user: u, body: orderBody([wrongDayDealId]) });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+  });
+
+  it('AC2/AC8: rejects (400) a deal recurring today but OUTSIDE its hours', async () => {
+    const u = await freshUser('deal005p2wrongtime');
+    const res = await post('/orders', { user: u, body: orderBody([wrongTimeDealId]) });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+  });
+
+  it('AC3/AC8: rejects (400) a recurring deal whose ABSOLUTE window has closed', async () => {
+    const u = await freshUser('deal005p2outside');
+    const res = await post('/orders', { user: u, body: orderBody([outsideAbsoluteDealId]) });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+  });
+
+  it('AC4/AC8 (HARD, no-backfill): accepts (201) a NULL-recurrence Phase 1 row', async () => {
+    const u = await freshUser('deal005p2null');
+    const res = await post('/orders', { user: u, body: orderBody([nullRecurrenceDealId]) });
+    expect(res.status).toBe(201);
+    expect(res.json.order.items[0].productId).toBe(nullRecurrenceDealId);
+  });
+
+  it('AC8: rolls back the WHOLE order when an out-of-occurrence deal rides along', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('deal005p2multi');
+    // The in-occurrence deal is FIRST, so a check that stopped at the first deal
+    // line would wrongly accept this cart.
+    const res = await post('/orders', {
+      user: u,
+      body: orderBody([recurringNowDealId, wrongDayDealId]),
+    });
+    expect(res.status).toBe(400);
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+});

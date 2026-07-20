@@ -46,6 +46,15 @@ export interface AdminDealProduct {
    */
   startsAt: string | null;
   endsAt: string | null;
+  /**
+   * DEAL-005 Phase 2 weekly recurrence NARROWING the window above. All three null =
+   * a non-recurring deal (the Phase 1 shape). `recurDays` uses the JS `Date#getDay()`
+   * convention (0=Sun..6=Sat); the two times are Manila WALL-CLOCK `"HH:mm"` strings,
+   * half-open (`recurStartTime <= t < recurEndTime`) — NOT UTC.
+   */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
 }
 
 /** One seeded component on a create-with-components request (Enhancement E1). */
@@ -83,6 +92,14 @@ export interface DealCreateInput {
    */
   startsAt?: string | null;
   endsAt?: string | null;
+  /**
+   * Optional weekly recurrence (DEAL-005 Phase 2). The three fields move as a UNIT —
+   * the server rejects a partial triple with 400. Same omit-leaves / null-clears
+   * semantics on update as the bounds above.
+   */
+  recurDays?: number[] | null;
+  recurStartTime?: string | null;
+  recurEndTime?: string | null;
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

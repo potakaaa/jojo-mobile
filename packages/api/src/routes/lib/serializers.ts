@@ -548,12 +548,32 @@ export interface AdminDealProduct extends AdminProduct {
    */
   startsAt: string | null;
   endsAt: string | null;
+  /**
+   * DEAL-005 Phase 2 — optional weekly recurrence NARROWING the window above (D6).
+   * All three `null` = a non-recurring row, behaving exactly as Phase 1.
+   *
+   * `recurDays` uses the JS `Date#getDay()` convention (0=Sun..6=Sat) and the two
+   * times are Manila WALL-CLOCK `"HH:mm"` strings, half-open
+   * (`recurStartTime <= t < recurEndTime`). They are NOT UTC — see
+   * `toManilaWallClock()` in `routes/lib/deal-schedule.ts`, the one place that
+   * conversion is allowed to happen.
+   *
+   * ADMIN-ONLY and ADDITIVE, same as the bounds above: the public customer wire
+   * shape stays frozen (D2), an out-of-occurrence deal is simply ABSENT.
+   */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
 }
 
 /** A resolved `deal_schedules` window, as stored (real instants, not day buckets). */
 export interface AdminDealWindow {
   startsAt: Date | null;
   endsAt: Date | null;
+  /** DEAL-005 Phase 2 recurrence. All three null = a non-recurring (Phase 1) row. */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
 }
 
 /**
@@ -576,6 +596,9 @@ export function serializeAdminDealProduct(
     ...(availability === undefined ? {} : availability),
     startsAt: window?.startsAt?.toISOString() ?? null,
     endsAt: window?.endsAt?.toISOString() ?? null,
+    recurDays: window?.recurDays ?? null,
+    recurStartTime: window?.recurStartTime ?? null,
+    recurEndTime: window?.recurEndTime ?? null,
   };
 }
 

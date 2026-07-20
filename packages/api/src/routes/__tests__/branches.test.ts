@@ -667,3 +667,185 @@ describe('GET /branches/:branchId/menu?isDeal=true — DEAL-005 scheduled window
     expect(products.map((p: any) => p.id)).not.toContain(openWindowDealId);
   });
 });
+
+/**
+ * DEAL-005 Phase 2 — the SAME menu-read enforcement point, now also filtering on
+ * weekly recurrence. These cases are mirrored 1:1 in `orders.test.ts` (AC8): both
+ * enforcement points call the one shared `isDealScheduleLive()` helper, so proving
+ * they agree on identical fixtures is what stops a deal being browsable but
+ * unorderable (or vice versa).
+ *
+ * The route reads the real clock, so every fixture here is derived from the CURRENT
+ * Manila wall-clock time via `toManilaWallClock` — the same helper production uses.
+ * That keeps the cases deterministic whenever the suite runs, instead of hardcoding
+ * an instant that would only be correct on one day of the week. The exhaustive
+ * boundary arithmetic is proven separately (and mutation-verified) in
+ * `routes/lib/__tests__/deal-schedule.test.ts`.
+ */
+describe('GET /branches/:branchId/menu?isDeal=true — DEAL-005 Phase 2 recurrence', () => {
+  let branchId: string;
+  let categoryId: string;
+
+  let recurringNowDealId: string; // today + covering now → listed
+  let wrongDayDealId: string; // covers now, but not today → hidden
+  let wrongTimeDealId: string; // today, but outside the hours → hidden
+  let outsideAbsoluteDealId: string; // recurring NOW but absolute window ended → hidden
+  let nullRecurrenceDealId: string; // Phase 1 shape → listed (no-backfill)
+
+  // Derived once from the real clock, so both directions are deterministic.
+  //
+  // Computed with a LOCAL implementation rather than importing the production
+  // `toManilaWallClock`. If the fixtures were built with the same function the route
+  // uses, a regression in that function would shift the fixture and the assertion by
+  // the same amount and cancel out — the test would stay green while production went
+  // live on the wrong day. Deriving it independently here means such a regression
+  // makes these cases DISAGREE, which is the whole point of the fixture.
+  const wall = ((instant: Date) => {
+    const shifted = new Date(instant.getTime() + 8 * 60 * 60 * 1000);
+    return {
+      dayOfWeek: shifted.getUTCDay(),
+      hhmm: `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`,
+    };
+  })(new Date());
+  const beforeNoon = wall.hhmm < '12:00';
+  /** A window that definitely CONTAINS the current Manila minute. */
+  const coversNow = beforeNoon
+    ? { start: '00:00', end: '12:00' }
+    : { start: '12:00', end: '23:59' };
+  /** A window that definitely EXCLUDES it (the opposite half of the day). */
+  const excludesNow = beforeNoon
+    ? { start: '12:00', end: '23:59' }
+    : { start: '00:00', end: '12:00' };
+  const today = wall.dayOfWeek;
+  const notToday = (today + 3) % 7;
+
+  async function makeComponent(suffix: string): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005P2 Component ${suffix}`,
+        slug: `deal005p2-component-${suffix}`,
+        base_price: '2.00',
+      })
+      .returning();
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: product!.id, is_available: true });
+    return product!.id;
+  }
+
+  async function makeDeal(suffix: string): Promise<string> {
+    const component = await makeComponent(`for-${suffix}`);
+    const [deal] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005P2 Deal ${suffix}`,
+        slug: `deal005p2-deal-${suffix}`,
+        base_price: '9.00',
+        is_deal: true,
+        is_active: true,
+      })
+      .returning();
+    await db
+      .insert(schema.dealComponents)
+      .values({ deal_product_id: deal!.id, component_product_id: component, quantity: 1 });
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: deal!.id, is_available: true });
+    return deal!.id;
+  }
+
+  async function scheduleRecurring(
+    dealProductId: string,
+    days: number[],
+    window: { start: string; end: string },
+    bounds: { startsAt: Date | null; endsAt: Date | null } = { startsAt: null, endsAt: null },
+  ) {
+    await db.insert(schema.dealSchedules).values({
+      deal_product_id: dealProductId,
+      starts_at: bounds.startsAt,
+      ends_at: bounds.endsAt,
+      recur_days: days,
+      recur_start_time: window.start,
+      recur_end_time: window.end,
+    });
+  }
+
+  async function dealIdsAt(branch: string): Promise<string[]> {
+    const { status, json } = await get(`/branches/${branch}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    return json.categories.flatMap((c: any) => c.products).map((p: any) => p.id);
+  }
+
+  beforeAll(async () => {
+    const suffix = uid();
+
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `DEAL005P2 Branch ${suffix}`,
+        slug: `deal005p2-${suffix}`,
+        address: '6 Recurrence Rd',
+        latitude: '14.530000',
+        longitude: '120.930000',
+        phone: '+639170000022',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 15,
+      })
+      .returning();
+    branchId = branch!.id;
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `DEAL005P2 ${suffix}`, slug: `deal005p2-cat-${suffix}`, sort_order: 4 })
+      .returning();
+    categoryId = category!.id;
+
+    recurringNowDealId = await makeDeal(`recurring-now-${suffix}`);
+    await scheduleRecurring(recurringNowDealId, [today], coversNow);
+
+    wrongDayDealId = await makeDeal(`wrong-day-${suffix}`);
+    await scheduleRecurring(wrongDayDealId, [notToday], coversNow);
+
+    wrongTimeDealId = await makeDeal(`wrong-time-${suffix}`);
+    await scheduleRecurring(wrongTimeDealId, [today], excludesNow);
+
+    // Recurrence says "live right now", but the absolute window closed yesterday.
+    outsideAbsoluteDealId = await makeDeal(`outside-absolute-${suffix}`);
+    await scheduleRecurring(outsideAbsoluteDealId, [today], coversNow, {
+      startsAt: new Date(Date.now() - 30 * 86_400_000),
+      endsAt: new Date(Date.now() - 86_400_000),
+    });
+
+    // A Phase 1-shaped row: absolute bounds only, recurrence columns null.
+    nullRecurrenceDealId = await makeDeal(`null-recurrence-${suffix}`);
+    await db.insert(schema.dealSchedules).values({
+      deal_product_id: nullRecurrenceDealId,
+      starts_at: new Date(Date.now() - 86_400_000),
+      ends_at: new Date(Date.now() + 86_400_000),
+    });
+  });
+
+  it('AC2: lists a deal recurring TODAY during the current Manila hours', async () => {
+    expect(await dealIdsAt(branchId)).toContain(recurringNowDealId);
+  });
+
+  it('AC2: hides a deal whose recurring day is NOT today, even during its hours', async () => {
+    expect(await dealIdsAt(branchId)).not.toContain(wrongDayDealId);
+  });
+
+  it('AC2: hides a deal recurring today but OUTSIDE its hours', async () => {
+    expect(await dealIdsAt(branchId)).not.toContain(wrongTimeDealId);
+  });
+
+  it('AC3: hides a recurring deal whose ABSOLUTE window has closed', async () => {
+    // Recurrence narrows, never overrides — the absolute bounds still gate the row.
+    expect(await dealIdsAt(branchId)).not.toContain(outsideAbsoluteDealId);
+  });
+
+  it('AC4 (HARD, no-backfill): a NULL-recurrence row behaves exactly as Phase 1', async () => {
+    expect(await dealIdsAt(branchId)).toContain(nullRecurrenceDealId);
+  });
+});

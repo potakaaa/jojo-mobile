@@ -58,12 +58,45 @@ function resolveWindowPhase(
  * availability count is unknown (e.g. the create response omits it), fall back to
  * the plain active/inactive state rather than a false warning.
  */
+export interface DealStatusDescriptor extends StatusDescriptor {
+  /**
+   * DEAL-005 Phase 2 — does this deal repeat weekly? Rendered as a SEPARATE,
+   * additional badge next to `label`, never replacing it.
+   *
+   * Deliberately NOT folded into the `Scheduled`/`Live`/`Expired` derivation: a deal
+   * that is inside its absolute window but outside today's recurring hours is not
+   * "Scheduled" in any sense an admin would recognise — it is live-but-not-right-now,
+   * and will return in a few hours with no admin action. Recomputing the phase
+   * per-minute against the recurrence would make the badge flicker and mislead.
+   */
+  recurring: boolean;
+}
+
 export function dealStatus(
   deal: {
     isActive: boolean;
     availableBranchCount?: number;
     activeBranchCount?: number;
     /** DEAL-005 window bounds (ISO). Both null/absent = unscheduled = always live. */
+    startsAt?: string | null;
+    endsAt?: string | null;
+    /** DEAL-005 Phase 2 recurrence days (0=Sun..6=Sat). Null/absent = non-recurring. */
+    recurDays?: number[] | null;
+  },
+  now: Date = new Date(),
+): DealStatusDescriptor {
+  return {
+    ...dealStatusLabel(deal, now),
+    recurring: Array.isArray(deal.recurDays) && deal.recurDays.length > 0,
+  };
+}
+
+/** The pre-Phase-2 label/tone derivation, unchanged. */
+function dealStatusLabel(
+  deal: {
+    isActive: boolean;
+    availableBranchCount?: number;
+    activeBranchCount?: number;
     startsAt?: string | null;
     endsAt?: string | null;
   },

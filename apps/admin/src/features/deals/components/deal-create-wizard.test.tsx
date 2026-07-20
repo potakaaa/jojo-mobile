@@ -150,3 +150,74 @@ test('blocks advancing past Step 1 while End is not after Start', () => {
   expect(screen.getByRole('alert').textContent).toMatch(/End must be after start/);
   expect(screen.getByRole('button', { name: 'Next: items →' }).hasAttribute('disabled')).toBe(true);
 });
+
+// ─── DEAL-005 Phase 2 — weekly recurrence on Step 1 (AC9) ────────────────────
+//
+// The toggle keeps the common non-recurring case uncluttered, so the two directions
+// that matter are: OFF omits all three fields entirely (leaving a Phase 1-shaped
+// deal), and ON submits a complete triple. A partial triple is rejected server-side,
+// so the wizard must never be able to emit one.
+
+const enableRecurrence = () =>
+  fireEvent.click(screen.getByRole('checkbox', { name: /Repeats weekly/ }));
+const pickDay = (label: string) => fireEvent.click(screen.getByRole('button', { name: label }));
+
+test('AC9: hides the recurrence controls until "Repeats weekly" is enabled', () => {
+  renderWizard();
+  expect(screen.queryByRole('group', { name: 'Repeat on days' })).toBeNull();
+  enableRecurrence();
+  expect(screen.getByRole('group', { name: 'Repeat on days' })).toBeTruthy();
+});
+
+test('AC9: omits all three recurrence fields when the toggle is OFF', () => {
+  const onSubmit = renderWizard();
+  completeThroughStep2();
+  fireEvent.click(screen.getByRole('button', { name: 'Create deal' }));
+
+  const arg = onSubmit.mock.calls[0]![0];
+  // Absent, not null — a non-recurring row, exactly as before Phase 2.
+  expect(arg).not.toHaveProperty('recurDays');
+  expect(arg).not.toHaveProperty('recurStartTime');
+  expect(arg).not.toHaveProperty('recurEndTime');
+});
+
+test('AC9: submits the complete recurrence triple when the toggle is ON', () => {
+  const onSubmit = renderWizard();
+  enableRecurrence();
+  pickDay('Mon');
+  pickDay('Wed');
+  completeThroughStep2();
+  fireEvent.click(screen.getByRole('button', { name: 'Create deal' }));
+
+  const arg = onSubmit.mock.calls[0]![0];
+  expect(arg.recurDays).toEqual([1, 3]);
+  // Defaults are only ever SENT once the toggle is on.
+  expect(arg.recurStartTime).toBe('14:00');
+  expect(arg.recurEndTime).toBe('17:00');
+});
+
+test('AC9: blocks advancing past Step 1 while recurrence is on with no day picked', () => {
+  renderWizard();
+  enableRecurrence();
+  // Enabled but empty — the server would reject this, so the wizard stops it first.
+  expect(
+    (screen.getByRole('button', { name: 'Next: items →' }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+
+  pickDay('Fri');
+  expect(
+    (screen.getByRole('button', { name: 'Next: items →' }) as HTMLButtonElement).disabled,
+  ).toBe(false);
+});
+
+test('AC9: turning the toggle back OFF drops the recurrence from the payload', () => {
+  const onSubmit = renderWizard();
+  enableRecurrence();
+  pickDay('Mon');
+  enableRecurrence(); // off again
+  completeThroughStep2();
+  fireEvent.click(screen.getByRole('button', { name: 'Create deal' }));
+
+  const arg = onSubmit.mock.calls[0]![0];
+  expect(arg).not.toHaveProperty('recurDays');
+});

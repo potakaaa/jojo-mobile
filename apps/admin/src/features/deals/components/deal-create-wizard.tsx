@@ -1,7 +1,9 @@
 import { Package } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { ClockDial } from '@/components/clock-dial';
 import { DateTimeField, localNow } from '@/components/date-time-field';
+import { DayOfWeekPicker } from '@/components/day-of-week-picker';
 import { QueryStates } from '@/components/query-states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -81,6 +83,23 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
       ? 'End must be after start — adjust one of them.'
       : null;
 
+  // DEAL-005 Phase 2 — weekly recurrence, gated behind a toggle so the common
+  // non-recurring case stays uncluttered. The three values are only submitted when
+  // the toggle is ON and all of them are filled; the server rejects a partial triple.
+  const [recurEnabled, setRecurEnabled] = useState(false);
+  const [recurDays, setRecurDays] = useState<number[]>([]);
+  const [recurStartTime, setRecurStartTime] = useState('14:00');
+  const [recurEndTime, setRecurEndTime] = useState('17:00');
+  // Client-side affordances only — the hard rejection is the server's
+  // `validateRecurrence` (D5 forbids an overnight span outright).
+  const recurError = !recurEnabled
+    ? null
+    : recurDays.length === 0
+      ? 'Pick at least one day.'
+      : recurEndTime <= recurStartTime
+        ? 'End time must be after start time. For an overnight deal, create two deals.'
+        : null;
+
   // Step 2 state.
   const [items, setItems] = useState<WizardItem[]>([]);
   const [selected, setSelected] = useState('');
@@ -100,7 +119,8 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
   const php = Number(price);
   const priceValid = price.trim().length > 0 && Number.isFinite(php) && php >= 0;
   const dealPriceCents = priceValid ? Math.round(php * 100) : 0;
-  const step1Valid = name.trim().length > 0 && slug.trim().length > 0 && !windowError;
+  const step1Valid =
+    name.trim().length > 0 && slug.trim().length > 0 && !windowError && !recurError;
 
   const addedIds = new Set(items.map((i) => i.productId));
   const candidates = (productsQuery.data ?? []).filter((p) => !addedIds.has(p.id));
@@ -165,6 +185,13 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
     // always-live (no `deal_schedules` row written server-side).
     if (startsAt) input.startsAt = toIso(startsAt);
     if (endsAt) input.endsAt = toIso(endsAt);
+    // Phase 2 — send the recurrence triple only when the toggle is on and complete.
+    // Toggle off omits all three, leaving a non-recurring (Phase 1 shape) deal.
+    if (recurEnabled && recurDays.length > 0) {
+      input.recurDays = recurDays;
+      input.recurStartTime = recurStartTime;
+      input.recurEndTime = recurEndTime;
+    }
     // Only send branchIds when the admin opted a branch OUT — omitting keeps the
     // server's default (seed every active branch), so the common case is unchanged.
     if (excludedBranchIds.size > 0) {
@@ -247,6 +274,48 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
               <p role="alert" className="text-sm font-semibold text-destructive">
                 {windowError}
               </p>
+            ) : null}
+
+            {/* DEAL-005 Phase 2 — weekly recurrence NARROWS the window above: within
+                the dates, the deal is live only on the chosen days during the chosen
+                hours. Times are Manila wall-clock, matching what staff and customers
+                actually experience. */}
+            <label className="mt-1 flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={recurEnabled}
+                onChange={(e) => setRecurEnabled(e.target.checked)}
+                className="size-4 accent-primary"
+              />
+              Repeats weekly
+            </label>
+
+            {recurEnabled ? (
+              <div className="flex flex-col gap-3 rounded-md border-2 border-border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Live only on the selected days, between the selected times (Manila time). For an
+                  overnight deal such as 10pm–2am, create one deal per side of midnight.
+                </p>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium">Repeat on</span>
+                  <DayOfWeekPicker value={recurDays} onChange={setRecurDays} />
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">Starts at {recurStartTime}</span>
+                    <ClockDial value={recurStartTime} onChange={setRecurStartTime} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">Ends at {recurEndTime}</span>
+                    <ClockDial value={recurEndTime} onChange={setRecurEndTime} />
+                  </div>
+                </div>
+                {recurError ? (
+                  <p role="alert" className="text-sm font-semibold text-destructive">
+                    {recurError}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </fieldset>
 

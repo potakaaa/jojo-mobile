@@ -11,7 +11,7 @@ import {
   dealSchedules,
   products,
 } from '../../db/schema/index';
-import { validateWindow } from '../lib/deal-schedule';
+import { validateRecurrence, validateWindow } from '../lib/deal-schedule';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
@@ -87,6 +87,13 @@ const createDealSchema = z.object({
   // Phase-1 state, expressed as NO `deal_schedules` row at all.
   startsAt: z.coerce.date().nullable().optional(),
   endsAt: z.coerce.date().nullable().optional(),
+  // DEAL-005 Phase 2 — optional weekly recurrence NARROWING the window above. The
+  // three fields move as a UNIT (all or none); cross-field legality, the day-range
+  // check and D5's overnight rejection all live in `validateRecurrence` so create
+  // and update reject identically. Times are Manila WALL-CLOCK "HH:mm", not UTC.
+  recurDays: z.array(z.number().int()).nullable().optional(),
+  recurStartTime: z.string().nullable().optional(),
+  recurEndTime: z.string().nullable().optional(),
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -104,6 +111,11 @@ const updateDealSchema = z
     // always-live and its `deal_schedules` row is deleted).
     startsAt: z.coerce.date().nullable().optional(),
     endsAt: z.coerce.date().nullable().optional(),
+    // DEAL-005 Phase 2 — same omit-leaves / null-clears semantics as the bounds
+    // above. Validated against the MERGED state, never the payload alone.
+    recurDays: z.array(z.number().int()).nullable().optional(),
+    recurStartTime: z.string().nullable().optional(),
+    recurEndTime: z.string().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
@@ -227,6 +239,9 @@ async function fetchSchedules(productIds: string[]): Promise<Map<string, AdminDe
       dealProductId: dealSchedules.deal_product_id,
       startsAt: dealSchedules.starts_at,
       endsAt: dealSchedules.ends_at,
+      recurDays: dealSchedules.recur_days,
+      recurStartTime: dealSchedules.recur_start_time,
+      recurEndTime: dealSchedules.recur_end_time,
     })
     .from(dealSchedules)
     .where(inArray(dealSchedules.deal_product_id, productIds));
@@ -234,10 +249,27 @@ async function fetchSchedules(productIds: string[]): Promise<Map<string, AdminDe
   const byDeal = new Map<string, AdminDealWindow>();
   for (const row of rows) {
     if (!byDeal.has(row.dealProductId)) {
-      byDeal.set(row.dealProductId, { startsAt: row.startsAt, endsAt: row.endsAt });
+      byDeal.set(row.dealProductId, {
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        recurDays: row.recurDays,
+        recurStartTime: row.recurStartTime,
+        recurEndTime: row.recurEndTime,
+      });
     }
   }
   return byDeal;
+}
+
+/** Is every field of a window empty? Then "always live" is expressed as ZERO rows. */
+function isEmptyWindow(window: AdminDealWindow): boolean {
+  return (
+    window.startsAt === null &&
+    window.endsAt === null &&
+    window.recurDays === null &&
+    window.recurStartTime === null &&
+    window.recurEndTime === null
+  );
 }
 
 /**
@@ -251,8 +283,16 @@ async function fetchSchedules(productIds: string[]): Promise<Map<string, AdminDe
  * target to conflict on). Delete-then-insert inside the caller's transaction gives
  * the same single-row guarantee with no schema commitment.
  *
- * Both bounds null → the row is deleted and none is written: "always live" is
- * expressed as ZERO rows, never as an all-null row.
+ * EVERY field null → the row is deleted and none is written: "always live" is
+ * expressed as ZERO rows, never as an all-null row. Phase 2 widened this emptiness
+ * test to cover the recurrence columns too — checking only the absolute bounds would
+ * delete a recurring row that deliberately has open-ended bounds ("every Friday
+ * 2–5pm, forever"), which is a perfectly legal shape.
+ *
+ * Still SINGLE-ROW replace-only (Execute-Agent Instruction E3): Phase 2 does not add
+ * a multi-row/repeatable admin write path, even though the table shape and
+ * `isDealScheduleLive`'s union logic support one. That authoring flow is a future
+ * phase.
  */
 async function writeDealSchedule(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -260,11 +300,14 @@ async function writeDealSchedule(
   window: AdminDealWindow,
 ): Promise<void> {
   await tx.delete(dealSchedules).where(eq(dealSchedules.deal_product_id, dealProductId));
-  if (window.startsAt === null && window.endsAt === null) return;
+  if (isEmptyWindow(window)) return;
   await tx.insert(dealSchedules).values({
     deal_product_id: dealProductId,
     starts_at: window.startsAt,
     ends_at: window.endsAt,
+    recur_days: window.recurDays,
+    recur_start_time: window.recurStartTime,
+    recur_end_time: window.recurEndTime,
   });
 }
 
@@ -418,7 +461,21 @@ adminDealsRouter.post('/', async (req, res) => {
       res.status(400).json({ error: windowError });
       return;
     }
-    const window: AdminDealWindow = { startsAt: d.startsAt ?? null, endsAt: d.endsAt ?? null };
+    // DEAL-005 Phase 2 — same posture for the recurrence triple: rejected BEFORE any
+    // write, by the same shared validator the update path uses, so create and update
+    // can never disagree about which shapes are legal.
+    const recurrenceError = validateRecurrence(d.recurDays, d.recurStartTime, d.recurEndTime);
+    if (recurrenceError) {
+      res.status(400).json({ error: recurrenceError });
+      return;
+    }
+    const window: AdminDealWindow = {
+      startsAt: d.startsAt ?? null,
+      endsAt: d.endsAt ?? null,
+      recurDays: d.recurDays ?? null,
+      recurStartTime: d.recurStartTime ?? null,
+      recurEndTime: d.recurEndTime ?? null,
+    };
 
     const categoryId = await resolveDealsCategoryId();
 
@@ -552,7 +609,14 @@ adminDealsRouter.patch('/:id', async (req, res) => {
     // DEAL-005 — a window key is only touched when the caller sent it. Omitting a
     // bound LEAVES it as stored; sending `null` clears it. Both cleared → the row is
     // deleted and the deal returns to always-live.
-    const touchesWindow = d.startsAt !== undefined || d.endsAt !== undefined;
+    // Phase 2 widens this to the recurrence keys too: a PATCH that only flips the
+    // recurrence must still reach the write path.
+    const touchesWindow =
+      d.startsAt !== undefined ||
+      d.endsAt !== undefined ||
+      d.recurDays !== undefined ||
+      d.recurStartTime !== undefined ||
+      d.recurEndTime !== undefined;
 
     const { updated, window } = await db.transaction(async (tx) => {
       let row;
@@ -579,25 +643,48 @@ adminDealsRouter.patch('/:id', async (req, res) => {
       // `startsAt` from silently creating a `startsAt >= endsAt` window against an
       // already-stored `endsAt` — the same merged-state rule `offers.ts` applies.
       const [existing] = await tx
-        .select({ startsAt: dealSchedules.starts_at, endsAt: dealSchedules.ends_at })
+        .select({
+          startsAt: dealSchedules.starts_at,
+          endsAt: dealSchedules.ends_at,
+          recurDays: dealSchedules.recur_days,
+          recurStartTime: dealSchedules.recur_start_time,
+          recurEndTime: dealSchedules.recur_end_time,
+        })
         .from(dealSchedules)
         .where(eq(dealSchedules.deal_product_id, id));
 
       const current: AdminDealWindow = {
         startsAt: existing?.startsAt ?? null,
         endsAt: existing?.endsAt ?? null,
+        recurDays: existing?.recurDays ?? null,
+        recurStartTime: existing?.recurStartTime ?? null,
+        recurEndTime: existing?.recurEndTime ?? null,
       };
       if (!touchesWindow) return { updated: row, window: current };
 
       const merged: AdminDealWindow = {
         startsAt: d.startsAt === undefined ? current.startsAt : d.startsAt,
         endsAt: d.endsAt === undefined ? current.endsAt : d.endsAt,
+        recurDays: d.recurDays === undefined ? current.recurDays : d.recurDays,
+        recurStartTime: d.recurStartTime === undefined ? current.recurStartTime : d.recurStartTime,
+        recurEndTime: d.recurEndTime === undefined ? current.recurEndTime : d.recurEndTime,
       };
       const windowError = validateWindow(merged.startsAt, merged.endsAt);
       if (windowError) {
         // Throws inside the transaction, so the product update rolls back too — a
         // rejected window never half-applies an unrelated name/price edit.
         throw new AdminApiError(400, windowError);
+      }
+      // Validated on the MERGED state, exactly like the bounds above: a PATCH sending
+      // only `recurStartTime` must not be able to create an overnight span against an
+      // already-stored `recurEndTime`, nor leave a half-specified triple behind.
+      const recurrenceError = validateRecurrence(
+        merged.recurDays,
+        merged.recurStartTime,
+        merged.recurEndTime,
+      );
+      if (recurrenceError) {
+        throw new AdminApiError(400, recurrenceError);
       }
 
       await writeDealSchedule(tx, id, merged);
