@@ -1,0 +1,4 @@
+cycle	date	step	gate	gaps_count	notes
+0	2026-07-20	V1-V4-baseline	CONDITIONAL	3	First-pass validate: 1 FAIL (unlisted 3rd consumer use-deal-usage.ts) + 2 CONCERN (public-contracts claim wrong; stale test mock)
+1	2026-07-20	supplement-cycle-1	SUPPLEMENT_APPLIED	3	3/3 gaps resolved (deal-usage 3rd consumer added, public-contracts corrected, stale dark-mode test mock update queued); validator clean; re-validating from V1
+2	2026-07-20	V1-V7-revalidate	PASS	0	HALTED_SUCCESS — validate-contract written, generated-by: outer-pvl
