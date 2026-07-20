@@ -75,7 +75,7 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
   // order → tracking with orderId params
   const order = buildOrderNotification('O1', 'ready')!;
   expect(resolveRoute(order)).toEqual({
-    pathname: '/(tabs)/tracking/[orderId]',
+    pathname: '/(tabs)/tracking',
     params: { orderId: 'O1' },
   });
   // deal → deal details with dealId params
