@@ -2,7 +2,6 @@ import type { Order } from '@jojopotato/types';
 import { reconcileReorder } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
 
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
@@ -16,15 +15,27 @@ import { queryClient } from '@/lib/query-client';
  * availability via `getMenu` — never the historical `unitPriceCents`) and pushed
  * into the real cart; now-unavailable lines are surfaced out-of-band through
  * `useReorderConflicts()` (DECISION 5) so the locked `Cart` contract stays clean.
+ *
+ * Failure is exposed as `error` DATA rather than the hook reaching for React
+ * Native's `Alert` API itself: presentation is the consumer screen's decision,
+ * not a hook's. `history.tsx` is the only consumer and renders it as a Toast.
  */
-export function useReorder(): { reorder: (order: Order) => Promise<void>; isReordering: boolean } {
+export function useReorder(): {
+  reorder: (order: Order) => Promise<void>;
+  isReordering: boolean;
+  error: string | null;
+} {
   const { addItem, setBranch, clearCart } = useCart();
   const { setConflicts, clearConflicts } = useReorderConflicts();
   const [isReordering, setIsReordering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const reorder = useCallback(
     async (order: Order) => {
       setIsReordering(true);
+      // Drop any stale failure from a previous attempt, so the user never sees
+      // an old error next to a fresh, in-flight reorder.
+      setError(null);
       try {
         // Fresh cart for the order's branch. `setBranch` no-ops (and does NOT
         // clear) when the id is unchanged, so `clearCart()` guarantees a clean
@@ -46,10 +57,7 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
 
         router.push('/(tabs)/order/cart');
       } catch {
-        Alert.alert(
-          "Couldn't reorder",
-          'We were unable to load the latest menu for this order. Please try again.',
-        );
+        setError('We were unable to load the latest menu for this order. Please try again.');
       } finally {
         setIsReordering(false);
       }
@@ -57,5 +65,5 @@ export function useReorder(): { reorder: (order: Order) => Promise<void>; isReor
     [addItem, setBranch, clearCart, setConflicts, clearConflicts],
   );
 
-  return { reorder, isReordering };
+  return { reorder, isReordering, error };
 }

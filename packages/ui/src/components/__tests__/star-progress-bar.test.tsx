@@ -11,13 +11,13 @@ function fillPercent(fill: { props: Record<string, unknown> }): number {
 }
 
 test('renders StarProgressBar without throwing', async () => {
-  await render(<StarProgressBar progress={MOCK_PROGRESS} />);
+  await render(<StarProgressBar mode="light" progress={MOCK_PROGRESS} />);
 });
 
 // AC1 — 3/5 renders a partial (60%) bar with a "stars to your reward" caption.
 test('AC1: 3/5 progress renders a 60% bar and a stars-remaining caption', async () => {
   const { getByTestId, getByText } = await render(
-    <StarProgressBar progress={{ currentStars: 3, requiredStars: 5 }} />,
+    <StarProgressBar mode="light" progress={{ currentStars: 3, requiredStars: 5 }} />,
   );
   expect(fillPercent(getByTestId('star-progress-fill'))).toBe(60);
   expect(getByText('2 stars to your reward')).toBeTruthy();
@@ -26,10 +26,12 @@ test('AC1: 3/5 progress renders a 60% bar and a stars-remaining caption', async 
 // AC1 — 3/5 (60%) is distinct from 5/5 (100%).
 test('AC1: 3/5 fill width is distinct from 5/5 fill width', async () => {
   const partial = await render(
-    <StarProgressBar progress={{ currentStars: 3, requiredStars: 5 }} />,
+    <StarProgressBar mode="light" progress={{ currentStars: 3, requiredStars: 5 }} />,
   );
   const partialPct = fillPercent(partial.getByTestId('star-progress-fill'));
-  const full = await render(<StarProgressBar progress={{ currentStars: 5, requiredStars: 5 }} />);
+  const full = await render(
+    <StarProgressBar mode="light" progress={{ currentStars: 5, requiredStars: 5 }} />,
+  );
   const fullPct = fillPercent(full.getByTestId('star-progress-fill'));
   expect(partialPct).not.toBe(fullPct);
 });
@@ -37,7 +39,7 @@ test('AC1: 3/5 fill width is distinct from 5/5 fill width', async () => {
 // AC2 — reaching the threshold flips to a full bar + "Reward unlocked" caption.
 test('AC2: 5/5 progress renders a 100% bar and an unlocked caption', async () => {
   const { getByTestId, getByText } = await render(
-    <StarProgressBar progress={{ currentStars: 5, requiredStars: 5 }} />,
+    <StarProgressBar mode="light" progress={{ currentStars: 5, requiredStars: 5 }} />,
   );
   expect(fillPercent(getByTestId('star-progress-fill'))).toBe(100);
   expect(getByText('Reward unlocked')).toBeTruthy();
@@ -46,7 +48,7 @@ test('AC2: 5/5 progress renders a 100% bar and an unlocked caption', async () =>
 // AC2 — over-threshold (6/5) clamps to 100% and stays unlocked.
 test('AC2: 6/5 progress clamps the fill to 100% and stays unlocked', async () => {
   const { getByTestId, getByText } = await render(
-    <StarProgressBar progress={{ currentStars: 6, requiredStars: 5 }} />,
+    <StarProgressBar mode="light" progress={{ currentStars: 6, requiredStars: 5 }} />,
   );
   expect(fillPercent(getByTestId('star-progress-fill'))).toBe(100);
   expect(getByText('Reward unlocked')).toBeTruthy();
@@ -55,7 +57,7 @@ test('AC2: 6/5 progress clamps the fill to 100% and stays unlocked', async () =>
 // Edge — singular "1 star" caption at 4/5.
 test('caption is singular ("1 star") when exactly one star remains', async () => {
   const { getByText } = await render(
-    <StarProgressBar progress={{ currentStars: 4, requiredStars: 5 }} />,
+    <StarProgressBar mode="light" progress={{ currentStars: 4, requiredStars: 5 }} />,
   );
   expect(getByText('1 star to your reward')).toBeTruthy();
 });

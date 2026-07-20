@@ -151,7 +151,12 @@ export default function OrderTrackingScreen() {
           {showEta && <EtaCard iso={order.estimatedReadyAt!} />}
 
           <View style={styles.timelineCard}>
-            <OrderStatusTimeline currentStatus={order.status} liveMode={live} />
+            {/* `styles.timelineCard` hardcodes a cream (light) surface, so the timeline
+                inside it is pinned to `mode="light"` — its text must read the same
+                mode's tokens as the surface it sits on (CLAUDE.md §Theming). Threading
+                the device scheme here would paint light-mode text on a cream card in
+                dark mode. The fixed-cream surface itself is a separate design question. */}
+            <OrderStatusTimeline currentStatus={order.status} liveMode={live} mode="light" />
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -249,12 +254,12 @@ const badge = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 999,
-    backgroundColor: '#1a9a4a',
+    backgroundColor: Palette.green,
   },
   text: {
     fontFamily: FontFamily.body.bold,
     fontSize: 11,
-    color: '#1a9a4a',
+    color: Palette.green,
     letterSpacing: 0.8,
   },
 });

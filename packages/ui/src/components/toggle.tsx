@@ -8,7 +8,7 @@ export interface ToggleProps {
   /** Optional label rendered beside the switch. */
   label?: string;
   disabled?: boolean;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -22,7 +22,7 @@ export function Toggle({
   onValueChange,
   label,
   disabled = false,
-  mode = 'light',
+  mode,
   style,
 }: ToggleProps) {
   const theme = Colors[mode];

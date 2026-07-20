@@ -4,5 +4,5 @@ import { CouponCard } from '../coupon-card';
 import { MOCK_COUPON } from './mocks';
 
 test('renders CouponCard without throwing', () => {
-  render(<CouponCard coupon={MOCK_COUPON} />);
+  render(<CouponCard mode="light" coupon={MOCK_COUPON} />);
 });

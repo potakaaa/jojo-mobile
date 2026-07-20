@@ -12,7 +12,7 @@ export interface EmptyStateProps {
   /** Optional CTA — renders a `<Button>` when both label and handler are set. */
   actionLabel?: string;
   onAction?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -27,7 +27,7 @@ export function EmptyState({
   description,
   actionLabel,
   onAction,
-  mode = 'light',
+  mode,
   style,
 }: EmptyStateProps) {
   const theme = Colors[mode];

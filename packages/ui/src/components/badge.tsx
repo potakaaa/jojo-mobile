@@ -7,7 +7,7 @@ export type BadgeVariant = 'default' | 'success' | 'warning' | 'danger';
 export interface BadgeProps {
   label: string;
   variant?: BadgeVariant;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -29,7 +29,7 @@ const VARIANT_LABEL_COLOR: Record<BadgeVariant, string> = {
  * Small pill label. Full-radius, themed ink border, variant-driven background
  * and label color.
  */
-export function Badge({ label, variant = 'default', mode = 'light', style }: BadgeProps) {
+export function Badge({ label, variant = 'default', mode, style }: BadgeProps) {
   const theme = Colors[mode];
 
   return (

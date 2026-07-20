@@ -21,7 +21,7 @@ export interface AddOnSelectorProps {
   /** Ids of the currently-selected add-ons (multi-select). */
   selectedIds: string[];
   onToggle?: (id: string) => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -31,13 +31,7 @@ export interface AddOnSelectorProps {
  * fully controlled via `selectedIds` (no internal state), matching the package's
  * no-context/no-hook convention.
  */
-export function AddOnSelector({
-  options,
-  selectedIds,
-  onToggle,
-  mode = 'light',
-  style,
-}: AddOnSelectorProps) {
+export function AddOnSelector({ options, selectedIds, onToggle, mode, style }: AddOnSelectorProps) {
   const theme = Colors[mode];
 
   return (

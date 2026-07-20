@@ -19,7 +19,7 @@ export interface ProductCardProps {
   product: MenuItem;
   imageSource?: ImageSourcePropType;
   onPress?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
 }
 
 /**
@@ -28,7 +28,7 @@ export interface ProductCardProps {
  * description, price, and an "Add" affordance. Tapping toggles a local
  * pressed highlight — it does not navigate or add to a cart yet.
  */
-export function ProductCard({ product, imageSource, onPress, mode = 'light' }: ProductCardProps) {
+export function ProductCard({ product, imageSource, onPress, mode }: ProductCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
 

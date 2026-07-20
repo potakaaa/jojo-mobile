@@ -1,17 +1,18 @@
 import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from '@jojopotato/types';
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
-import { ConfirmDialog, ScreenHeader } from '@jojopotato/ui';
+import { ConfirmDialog, ScreenHeader, Toast } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
-import { AddToCartBar } from '@/features/menu/components/add-to-cart-bar';
+import { AddToCartBar, getAddToCartBarHeight } from '@/features/menu/components/add-to-cart-bar';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -26,13 +27,17 @@ export default function ProductDetailsScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+  // Needed for the Toast's clearance: the add-to-cart bar's own paddingBottom is
+  // the floating-tab-bar clearance on iOS/Android, which is insets-dependent.
+  const insets = useSafeAreaInsets();
   const { productId } = useLocalSearchParams<{ productId: string }>();
   const { data: product, isLoading, isError } = useProductDetails(productId);
   const { cart, addItem, setBranch, clearCart } = useCart();
   const { selectedBranch } = useBranch();
 
+  const { toast, showToast, hideToast } = useToast();
+
   const [selection, setSelection] = useState<SelectionState>({});
-  const [addedNotice, setAddedNotice] = useState(false);
   const [pendingSwitch, setPendingSwitch] = useState<{
     menuItem: MenuItem;
     opts: CartItemOption[];
@@ -84,7 +89,6 @@ export default function ProductDetailsScreen() {
   }, [product, requiredTypes, selection]);
 
   const handleChange = (type: ProductOptionType, optionId: string) => {
-    setAddedNotice(false);
     setSelection((prev) => {
       if (type === 'add_on') {
         const current = prev.add_on ?? [];
@@ -101,7 +105,7 @@ export default function ProductDetailsScreen() {
   const handleAdd = () => {
     if (!product) return;
     if (!selectedBranch) {
-      Alert.alert('No branch selected', 'Please select a pickup branch before adding items.');
+      showToast('Please select a pickup branch before adding items.', 'error');
       return;
     }
 
@@ -125,7 +129,7 @@ export default function ProductDetailsScreen() {
       setBranch(selectedBranch.id);
     }
     addItem(menuItem, opts);
-    setAddedNotice(true);
+    showToast('Added to cart', 'success');
   };
 
   const confirmBranchSwitch = () => {
@@ -135,7 +139,7 @@ export default function ProductDetailsScreen() {
     clearCart();
     setBranch(selectedBranch.id);
     addItem(pending.menuItem, pending.opts);
-    setAddedNotice(true);
+    showToast('Added to cart', 'success');
   };
 
   /*
@@ -222,10 +226,6 @@ export default function ProductDetailsScreen() {
               onChange={(optionId) => handleChange(group.type, optionId)}
             />
           ))}
-
-          {addedNotice ? (
-            <Text style={[styles.addedNotice, { color: theme.accent }]}>Added to cart ✓</Text>
-          ) : null}
         </ScrollView>
       </SafeAreaView>
 
@@ -246,6 +246,15 @@ export default function ProductDetailsScreen() {
         mode={mode}
         onConfirm={confirmBranchSwitch}
         onCancel={() => setPendingSwitch(null)}
+      />
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={getAddToCartBarHeight(insets.bottom) + Spacing.two}
+        onDismiss={hideToast}
       />
     </View>
   );
@@ -302,9 +311,5 @@ const styles = StyleSheet.create({
   basePrice: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
-  },
-  addedNotice: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
   },
 });
