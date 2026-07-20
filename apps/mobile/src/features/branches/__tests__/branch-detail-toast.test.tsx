@@ -3,7 +3,7 @@ import { Spacing } from '@jojopotato/ui';
 import { fireEvent, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
-import BranchDetailsScreen from '@/app/(tabs)/branches/[branchId]';
+import BranchDetailsScreen from '@/app/(tabs)/branch/[branchId]';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { apiFetch } from '@/lib/api-fetch';
 import { renderWithProviders, toastOverlayBottom } from '@/test-utils/render';
@@ -18,6 +18,10 @@ jest.mock('@/hooks/use-user-location', () => ({
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ branchId: 'b1' }),
   router: { back: jest.fn(), push: jest.fn() },
+  // NAV-005 added useHideTabBarWhile(useIsFocused()) to this screen; stubbed
+  // true for the same reason as the global mock in jest-setup.ts (no real
+  // navigation container in jsdom).
+  useIsFocused: () => true,
 }));
 
 const mockApiFetch = jest.mocked(apiFetch);

@@ -10,8 +10,8 @@
  *    hand-rolled no-op stub of the APIs actually used (`floating-tab-bar.tsx`
  *    imports reanimated at module scope, and every tab-root screen transitively
  *    imports `getFloatingTabBarClearance` from it) is required and proven working.
- * 2. `expo-router` — a lightweight stub so `router.push`/`useRouter` resolve
- *    without a real navigation container in jsdom.
+ * 2. `expo-router` — a lightweight stub so `router.push`/`useRouter`/
+ *    `useIsFocused` resolve without a real navigation container in jsdom.
  */
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -68,6 +68,14 @@ jest.mock('expo-router', () => {
     useRouter: () => router,
     useLocalSearchParams: () => ({}),
     usePathname: () => '/',
+    // Every top-level screen moved out of a tab's stack by NAV-005 calls
+    // `useHideTabBarWhile(useIsFocused())` to keep the floating tab bar hidden
+    // (a top-level route at its own stack root makes `isNestedTabRoute()` false,
+    // so the bar would otherwise paint on it). There is no real navigation
+    // container in jsdom, so `useIsFocused` is stubbed `true`: a screen being
+    // rendered by a test IS the focused screen, which is also the branch that
+    // exercises the hide path.
+    useIsFocused: () => true,
     Link: Passthrough,
     Stack: StackLike,
     Tabs: StackLike,

@@ -3,7 +3,7 @@ import type { PickupBranch } from '@jojopotato/types';
 import { Colors } from '@jojopotato/ui';
 import { StyleSheet } from 'react-native';
 
-import CartScreen from '@/app/(tabs)/order/cart';
+import CartScreen from '@/app/(tabs)/cart/index';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';

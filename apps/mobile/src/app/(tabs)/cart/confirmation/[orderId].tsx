@@ -6,10 +6,11 @@ import {
   PAYMENT_METHOD_LABELS,
   ScreenHeader,
 } from '@jojopotato/ui';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useOrder } from '@/features/orders/hooks/use-order';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
@@ -39,6 +40,19 @@ export default function OrderConfirmationScreen() {
   const { data: order, loading, error, refetch } = useOrder(orderId);
   const { branches } = useBranch();
   const navigateToOrderTracking = useNavigateToOrderTracking();
+
+  /*
+    Hide the floating tab bar on this screen — it lives in a top-level stack now
+    (NAV-005), so `isNestedTabRoute()` is false and the bar would otherwise paint
+    here. Gated on FOCUS, not just mount: the screen stays mounted in the Tabs
+    navigator after the user navigates away (e.g. tapping "Track your order"
+    pushes into another top-level stack), and an always-true flag would leave the
+    bar hidden on the destination. See ../index.tsx for the full note.
+
+    Placed ABOVE the loading / error early returns below: hooks must run in the
+    same order on every render, so it cannot sit after a conditional return.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   if (loading) {
     return (

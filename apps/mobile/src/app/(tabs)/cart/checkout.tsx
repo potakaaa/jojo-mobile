@@ -13,7 +13,7 @@ import {
   ScreenHeader,
 } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated as RNAnimated,
@@ -153,7 +153,7 @@ export default function CheckoutScreen() {
       void queryClient.invalidateQueries({ queryKey: ['coupons'] });
       void queryClient.invalidateQueries({ queryKey: ['rewards'] });
       router.replace({
-        pathname: '/(tabs)/order/confirmation/[orderId]',
+        pathname: '/(tabs)/cart/confirmation/[orderId]',
         params: { orderId: order.id },
       });
     }
@@ -167,8 +167,27 @@ export default function CheckoutScreen() {
   // timer, and the order never fires.
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  // Hide the floating tab bar while the confirm drawer is open so it doesn't cover the drawer.
-  useHideTabBarWhile(countdown !== null);
+  /*
+    Hide the floating tab bar on this screen. This REPLACED an earlier
+    countdown-gated call, which hid the bar only while the confirm drawer was open
+    (NAV-005). Two reasons it is a replacement, never an addition:
+
+      1. The hook writes a SINGLE module-level boolean (see floating-tab-bar.tsx).
+         Two calls in one component race each other on effect + cleanup — whichever
+         runs last wins, and either one's cleanup clears the flag for both. Exactly
+         ONE call per component is the contract.
+      2. This condition is strictly STRONGER than the one it replaces:
+         hidden-while-focused ⊇ hidden-while-countdown. The drawer is only ever open
+         while this screen is focused, so the drawer stays covered as before — the
+         bar is now simply hidden for the whole screen, which it must be: checkout
+         is now the child of a top-level stack (NAV-005), so `isNestedTabRoute()` is
+         false and the bar would otherwise paint here.
+
+    Gated on FOCUS, not just mount: this screen stays mounted in the Tabs navigator
+    after the user navigates away, and an always-true flag would leave the bar
+    hidden on the destination. Losing focus restores it; unmount also restores.
+  */
+  useHideTabBarWhile(useIsFocused());
 
   // Keep the latest submit in a ref so the ticking effect can depend only on
   // `countdown` (submitOrder is re-created every render).
@@ -278,9 +297,10 @@ export default function CheckoutScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/*
-        NESTED screen — see cart.tsx for the full note.
+        The floating tab bar is hidden here via useHideTabBarWhile(useIsFocused())
+        above — see ./index.tsx for the full note.
 
-        TOP edge only (NAV-003): this stack now runs `headerShown:false`, so the
+        TOP edge only (NAV-003): this stack runs `headerShown:false`, so the
         top inset is ours to supply. 'bottom' is deliberately GONE, resolving the
         double-count NAV-001's EXECUTE report flagged — the device bottom inset
         now arrives exactly ONCE, via the resolveTabBarClearance(true, …) calls
@@ -296,10 +316,13 @@ export default function CheckoutScreen() {
           contentContainerStyle={[
             styles.content,
             Platform.OS !== 'web' && {
-              // isNested hardcoded true: checkout.tsx is always pushed inside the Order
-              // tab's Stack — never that tab's root — so isNestedTabRoute() would also
-              // evaluate true here; hardcoded per INNOVATE's static-per-screen-fact
-              // decision (see PLAN "Locked Inputs"). If this file moves, this literal changes.
+              // `true` selects the no-footprint branch: the floating bar is HIDDEN on this
+              // screen (via useHideTabBarWhile above), so reserving its ~85dp footprint
+              // would be dead space. NOTE: the helper's param is named `isNested` and this
+              // screen now lives in a top-level stack, not a tab's (NAV-005) — what the
+              // branch actually selects is "bar not rendered here", which is true either
+              // way. The name is not renamed on purpose: the helper is shared with other
+              // call sites and a unit test (NAV-001 owns it).
               paddingBottom:
                 resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) +
                 Spacing.six +
@@ -367,7 +390,7 @@ export default function CheckoutScreen() {
                 variant="outline"
                 size="sm"
                 mode={mode}
-                onPress={() => router.push('/(tabs)/order/payment-method')}
+                onPress={() => router.push('/(tabs)/cart/payment-method')}
               />
             </View>
             <Text style={[styles.paymentNote, { color: theme.textSecondary }]}>
@@ -385,12 +408,12 @@ export default function CheckoutScreen() {
             style={[
               styles.footer,
               Platform.OS !== 'web' && {
-                // isNested hardcoded true — same structural invariant as the scroll
-                // content above (checkout.tsx is always a pushed screen in Order's Stack).
+                // `true` — same rationale as the scroll content above: the bar is hidden
+                // here via useHideTabBarWhile, so its footprint is dropped.
                 //
                 // `+ Spacing.two` restores styles.footer's own paddingBottom, which this
                 // override would otherwise wipe — leaving the "Place order" button flush
-                // against the home indicator. Mirrors cart.tsx's checkout bar, whose
+                // against the home indicator. Mirrors ./index.tsx's checkout bar, whose
                 // footer stylesheet is identical.
                 paddingBottom:
                   resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.two,

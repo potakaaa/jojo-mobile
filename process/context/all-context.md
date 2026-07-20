@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, EVL-confirmed green; **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-17 (MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -465,9 +465,16 @@ top of it later without re-plumbing the project.
   `junction-chip-editor.tsx`/`deactivate-deal-dialog.tsx`, added a quantity-aware component chip
   editor) reusing all 5 existing shared composites (data-table, form-dialog, confirm-dialog,
   query-states, page-header) — no new composite needed. Public `GET /deals`/`GET /deals/:id` (the old
-  discount-model read routes) are left dormant and untouched — the mobile Deals tab keeps reading them
-  in the interim, a documented, non-regressing known gap, until a separate mobile workstream executes
-  the standalone handoff spec `deals-mobile-repoint_HANDOFF_15-07-26.md`. 28-test
+  discount-model read routes) were left dormant at the time this bullet was first written — **that
+  gap is now CLOSED.** The `kid-friendly-ui-deals-unification_16-07-26` program's Phase B executed
+  the repoint: `apps/mobile/src/features/deals/hooks/use-deal-products.ts` (`useDealProducts()`/
+  `useDealProduct()`) now backs BOTH the Deals **TAB** (`(tabs)/deals/index.tsx` +
+  `deals/deal/[dealId].tsx`) AND the **Home-tab deals strip** (`(tabs)/index.tsx`) via
+  `getMenu(branchId, {isDeal:true})` — the SAME `GET /branches/:id/menu` route the regular catalog
+  uses, not `GET /deals`. **`use-deals.ts`/`use-deal.ts` are still live but now consumed ONLY by the
+  cart screen's coupon/discount-code display** (`(tabs)/cart/index.tsx`, verified live 17-07-26) —
+  that is the sole remaining `GET /deals`/`GET /deals/:id` consumer, a much narrower residual gap
+  than the previous "the mobile Deals tab keeps reading them" framing implied. 28-test
   `admin-deals.integration.test.ts` (AC1-AC11) replaced the old 31-test discount suite at the same
   path; full API suite 211/211, 0 regressions.
   **Enhancement E1 (2-step create wizard + atomic create-with-components, delivered 15-07-26, commit
@@ -986,6 +993,59 @@ top of it later without re-plumbing the project.
   **Deferred/out of scope (by design, unchanged):** coupons entirely (no `/coupons`, no `code`
   column, no Coupon Wallet); real pricing for the 4 complex deal types (shown/evaluated, not
   cart-applicable); star/rewards accrual; live payment processing.
+- **Deal branch-availability + reorder fix (MENU-003, issue #98, `packages/api` + `apps/mobile`,
+  delivered 17-07-26 on `feat/menu-004-category-filter-polish`, CODE-COMPLETE, NOT YET VERIFIED —
+  device walkthrough owed, plan stays in `active/`):** closed a real bug where a deal could be
+  ordered even when a branch could not fulfil it. New shared
+  `packages/api/src/routes/lib/deal-availability.ts` (`resolveAvailableDealProductIds`) is used by
+  BOTH the read path (`branches.ts` menu listing) and the write path (`orders.ts` placement), so
+  list and placement can never disagree. A deal-product now lists at a branch only if it has ≥1
+  component AND every component is available (`branch_product_availability.is_available = true`)
+  and active — **zero-component deals are hidden everywhere** (locked product decision).
+  `POST /orders` now rejects placing a deal whose components are unavailable, proven by a real
+  automated test verified non-vacuous (disable-a-component-and-fail). Reorder
+  (`apps/mobile/src/features/orders/hooks/use-reorder.ts`) previously fetched ONLY the regular menu,
+  which structurally excludes every deal — so historical deal lines were ALWAYS flagged
+  unavailable on reorder, a real (if narrow) bug fixed by also fetching `?isDeal=true` and merging
+  categories. The dev seed (`packages/api/src/db/seed/{data,seed}.ts`) previously had ZERO
+  `is_deal` seed data (only the legacy `offers` discount-model rows) — this is why the bug went
+  unnoticed; two seed deals with non-overlapping components were added, wired ahead of the existing
+  branch-availability seed loop so they inherit real `branch_product_availability` rows. Gates: API
+  460/460, `packages/utils` 39/39, 3 typechecks clean — all independently reproduced by vc-tester.
+  PVL was first-pass CONDITIONAL (3 CONCERNs incl. one real chronologically-impossible checklist
+  step) → 1 supplement cycle → PASS. **Known gap filed (not a regression):** the admin UI has no
+  indicator when a deal is invisible to customers because a component went unavailable, or because
+  it has zero components — see
+  `process/features/admin-dashboard/backlog/menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md`
+  (corrected 17-07-26 — an earlier draft overstated the zero-component risk; the admin create
+  wizard is actually double-guarded against saving with zero items, so that state is reachable only
+  via a raw API call, not through normal admin UI use). **Owed before archival:** AC10 device
+  walkthrough (toggle a component off in staff, confirm only the dependent deal vanishes at that
+  branch) and a production zero-component-deals pre-flight count (no production DB target found in
+  this repo as of this pass). Delivered by:
+  `process/features/ordering-cart/active/menu-003-branch-availability_17-07-26/`.
+- **Home category filter wired to product grid (MENU-004, issue #103, `apps/mobile`, delivered
+  17-07-26 on the same branch, CODE-COMPLETE, NOT YET VERIFIED — device walkthrough owed, plan
+  stays in `active/`):** the Home tab's category chip selector previously rendered chips and
+  filtered nothing — purely decorative. Selection state was lifted from
+  `category-selector.tsx` (props widened to `selectedId`/`onSelect`, local state removed) to
+  `(tabs)/index.tsx`; the product grid now filters through a new PURE
+  `apps/mobile/src/features/home/lib/filter-products-by-category.ts` (TDD-first, 8 real tests,
+  proven non-vacuous — breaking the filter to a passthrough turns 4/8 red). Empty-category state
+  reuses the existing shared `EmptyState` from `packages/ui`, gated to fire only for a genuine
+  zero-match category (after the pre-existing empty-branch-menu check, not before). **Deliberate
+  SPEC divergence from issue #103's literal AC4 wording:** switching branches now CLEARS the active
+  category filter rather than re-applying it — a locked user decision, to avoid stranding the
+  customer on an empty state for a category the new branch may not have. Three of the issue's ACs
+  were already satisfied before this plan started (Home was already branch-scoped, category ids
+  already aligned 1:1 with the regular menu, and NAV-001 had already fixed add-to-cart-bar
+  clearance) — the SPEC explicitly declined to manufacture extra polish scope once research
+  confirmed theming/pricing/gating/the component library/the empty-state pattern were all already
+  correct. Gates: mobile vitest 51/51 (+8), mobile jest 27/27, `packages/utils` 39/39, typecheck
+  clean — all independently reproduced by vc-tester. **Owed before archival:** 5 Agent-Probe ACs
+  (chip-tap filters grid, empty state renders, branch-switch reset, light/dark on Order + Product
+  Details) — same app session can cover both this and MENU-003's AC10. Delivered by:
+  `process/features/ordering-cart/active/menu-004-category-filter-polish_17-07-26/`.
 - **Staff order status actions (STAFF-003, 14-07-26):** a `PATCH` state-machine endpoint for staff
   to transition order status (valid transitions only, illegal/terminal → 409, branch-isolated → 403,
   atomic compare-and-swap to avoid a race on concurrent transitions) plus a Completed Orders screen
@@ -1215,7 +1275,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
-            order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
+            order/                      -- index, checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker) — see "Checkout-flow UI rework" bullet. NOTE (17-07-26, NAV-005, commit f2eed0a): shared screens formerly nested under this tab (product/[productId], cart, tracking/[orderId], history, branch/[branchId]) were MOVED OUT into top-level `(tabs)/{product,cart,tracking,history,branch}/` route groups — `(tabs)/order/product/[productId].tsx` no longer exists, replaced by `(tabs)/product/[productId].tsx`. NAV-001..NAV-005 (tab-bar clearance, notifications route, ScreenHeader rollout, tracking route, this move) are all CODE DONE and committed, but each remains Agent-Probe-UNVERIFIED per its own plan — see `process/general-plans/active/nav-*` for current status.
             branches/                   -- real: index (list), [branchId] (detail + menu)
             rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
@@ -1386,7 +1446,25 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (mobile-dark-mode-audit UPDATE PROCESS — required-`mode`-prop hardening
+- Last delta: 2026-07-17 (MENU-003 + MENU-004 UPDATE PROCESS — doc-only reconciliation, no source
+  changes this pass. Added the missing MENU-003 (deal branch-availability + reorder fix, #98) and
+  MENU-004 (Home category filter wired to product grid, #103) bullets — both CODE-COMPLETE,
+  committed on `feat/menu-004-category-filter-polish`, NEITHER VERIFIED (device walkthroughs
+  owed); both task folders stay in `active/`, not archived. Corrected 2 stale claims:
+  `tests/all-tests.md` said `packages/utils` had no test runner (false — vitest, 39/39, verified
+  live) and `all-context.md` said the mobile Deals tab still read the old `GET /deals`
+  discount-model routes (stale — the `kid-friendly-ui-deals-unification` Phase B repoint already
+  landed; only the cart's coupon display still reads the old routes). Corrected an overstated
+  admin backlog note (`menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md` wrongly claimed
+  zero-component deal creation was the wizard's "natural default" — verified the wizard is
+  actually double-guarded against it; only a raw API call can reach that state). Filed 1 new
+  backlog note: `general-plans/backlog/crlf-line-ending-format-check-drift_NOTE_17-07-26.md`
+  (Windows `core.autocrlf` breaks `pnpm format:check` repo-wide and makes `git status` misleading
+  — observed 3x this session). Recorded the NAV-005 route move
+  (`(tabs)/order/product/[productId].tsx` → `(tabs)/product/[productId].tsx`, commit `f2eed0a`,
+  a separate parallel workstream that landed on this branch mid-session). HEAD this delta:
+  `076403c`.)
+- Previous delta: 2026-07-17 (mobile-dark-mode-audit UPDATE PROCESS — required-`mode`-prop hardening
   across all 27 `packages/ui` components, 3 real dark-mode bugs fixed, StatusBar derivation fixed
   and locked by a feasibility probe, new `guard:theme-mode` CI-adjacent script, real resolved-style
   regression tests; corrected two stale claims — `apps/mobile` typecheck baseline is 0 errors, not
