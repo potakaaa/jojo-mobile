@@ -72,7 +72,7 @@ export interface ResolvedRoute {
 export function resolveRoute(n: AppNotification): ResolvedRoute {
   switch (n.targetScreen) {
     case 'order_tracking':
-      return { pathname: '/(tabs)/tracking/[orderId]', params: n.targetParams };
+      return { pathname: '/(tabs)/tracking', params: n.targetParams };
     case 'deal_details':
       return { pathname: '/(tabs)/deals/deal/[dealId]', params: n.targetParams };
     case 'coupon_wallet':

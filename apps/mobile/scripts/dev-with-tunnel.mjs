@@ -5,7 +5,7 @@ import net from 'node:net';
 const START_PORT = 8081;
 const MAX_PORT_ATTEMPTS = 20;
 const NGROK_API = 'http://127.0.0.1:4040/api/tunnels';
-const NGROK_TIMEOUT_MS = 30_000;
+const NGROK_TIMEOUT_MS = 90_000;
 const NGROK_POLL_MS = 500;
 
 function tryPort(port) {
