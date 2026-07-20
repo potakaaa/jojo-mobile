@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { DateTimeField, localNow } from '@/components/date-time-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -87,6 +88,30 @@ export function OfferForm({
   const [endAt, setEndAt] = useState(initial ? isoToLocal(initial.endAt) : '');
   const [promotionId, setPromotionId] = useState(initial?.promotionId ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
+
+  /**
+   * Pinned at mount, not read per render. A bound recomputed on every keystroke drifts
+   * forward mid-interaction, so a minute chosen at the start of filling the form can
+   * quietly become invalid by the time it is submitted.
+   */
+  const [now] = useState(localNow);
+
+  /**
+   * An offer cannot end before it begins, so `Ends` is bounded by the chosen start and
+   * follows it as it moves. Before a start exists, now is the weaker but still correct
+   * floor.
+   */
+  const endMin = startAt || now;
+
+  /**
+   * Moving `startAt` past an already-chosen `endAt` is surfaced, never auto-corrected.
+   * Clearing `endAt` would throw away a value the admin deliberately picked, and
+   * clamping it would invent one they never chose (silently producing a zero-length
+   * window). Flagging it costs nothing and leaves both fields editable, so whichever
+   * one is actually wrong is the one that gets fixed.
+   */
+  const rangeError =
+    startAt && endAt && endAt <= startAt ? 'End must be after start — adjust one of them.' : null;
 
   /** Switching to a mechanic that carries no product benefit clears the picker. */
   function handleMechanicChange(next: OfferType) {
@@ -275,25 +300,33 @@ export function OfferForm({
       </div>
 
       <div className="flex gap-3">
-        <label className="flex flex-1 flex-col gap-1 text-sm">
-          Starts
-          <Input
-            type="datetime-local"
-            value={startAt}
-            onChange={(e) => setStartAt(e.target.value)}
-            required
-          />
-        </label>
-        <label className="flex flex-1 flex-col gap-1 text-sm">
-          Ends
-          <Input
-            type="datetime-local"
-            value={endAt}
-            onChange={(e) => setEndAt(e.target.value)}
-            required
-          />
-        </label>
+        {/* An offer window runs from the start of its first day to the end of its
+            last, so each side defaults to the boundary an admin almost always wants. */}
+        <DateTimeField
+          className="flex-1"
+          label="Starts"
+          value={startAt}
+          onChange={setStartAt}
+          defaultTime="00:00"
+          min={now}
+          required
+        />
+        <DateTimeField
+          className="flex-1"
+          label="Ends"
+          value={endAt}
+          onChange={setEndAt}
+          defaultTime="23:59"
+          min={endMin}
+          required
+        />
       </div>
+
+      {rangeError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {rangeError}
+        </p>
+      ) : null}
 
       <label className="flex flex-col gap-1 text-sm">
         Promotion (optional)
