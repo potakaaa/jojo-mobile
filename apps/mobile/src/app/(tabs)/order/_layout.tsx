@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
  * (it is framed by the tab bar).
  *
  * THIS TAB NOW OWNS ONLY ITS ROOT (NAV-005). Six screens used to be pushed
- * inside this stack — `product/[productId]`, `cart`, `checkout`,
+ * inside this stack — `product`, `cart`, `checkout`,
  * `payment-method`, `confirmation/[orderId]`, and `history`. Every one of them
  * was reachable from OUTSIDE the Order tab (Home's product cards, Deals' Apply
  * button, Account's Order History link, the reorder hook), and that is precisely

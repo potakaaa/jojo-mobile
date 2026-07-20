@@ -31,9 +31,11 @@ import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
+import { useNavigateToBranch } from '@/features/branches/lib/navigate-to-branch';
 import { filterProductsByCategory } from '@/features/home/lib/filter-products-by-category';
 import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
 import { useMenu } from '@/features/menu/hooks/use-menu';
+import { useNavigateToProduct } from '@/features/menu/lib/navigate-to-product';
 import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { fetchOrderHistory } from '@/features/orders/lib/api-client';
@@ -132,6 +134,8 @@ export default function HomeScreen() {
   // Most-recent non-terminal order (list is newest-first from the API).
   const activeOrder = orders?.find((o) => !isTerminalStatus(o.status)) ?? null;
   const navigateToOrderTracking = useNavigateToOrderTracking();
+  const navigateToProduct = useNavigateToProduct();
+  const navigateToBranch = useNavigateToBranch();
 
   const branchId = selectedBranch?.id;
 
@@ -173,18 +177,12 @@ export default function HomeScreen() {
 
   const openBranch = () => {
     if (!branchId) return;
-    router.push({
-      pathname: '/(tabs)/branch/[branchId]',
-      params: { branchId },
-    });
+    navigateToBranch(branchId);
   };
 
   const openProduct = (productId: string) => {
     if (!branchId) return;
-    router.push({
-      pathname: '/(tabs)/product/[productId]',
-      params: { productId, branchId },
-    });
+    navigateToProduct(productId, branchId);
   };
 
   const openDeal = (dealId: string) => {

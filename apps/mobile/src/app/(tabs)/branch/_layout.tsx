@@ -1,8 +1,8 @@
 import { Stack } from 'expo-router';
 
 /**
- * Branch Details top-level stack. Reached via
- * `router.push('/(tabs)/branch/[branchId]')` — NOT a tab (not registered in any
+ * Branch Details top-level stack. Reached via `useNavigateToBranch()`
+ * (`@/features/branches/lib/navigate-to-branch`) — NOT a tab (not registered in any
  * `_layout.{ios,android,web}.tsx` Tabs list, and hidden from the custom
  * `FloatingTabBar` via its `ICONS` route allowlist, so it renders no tab button
  * and shows no tab as active).
@@ -25,11 +25,19 @@ import { Stack } from 'expo-router';
  * back return to the CALLING tab (Home stays Home) instead of leaving the
  * Branches tab mounted on a screen the user already left.
  *
- * The native header is OFF: `[branchId]` is at position 0 of this stack, so React
- * Navigation renders no back button for it, and a custom control injected into
- * the native `headerLeft` slot cannot be given the right gap or left inset. The
- * screen instead renders the shared `<ScreenHeader>` from `@jojopotato/ui` in its
- * own content and owns its own top safe-area inset (see `./[branchId].tsx`).
+ * The anchor (position 0 of this stack) is the STATIC `index` route, mirroring
+ * `tracking/_layout.tsx`. That static-index anchor is precisely why the push no
+ * longer doubles (NAV-006): a static-index anchor makes the push target resolve
+ * to the `'tab'` navigator, so expo-router downgrades `PUSH`→`NAVIGATE` and no
+ * duplicate anchor is created. (The previous shape anchored on the dynamic
+ * `[branchId]` route, which skipped that downgrade and opened Branch Details
+ * twice when two different branches were opened in sequence.)
+ *
+ * The native header is OFF: the static `index` is at position 0 of this stack, so
+ * React Navigation renders no back button for it, and a custom control injected
+ * into the native `headerLeft` slot cannot be given the right gap or left inset.
+ * The screen instead renders the shared `<ScreenHeader>` from `@jojopotato/ui` in
+ * its own content and owns its own top safe-area inset (see `./index.tsx`).
  */
 export default function BranchStackLayout() {
   return <Stack screenOptions={{ headerShown: false }} />;

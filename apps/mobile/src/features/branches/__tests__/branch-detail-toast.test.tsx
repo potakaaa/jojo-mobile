@@ -3,7 +3,7 @@ import { Spacing } from '@jojopotato/ui';
 import { fireEvent, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
-import BranchDetailsScreen from '@/app/(tabs)/branch/[branchId]';
+import BranchDetailsScreen from '@/app/(tabs)/branch';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { apiFetch } from '@/lib/api-fetch';
 import { renderWithProviders, toastOverlayBottom } from '@/test-utils/render';
