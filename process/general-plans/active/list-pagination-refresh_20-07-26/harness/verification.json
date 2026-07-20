@@ -1,0 +1,23 @@
+{
+  "plan": "list-pagination-refresh_PLAN_20-07-26.md",
+  "evl_run": "2026-07-20T15:57:00+08:00",
+  "run_by": "vc-tester (EVL confirmation, independent re-run from clean state)",
+  "branch": "feat/font-tone-payment-overflow",
+  "risk_class": "MEDIUM (no auth/schema/migration/billing/API-contract/secret surface — no evidence pack required)",
+  "gates": [
+    { "gate": "pnpm --filter @jojopotato/mobile typecheck", "result": "PASS", "detail": "0 errors" },
+    { "gate": "pnpm --filter @jojopotato/mobile test", "result": "PASS", "detail": "25 suites / 93 tests (incl. 7 new + 1 updated jest-expo files)" },
+    { "gate": "pnpm --filter @jojopotato/mobile guard:theme-mode", "result": "PASS", "detail": "28 components / 193 call sites / 0 violations" },
+    { "gate": "pnpm --filter @jojopotato/utils test", "result": "PASS", "detail": "39/39 (reorder regression, AC11 non-visual half)" },
+    { "gate": "pnpm --filter @jojopotato/api test", "result": "PASS", "detail": "37 suites / 508 tests (incl. AC13 cursor-pagination block, verified non-vacuous)" },
+    { "gate": "pnpm --filter @jojopotato/mobile lint", "result": "PASS", "detail": "0 errors, 3 warnings — all pre-existing in untouched scripts/dev-with-tunnel.mjs (outside blast radius)" },
+    { "gate": "pnpm format:check", "result": "PASS", "detail": "All matched files use Prettier code style" },
+    { "gate": "grep react-query use-async-data.ts (AC14)", "result": "PASS", "detail": "stale docstring removed (grep exit 1)" }
+  ],
+  "aggregate": "ALL GREEN",
+  "known_gaps": [
+    "AC11 device-half: on-device reorder-from-page-2 walkthrough (Agent-Probe; utils regression half is automated + green)",
+    "AC12: light/dark iOS+Android refresh spinner + load-more footer layout/gesture (Agent-Probe; no automatable half — no in-repo device-metric runner)"
+  ],
+  "closeout_classification": "CLEAN"
+}

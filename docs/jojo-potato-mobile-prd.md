@@ -1356,6 +1356,14 @@ The app should reuse Jojo Potato website tokens.
 * Not too corporate
 * Not overly complex
 
+**Typography / display-heading tone (amended 20-07-26):** display headings use a
+clean, confident, grown-up sans (Plus Jakarta Sans ExtraBold) rather than a
+rounded/cartoon display face. The intent is a more professional, mature heading
+voice that still sits comfortably alongside the youthful, promo-driven,
+snackable product character above — the two are complementary, not in tension:
+the palette, imagery, and promo energy stay bright and playful while the
+typographic voice reads as trustworthy and modern.
+
 ### UI Principles
 
 * Big deal cards

@@ -1,6 +1,6 @@
 import { DealCard, EmptyState } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
@@ -22,10 +22,13 @@ export default function DealsListScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
-  const { data: deals = [], isLoading, isError, refetch } = useDealProducts();
+  const { data: deals = [], isLoading, isError, isRefetching, refetch } = useDealProducts();
 
   if (isLoading) return <ScreenLoader />;
-  if (isError) {
+  // Full error screen only when there's nothing loaded yet. A failed REFRESH keeps
+  // `isError` true but retains prior deals in `data` — gate on `deals.length === 0`
+  // so a failed pull-to-refresh never blanks the already-loaded list (AC3).
+  if (isError && deals.length === 0) {
     return (
       <ScreenMessage
         title="Couldn't load deals"
@@ -40,6 +43,7 @@ export default function DealsListScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          testID="deals-scroll"
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
@@ -48,6 +52,15 @@ export default function DealsListScreen() {
             },
           ]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              testID="deals-refresh"
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
         >
           <Text style={[styles.heading, { color: theme.text }]}>Deals</Text>
           {deals.length === 0 ? (

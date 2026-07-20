@@ -125,7 +125,9 @@ export function PaymentMethodSelector({
             </View>
             <View style={styles.textColumn}>
               <View style={styles.labelRow}>
-                <Text style={[styles.label, { color: theme.text }]}>{option.label}</Text>
+                <Text style={[styles.label, { color: theme.text }]} numberOfLines={2}>
+                  {option.label}
+                </Text>
                 {isDisabled ? (
                   <View style={[styles.badge, { borderColor: theme.border }]}>
                     <Text style={[styles.badgeText, { color: theme.textSecondary }]}>
@@ -185,12 +187,17 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FontFamily.body.bold,
     fontSize: TypeScale.body,
+    // Yield space and wrap (with numberOfLines={2}) instead of overflowing the
+    // row when the label is long (e.g. "Credit/debit card") next to the badge.
+    flexShrink: 1,
   },
   caption: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },
   badge: {
+    // Keep intrinsic width so a shrinking label never compresses the badge.
+    flexShrink: 0,
     paddingVertical: Spacing.half,
     paddingHorizontal: Spacing.two,
     borderRadius: Radii.full,

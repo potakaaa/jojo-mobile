@@ -13,12 +13,15 @@ import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
  */
 export function useDealUsage(): DealUsageRecord[] {
   const { user } = useAuth();
-  const { data: orders } = useOrderHistory();
+  const { data } = useOrderHistory();
 
+  // Memo keyed on `data` (the raw InfiniteData), not a freshly-flattened array —
+  // flattening inside the memo avoids a new `flatMap` result defeating it each render (E1).
   return useMemo(() => {
-    if (!orders || !user) return [];
+    if (!data || !user) return [];
+    const orders = data.pages.flatMap((page) => page.orders);
     return orders
       .filter((order) => order.dealId !== null)
       .map((order) => ({ dealId: order.dealId as string, userId: user.id }));
-  }, [orders, user]);
+  }, [data, user]);
 }

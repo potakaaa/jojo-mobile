@@ -10,8 +10,8 @@ export interface AsyncDataState<T> {
 
 /**
  * Minimal fetch-on-mount data hook: runs `fetcher` whenever `deps` change and
- * exposes `{ data, loading, error, refetch }`. Deliberately tiny — no
- * react-query in this repo. A mounted-guard prevents setState after unmount.
+ * exposes `{ data, loading, error, refetch }`. A mounted-guard prevents setState
+ * after unmount.
  *
  * Pass a `fetcher` that is stable across renders (wrap in `useCallback`) so the
  * effect does not loop.
