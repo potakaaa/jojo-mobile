@@ -62,10 +62,18 @@ const discountSchema = z.object({
  * makes concurrent first-touches converge on that one row (never a duplicate, never a
  * unique-violation 500). There is no `:cartId` route param anywhere, so this is the
  * ONLY way a cart is addressed — structurally eliminating cross-user cart access.
+ *
+ * `.for('update')` locks the returned cart row for the remainder of the caller's
+ * transaction. Every mutation route resolves its cart through this helper first, so
+ * this single lock point serializes ALL concurrent mutations against one cart (e.g.
+ * two `POST /cart/items` calls for the same product+options can no longer both read
+ * "no match" and insert duplicate lines — CodeRabbit #129). Outside an explicit
+ * `db.transaction()` (the read-only `loadAndRespond` path) the lock is released the
+ * instant this single-statement implicit transaction completes — harmless no-op there.
  */
 async function getOrCreateCart(q: Queryer, userId: string): Promise<CartRow> {
   await q.insert(carts).values({ user_id: userId }).onConflictDoNothing();
-  const [cart] = await q.select().from(carts).where(eq(carts.user_id, userId));
+  const [cart] = await q.select().from(carts).where(eq(carts.user_id, userId)).for('update');
   if (!cart) throw new CartError(500, 'Could not resolve cart');
   return cart;
 }
@@ -201,7 +209,12 @@ cartRouter.post('/items', async (req, res) => {
       if (match) {
         await tx
           .update(cartItems)
-          .set({ quantity: match.quantity + body.quantity, updated_at: new Date() })
+          .set({
+            quantity: match.quantity + body.quantity,
+            unit_price: centsToNumeric(unitPriceCents),
+            selected_options: selectedSnapshot,
+            updated_at: new Date(),
+          })
           .where(eq(cartItems.id, match.id));
       } else {
         await tx.insert(cartItems).values({
@@ -326,11 +339,20 @@ cartRouter.put('/branch', async (req, res) => {
       }
 
       const [branch] = await tx
-        .select({ id: branches.id })
+        .select({
+          id: branches.id,
+          isActive: branches.is_active,
+          isAcceptingPickup: branches.is_accepting_pickup,
+        })
         .from(branches)
         .where(eq(branches.id, parsed.data.branchId));
-      if (!branch) {
+      // Same gate order.ts uses at placement — a cart should never end up pinned to a
+      // branch that checkout would reject anyway.
+      if (!branch || !branch.isActive) {
         throw new CartError(400, 'Branch not found');
+      }
+      if (!branch.isAcceptingPickup) {
+        throw new CartError(400, 'Branch is not accepting pickup orders right now');
       }
 
       await tx.delete(cartItems).where(eq(cartItems.cart_id, cart.id));
