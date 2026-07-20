@@ -1,6 +1,8 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/, see the admin-dashboard bullet below and §Scan Metadata; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules — CODE DONE + EVL-green, NOT
+VERIFIED, manual browser walkthrough owed, task folder stays in active/, see the admin-dashboard
+bullet below and §Scan Metadata; merged with DEAL-005 Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +61,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 20-07-26, incl. DEAL-005 Phase 1 scheduled deals + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 20-07-26, incl. DEAL-005 Phase 1 scheduled deals + Phase 2 recurring schedules + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **DEAL-005 Phase 1 — Scheduled Deals: Simple Window (`packages/api` + `apps/admin`, issue #127,
   delivered 20-07-26, branch `adm-deal-005-p2`, commit `5e9261b4`, ✅ VERIFIED — EVL-confirmed
@@ -126,6 +128,70 @@ top of it later without re-plumbing the project.
   `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/deal-005-scheduled-deals_PLAN_20-07-26.md`
   (+ co-located `deal-005-scheduled-deals_REPORT_20-07-26.md` in the same task folder, now
   archived).
+
+- **DEAL-005 Phase 2 — Recurring Deal Schedules (`packages/api` + `apps/admin`, issue #127,
+  delivered 20-07-26, branch `adm-deal-005-p2`, commit `c189f16`, CODE DONE + EVL-green — NOT
+  VERIFIED, manual browser walkthrough owed, task folder stays in `active/`):** adds day-of-week +
+  time-of-day recurrence on top of Phase 1's absolute window, additively on the same
+  `deal_schedules` row (migration `0018` — 3 nullable columns, zero backfill, every existing
+  Phase 1 row unaffected). **D6 (durable, supersedes issue #127's own stated resolution rule):
+  recurrence NARROWS the row it sits on** — one row means "within this absolute window, live only
+  on these days, only during this time-of-day range." Union-across-rows (Phase 1's existing
+  semantic) is unchanged, which is also how issue #127's "overlapping schedule rows produce one
+  continuous live period" AC is satisfied for free. **The single hardest correctness fact of this
+  phase, and it INVERTS Phase 1's own conclusion — both halves must be remembered together:**
+  Phase 1 correctly AVOIDED Manila timezone conversion for the absolute window (real instants,
+  `manilaDateRangeToUtc` would have been wrong there); Phase 2 REQUIRES it, because day-of-week
+  and time-of-day are inherently Manila wall-clock concepts and the stored instant is UTC —
+  Manila Saturday 07:00 is Friday 23:00 UTC, so a host-local `getDay()`/`getHours()` fires on the
+  wrong calendar day for any deal starting before 08:00 Manila. Fixed by one new helper,
+  `toManilaWallClock()` in `packages/api/src/routes/lib/deal-schedule.ts`, called exactly once
+  inside the ALREADY-SHARED `isDealScheduleLive()` — both enforcement points (`branches.ts` menu
+  read, `orders.ts` placement) needed **zero code changes**, since they already delegate
+  exclusively to that one helper (D6's strongest justification). Pure epoch-plus-fixed-+08:00-
+  offset arithmetic, UTC accessors only, no DST (reuses the fixed-offset FACT already documented
+  in `analytics-range.ts`, never that file's own date-bucketing helper, which buckets whole days
+  and would be wrong here). **D5: overnight spans (e.g. 22:00–02:00) are REJECTED at the API**,
+  not wrapped — an admin splits them into two rows, keeping the live-check a plain same-day
+  string comparison (`"HH:mm"`, half-open `<=`/`<`) with no wrap case. **Headline test-infra
+  finding, recorded in full in `process/context/tests/all-tests.md`: the TZ pin
+  (`packages/api/vitest.config.ts`'s new `env: { TZ: 'UTC' }`) is a real, load-bearing gate, not
+  ceremony.** This dev machine's own system timezone is `Asia/Manila`; a deliberately-broken
+  host-local `toManilaWallClock()` passed the entire 601-test suite with TZ unpinned (every
+  Manila-offset assertion silently vacuous) and failed 16 tests with the pin on. **A second
+  no-backfill guarantee, mutation-verified:** a row with all-three-recurrence-columns-null
+  behaves exactly as Phase 1 — forcing a null-recurrence row down the recurrence path turns 2 of
+  3 regression tests red. **A genuinely new gotcha found this phase: `writeDealSchedule`'s
+  emptiness check must cover all FIVE window-related fields, not just the two absolute bounds** —
+  Phase 2 created a legal shape Phase 1 never anticipated ("every Friday 2–5pm, forever" has NO
+  absolute bounds), and a bounds-only emptiness check would have silently DELETED such a row;
+  regression-tested. **Scope narrowing (E3, locked during VALIDATE, filed as a backlog note): the
+  admin write path stays single-row-replace-only for this plan** — an admin can author one
+  recurrence rule per deal, not "lunch AND dinner" as two independent rows, even though the
+  underlying `isDealScheduleLive()` union-of-rows logic already supports it and is proven at the
+  pure-function level. A real multi-row admin authoring flow is a legitimate future phase. Admin
+  gained a new standalone `DayOfWeekPicker` component (Sun–Sat toggle group, no prior precedent),
+  reused `ClockDial` directly for time-of-day input (exact `"HH:mm"` value-contract match, no new
+  time-picker built), and a `recurring: boolean` field on `dealStatus()`'s return shape, rendered
+  as an additional badge in BOTH of its only two consumers (`deal-list.tsx`,
+  `deals.$dealId.tsx` — E4, binding; without this the flag would compute correctly and pass its
+  own unit test while being invisible in the running app). Gates, independently EVL-confirmed:
+  API 547→601 tests (+54), admin 127→157 tests (+30), both typechecks/build/format clean,
+  migration `0018` applies cleanly. All 12 ACs Fully-Automated and passing (AC1 Manila-correctness
+  and AC4 no-backfill both explicitly Known-Gap-banned by the plan's own contract and honored — no
+  Known-Gap used anywhere). **Unlike Phase 1, no manual browser walkthrough has been performed** —
+  the day-of-week picker, time inputs, recurring badge, and manage-page edit/clear flow are all
+  unexercised in a real browser; this phase is held at CODE DONE + EVL-green, task folder stays
+  in `active/`. Phase 3 (mobile "Starts Friday" surfacing) remains unbuilt, out of scope, already
+  tracked. Two backlog notes touched this pass:
+  `process/features/admin-dashboard/backlog/deal-005-one-window-per-deal_NOTE_20-07-26.md` (new,
+  the E3 write-path scope gap) and
+  `process/features/admin-dashboard/backlog/menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md`
+  (amended in place — DEAL-005's badges close the time-window-invisibility half of that gap; the
+  component-availability/zero-component halves remain open). Delivered by:
+  `process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md`
+  (+ co-located `deal-005-recurring-schedules_REPORT_20-07-26.md` in the same task folder — stays
+  in `active/`, not archived).
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -1360,7 +1426,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
-| deal scheduling / `deal_schedules` / issue #127 Phase 2+3 work | `all-context.md` | `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/` — Phase 1 (nullable window, two enforcement points, admin CRUD/UI/badge) is ✅ VERIFIED and archived; read its plan + report for the shared `isDealScheduleLive()` helper, the half-open boundary convention, and the locked D1/D2/D3 decisions before starting Phase 2 (recurrence) or Phase 3 (mobile surfacing) — both need a fresh RESEARCH/PLAN cycle, neither is scoped yet |
+| deal scheduling / `deal_schedules` / issue #127 Phase 2 follow-up or Phase 3 work | `all-context.md` | `process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/` — Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) is CODE DONE + EVL-green but NOT VERIFIED — the manual browser walkthrough (day-of-week picker, time inputs, recurring badge, manage-page edit/clear) is owed; task folder stays in `active/`. Read this plan + report for the recurrence semantics (D4-D6), the E3 single-row write-path scope limit, and the TZ-pin test-infra fact before doing the walkthrough or starting Phase 3 (mobile surfacing) or the deferred multi-row admin authoring flow (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`). Phase 1 (absolute window) is ✅ VERIFIED and archived at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`. |
 
 ## Context Group Lifecycle
 
@@ -1591,7 +1657,36 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals UPDATE PROCESS — doc-only
+- Last delta: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules UPDATE PROCESS — doc-only
+  reconciliation, source already committed by the user before this pass began (commit `c189f16`
+  on branch `adm-deal-005-p2`). Phase 2 of issue #127 added day-of-week + time-of-day recurrence
+  additively on the existing `deal_schedules` table (migration `0018`, 3 nullable columns, zero
+  backfill) — recurrence narrows the row it sits on (D6), union-across-rows unchanged. The
+  headline finding: day-of-week/time-of-day are Manila wall-clock concepts (inverting Phase 1's
+  own "avoid Manila conversion" conclusion for the absolute window), fixed by one
+  `toManilaWallClock()` helper called once inside the already-shared `isDealScheduleLive()` — both
+  enforcement points needed zero code changes. The TZ-pin control experiment (dev host's own
+  system timezone is Asia/Manila; unpinned suite passes vacuously against a broken host-local
+  implementation, pinned suite correctly fails 16 tests) is recorded in
+  `process/context/tests/all-tests.md` as a durable, generalizable test-infra fact. All 12 ACs
+  Fully-Automated and passing, Known-Gap explicitly banned for AC1 (Manila correctness) and AC4
+  (no-backfill) and honored — none used anywhere in this plan. Gates independently EVL-confirmed:
+  API 547→601, admin 127→157, both typechecks/build/format clean, migration applies cleanly.
+  Corrected the EXECUTE commit message's TZ-defeat test count ("12" → EVL-measured "16", a
+  scope-of-count difference, not a different experiment — unlike Phase 1's own count correction,
+  which was two genuinely different mutations). **Unlike Phase 1, no manual browser walkthrough
+  has been performed this session** — the plan is held at CODE DONE + EVL-green, not stamped
+  VERIFIED; task folder stays in `active/`. Wrote
+  `deal-005-recurring-schedules_REPORT_20-07-26.md`; stamped the plan Status line and Phase
+  Completion Rules section with the CODE-DONE/walkthrough-owed note (not VERIFIED); added an
+  implementation-state bullet and updated the routing-table row here. Filed 1 new backlog note
+  (`deal-005-one-window-per-deal_NOTE_20-07-26.md` — the E3 single-row admin write-path scope
+  gap) and amended 1 existing backlog note in place
+  (`menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md` — DEAL-005's badges close the
+  time-window-invisibility half of that gap; component-availability/zero-component halves remain
+  open). Did NOT archive the task folder — stays in `active/` pending the owed walkthrough. HEAD
+  this delta: `c189f16`.)
+- Previous delta: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals UPDATE PROCESS — doc-only
   reconciliation, source already committed by the user before this pass began (commit
   `5e9261b4` on branch `adm-deal-005-p2`). Phase 1 of issue #127 added a nullable
   `[starts_at, ends_at)` window on deal-products via a new additive `deal_schedules` table

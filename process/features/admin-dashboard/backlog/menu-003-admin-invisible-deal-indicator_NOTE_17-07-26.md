@@ -84,6 +84,28 @@ empty `offer_branches` means "valid everywhere", but a missing/false
 `branch_product_availability` row means "visible nowhere". Deals are the only entity with the
 "invisible everywhere" trap, and MENU-003 adds a second way to fall into it.
 
+## Partial update (20-07-26, DEAL-005 Phase 2 UPDATE PROCESS pass)
+
+DEAL-005 (Phase 1 + Phase 2, issue #127) added two NEW ways a deal can be invisible to customers
+— scheduled-but-not-yet-started and expired (Phase 1's absolute window), plus outside-recurring-
+hours (Phase 2) — and shipped a `Scheduled`/`Live`/`Expired` badge (`windowPhase()`/
+`dealStatus()` in `apps/admin/src/lib/entity-status.ts`) plus an additive `Recurring` badge,
+both rendered on `deal-list.tsx` and `deals.$dealId.tsx`. **These two gaps are now CLOSED** — an
+admin can see at a glance whether a deal is scheduled, live, expired, or currently outside its
+recurring hours.
+
+**What remains uncovered — the original component-availability and zero-component cases
+described above are UNCHANGED and still open.** DEAL-005's badges derive purely from the deal's
+own absolute window and recurrence columns; they have no visibility into
+`branch_product_availability` on the deal's components, and no signal for a deal with zero
+`deal_components` rows. The two gap classes are now clearly distinguishable:
+
+- **Time-window invisibility (Scheduled/Live/Expired/Recurring)** — closed by DEAL-005's badges.
+- **Component-availability invisibility (this note's original scope)** — still open, still the
+  higher-probability real-world case (toggling an ingredient off needs no API bypass).
+- **Zero-component invisibility (this note's original scope)** — still open, but confirmed
+  lower-risk than originally stated (requires a raw API call bypassing the wizard's own guards).
+
 ## References
 
 - Plan: `process/features/ordering-cart/active/menu-003-branch-availability_17-07-26/menu-003-branch-availability_PLAN_17-07-26.md`
@@ -92,3 +114,8 @@ empty `offer_branches` means "valid everywhere", but a missing/false
   Constraints (the locked zero-component-hide decision)
 - Related: ADM-008 Fix 3 (`availableBranchCount`/`activeBranchCount`, `StatusBadge`,
   `lib/entity-status.ts`) — the existing precedent this would extend
+- Related: DEAL-005 Phase 1
+  (`process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`) and Phase 2
+  (`process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/`) — closed the
+  time-window invisibility gap via `Scheduled`/`Live`/`Expired`/`Recurring` badges; component-
+  availability and zero-component invisibility remain open
