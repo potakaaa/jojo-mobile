@@ -1053,3 +1053,140 @@ describe('AC-E5 — should reject a components entry whose product is itself is_
     expect(res.status).toBe(400);
   });
 });
+
+// ─── DEAL-005 Phase 1 — scheduled window CRUD ────────────────────────────────
+//
+// The admin authoring surface for `deal_schedules`. AC5 (startsAt >= endsAt → 400)
+// is the boundary gate; the rest lock the "at most one row, replace never append"
+// invariant and the null/null = no row = always-live default.
+describe('DEAL-005 — scheduled window on create/update', () => {
+  const ISO_START = '2026-09-01T10:00:00.000Z';
+  const ISO_END = '2026-09-30T18:00:00.000Z';
+
+  async function scheduleRows(dealId: string) {
+    return db
+      .select()
+      .from(schema.dealSchedules)
+      .where(eq(schema.dealSchedules.deal_product_id, dealId));
+  }
+
+  function patchDeal(dealId: string, body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send(body)
+      .set('Content-Type', 'application/json');
+  }
+
+  it('defaults to NO schedule row and serializes startsAt/endsAt as null (always live)', async () => {
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBeNull();
+    expect(res.body.deal.endsAt).toBeNull();
+    expect(await scheduleRows(res.body.deal.id)).toHaveLength(0);
+  });
+
+  it('persists a window supplied at create, as exactly ONE row', async () => {
+    const res = await createDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBe(ISO_END);
+
+    const rows = await scheduleRows(res.body.deal.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(ISO_START);
+    expect(rows[0]!.ends_at?.toISOString()).toBe(ISO_END);
+  });
+
+  it('accepts an open-ended window (one bound only)', async () => {
+    const res = await createDeal({ startsAt: ISO_START });
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBeNull();
+    expect(await scheduleRows(res.body.deal.id)).toHaveLength(1);
+  });
+
+  it('AC5: rejects startsAt >= endsAt at create with 400, writing no deal at all', async () => {
+    const equal = await createDeal({ startsAt: ISO_START, endsAt: ISO_START });
+    expect(equal.status).toBe(400);
+    expect(equal.body.error).toMatch(/endsAt must be after startsAt/);
+
+    const inverted = await createDeal({ startsAt: ISO_END, endsAt: ISO_START });
+    expect(inverted.status).toBe(400);
+  });
+
+  it('AC5: rejects startsAt >= endsAt on PATCH with 400', async () => {
+    const dealId = await seedDeal();
+    const res = await patchDeal(dealId, { startsAt: ISO_END, endsAt: ISO_START });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/endsAt must be after startsAt/);
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('AC5: validates the MERGED window — a partial PATCH cannot invert a stored window', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    // Sends only startsAt, pushed past the ALREADY-STORED endsAt.
+    const res = await patchDeal(dealId, { startsAt: '2026-10-15T00:00:00.000Z' });
+    expect(res.status).toBe(400);
+
+    // The stored window is untouched — the rejected write rolled back.
+    const rows = await scheduleRows(dealId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(ISO_START);
+  });
+
+  it('PATCH REPLACES the window rather than appending a second row', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    const newStart = '2026-11-01T00:00:00.000Z';
+    const newEnd = '2026-11-05T00:00:00.000Z';
+
+    const res = await patchDeal(dealId, { startsAt: newStart, endsAt: newEnd });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBe(newStart);
+    expect(res.body.deal.endsAt).toBe(newEnd);
+
+    // Still exactly one row — the Phase-1 single-row invariant.
+    const rows = await scheduleRows(dealId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(newStart);
+  });
+
+  it('PATCH with both bounds null DELETES the row, returning the deal to always-live', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+
+    const res = await patchDeal(dealId, { startsAt: null, endsAt: null });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBeNull();
+    expect(res.body.deal.endsAt).toBeNull();
+    // Always-live is ZERO rows, never an all-null row.
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('PATCH that omits both window keys leaves the stored window untouched', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+
+    const res = await patchDeal(dealId, { name: `Renamed ${unique()}` });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBe(ISO_END);
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+  });
+
+  it('surfaces the window on the detail and list read paths', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.deal.startsAt).toBe(ISO_START);
+    expect(detail.body.deal.endsAt).toBe(ISO_END);
+
+    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    expect(list.status).toBe(200);
+    const listed = list.body.deals.find((d: { id: string }) => d.id === dealId);
+    expect(listed.startsAt).toBe(ISO_START);
+    expect(listed.endsAt).toBe(ISO_END);
+  });
+});

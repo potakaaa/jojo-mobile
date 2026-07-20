@@ -1,6 +1,7 @@
 import { Package } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { DateTimeField, localNow } from '@/components/date-time-field';
 import { QueryStates } from '@/components/query-states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,11 @@ function formatPeso(cents: number): string {
   return `₱${(cents / 100).toFixed(2)}`;
 }
 
+/** Naive-local `DateTimeField` value → the ISO instant the API stores. */
+function toIso(local: string): string {
+  return new Date(local).toISOString();
+}
+
 export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: DealCreateWizardProps) {
   const productsQuery = useAdminProducts();
   const branchesQuery = useAdminBranches();
@@ -59,6 +65,21 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
   const [slugEdited, setSlugEdited] = useState(false);
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+
+  // DEAL-005 scheduled window — BOTH optional (unlike offers, which require both):
+  // leaving them blank creates an always-live deal, the pre-DEAL-005 default.
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  // Pinned once at mount so the bound cannot drift mid-edit and retroactively
+  // invalidate a value the admin already picked.
+  const [now] = useState(localNow);
+  const endMin = startsAt || now;
+  // Surfaced, never auto-corrected — clearing a deliberately-picked value is worse
+  // than asking which of the two to change (same treatment as `offer-form.tsx`).
+  const windowError =
+    startsAt && endsAt && endsAt <= startsAt
+      ? 'End must be after start — adjust one of them.'
+      : null;
 
   // Step 2 state.
   const [items, setItems] = useState<WizardItem[]>([]);
@@ -79,7 +100,7 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
   const php = Number(price);
   const priceValid = price.trim().length > 0 && Number.isFinite(php) && php >= 0;
   const dealPriceCents = priceValid ? Math.round(php * 100) : 0;
-  const step1Valid = name.trim().length > 0 && slug.trim().length > 0;
+  const step1Valid = name.trim().length > 0 && slug.trim().length > 0 && !windowError;
 
   const addedIds = new Set(items.map((i) => i.productId));
   const candidates = (productsQuery.data ?? []).filter((p) => !addedIds.has(p.id));
@@ -140,6 +161,10 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
       basePriceCents: dealPriceCents,
       components: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
     };
+    // Only send a bound the admin actually picked — omitting both leaves the deal
+    // always-live (no `deal_schedules` row written server-side).
+    if (startsAt) input.startsAt = toIso(startsAt);
+    if (endsAt) input.endsAt = toIso(endsAt);
     // Only send branchIds when the admin opted a branch OUT — omitting keeps the
     // server's default (seed every active branch), so the common case is unchanged.
     if (excludedBranchIds.size > 0) {
@@ -192,6 +217,38 @@ export function DealCreateWizard({ submitting, error, onSubmit, onCancel }: Deal
             Description (optional)
             <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
+
+          {/* DEAL-005 schedule. Both optional: left blank, the deal is live as soon
+              as it is active and available, exactly as deals behaved before. */}
+          <fieldset className="flex flex-col gap-2 rounded-lg border-2 border-border p-3">
+            <legend className="px-1 text-sm font-medium">Schedule (optional)</legend>
+            <p className="text-xs text-muted-foreground">
+              Leave blank to make this deal live as soon as it is active. Customers never see the
+              dates — an out-of-window deal is simply hidden.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <DateTimeField
+                label="Starts"
+                value={startsAt}
+                onChange={setStartsAt}
+                min={now}
+                className="flex-1"
+              />
+              <DateTimeField
+                label="Ends"
+                value={endsAt}
+                onChange={setEndsAt}
+                defaultTime="23:59"
+                min={endMin}
+                className="flex-1"
+              />
+            </div>
+            {windowError ? (
+              <p role="alert" className="text-sm font-semibold text-destructive">
+                {windowError}
+              </p>
+            ) : null}
+          </fieldset>
 
           <div className="mt-2 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>

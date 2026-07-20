@@ -449,3 +449,221 @@ describe('GET /branches/:branchId/menu?isDeal=true — MENU-003 component availa
     expect(await dealIdsAt(branchAId)).not.toContain(noBpaRowDealId);
   });
 });
+
+/**
+ * DEAL-005 Phase 1 — a deal-product is listed on the deals menu only inside the
+ * union of its `deal_schedules` windows; a deal with ZERO schedule rows is ALWAYS
+ * live (the no-backfill guarantee, AC3 — Known-Gap banned for this AC).
+ *
+ * Every deal here is fully component-available at the branch, so ONLY the schedule
+ * can decide the outcome — the same isolation discipline the MENU-003 block uses.
+ */
+describe('GET /branches/:branchId/menu?isDeal=true — DEAL-005 scheduled window', () => {
+  let branchId: string;
+  let categoryId: string;
+
+  let unscheduledDealId: string; // AC3: zero schedule rows → always live
+  let futureDealId: string; // AC1: starts in the future → hidden
+  let pastDealId: string; // AC2: ended in the past → hidden
+  let openWindowDealId: string; // window straddling now → listed
+  let inactiveInWindowDealId: string; // AC4: in-window but is_active=false → hidden
+  let openEndedDealId: string; // started, no end → listed
+  let futureOpenEndedDealId: string; // starts later, no end → hidden
+  let multiWindowDealId: string; // one past window + one current → listed (union)
+  let allMissedWindowsDealId: string; // two windows, neither current → hidden
+  let regularProductId2: string; // regression: regular menu untouched
+
+  const MINUTE = 60_000;
+
+  async function makeComponent(suffix: string): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005 Component ${suffix}`,
+        slug: `deal005-component-${suffix}`,
+        base_price: '2.00',
+      })
+      .returning();
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: product!.id, is_available: true });
+    return product!.id;
+  }
+
+  /** A fully component-available deal at `branchId`, optionally deactivated. */
+  async function makeDeal(suffix: string, isActive = true): Promise<string> {
+    const component = await makeComponent(`for-${suffix}`);
+    const [deal] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005 Deal ${suffix}`,
+        slug: `deal005-deal-${suffix}`,
+        base_price: '9.00',
+        is_deal: true,
+        is_active: isActive,
+      })
+      .returning();
+    await db
+      .insert(schema.dealComponents)
+      .values({ deal_product_id: deal!.id, component_product_id: component, quantity: 1 });
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: deal!.id, is_available: true });
+    return deal!.id;
+  }
+
+  async function schedule(dealProductId: string, startsAt: Date | null, endsAt: Date | null) {
+    await db
+      .insert(schema.dealSchedules)
+      .values({ deal_product_id: dealProductId, starts_at: startsAt, ends_at: endsAt });
+  }
+
+  async function dealIdsAt(branch: string): Promise<string[]> {
+    const { status, json } = await get(`/branches/${branch}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    return json.categories.flatMap((c: any) => c.products).map((p: any) => p.id);
+  }
+
+  beforeAll(async () => {
+    const suffix = uid();
+
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `DEAL005 Branch ${suffix}`,
+        slug: `deal005-${suffix}`,
+        address: '5 Schedule St',
+        latitude: '14.520000',
+        longitude: '120.920000',
+        phone: '+639170000021',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 15,
+      })
+      .returning();
+    branchId = branch!.id;
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `DEAL005 ${suffix}`, slug: `deal005-cat-${suffix}`, sort_order: 3 })
+      .returning();
+    categoryId = category!.id;
+
+    const now = Date.now();
+
+    // AC3 — the no-backfill case: NO schedule row is written for this deal at all.
+    unscheduledDealId = await makeDeal(`unscheduled-${suffix}`);
+
+    // AC1 — entirely in the future.
+    futureDealId = await makeDeal(`future-${suffix}`);
+    await schedule(futureDealId, new Date(now + 60 * MINUTE), new Date(now + 120 * MINUTE));
+
+    // AC2 — entirely in the past.
+    pastDealId = await makeDeal(`past-${suffix}`);
+    await schedule(pastDealId, new Date(now - 120 * MINUTE), new Date(now - 60 * MINUTE));
+
+    // Straddling now.
+    openWindowDealId = await makeDeal(`open-${suffix}`);
+    await schedule(openWindowDealId, new Date(now - 60 * MINUTE), new Date(now + 60 * MINUTE));
+
+    // AC4 — in-window, but globally deactivated.
+    inactiveInWindowDealId = await makeDeal(`inactive-${suffix}`, false);
+    await schedule(
+      inactiveInWindowDealId,
+      new Date(now - 60 * MINUTE),
+      new Date(now + 60 * MINUTE),
+    );
+
+    // Open-ended: started, never ends.
+    openEndedDealId = await makeDeal(`open-ended-${suffix}`);
+    await schedule(openEndedDealId, new Date(now - 60 * MINUTE), null);
+
+    // Open-ended but not started yet.
+    futureOpenEndedDealId = await makeDeal(`future-open-ended-${suffix}`);
+    await schedule(futureOpenEndedDealId, new Date(now + 60 * MINUTE), null);
+
+    // Union: a stale window plus a current one — the current one wins.
+    multiWindowDealId = await makeDeal(`multi-${suffix}`);
+    await schedule(multiWindowDealId, new Date(now - 300 * MINUTE), new Date(now - 240 * MINUTE));
+    await schedule(multiWindowDealId, new Date(now - 30 * MINUTE), new Date(now + 30 * MINUTE));
+
+    // Union: two windows, neither containing now.
+    allMissedWindowsDealId = await makeDeal(`all-missed-${suffix}`);
+    await schedule(
+      allMissedWindowsDealId,
+      new Date(now - 300 * MINUTE),
+      new Date(now - 240 * MINUTE),
+    );
+    await schedule(
+      allMissedWindowsDealId,
+      new Date(now + 240 * MINUTE),
+      new Date(now + 300 * MINUTE),
+    );
+
+    // Regression fixture: a REGULAR product on the same branch/category. The window
+    // filter must not reach it (it is not `is_deal`, and never has schedule rows).
+    const [regular] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005 Regular ${suffix}`,
+        slug: `deal005-regular-${suffix}`,
+        base_price: '3.00',
+      })
+      .returning();
+    regularProductId2 = regular!.id;
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: regular!.id, is_available: true });
+  });
+
+  it('AC3 (HARD, no-backfill): lists a deal with ZERO deal_schedules rows, exactly as before', async () => {
+    expect(await dealIdsAt(branchId)).toContain(unscheduledDealId);
+  });
+
+  it('AC1: hides a deal whose starts_at is in the future', async () => {
+    const listed = await dealIdsAt(branchId);
+    expect(listed).not.toContain(futureDealId);
+    // The unscheduled sibling is untouched by the other deal's exclusion.
+    expect(listed).toContain(unscheduledDealId);
+  });
+
+  it('AC2: hides a deal whose ends_at is in the past', async () => {
+    expect(await dealIdsAt(branchId)).not.toContain(pastDealId);
+  });
+
+  it('lists a deal whose window straddles now', async () => {
+    expect(await dealIdsAt(branchId)).toContain(openWindowDealId);
+  });
+
+  it('AC4: hides an in-window deal that is is_active=false', async () => {
+    const listed = await dealIdsAt(branchId);
+    expect(listed).not.toContain(inactiveInWindowDealId);
+    // Contrast: an identically-windowed ACTIVE deal IS listed, so the exclusion is
+    // attributable to is_active alone and not to the window.
+    expect(listed).toContain(openWindowDealId);
+  });
+
+  it('treats a null ends_at as never-ending, and a null-ended future window as not yet started', async () => {
+    const listed = await dealIdsAt(branchId);
+    expect(listed).toContain(openEndedDealId);
+    expect(listed).not.toContain(futureOpenEndedDealId);
+  });
+
+  it('lists a deal when ANY of its windows contains now, and hides it when none does', async () => {
+    const listed = await dealIdsAt(branchId);
+    expect(listed).toContain(multiWindowDealId);
+    expect(listed).not.toContain(allMissedWindowsDealId);
+  });
+
+  it('leaves the REGULAR menu untouched — no window filtering on non-deal products', async () => {
+    const { status, json } = await get(`/branches/${branchId}/menu`);
+    expect(status).toBe(200);
+    const products = json.categories.flatMap((c: any) => c.products);
+    expect(products.map((p: any) => p.id)).toContain(regularProductId2);
+    // No deal-product leaks onto the regular menu regardless of its window.
+    expect(products.map((p: any) => p.id)).not.toContain(unscheduledDealId);
+    expect(products.map((p: any) => p.id)).not.toContain(openWindowDealId);
+  });
+});

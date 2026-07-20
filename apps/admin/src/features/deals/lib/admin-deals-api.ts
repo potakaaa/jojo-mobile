@@ -38,6 +38,14 @@ export interface AdminDealProduct {
    */
   availableBranchCount?: number;
   activeBranchCount?: number;
+  /**
+   * DEAL-005 scheduled live window, as ISO instants. BOTH null = no schedule row =
+   * always live (the default every pre-DEAL-005 deal sits in). Either bound alone
+   * may be null for an open-ended window. Admin-only — the customer menu carries no
+   * window fields; an out-of-window deal is simply absent from it.
+   */
+  startsAt: string | null;
+  endsAt: string | null;
 }
 
 /** One seeded component on a create-with-components request (Enhancement E1). */
@@ -67,6 +75,14 @@ export interface DealCreateInput {
    * creates the deal available at no branch (invisible until toggled on).
    */
   branchIds?: string[];
+  /**
+   * Optional scheduled live window (DEAL-005), ISO instants. Omitting both leaves
+   * the deal always-live (no `deal_schedules` row is written). On update, omitting a
+   * key leaves that bound as stored; sending `null` clears it — sending both as null
+   * deletes the window entirely and restores always-live.
+   */
+  startsAt?: string | null;
+  endsAt?: string | null;
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

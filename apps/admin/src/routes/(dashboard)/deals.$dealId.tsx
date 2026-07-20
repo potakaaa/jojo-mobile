@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DateTimeField, localNow } from '@/components/date-time-field';
 import { PageHeader } from '@/components/page-header';
 import { QueryStates } from '@/components/query-states';
 import { StatusBadge } from '@/components/status-badge';
@@ -16,6 +17,20 @@ import { useAdminProducts } from '@/features/products/hooks/use-admin-products';
 
 function formatPeso(cents: number): string {
   return `₱${(cents / 100).toFixed(2)}`;
+}
+
+/** Naive-local `DateTimeField` value → the ISO instant the API stores. */
+function toIso(local: string): string {
+  return new Date(local).toISOString();
+}
+
+/** Stored ISO instant → the naive-local string `DateTimeField` speaks. */
+function isoToLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes(),
+  )}`;
 }
 
 export const Route = createFileRoute('/(dashboard)/deals/$dealId')({
@@ -40,6 +55,41 @@ function DealDetailPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const deal = dealQuery.data;
+
+  // DEAL-005 window editor. The fields DERIVE from the loaded deal and are only
+  // shadowed once the admin actually edits (`windowDraft !== null`) — deliberately
+  // NOT seeded into state via an effect or an object-identity guard, which silently
+  // fails to fire when react-query returns the same cached object on a revisit and
+  // leaves the fields blank (the STAFF-005 prep-time bug).
+  const [windowDraft, setWindowDraft] = useState<{ startsAt: string; endsAt: string } | null>(null);
+  const [windowNow] = useState(localNow);
+
+  const storedStartsAt = deal?.startsAt ? isoToLocal(deal.startsAt) : '';
+  const storedEndsAt = deal?.endsAt ? isoToLocal(deal.endsAt) : '';
+  const startsAt = windowDraft ? windowDraft.startsAt : storedStartsAt;
+  const endsAt = windowDraft ? windowDraft.endsAt : storedEndsAt;
+
+  const windowDirty = startsAt !== storedStartsAt || endsAt !== storedEndsAt;
+  const windowError =
+    startsAt && endsAt && endsAt <= startsAt
+      ? 'End must be after start — adjust one of them.'
+      : null;
+
+  function saveWindow() {
+    updateMutation.mutate(
+      {
+        id: dealId,
+        // Empty field → explicit null → the server deletes the row and the deal
+        // returns to always-live. Both cleared is how a schedule is removed.
+        input: {
+          startsAt: startsAt ? toIso(startsAt) : null,
+          endsAt: endsAt ? toIso(endsAt) : null,
+        },
+      },
+      // Drop the draft so the fields resume tracking the refetched server state.
+      { onSuccess: () => setWindowDraft(null) },
+    );
+  }
 
   const priceValid =
     priceInput.trim().length > 0 && Number.isFinite(Number(priceInput)) && Number(priceInput) >= 0;
@@ -167,6 +217,53 @@ function DealDetailPage() {
                 )}
               </section>
             ) : null}
+
+            {/* DEAL-005 — the deal's scheduled live window. Clearing both fields
+                returns it to always-live (the pre-DEAL-005 default). */}
+            <section className="flex flex-col gap-3 rounded-xl border-2 border-foreground p-4">
+              <h2 className="font-display text-h3">Schedule</h2>
+              <p className="text-xs text-muted-foreground">
+                {storedStartsAt || storedEndsAt
+                  ? 'This deal is only shown to customers inside its window. Clear both fields to make it always live.'
+                  : 'Always live — set a window to limit when customers can see and order this deal.'}
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <DateTimeField
+                  label="Starts"
+                  value={startsAt}
+                  onChange={(v) => setWindowDraft({ startsAt: v, endsAt })}
+                  min={windowNow}
+                  className="flex-1"
+                />
+                <DateTimeField
+                  label="Ends"
+                  value={endsAt}
+                  onChange={(v) => setWindowDraft({ startsAt, endsAt: v })}
+                  defaultTime="23:59"
+                  min={startsAt || windowNow}
+                  className="flex-1"
+                />
+              </div>
+              {windowError ? (
+                <p role="alert" className="text-sm font-semibold text-destructive">
+                  {windowError}
+                </p>
+              ) : null}
+              <div className="flex items-center gap-2">
+                <Button
+                  disabled={!windowDirty || !!windowError}
+                  isLoading={updateMutation.isPending}
+                  onClick={saveWindow}
+                >
+                  Save schedule
+                </Button>
+                {windowDirty ? (
+                  <Button variant="secondary" onClick={() => setWindowDraft(null)}>
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
+            </section>
 
             <DealComponentEditor dealId={dealId} components={deal.components} />
 

@@ -535,6 +535,25 @@ export interface AdminDealProduct extends AdminProduct {
   // response (the create hook re-fetches the list, which carries the counts).
   availableBranchCount?: number;
   activeBranchCount?: number;
+  /**
+   * DEAL-005 Phase 1 — the deal's scheduled live window, as ISO instants. BOTH are
+   * `null` when the deal has no `deal_schedules` row at all, which means "always
+   * live" (the no-backfill default every pre-DEAL-005 deal sits in). Either bound
+   * alone may be null for a deliberately open-ended window.
+   *
+   * ADMIN-ONLY and ADDITIVE. The PUBLIC customer wire shape is untouched (D2): an
+   * out-of-window deal is simply ABSENT from `GET /branches/:id/menu?isDeal=true`,
+   * never annotated with its window. Do not mirror these fields onto `ApiDeal`/
+   * `serializeDeal` or `AdminProduct` (regular products never have schedule rows).
+   */
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+/** A resolved `deal_schedules` window, as stored (real instants, not day buckets). */
+export interface AdminDealWindow {
+  startsAt: Date | null;
+  endsAt: Date | null;
 }
 
 /**
@@ -542,17 +561,21 @@ export interface AdminDealProduct extends AdminProduct {
  * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
  * and appends the resolved `components` list (fetched by the route handler; `[]`
  * on the list route to avoid per-row junction joins), plus optional
- * branch-availability counts (visibility indicators — omitted when not supplied).
+ * branch-availability counts (visibility indicators — omitted when not supplied)
+ * and the DEAL-005 schedule window (always present; `null`/`null` when unscheduled).
  */
 export function serializeAdminDealProduct(
   product: ProductRow,
   components: AdminDealComponent[] = [],
   availability?: { availableBranchCount: number; activeBranchCount: number },
+  window?: AdminDealWindow | null,
 ): AdminDealProduct {
   return {
     ...serializeAdminProduct(product),
     components,
     ...(availability === undefined ? {} : availability),
+    startsAt: window?.startsAt?.toISOString() ?? null,
+    endsAt: window?.endsAt?.toISOString() ?? null,
   };
 }
 

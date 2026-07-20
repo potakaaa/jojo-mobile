@@ -120,6 +120,13 @@
       "when": 1784250726069,
       "tag": "0016_rename_offer_fk_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784527687773,
+      "tag": "0017_curvy_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

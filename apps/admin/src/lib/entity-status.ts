@@ -31,20 +31,69 @@ export function windowPhase(startAt: string, endAt: string, now: Date = new Date
 }
 
 /**
+ * Where `now` sits relative to a possibly-open-ended DEAL-005 window. Returns
+ * `null` when the deal is UNSCHEDULED (both bounds absent) — the caller then keeps
+ * its pre-DEAL-005 labels, which is what makes the badge no-backfill-safe.
+ *
+ * Open-ended bounds are resolved here rather than in `windowPhase`, which requires
+ * two concrete bounds and is shared with offers/promotions (both of which always
+ * have both). Substituting a sentinel keeps that shared helper untouched.
+ */
+function resolveWindowPhase(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
+  now: Date,
+): WindowPhase | null {
+  if (!startsAt && !endsAt) return null;
+  // A missing bound is open on that side: "already started" / "never ends".
+  const start = startsAt ?? new Date(-8640000000000000).toISOString();
+  const end = endsAt ?? new Date(8640000000000000).toISOString();
+  return windowPhase(start, end, now);
+}
+
+/**
  * Deal status COMBINES `is_active` and branch availability — either one can hide
  * the deal from customers. An active deal with zero available branches is flagged
  * as a warning ("Not available at any branch"), never a plain "Active". When the
  * availability count is unknown (e.g. the create response omits it), fall back to
  * the plain active/inactive state rather than a false warning.
  */
-export function dealStatus(deal: {
-  isActive: boolean;
-  availableBranchCount?: number;
-  activeBranchCount?: number;
-}): StatusDescriptor {
+export function dealStatus(
+  deal: {
+    isActive: boolean;
+    availableBranchCount?: number;
+    activeBranchCount?: number;
+    /** DEAL-005 window bounds (ISO). Both null/absent = unscheduled = always live. */
+    startsAt?: string | null;
+    endsAt?: string | null;
+  },
+  now: Date = new Date(),
+): StatusDescriptor {
   if (!deal.isActive) return { label: 'Inactive', tone: 'muted' };
   if (deal.availableBranchCount === 0) {
     return { label: 'Not available at any branch', tone: 'warning' };
+  }
+
+  // DEAL-005: layered ON TOP of the active/availability logic above, never
+  // replacing it — a scheduled deal that is invisible everywhere still reports the
+  // more urgent branch warning. An UNSCHEDULED deal (both bounds null/absent) falls
+  // straight through to the pre-DEAL-005 labels below, unchanged.
+  //
+  // `windowPhase` is reused verbatim; the nullable cases are handled here because it
+  // requires two non-null bounds. NOTE (Execute-Agent Instruction E3): its boundary
+  // is CLOSED at `endAt`, one instant looser than the half-open `[starts_at,
+  // ends_at)` the SERVER enforces. This is a cosmetic badge-only divergence — the
+  // server is the authority on visibility — and is deliberately not "fixed" here.
+  const phase = resolveWindowPhase(deal.startsAt, deal.endsAt, now);
+  if (phase === 'upcoming') return { label: 'Scheduled', tone: 'neutral' };
+  if (phase === 'expired') return { label: 'Expired', tone: 'muted' };
+  if (phase === 'active') {
+    return deal.availableBranchCount !== undefined && deal.activeBranchCount !== undefined
+      ? {
+          label: `Live · ${deal.availableBranchCount}/${deal.activeBranchCount} branches`,
+          tone: 'success',
+        }
+      : { label: 'Live', tone: 'success' };
   }
   if (deal.availableBranchCount !== undefined && deal.activeBranchCount !== undefined) {
     return {

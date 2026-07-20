@@ -1774,3 +1774,167 @@ describe('POST /orders — MENU-003 deal component availability', () => {
     expect(res.status).toBe(201);
   });
 });
+
+// ─── DEAL-005: scheduled window at placement (AC6 — HARD, money) ─────────────
+//
+// AC6 is a trust boundary: a deal whose window closed while the cart sat open must
+// be rejected server-side at placement, re-checked against NOW rather than against
+// cart-add time. Fully-Automated by plan mandate — Known-Gap is banned for this AC.
+// Every deal here is fully component-available, so ONLY the schedule can decide.
+describe('POST /orders — DEAL-005 scheduled window', () => {
+  let branchId: string;
+  let categoryId: string;
+
+  let unscheduledDealId: string; // AC3: zero rows → always orderable
+  let liveDealId: string; // window straddles now → orderable
+  let closedDealId: string; // AC6: window already closed → rejected
+  let futureDealId: string; // AC1: not started yet → rejected
+  let regularProductId: string; // regression: regular products unaffected
+
+  const MINUTE = 60_000;
+
+  const freshUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+
+  async function makeProduct(suffix: string, opts: { isDeal?: boolean } = {}): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `DEAL005 Ord ${suffix}`,
+        slug: `deal005-ord-${suffix}`,
+        base_price: '9.00',
+        is_deal: opts.isDeal ?? false,
+      })
+      .returning();
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: product!.id, is_available: true });
+    return product!.id;
+  }
+
+  /** A fully component-available deal at `branchId`. */
+  async function makeDeal(suffix: string): Promise<string> {
+    const component = await makeProduct(`comp-${suffix}`);
+    const dealId = await makeProduct(`deal-${suffix}`, { isDeal: true });
+    await db
+      .insert(schema.dealComponents)
+      .values({ deal_product_id: dealId, component_product_id: component });
+    return dealId;
+  }
+
+  async function schedule(dealProductId: string, startsAt: Date | null, endsAt: Date | null) {
+    await db
+      .insert(schema.dealSchedules)
+      .values({ deal_product_id: dealProductId, starts_at: startsAt, ends_at: endsAt });
+  }
+
+  const orderBody = (productIds: string[]) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch' as const,
+    items: productIds.map((productId) => ({ productId, quantity: 1, selectedOptions: [] })),
+  });
+
+  beforeAll(async () => {
+    const suffix = uid();
+
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `DEAL005 Ord ${suffix}`,
+        slug: `deal005-ord-branch-${suffix}`,
+        address: 'Schedule Rd',
+        latitude: '14.5',
+        longitude: '120.9',
+        phone: '+639170000031',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 20,
+      })
+      .returning();
+    branchId = branch!.id;
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `DEAL005 Ord ${suffix}`, slug: `deal005-ord-cat-${suffix}`, sort_order: 10 })
+      .returning();
+    categoryId = category!.id;
+
+    const now = Date.now();
+
+    // AC3 — deliberately NO schedule row.
+    unscheduledDealId = await makeDeal(`unscheduled-${suffix}`);
+
+    liveDealId = await makeDeal(`live-${suffix}`);
+    await schedule(liveDealId, new Date(now - 60 * MINUTE), new Date(now + 60 * MINUTE));
+
+    // AC6 — the window closed before placement (the cart-sat-open case).
+    closedDealId = await makeDeal(`closed-${suffix}`);
+    await schedule(closedDealId, new Date(now - 120 * MINUTE), new Date(now - 60 * MINUTE));
+
+    futureDealId = await makeDeal(`future-${suffix}`);
+    await schedule(futureDealId, new Date(now + 60 * MINUTE), new Date(now + 120 * MINUTE));
+
+    regularProductId = await makeProduct(`regular-${suffix}`);
+  });
+
+  it('AC6 (HARD): rejects (400) a deal whose window closed, with a specific reason, writing no order row', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('deal005closed');
+
+    const res = await post('/orders', { user: u, body: orderBody([closedDealId]) });
+
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+
+    // The throw rolled the whole placement back — no order, no charge.
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('AC1: rejects (400) a deal whose window has not opened yet', async () => {
+    const u = await freshUser('deal005future');
+    const res = await post('/orders', { user: u, body: orderBody([futureDealId]) });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+  });
+
+  it('AC6 (contrast): accepts (201) a deal whose window is currently open', async () => {
+    const u = await freshUser('deal005live');
+    const res = await post('/orders', { user: u, body: orderBody([liveDealId]) });
+    expect(res.status).toBe(201);
+    expect(res.json.order.items[0].productId).toBe(liveDealId);
+  });
+
+  it('AC3 (HARD, no-backfill): accepts (201) a deal with ZERO deal_schedules rows', async () => {
+    const u = await freshUser('deal005unscheduled');
+    const res = await post('/orders', { user: u, body: orderBody([unscheduledDealId]) });
+    expect(res.status).toBe(201);
+    expect(res.json.order.items[0].productId).toBe(unscheduledDealId);
+  });
+
+  it('rejects the WHOLE order when a cart holds 2 deal lines and only one is out-of-window', async () => {
+    const { eq } = await import('drizzle-orm');
+    const u = await freshUser('deal005multi');
+
+    // The LIVE deal is listed FIRST, so a check that stopped at the first deal line
+    // would wrongly accept this cart.
+    const res = await post('/orders', { user: u, body: orderBody([liveDealId, closedDealId]) });
+
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/scheduled window is closed/);
+
+    const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(placed).toHaveLength(0);
+  });
+
+  it('leaves a regular (non-deal) product order unaffected by the window check', async () => {
+    const u = await freshUser('deal005regular');
+    const res = await post('/orders', { user: u, body: orderBody([regularProductId]) });
+    expect(res.status).toBe(201);
+  });
+});

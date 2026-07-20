@@ -85,3 +85,83 @@ describe('promotionStatus', () => {
     });
   });
 });
+
+// ─── DEAL-005 — scheduled window layered onto the deal badge (AC9) ───────────
+describe('dealStatus — DEAL-005 scheduled window', () => {
+  const base = { isActive: true, availableBranchCount: 2, activeBranchCount: 3 };
+
+  it('unscheduled deal (both bounds null) keeps the pre-DEAL-005 label', () => {
+    expect(dealStatus({ ...base, startsAt: null, endsAt: null }, NOW)).toEqual({
+      label: 'Active · 2/3 branches',
+      tone: 'success',
+    });
+    // Absent keys behave identically to explicit nulls.
+    expect(dealStatus(base, NOW)).toEqual({ label: 'Active · 2/3 branches', tone: 'success' });
+  });
+
+  it('future window → Scheduled', () => {
+    expect(dealStatus({ ...base, startsAt: FUTURE_START, endsAt: FUTURE_END }, NOW)).toEqual({
+      label: 'Scheduled',
+      tone: 'neutral',
+    });
+  });
+
+  it('current window → Live with the branch fraction', () => {
+    expect(dealStatus({ ...base, startsAt: OPEN_START, endsAt: OPEN_END }, NOW)).toEqual({
+      label: 'Live · 2/3 branches',
+      tone: 'success',
+    });
+  });
+
+  it('past window → Expired', () => {
+    expect(dealStatus({ ...base, startsAt: PAST_START, endsAt: PAST_END }, NOW)).toEqual({
+      label: 'Expired',
+      tone: 'muted',
+    });
+  });
+
+  it('inactive wins over any window state', () => {
+    expect(
+      dealStatus({ ...base, isActive: false, startsAt: OPEN_START, endsAt: OPEN_END }, NOW),
+    ).toEqual({ label: 'Inactive', tone: 'muted' });
+  });
+
+  it('zero-branch warning wins over an otherwise-Live window', () => {
+    expect(
+      dealStatus(
+        {
+          isActive: true,
+          availableBranchCount: 0,
+          activeBranchCount: 3,
+          startsAt: OPEN_START,
+          endsAt: OPEN_END,
+        },
+        NOW,
+      ),
+    ).toEqual({ label: 'Not available at any branch', tone: 'warning' });
+  });
+
+  it('handles open-ended windows on either side', () => {
+    // Started, never ends → Live.
+    expect(dealStatus({ ...base, startsAt: PAST_START, endsAt: null }, NOW).label).toBe(
+      'Live · 2/3 branches',
+    );
+    // Starts later, never ends → Scheduled.
+    expect(dealStatus({ ...base, startsAt: FUTURE_START, endsAt: null }, NOW).label).toBe(
+      'Scheduled',
+    );
+    // No start, ends in the past → Expired.
+    expect(dealStatus({ ...base, startsAt: null, endsAt: PAST_END }, NOW).label).toBe('Expired');
+    // No start, ends in the future → Live.
+    expect(dealStatus({ ...base, startsAt: null, endsAt: FUTURE_END }, NOW).label).toBe(
+      'Live · 2/3 branches',
+    );
+  });
+
+  it('falls back to a plain Live label when availability counts are unknown', () => {
+    expect(dealStatus({ isActive: true, startsAt: OPEN_START, endsAt: OPEN_END }, NOW)).toEqual({
+      label: 'Live',
+      tone: 'success',
+    });
+  });
+});
