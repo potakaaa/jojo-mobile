@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { DateTimeField } from '@/components/date-time-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -39,6 +40,15 @@ function toIso(local: string): string {
   return new Date(local).toISOString();
 }
 
+/** Now, in the same naive-local `"YYYY-MM-DDTHH:mm"` shape the expiry field speaks. */
+function localNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes(),
+  )}`;
+}
+
 export function GenerateCouponsPanel({
   offerId,
   offerType,
@@ -53,6 +63,9 @@ export function GenerateCouponsPanel({
   const [userId, setUserId] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+
+  /** Pinned at mount so the floor cannot drift forward while the panel is being filled. */
+  const [now] = useState(localNow);
 
   // A benefit-bearing mechanic with no configured product cannot issue codes.
   const blocked = needsBenefitProduct(offerType) && !benefitProductId;
@@ -128,14 +141,15 @@ export function GenerateCouponsPanel({
           </label>
         ) : null}
 
-        <label className="flex flex-col gap-1 text-sm">
-          Expiry override (optional)
-          <Input
-            type="datetime-local"
-            value={expiresAt}
-            onChange={(e) => setExpiresAt(e.target.value)}
-          />
-        </label>
+        {/* Optional — an expiry is a deadline, so it defaults to end of the chosen day.
+            An expiry already in the past would issue codes that are dead on arrival. */}
+        <DateTimeField
+          label="Expiry override (optional)"
+          value={expiresAt}
+          onChange={setExpiresAt}
+          defaultTime="23:59"
+          min={now}
+        />
 
         {localError || error ? (
           <p role="alert" className="text-sm text-destructive">
