@@ -43,8 +43,20 @@ export interface CartSessionState {
   discountTotalCents: number;
   totalCents: number;
   itemCount: number;
-  /** Adds a line for the current branch; merges into an existing matching line. */
-  addItem: (menuItem: MenuItem, opts: CartItemOption[], qty?: number, notes?: string) => void;
+  /**
+   * Adds a line for the current branch; merges into an existing matching line.
+   * Resolves `true` once the server has confirmed the write, `false` if it
+   * failed (network error, session expired, etc.) — a caller that shows a
+   * success toast MUST await this and only show it on `true`, or the toast
+   * lies about what actually happened (the failure mode this return value
+   * exists to close).
+   */
+  addItem: (
+    menuItem: MenuItem,
+    opts: CartItemOption[],
+    qty?: number,
+    notes?: string,
+  ) => Promise<boolean>;
   /** Sets a line's quantity; `qty <= 0` removes the line (D-note). */
   updateQuantity: (lineId: string, qty: number) => void;
   removeItem: (lineId: string) => void;
@@ -207,7 +219,7 @@ export function CartSessionProvider({
     [apiCart, initialCart],
   );
 
-  const { mutate: addMutate } = useCartMutation(
+  const { mutateAsync: addMutateAsync } = useCartMutation(
     cartKey,
     (v: { menuItem: MenuItem; opts: CartItemOption[]; quantity: number; notes?: string }) =>
       addCartItem({
@@ -256,11 +268,23 @@ export function CartSessionProvider({
   );
 
   const addItem = useCallback(
-    (menuItem: MenuItem, opts: CartItemOption[], qty = 1, notes?: string) => {
-      if (qty <= 0) return;
-      addMutate({ menuItem, opts, quantity: qty, ...(notes === undefined ? {} : { notes }) });
+    async (menuItem: MenuItem, opts: CartItemOption[], qty = 1, notes?: string) => {
+      if (qty <= 0) return false;
+      try {
+        await addMutateAsync({
+          menuItem,
+          opts,
+          quantity: qty,
+          ...(notes === undefined ? {} : { notes }),
+        });
+        return true;
+      } catch {
+        // Rollback + refetch already happened inside useCartMutation's onError/
+        // onSettled — the caller just needs to know NOT to claim success.
+        return false;
+      }
     },
-    [addMutate],
+    [addMutateAsync],
   );
 
   const removeItem = useCallback(

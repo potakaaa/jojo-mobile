@@ -61,7 +61,11 @@ const productWithRequiredOption: ProductDetail = {
 const selectedBranch = { id: 'b1', name: 'Downtown' } as PickupBranch;
 
 function setupCart(over: Record<string, unknown> = {}) {
-  const addItem = jest.fn();
+  // addItem is now async (resolves true/false based on the real server outcome —
+  // see use-cart.ts) — the mock must resolve `true` to match the success path
+  // these tests exercise, or the screen's real ok-check would show the failure
+  // toast instead.
+  const addItem = jest.fn(() => Promise.resolve(true));
   mockUseCart.mockReturnValue({
     cart: { items: [], pickupBranchId: 'b1' },
     addItem,
