@@ -2,7 +2,7 @@
    getSession stub are loosely typed at the test boundary; assertions narrow them. */
 import type { AddressInfo } from 'node:net';
 
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
