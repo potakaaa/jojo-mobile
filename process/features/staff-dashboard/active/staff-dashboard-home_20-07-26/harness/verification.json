@@ -1,0 +1,24 @@
+{
+  "evl_run": "2026-07-20",
+  "plan": "staff-dashboard-home_PLAN_20-07-26.md",
+  "task": "STAFF-005 (#106)",
+  "runner": "independent vc-tester EVL confirmation (not execute-agent self-report)",
+  "gates": [
+    { "gate": "pnpm --filter @jojopotato/mobile test", "result": "PASS", "detail": "vitest 63/63 (incl. 9 new: dashboard-counts 4 + prep-time-reducer 5); jest 78/78; 18 suites" },
+    { "gate": "pnpm --filter @jojopotato/mobile typecheck", "result": "PASS", "detail": "tsc --noEmit, 0 errors" },
+    { "gate": "pnpm --filter @jojopotato/mobile guard:theme-mode", "result": "FAIL_PREEXISTING", "detail": "25 violations, ALL in map-style.ts (23) + use-color-scheme.ts/.web.ts (2); zero in touchpoint files. Identical count/files on stashed baseline -> pre-existing, out-of-scope, zero contribution from this change" },
+    { "gate": "pnpm --filter @jojopotato/api test (staff-order-status ETA regression)", "result": "PASS", "detail": "23/23 STAFF-003 ETA integration tests green (docker postgres 5432)" },
+    { "gate": "pnpm format:check", "result": "FAIL_PREEXISTING", "detail": "158 files repo-wide (packages/ui/*, turbo.json, packages/utils) - all UNTOUCHED by this change; the 8 STAFF-005 touched files are all Prettier-clean (verified via targeted prettier --check)" }
+  ],
+  "deviation_verified": {
+    "claim": "NON_TERMINAL_STAFF_STATUSES moved to new pure staff-status-taxonomy.ts, re-exported from staff-status-config.ts",
+    "verdict": "LEGITIMATE",
+    "detail": "staff-status-taxonomy.ts exists (pure, no react-native/Palette import); staff-status-config.ts line 37 re-exports NON_TERMINAL_STAFF_STATUSES + NonTerminalStaffStatus from it; single source of truth preserved; apps/mobile-only"
+  },
+  "blast_radius": {
+    "verdict": "IN_SCOPE",
+    "detail": "STAFF-005 diff = apps/mobile/** only. packages/api zero working-tree changes. PATCH /api/staff/branch schema untouched (staff.ts:405-407, .strict(), estimatedPrepMinutes-only). apps/admin/routeTree.gen.ts shows EOL-only pre-existing noise (no content diff, present in session-start snapshot), unrelated to STAFF-005"
+  },
+  "verdict": "DONE_WITH_CONCERNS",
+  "concern_summary": "All developed-behavior gates + regression are GREEN. Two RED gates (guard:theme-mode, format:check) are both confirmed pre-existing repo-wide conditions in UNTOUCHED files with zero contribution from this change - not regressions, not fixable within this plan scope."
+}

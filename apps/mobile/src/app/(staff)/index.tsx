@@ -5,13 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { useStaffBranchSettings } from '@/features/staff/hooks/use-staff-branch-settings';
 import { useStaffMe } from '@/features/staff/hooks/use-staff-me';
+import { useStaffOrders } from '@/features/staff/hooks/use-staff-orders';
+import { deriveDashboardCounts } from '@/features/staff/lib/dashboard-counts';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
-// Nav card config. Active Orders navigates to the real STAFF-002 screen; the
-// remaining three are inert placeholders (STAFF-003/004). The live active-order
-// count is shown inside the Active Orders screen itself, not on this card.
+// Nav card config. All five cards navigate to their real staff screens; the
+// live dashboard stat block above them (STAFF-005) shows branch-scoped order
+// counts, accepting-pickup state, and current prep time.
 const NAV_CARDS = [
   {
     title: 'Active Orders',
@@ -41,9 +44,11 @@ const NAV_CARDS = [
 ] as const;
 
 /**
- * Staff dashboard shell (STAFF-001). Proves AC1 (staff lands here) + AC3 (branch
- * name comes from the auth-gated `GET /api/staff/me`). The four nav cards are
- * inert placeholders for STAFF-002/003/004 — no order/product data is fetched.
+ * Staff dashboard home (STAFF-001 shell + STAFF-005 stat block). Branch name
+ * comes from the auth-gated `GET /api/staff/me`; the live stat block composes
+ * `useStaffOrders` (10s poll) + `useStaffBranchSettings` into branch-scoped
+ * counts via `deriveDashboardCounts`. All five nav cards navigate to their real
+ * staff screens.
  */
 export default function StaffDashboard() {
   const theme = useTheme();
@@ -51,7 +56,16 @@ export default function StaffDashboard() {
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const { signOut } = useAuth();
   const { data, isLoading, error } = useStaffMe();
+  const { data: orders } = useStaffOrders();
+  const { data: branchSettings } = useStaffBranchSettings();
   const router = useRouter();
+
+  const counts = deriveDashboardCounts(orders ?? []);
+  const otherActive =
+    counts.activeByStatus.accepted +
+    counts.activeByStatus.preparing +
+    counts.activeByStatus.flavoring +
+    counts.activeByStatus.ready;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -80,6 +94,45 @@ export default function StaffDashboard() {
               </Text>
             )}
           </View>
+
+          <Card mode={mode} style={styles.statCard}>
+            <Text style={[styles.statCardTitle, { color: theme.text }]}>Branch at a glance</Text>
+
+            <View style={styles.statRow}>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: theme.text }]}>
+                  {counts.awaitingAcceptance}
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>
+                  Awaiting acceptance
+                </Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{otherActive}</Text>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>In progress</Text>
+              </View>
+            </View>
+
+            <View style={styles.statMetaRow}>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Pickup</Text>
+              {branchSettings ? (
+                <Badge
+                  label={branchSettings.isAcceptingPickup ? 'Accepting' : 'Not accepting'}
+                  variant={branchSettings.isAcceptingPickup ? 'success' : 'danger'}
+                  mode={mode}
+                />
+              ) : (
+                <Text style={[styles.statMetaValue, { color: theme.textSecondary }]}>—</Text>
+              )}
+            </View>
+
+            <View style={styles.statMetaRow}>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Prep time</Text>
+              <Text style={[styles.statMetaValue, { color: theme.text }]}>
+                {branchSettings ? `${branchSettings.estimatedPrepMinutes} min` : '—'}
+              </Text>
+            </View>
+          </Card>
 
           <View style={styles.cards}>
             {NAV_CARDS.map((card) => (
@@ -131,6 +184,38 @@ const styles = StyleSheet.create({
   branchName: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h2,
+  },
+  statCard: {
+    gap: Spacing.three,
+  },
+  statCardTitle: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: Spacing.four,
+  },
+  statItem: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  statValue: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h1,
+  },
+  statLabel: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.caption,
+  },
+  statMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statMetaValue: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.body,
   },
   cards: {
     gap: Spacing.three,
