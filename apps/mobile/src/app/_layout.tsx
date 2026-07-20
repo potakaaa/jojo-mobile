@@ -29,6 +29,7 @@ import { CartSessionProvider } from '@/features/cart/hooks/use-cart';
 import { ReorderConflictProvider } from '@/features/cart/hooks/use-reorder-conflicts';
 import { NotificationsProvider } from '@/features/notifications/hooks/use-notifications';
 import { queryClient } from '@/lib/query-client';
+import { resolveStatusBarStyle } from '@/lib/status-bar';
 
 // Keep the splash screen visible until the brand fonts are ready, so the app
 // never flashes system fonts before Fredoka / Plus Jakarta Sans load.
@@ -146,7 +147,7 @@ export default function RootLayout() {
             <AuthedTree />
           </AuthProvider>
         </QueryClientProvider>
-        <StatusBar style="auto" />
+        <StatusBar style={resolveStatusBarStyle(colorScheme === 'dark' ? 'dark' : 'light')} />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

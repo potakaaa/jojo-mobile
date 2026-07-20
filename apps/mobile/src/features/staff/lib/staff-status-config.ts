@@ -28,3 +28,10 @@ export const STAFF_STATUS_CONFIG: Record<OrderStatus, { label: string; bg: strin
 
 /** All staff-displayable statuses (active + terminal). */
 export type StaffOrderStatus = keyof typeof STAFF_STATUS_CONFIG;
+
+/**
+ * Non-terminal status taxonomy, re-exported from the pure `staff-status-taxonomy`
+ * module (which carries no `Palette`/react-native import) so node-env unit tests
+ * can import the taxonomy while consumers can still import it from here.
+ */
+export { NON_TERMINAL_STAFF_STATUSES, type NonTerminalStaffStatus } from './staff-status-taxonomy';

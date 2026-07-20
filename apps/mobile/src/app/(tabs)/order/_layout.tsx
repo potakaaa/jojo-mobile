@@ -4,30 +4,34 @@ import { Stack } from 'expo-router';
  * Order tab nested stack. The tab-root (`index`) keeps `headerShown:false`
  * (it is framed by the tab bar).
  *
- * Every pushed screen ALSO runs `headerShown:false` (NAV-003): the native title
- * bar is replaced by the shared in-content `<ScreenHeader>` from `@jojopotato/ui`,
- * the same header the `(staff)` and `notifications` screens use — a custom control
- * injected into the native `headerLeft` slot cannot be given the right gap/inset
- * from the outside, so the header is rendered in content instead. Each screen
- * therefore owns its own top safe-area inset (`<SafeAreaView edges={['top', ...]}>`)
- * and renders its own title + back control.
+ * THIS TAB NOW OWNS ONLY ITS ROOT (NAV-005). Six screens used to be pushed
+ * inside this stack — `product`, `cart`, `checkout`,
+ * `payment-method`, `confirmation/[orderId]`, and `history`. Every one of them
+ * was reachable from OUTSIDE the Order tab (Home's product cards, Deals' Apply
+ * button, Account's Order History link, the reorder hook), and that is precisely
+ * what made them broken: while a screen lives in this stack, "being on that
+ * screen" IS "being in the Order tab", so opening it from Home and pressing back
+ * returned the user to Home while this tab stayed mounted on it — residue by
+ * definition, not a back-handler bug.
  *
- * The former per-screen `title` options are gone: they only configured the native
- * header, which no longer renders. Titles now live in each screen's `<ScreenHeader>`.
- * The iOS edge-swipe-back gesture is unaffected — `gestureEnabled` is an independent
- * screen option that `headerShown` never touches (verified against installed
- * expo-router 57.0.4 `NativeStackView.native.js`).
+ * They now live in their own top-level route groups — `(tabs)/cart`,
+ * `(tabs)/product`, `(tabs)/history` — as siblings of the tabs, owned by no tab,
+ * exactly like `deals`, `notifications`, and `tracking`.
+ *
+ * THE RULE (do not re-add a pushed screen here without checking it): a tab's
+ * nested Stack owns ONLY its root plus screens reachable EXCLUSIVELY from that
+ * root. Anything reachable from two or more places belongs above the tabs.
+ *
+ * `index` keeps `headerShown:false` because it is framed by the tab bar. The
+ * `screenOptions={{ headerShown: true }}` default is retained for any FUTURE
+ * Order-tab-exclusive screen; such a screen should follow the NAV-003 convention
+ * (opt into `headerShown:false` and render the shared in-content `<ScreenHeader>`
+ * from `@jojopotato/ui`, owning its own top safe-area inset).
  */
 export default function OrderStackLayout() {
   return (
     <Stack screenOptions={{ headerShown: true }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="product/[productId]" options={{ headerShown: false }} />
-      <Stack.Screen name="cart" options={{ headerShown: false }} />
-      <Stack.Screen name="checkout" options={{ headerShown: false }} />
-      <Stack.Screen name="payment-method" options={{ headerShown: false }} />
-      <Stack.Screen name="confirmation/[orderId]" options={{ headerShown: false }} />
-      <Stack.Screen name="history" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import type { PickupBranch } from '@jojopotato/types';
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
-import CartScreen from '@/app/(tabs)/order/cart';
+import CartScreen from '@/app/(tabs)/cart';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';

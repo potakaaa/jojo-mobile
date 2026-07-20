@@ -7,13 +7,14 @@
 
 import { Button, Input, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useReducer, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useStaffBranchSettings } from '@/features/staff/hooks/use-staff-branch-settings';
 import { usePatchBranchSettings } from '@/features/staff/hooks/use-patch-branch-settings';
+import { initialPrepTimeState, prepTimeReducer } from '@/features/staff/lib/prep-time-reducer';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -29,27 +30,34 @@ export default function BranchPickupSettingsScreen() {
   const { data: settings, isLoading, isError } = useStaffBranchSettings();
   const { mutate: patchSettings, isPending } = usePatchBranchSettings();
 
-  const [prepTimeText, setPrepTimeText] = useState('');
+  const [prepState, dispatch] = useReducer(prepTimeReducer, initialPrepTimeState);
   const [prepTimeError, setPrepTimeError] = useState<string | null>(null);
-  const [seededSettings, setSeededSettings] = useState(settings);
 
-  // Seed local state when settings first arrive (or change from a refetch).
-  // Uses the "previous render" pattern — React-recommended alternative to useEffect + setState.
-  if (settings !== seededSettings) {
-    setSeededSettings(settings);
-    if (settings) {
-      setPrepTimeText(String(settings.estimatedPrepMinutes));
-    }
+  // Seed the prep-time field SYNCHRONOUSLY the moment settings are available,
+  // guarded by the reducer's `hasSeeded` so it fires exactly once. Dispatching
+  // during render (React's supported "storing info from previous renders"
+  // pattern) re-renders with the seeded value BEFORE paint, so the field never
+  // shows empty while `settings` is already defined/cached (AC6/AC7 — no
+  // useEffect one-frame flash). Handles both the warm-cache revisit and the cold
+  // first visit (settings undefined at mount, arriving later) in one construct.
+  if (settings && !prepState.hasSeeded) {
+    dispatch({ type: 'SETTINGS_ARRIVED', settings });
   }
 
   function handleSavePrepTime() {
-    const parsed = parseInt(prepTimeText, 10);
+    const parsed = parseInt(prepState.prepTimeText, 10);
     if (Number.isNaN(parsed) || parsed < PREP_TIME_MIN || parsed > PREP_TIME_MAX) {
       setPrepTimeError(`Enter a value between ${PREP_TIME_MIN} and ${PREP_TIME_MAX}`);
       return;
     }
     setPrepTimeError(null);
-    patchSettings({ estimatedPrepMinutes: parsed });
+    // Re-seed deterministically from the server response on save (AC8) via the
+    // call-site mutate options — react-query runs both the hook's own onSuccess
+    // (query invalidate) and this callback, so no hook signature change needed.
+    patchSettings(
+      { estimatedPrepMinutes: parsed },
+      { onSuccess: (updated) => dispatch({ type: 'SAVE_SUCCESS', settings: updated }) },
+    );
   }
 
   return (
@@ -81,11 +89,12 @@ export default function BranchPickupSettingsScreen() {
                 <View style={styles.prepTimeRow}>
                   <View style={styles.prepTimeInput}>
                     <Input
-                      value={prepTimeText}
+                      value={prepState.prepTimeText}
                       onChangeText={(text) => {
-                        setPrepTimeText(text);
+                        dispatch({ type: 'USER_EDIT', text });
                         if (prepTimeError) setPrepTimeError(null);
                       }}
+                      mode={mode}
                       keyboardType="number-pad"
                       returnKeyType="done"
                       maxLength={3}

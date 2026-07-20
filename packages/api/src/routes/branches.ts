@@ -13,6 +13,7 @@ import {
   productOptions,
   products,
 } from '../db/schema/index';
+import { resolveAvailableDealProductIds } from './lib/deal-availability';
 import {
   serializeBranch,
   serializeMenuCategory,
@@ -156,6 +157,11 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
   // regular (non-deal) menu skips this query entirely, so its behavior/perf is
   // provably unchanged (locked by the regression test on the regular menu path).
   const componentsByProduct = new Map<string, AdminDealComponent[]>();
+  // MENU-003: the subset of the candidate deal-products whose components are ALL
+  // available at this branch. Only ever populated on the deals menu; stays empty
+  // (and is never consulted) on the regular menu — see the `isDealMenu &&` guard
+  // on its only read site in the product loop below.
+  let availableDealIds = new Set<string>();
   if (isDealMenu && productIds.length) {
     const componentRows = await db
       .select({
@@ -178,6 +184,13 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       });
       componentsByProduct.set(row.dealProductId, list);
     }
+
+    // MENU-003: a deal is only listed when every one of its components is
+    // available at this branch (and has >=1 component at all). Computed AFTER
+    // the display map above and kept separate from it: `componentsByProduct`
+    // still drives the unchanged `components[]` display field for the deals that
+    // do survive the filter.
+    availableDealIds = await resolveAvailableDealProductIds(db, branchId, productIds);
   }
 
   // Preserve first-seen category order (already sorted by category.sort_order).
@@ -186,6 +199,11 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
   const productsByCategory = new Map<string, ApiMenuProduct[]>();
 
   for (const { product, category } of productRows) {
+    // MENU-003: drop deals with an unavailable (or missing) component entirely —
+    // "not shown", not shown-as-unavailable. Gated by `isDealMenu &&`, so this is
+    // a guaranteed no-op on the regular menu (AC4 regression lock).
+    if (isDealMenu && !availableDealIds.has(product.id)) continue;
+
     if (!productsByCategory.has(category.id)) {
       categoryOrder.push(category.id);
       categoryById.set(category.id, { id: category.id, name: category.name });

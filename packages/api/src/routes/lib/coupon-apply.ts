@@ -24,7 +24,7 @@ import {
 import { numericToCents, serializeDeal } from './serializers';
 
 /** Read-capable handle: the app `db` OR an open transaction — both share the query surface. */
-type Queryer = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Queryer = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Cart-line input shared by the apply route and the order-placement recompute. */
 export interface CouponCartItem {

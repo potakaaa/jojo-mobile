@@ -5,7 +5,7 @@ import { Colors, Radii, Shadows, Spacing, type ThemeMode } from '../theme';
 
 export interface CardProps {
   children: ReactNode;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -14,7 +14,7 @@ export interface CardProps {
  * radius, and the soft-small elevation shadow. The generic building block
  * other content composes into.
  */
-export function Card({ children, mode = 'light', style }: CardProps) {
+export function Card({ children, mode, style }: CardProps) {
   const theme = Colors[mode];
 
   return (

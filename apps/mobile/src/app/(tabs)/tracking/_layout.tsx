@@ -18,13 +18,21 @@ import { Stack } from 'expo-router';
  * Tracking — residue by definition, not a back-handler bug. A route that belongs
  * to no tab cannot leave residue in one.
  *
- * The native header is OFF: `[orderId]` is at position 0 of this stack, so React
- * Navigation renders no back button for it, and a custom control injected into the
- * native `headerLeft` slot cannot be given the right gap or left inset — the native
- * header owns that slot's layout. The screen instead renders the shared
+ * The anchor (position 0 of this stack) is the STATIC `index` route, mirroring
+ * `notifications/_layout.tsx`. That static-index anchor is precisely why the push
+ * no longer doubles (NAV-005): a static-index anchor makes the push target resolve
+ * to the `'tab'` navigator, so expo-router downgrades `PUSH`→`NAVIGATE` and no
+ * duplicate anchor is created. (The previous NAV-004 shape anchored on the dynamic
+ * `index` route's parametrized variant, which skipped that downgrade and opened
+ * Tracking twice.)
+ *
+ * The native header is OFF: the static `index` is at position 0 of this stack, so
+ * React Navigation renders no back button for it, and a custom control injected into
+ * the native `headerLeft` slot cannot be given the right gap or left inset — the
+ * native header owns that slot's layout. The screen instead renders the shared
  * `<ScreenHeader>` from `@jojopotato/ui` in its own content, the same in-content
  * header the `(staff)` and `notifications` screens use. The screen therefore owns
- * its own top safe-area inset too (see `./[orderId].tsx`).
+ * its own top safe-area inset too (see `./index.tsx`).
  */
 export default function TrackingStackLayout() {
   return <Stack screenOptions={{ headerShown: false }} />;

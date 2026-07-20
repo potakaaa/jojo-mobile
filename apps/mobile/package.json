@@ -14,6 +14,8 @@
     "web": "expo start --web",
     "build": "expo export",
     "lint": "eslint .",
+    "guard:theme-mode": "node scripts/check-theme-mode.mjs",
+    "guard:no-raw-alert": "node scripts/check-no-raw-alert.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests && jest",
     "clean": "rm -rf .expo dist node_modules",

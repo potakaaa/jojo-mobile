@@ -19,7 +19,7 @@ export interface InputProps {
   editable?: boolean;
   label?: string;
   error?: string;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
   /** Keyboard variant, e.g. `email-address`, `phone-pad`, `number-pad`. */
   keyboardType?: TextInputProps['keyboardType'];
@@ -54,7 +54,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     editable = true,
     label,
     error,
-    mode = 'light',
+    mode,
     style,
     keyboardType,
     secureTextEntry,

@@ -1,0 +1,95 @@
+# EAS Build project-archive ignore rules. In a pnpm/turborepo monorepo, EAS reads
+# .easignore ONLY from the monorepo root (per-package .easignore files are not read)
+# and, when present, it REPLACES .gitignore filtering entirely for the archived tree.
+# This file mirrors every exclusion from the repo's .gitignore files EXCEPT
+# google-services.json / GoogleService-Info.plist: those must stay out of git
+# (per-project Firebase config, see the push-delivery credential runbook under
+# process/features/rewards-notifications/) but DO need to reach the EAS build sandbox,
+# or the Google Services Gradle plugin fails with "google-services.json is missing"
+# even though the file exists on disk locally.
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# turborepo
+.turbo/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native (ios stays generated/ignored; apps/mobile/android IS committed and needed)
+/ios
+/apps/mobile/ios
+
+# gradle/android build output
+.kotlin/
+apps/mobile/android/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+apps/mobile/android/**/*.iml
+apps/mobile/android/**/*.hprof
+apps/mobile/android/.cxx/
+apps/mobile/android/app/src/main/java/inline/
+
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# metro
+.metro-health-check*
+
+# builds
+*.tsbuildinfo
+build/
+apps/mobile/builds/
+
+# logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.log*
+
+# env (every variant, but keep tracked .env.example templates)
+.env
+.env.*
+!.env.example
+
+# editors / OS
+.DS_Store
+*.pem
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude/settings.local.json
+.vibecode-backup*/
+design-system/
+
+# claude hooks
+.claude/hooks/.logs/
+
+# AI generated files
+PRODUCT.md
+DESIGN.md
+.impeccable/
+/graphify-out
+reports
+
+# browser automation artifacts
+.playwright-mcp/
+ac8-admin-dashboard.png
+
+# admin web app build output
+apps/admin/.tanstack/
+apps/admin/.output/
+apps/admin/.nitro/
+
+# Firebase Admin SDK / FCM v1 service account key — never needed in the build
+# archive, only for backend/admin scripts. Keep excluded.
+*firebase-adminsdk*.json

@@ -45,6 +45,12 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "check-tokens": {
+      "cache": false
+    },
+    "guard:theme-mode": {
+      "cache": false
+    },
     "test": {
       "cache": false,
       "dependsOn": ["^build"],

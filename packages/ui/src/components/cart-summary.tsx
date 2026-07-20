@@ -13,7 +13,7 @@ export interface CartSummaryProps {
   discountLabel?: string;
   /** Reward-redemption affordance rendered above the total (D2). */
   rewardSlot?: ReactNode;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -29,7 +29,7 @@ export function CartSummary({
   discountCents = 0,
   discountLabel,
   rewardSlot,
-  mode = 'light',
+  mode,
   style,
 }: CartSummaryProps) {
   const theme = Colors[mode];

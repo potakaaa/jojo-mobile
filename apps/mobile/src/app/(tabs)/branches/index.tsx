@@ -4,7 +4,6 @@ import { BranchListItem, Button, Input, Palette, Radii, Shadows } from '@jojopot
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { BranchMap, type BranchMapHandle } from '@/features/branches/components/branch-map';
+import { useNavigateToBranch } from '@/features/branches/lib/navigate-to-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
@@ -41,6 +41,7 @@ export default function BranchLocatorScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
   const { coords, status: locationStatus } = useUserLocation();
+  const navigateToBranch = useNavigateToBranch();
 
   const [query, setQuery] = useState('');
 
@@ -108,10 +109,7 @@ export default function BranchLocatorScreen() {
   const isLoading = isPending || locationStatus === 'loading';
 
   const onOrderPress = (id: string) => {
-    router.push({
-      pathname: '/(tabs)/branches/[branchId]',
-      params: { branchId: id },
-    });
+    navigateToBranch(id);
   };
 
   // Locate-me FAB: snap the map back to the user's current position. No-op if

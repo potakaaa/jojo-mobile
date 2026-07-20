@@ -71,3 +71,7 @@ reports
 # browser automation artifacts (manual Agent-Probe / Playwright MCP QA walkthroughs, e.g. AC8)
 .playwright-mcp/
 ac8-admin-dashboard.png
+
+android/app/google-services.json
+google-services.json
+jojo-potato-firebase-adminsdk-fbsvc-c0cd13b31a.json

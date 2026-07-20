@@ -5,7 +5,7 @@ import { Colors, FontFamily, Radii, Spacing, TypeScale, type ThemeMode } from '.
 
 export interface PickupTimeBadgeProps {
   pickupTime: PickupTime;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -13,7 +13,7 @@ export interface PickupTimeBadgeProps {
  * Small themed badge showing a pickup time-slot label. Renders dimmed with a
  * struck-through label when the slot is unavailable.
  */
-export function PickupTimeBadge({ pickupTime, mode = 'light', style }: PickupTimeBadgeProps) {
+export function PickupTimeBadge({ pickupTime, mode, style }: PickupTimeBadgeProps) {
   const theme = Colors[mode];
   const available = pickupTime.isAvailable;
 

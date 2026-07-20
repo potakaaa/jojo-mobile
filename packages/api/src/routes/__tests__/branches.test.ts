@@ -274,3 +274,178 @@ describe('GET /branches/:branchId/menu?isDeal=true', () => {
     expect(products.find((p: any) => p.name === productName)).toBeUndefined();
   });
 });
+
+/**
+ * MENU-003 — a deal is listed at a branch ONLY when it has >=1 component and
+ * EVERY component is available there (branch-available AND globally active).
+ * Fully self-seeding on its own branches/category so it cannot perturb (or be
+ * perturbed by) the ADM-004 seed above.
+ */
+describe('GET /branches/:branchId/menu?isDeal=true — MENU-003 component availability', () => {
+  let branchAId: string;
+  let branchBId: string;
+  let categoryId: string;
+
+  let allAvailableDealId: string; // AC1: 2 components, both available at A
+  let oneComponentDownDealId: string; // AC2/AC3: 1 component, down at A, up at B
+  let twoComponentOneDownDealId: string; // AC6: 2 components, exactly one down at A
+  let zeroComponentDealId: string; // AC7: no components at all
+  let inactiveComponentDealId: string; // AC8: component branch-available but is_active=false
+  let noBpaRowDealId: string; // residual: component has NO bpa row at this branch
+
+  async function makeBranch(label: string, suffix: string): Promise<string> {
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `MENU003 ${label} ${suffix}`,
+        slug: `menu003-${label.toLowerCase()}-${suffix}`,
+        address: `${label} St`,
+        latitude: '14.550000',
+        longitude: '120.980000',
+        phone: '+639170000009',
+        opening_hours: '08:00-20:00',
+        estimated_prep_minutes: 15,
+      })
+      .returning();
+    return branch!.id;
+  }
+
+  async function makeComponent(suffix: string, isActive = true): Promise<string> {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `MENU003 Component ${suffix}`,
+        slug: `menu003-component-${suffix}`,
+        base_price: '2.00',
+        is_active: isActive,
+      })
+      .returning();
+    return product!.id;
+  }
+
+  async function makeDeal(suffix: string, componentIds: string[]): Promise<string> {
+    const [deal] = await db
+      .insert(schema.products)
+      .values({
+        category_id: categoryId,
+        name: `MENU003 Deal ${suffix}`,
+        slug: `menu003-deal-${suffix}`,
+        base_price: '9.00',
+        is_deal: true,
+      })
+      .returning();
+    if (componentIds.length) {
+      await db.insert(schema.dealComponents).values(
+        componentIds.map((componentProductId) => ({
+          deal_product_id: deal!.id,
+          component_product_id: componentProductId,
+          quantity: 1,
+        })),
+      );
+    }
+    return deal!.id;
+  }
+
+  async function setAvailability(branchId: string, productId: string, isAvailable: boolean) {
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: productId, is_available: isAvailable });
+  }
+
+  /** ids of the deal-products the deals menu returns for a branch. */
+  async function dealIdsAt(branchId: string): Promise<string[]> {
+    const { status, json } = await get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    return json.categories.flatMap((c: any) => c.products).map((p: any) => p.id);
+  }
+
+  beforeAll(async () => {
+    const suffix = uid();
+    branchAId = await makeBranch('A', suffix);
+    branchBId = await makeBranch('B', suffix);
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `MENU003 Deals ${suffix}`, slug: `menu003-deals-${suffix}`, sort_order: 2 })
+      .returning();
+    categoryId = category!.id;
+
+    // AC1 — both components available at A.
+    const comp1a = await makeComponent(`1a-${suffix}`);
+    const comp1b = await makeComponent(`1b-${suffix}`);
+    allAvailableDealId = await makeDeal(`all-available-${suffix}`, [comp1a, comp1b]);
+    await setAvailability(branchAId, comp1a, true);
+    await setAvailability(branchAId, comp1b, true);
+    await setAvailability(branchAId, allAvailableDealId, true);
+
+    // AC2 + AC3 — one component: DOWN at A, UP at B. The deal-product itself is
+    // available at both branches, so only the component decides the outcome.
+    const comp2 = await makeComponent(`2-${suffix}`);
+    oneComponentDownDealId = await makeDeal(`one-component-down-${suffix}`, [comp2]);
+    await setAvailability(branchAId, comp2, false);
+    await setAvailability(branchAId, oneComponentDownDealId, true);
+    await setAvailability(branchBId, comp2, true);
+    await setAvailability(branchBId, oneComponentDownDealId, true);
+
+    // AC6 — 2 components, exactly one down at A.
+    const comp3a = await makeComponent(`3a-${suffix}`);
+    const comp3b = await makeComponent(`3b-${suffix}`);
+    twoComponentOneDownDealId = await makeDeal(`two-component-one-down-${suffix}`, [
+      comp3a,
+      comp3b,
+    ]);
+    await setAvailability(branchAId, comp3a, true);
+    await setAvailability(branchAId, comp3b, false);
+    await setAvailability(branchAId, twoComponentOneDownDealId, true);
+
+    // AC7 — zero components; the deal-product itself IS available at A.
+    zeroComponentDealId = await makeDeal(`zero-component-${suffix}`, []);
+    await setAvailability(branchAId, zeroComponentDealId, true);
+
+    // AC8 — component is branch-available (is_available=true) but globally
+    // deactivated (is_active=false). Both signals are required.
+    const comp5 = await makeComponent(`5-inactive-${suffix}`, false);
+    inactiveComponentDealId = await makeDeal(`inactive-component-${suffix}`, [comp5]);
+    await setAvailability(branchAId, comp5, true);
+    await setAvailability(branchAId, inactiveComponentDealId, true);
+
+    // Residual — component is active but has NO branch_product_availability row
+    // at all for branch A (distinct from a row that exists saying `false`).
+    const comp6 = await makeComponent(`6-no-bpa-${suffix}`);
+    noBpaRowDealId = await makeDeal(`no-bpa-row-${suffix}`, [comp6]);
+    await setAvailability(branchAId, noBpaRowDealId, true);
+  });
+
+  it('AC1: lists a deal whose deal-product and every component are available at Branch A', async () => {
+    expect(await dealIdsAt(branchAId)).toContain(allAvailableDealId);
+  });
+
+  it('AC2: excludes a deal when exactly one component is unavailable, leaving sibling deals listed', async () => {
+    const listed = await dealIdsAt(branchAId);
+    expect(listed).not.toContain(oneComponentDownDealId);
+    // The sibling all-available deal is untouched by the other deal's exclusion.
+    expect(listed).toContain(allAvailableDealId);
+  });
+
+  it('AC3: keeps the same deal listed at Branch B while it is hidden at Branch A (per-branch)', async () => {
+    expect(await dealIdsAt(branchAId)).not.toContain(oneComponentDownDealId);
+    expect(await dealIdsAt(branchBId)).toContain(oneComponentDownDealId);
+  });
+
+  it('AC6: excludes a 2-component deal when exactly one of the two is unavailable', async () => {
+    expect(await dealIdsAt(branchAId)).not.toContain(twoComponentOneDownDealId);
+  });
+
+  it('AC7: hides a zero-component deal even though the deal-product itself is available', async () => {
+    expect(await dealIdsAt(branchAId)).not.toContain(zeroComponentDealId);
+  });
+
+  it('AC8: excludes a deal whose component is branch-available but globally deactivated', async () => {
+    expect(await dealIdsAt(branchAId)).not.toContain(inactiveComponentDealId);
+  });
+
+  it('excludes a deal whose component has NO branch_product_availability row at all', async () => {
+    expect(await dealIdsAt(branchAId)).not.toContain(noBpaRowDealId);
+  });
+});

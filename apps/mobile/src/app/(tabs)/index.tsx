@@ -9,7 +9,7 @@ import {
 } from '@jojopotato/ui';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -31,8 +31,11 @@ import { CategorySelector } from '@/features/home/components/category-selector';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
+import { useNavigateToBranch } from '@/features/branches/lib/navigate-to-branch';
+import { filterProductsByCategory } from '@/features/home/lib/filter-products-by-category';
 import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
 import { useMenu } from '@/features/menu/hooks/use-menu';
+import { useNavigateToProduct } from '@/features/menu/lib/navigate-to-product';
 import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { fetchOrderHistory } from '@/features/orders/lib/api-client';
@@ -102,6 +105,16 @@ export default function HomeScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
 
+  /**
+   * Active Home category filter, tagged with the branch it was chosen in.
+   * `null` = no filter, grid shows every product. Read it back through
+   * `selectedCategoryId` below rather than using this directly.
+   */
+  const [categorySelection, setCategorySelection] = useState<{
+    branchId: string;
+    categoryId: string;
+  } | null>(null);
+
   const {
     selectedBranch,
     isLoading: branchLoading,
@@ -121,6 +134,8 @@ export default function HomeScreen() {
   // Most-recent non-terminal order (list is newest-first from the API).
   const activeOrder = orders?.find((o) => !isTerminalStatus(o.status)) ?? null;
   const navigateToOrderTracking = useNavigateToOrderTracking();
+  const navigateToProduct = useNavigateToProduct();
+  const navigateToBranch = useNavigateToBranch();
 
   const branchId = selectedBranch?.id;
 
@@ -134,25 +149,40 @@ export default function HomeScreen() {
     if (branchId) setBranch(branchId);
   }, [branchId, setBranch]);
 
+  // A branch switch ALWAYS clears the category filter, landing the customer on
+  // the new branch's full, unfiltered menu — never a filter carried over from
+  // the branch they just left (which could strand them in an empty state for a
+  // category the new branch doesn't carry). Deliberately unconditional: there is
+  // no "persist if the category still exists here" path.
+  //
+  // ponytail: the reset is derived, not an effect. Tagging the selection with
+  // its branch means a mismatch already reads as "no filter", so switching
+  // branches clears it for free — no reset effect, no cascading extra render.
+  const selectedCategoryId =
+    categorySelection?.branchId === branchId ? (categorySelection?.categoryId ?? null) : null;
+
+  const selectCategory = (categoryId: string | null) => {
+    setCategorySelection(categoryId && branchId ? { branchId, categoryId } : null);
+  };
+
   const menuView = useMemo(
     () => (menuQuery.data ? flattenMenuForHome(menuQuery.data) : { categories: [], products: [] }),
     [menuQuery.data],
   );
 
+  const filteredProducts = useMemo(
+    () => filterProductsByCategory(menuView.products, selectedCategoryId),
+    [menuView.products, selectedCategoryId],
+  );
+
   const openBranch = () => {
     if (!branchId) return;
-    router.push({
-      pathname: '/(tabs)/branches/[branchId]',
-      params: { branchId },
-    });
+    navigateToBranch(branchId);
   };
 
   const openProduct = (productId: string) => {
     if (!branchId) return;
-    router.push({
-      pathname: '/(tabs)/order/product/[productId]',
-      params: { productId, branchId },
-    });
+    navigateToProduct(productId, branchId);
   };
 
   const openDeal = (dealId: string) => {
@@ -256,7 +286,7 @@ export default function HomeScreen() {
           {/* Deals strip */}
           <View style={styles.sectionTitleRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Deals & offers</Text>
-            <Badge label="Save" />
+            <Badge label="Save" mode={mode} />
           </View>
           {dealsQuery.isPending ? (
             <SectionLoader />
@@ -321,12 +351,30 @@ export default function HomeScreen() {
             />
           ) : (
             <>
-              <CategorySelector categories={menuView.categories} />
+              <CategorySelector
+                categories={menuView.categories}
+                selectedId={selectedCategoryId}
+                onSelect={selectCategory}
+              />
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
-                <Badge label="Popular" />
+                <Badge label="Popular" mode={mode} />
               </View>
-              <ProductGrid products={menuView.products} onProductPress={openProduct} />
+              {/*
+                The branch HAS products, but the selected category has none of
+                them — swap only the grid area for an empty state, keeping the
+                chip row above it so the user can pick a different category.
+              */}
+              {filteredProducts.length === 0 ? (
+                <EmptyState
+                  iconName="restaurant-outline"
+                  title="Nothing here yet"
+                  description="No items in this category at this branch."
+                  mode={mode}
+                />
+              ) : (
+                <ProductGrid products={filteredProducts} onProductPress={openProduct} />
+              )}
             </>
           )}
         </ScrollView>

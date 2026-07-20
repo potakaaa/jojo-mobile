@@ -17,6 +17,7 @@ import { useBranch } from '@/features/branch/hooks/use-branch';
 import { BranchSwitcher } from '@/features/menu/components/branch-switcher';
 import { CategorySection } from '@/features/menu/components/category-section';
 import { useMenu } from '@/features/menu/hooks/use-menu';
+import { useNavigateToProduct } from '@/features/menu/lib/navigate-to-product';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -30,12 +31,9 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useMenu();
   const { isLoading: isBranchLoading } = useBranch();
+  const navigateToProduct = useNavigateToProduct();
 
-  const openProduct = (productId: string) =>
-    router.push({
-      pathname: '/(tabs)/order/product/[productId]',
-      params: { productId },
-    });
+  const openProduct = (productId: string) => navigateToProduct(productId);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -57,7 +55,7 @@ export default function OrderScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="View cart"
                 hitSlop={8}
-                onPress={() => router.push('/(tabs)/order/cart')}
+                onPress={() => router.push('/(tabs)/cart')}
               >
                 <Ionicons name="cart-outline" size={24} color={theme.text} />
               </Pressable>
@@ -65,7 +63,7 @@ export default function OrderScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Order history"
                 hitSlop={8}
-                onPress={() => router.push('/(tabs)/order/history')}
+                onPress={() => router.push('/(tabs)/history')}
               >
                 <Ionicons name="receipt-outline" size={24} color={theme.text} />
               </Pressable>

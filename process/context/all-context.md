@@ -1,8 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix, CODE DONE + EVL-green,
-Agent-Probe walkthrough owed — see admin-dashboard bullet below and §Scan Metadata; + Phase 7 —
-Basic Analytics Dashboard, ADM-007, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, EVL-confirmed green; **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -61,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 20-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 20-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -99,6 +97,57 @@ top of it later without re-plumbing the project.
   (not `VERIFIED` yet). Delivered by:
   `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/adm-route-guard-ssr_PLAN_20-07-26.md`
   (+ co-located REPORT in the same task folder).
+- **Mobile dark-mode bug-class fix + StatusBar legibility (`packages/ui` + `apps/mobile`, delivered
+  17-07-26, branch `spec/mobile-dark-mode-audit`, EVL-green, commits `fcd8e10`..`71357d7` — NOT YET
+  MERGED, no PR; code-complete but Agent-Probe on-device walkthroughs still owed, see below):**
+  **durable architectural fact for all future `packages/ui` work: `mode: ThemeMode` is now a
+  REQUIRED prop on all 27 themed components — no default value.** The root cause of the reported
+  dark-mode bug was never per-screen token misuse; it was that every themed component defaulted
+  `mode = 'light'`, so a screen that forgot to pass `mode` silently rendered the wrong theme instead
+  of erroring. The fix converts this from a runtime footgun into a compile-time gate: dropping the
+  default makes `tsc --noEmit` exhaustively enumerate every missing-`mode` call site — a reusable
+  technique (prop-default removal beats both a manual audit sweep and a bespoke lint rule when a
+  compiler check can substitute). The tsc sweep surfaced **98 defects across 36 files** off a
+  measured clean baseline (0 errors); only 17 errors / 11 files were real production-screen
+  breakage — 31 of the mobile errors (63%) were in the dev-only `component-showcase.tsx`; the rest
+  were `packages/ui`'s own test fixtures needing a `mode=` prop added. **Three real dark-mode bugs
+  fixed:** `order/history.tsx:74` (the originally reported `<Card>`), `order/history.tsx:93` (a
+  THIRD defect nobody predicted — an `OrderStatusBadge` 19 lines below the known Card, found only
+  because the sweep is exhaustive by construction), and `order/cart.tsx:239` (reorder-conflict
+  `Card`). **Two sites deliberately pinned `mode="light"` with inline justification comments** (not
+  bugs): `tracking/[orderId].tsx:96` (sits on a hardcoded cream surface) and `promo-banner.tsx:35`
+  (a permanently-yellow banner regardless of scheme) — CLAUDE.md's own theming convention already
+  requires a fixed-mode surface's text to read that same fixed mode's tokens, not the device scheme.
+  StatusBar: new `apps/mobile/src/lib/status-bar.ts` exports `resolveStatusBarStyle(appScheme) =
+  appScheme === 'dark' ? 'light' : 'dark'` (a scheme-SOURCE swap — `_layout.tsx` previously read the
+  raw OS scheme via `style="auto"`, now reads the app's resolved theme), wired at `_layout.tsx:150`,
+  mapping direction locked by a feasibility probe (see the archived plan's FEASIBILITY file).
+  **New durable CI-adjacent guard:** `apps/mobile/scripts/check-theme-mode.mjs` (run via `pnpm
+  --filter @jojopotato/mobile guard:theme-mode`) derives its 27 tracked component names from
+  source (not hardcoded), hard-fails on spread attributes on a tracked component's JSX call (a
+  spread source can widen to `any` and bypass both the tsc required-prop check and a literal-
+  attribute grep the same way — found for real in `packages/ui`'s own `confirm-dialog.test.tsx`),
+  bans any raw RN `useColorScheme` import outside the two `use-color-scheme.ts`/`.web.ts` wrapper
+  files, and extends hex-literal checking into `apps/mobile` (the pre-existing
+  `packages/ui/scripts/check-raw-tokens.mjs`/`check-tokens` script only ever covered
+  `packages/ui/src/components/**`). **Concrete vacuous-test evidence found this session:**
+  `button.test.tsx` had 3 tsc errors yet PASSED at runtime pre-fix — `Button` never dereferenced
+  `theme` on its tested paths, so a wrong/absent `mode` was invisible to its own test; this is why
+  the new dark-mode regression tests assert RESOLVED style output, not just prop-presence. **Final
+  gates (EVL-confirmed by an independently spawned vc-tester, not execute-agent self-report):** ui
+  typecheck 0, mobile typecheck 0, ui 65/65 jest, mobile 40/40 vitest + 37/37 jest, check-tokens OK,
+  guard:theme-mode OK (27 components / 184 call sites / 0 violations), format:check clean.
+  **Known, accepted gap:** live OS-theme-change listener behavior (`Appearance.addChangeListener`)
+  cannot be exercised under jest-expo — `Appearance` is stubbed at two layers there (proven by 3
+  separate probes) — so 5 resolver-precedence tests substitute for it; the actual OS-resume flip is
+  Agent-Probe only. **On-device Agent-Probe walkthroughs are owed by the user** (4-way OS/app
+  StatusBar matrix on iOS AND Android separately — an Android result does NOT transfer to iOS per
+  this session's own finding — app-restart persistence, OS-background-resume) — per the plan's own
+  Phase Completion Rules, **the plan stays in `active/`, not archived, until those are performed.**
+  Delivered by: `process/general-plans/active/mobile-dark-mode-audit_17-07-26/` (plan, SPEC,
+  feasibility verdict, PVL iteration report, EXECUTE report Sections A+B, results.tsv — see the
+  task folder for full evidence; the Sections C/D/E/F EXECUTE report is written this UPDATE PROCESS
+  pass as a separate co-located file).
 
 - **Admin dashboard Basic Analytics Dashboard (`apps/admin` + `packages/api`, Phase 7 — ADM-007,
   #45, delivered 17-07-26, branch `feat/adm-007-analytics`, commit `ba88318`, ✅ VERIFIED —
@@ -452,9 +501,16 @@ top of it later without re-plumbing the project.
   `junction-chip-editor.tsx`/`deactivate-deal-dialog.tsx`, added a quantity-aware component chip
   editor) reusing all 5 existing shared composites (data-table, form-dialog, confirm-dialog,
   query-states, page-header) — no new composite needed. Public `GET /deals`/`GET /deals/:id` (the old
-  discount-model read routes) are left dormant and untouched — the mobile Deals tab keeps reading them
-  in the interim, a documented, non-regressing known gap, until a separate mobile workstream executes
-  the standalone handoff spec `deals-mobile-repoint_HANDOFF_15-07-26.md`. 28-test
+  discount-model read routes) were left dormant at the time this bullet was first written — **that
+  gap is now CLOSED.** The `kid-friendly-ui-deals-unification_16-07-26` program's Phase B executed
+  the repoint: `apps/mobile/src/features/deals/hooks/use-deal-products.ts` (`useDealProducts()`/
+  `useDealProduct()`) now backs BOTH the Deals **TAB** (`(tabs)/deals/index.tsx` +
+  `deals/deal/[dealId].tsx`) AND the **Home-tab deals strip** (`(tabs)/index.tsx`) via
+  `getMenu(branchId, {isDeal:true})` — the SAME `GET /branches/:id/menu` route the regular catalog
+  uses, not `GET /deals`. **`use-deals.ts`/`use-deal.ts` are still live but now consumed ONLY by the
+  cart screen's coupon/discount-code display** (`(tabs)/cart/index.tsx`, verified live 17-07-26) —
+  that is the sole remaining `GET /deals`/`GET /deals/:id` consumer, a much narrower residual gap
+  than the previous "the mobile Deals tab keeps reading them" framing implied. 28-test
   `admin-deals.integration.test.ts` (AC1-AC11) replaced the old 31-test discount suite at the same
   path; full API suite 211/211, 0 regressions.
   **Enhancement E1 (2-step create wizard + atomic create-with-components, delivered 15-07-26, commit
@@ -748,6 +804,47 @@ top of it later without re-plumbing the project.
   earlier mock-data-only plan for the same issues (never executed). Known gap: stars accrual —
   `process/features/ordering-cart/backlog/stars-accrual-and-history-display_NOTE_13-07-26.md`.
   Delivered by: `process/features/ordering-cart/completed/order-history-reorder-api_13-07-26/`.
+- **Staff dashboard home stat block + prep-time autofill fix (STAFF-005 #106, `apps/mobile` only,
+  delivered 20-07-26, task folder `process/features/staff-dashboard/active/staff-dashboard-home_20-07-26/`,
+  CODE DONE + EVL-confirmed green, NOT YET VERIFIED — Agent-Probe walkthroughs owed, stays in
+  `active/`):** the staff landing screen (`(staff)/index.tsx`) was a bare 5-card nav menu with zero
+  live data; it now has a "Branch at a glance" stat block above the cards — awaiting-acceptance
+  count, other-active-by-status counts, accepting-pickup state, current prep-time — composed
+  client-side from three EXISTING hooks (`useStaffOrders`, `useStaffBranchSettings`, `useStaffMe`)
+  plus a new pure `deriveDashboardCounts(orders)` fn. Zero new backend route; branch isolation is
+  structurally inherited (no new data path, same `requireStaff`→`resolveBranchScope`→
+  `assertBranchScope` chain). Separately fixed a real bug in `branch-pickup-settings.tsx`: the
+  prep-time input rendered blank on a cached (react-query hit) revisit. **Root cause, durable
+  pattern for future work:** the old code seeded via `useState` + an object-identity guard
+  (`if (settings !== seededSettings)`) — on a warm cache hit, react-query can return the SAME
+  settings object reference on re-render, so the identity check silently never fires and the field
+  never seeds. **This "react-query cache-hit revisit breaks useState+object-identity seed guards"
+  pattern can recur anywhere a screen tries to one-time-seed local editable state from a
+  react-query-cached value — check for this class of bug before reusing that seeding style
+  elsewhere.** Fixed with a `useReducer` state machine (`prepTimeReducer`, keyed off a `hasSeeded`
+  boolean, not object identity) driven by 3 actions: `SETTINGS_ARRIVED` (idempotent — seeds once,
+  fixes the bug AND closes a secondary mid-edit-stomp risk where a background refetch could
+  overwrite an in-progress edit), `SAVE_SUCCESS` (deterministic re-seed after save), `USER_EDIT`.
+  Seeded SYNCHRONOUSLY via a render-phase dispatch guarded by `hasSeeded` — no `useEffect`-only
+  seed, which would flash the input empty for one commit even after the fix. **New pure module
+  `staff-status-taxonomy.ts`** (not `staff-status-config.ts` as originally planned) exports
+  `NON_TERMINAL_STAFF_STATUSES`/`NonTerminalStaffStatus` — a real, durable node-env-vitest
+  constraint discovered this session: `staff-status-config.ts` transitively imports
+  `@jojopotato/ui` → `react-native`, so any module a node-env `.test.ts` statically imports must
+  stay outside that import chain or vitest fails to bundle it (Flow `import typeof` syntax);
+  `staff-status-config.ts` now re-exports from the new taxonomy module so the single-source-of-
+  truth contract holds for existing consumers. 9 new vitest unit tests (4 dashboard-counts + 5
+  prep-time-reducer), all green; mobile suite 78/78 jest + 63/63 vitest, typecheck 0 errors, api
+  STAFF-003 ETA regression 23/23 (unchanged, re-run only), format:check clean on touched files.
+  **Known, pre-existing, out-of-scope red gate:** `guard:theme-mode` fails on `development` with 25
+  violations (`map-style.ts` hex literals + the 2 `use-color-scheme` wrapper files) — confirmed
+  pre-existing via stash-baseline comparison (identical with or without this work); root cause is
+  that `mobile-dark-mode-audit_17-07-26` (which fixes this) hasn't merged into `development` yet.
+  See backlog note below. Agent-Probe residuals (dashboard visual, nav, stale-read cadence,
+  prep-time no-flash on-screen, dark-mode visual) are the standing project-wide no-RN-runner gap,
+  already tracked. Delivered by:
+  `process/features/staff-dashboard/active/staff-dashboard-home_20-07-26/staff-dashboard-home_PLAN_20-07-26.md`
+  (+ co-located SPEC + REPORT in the same task folder).
 - **Staff authz layer (STAFF-001, delivered 13-07-26):** first `/api`-prefixed protected app API
   surface. `packages/api/src/lib/require-staff.ts` exports `requireStaff(auth)` middleware (rejects
   non-staff roles with 403), `resolveBranchScope(db, userId)` helper (returns
@@ -811,10 +908,13 @@ top of it later without re-plumbing the project.
     AC-8 Active Orders back-list refresh is forward-compatible pending STAFF-002 mock replacement
     with live data. `mustStopBeforeFinalize: true` — HIGH-risk trust-boundary; human review of the
     5-artifact risk evidence pack (`harness/`) required before production deploy.
-  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions):** `apps/mobile` has 3
-    pre-existing typecheck errors in BRN-001/002/003 files tied to missing type stubs for
-    `@gorhom/bottom-sheet`, `expo-maps`, and `expo-location`. These existed before STAFF-003 and
-    are zero-diff from this plan's blast radius. Do not treat them as STAFF-003 regressions.
+  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions, historical — RESOLVED by
+    17-07-26):** at STAFF-003 delivery time, `apps/mobile` had 3 pre-existing typecheck errors in
+    BRN-001/002/003 files tied to missing type stubs for `@gorhom/bottom-sheet`, `expo-maps`, and
+    `expo-location`. These existed before STAFF-003 and were zero-diff from that plan's blast
+    radius. **Stale as of the mobile-dark-mode-audit session (17-07-26): the measured baseline that
+    session was 0 typecheck errors in both `apps/mobile` and `packages/ui`** — the 3 errors have
+    since been fixed by unrelated work. Do not assume any typecheck baseline noise exists today.
   - Full plan: `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
@@ -970,6 +1070,59 @@ top of it later without re-plumbing the project.
   **Deferred/out of scope (by design, unchanged):** coupons entirely (no `/coupons`, no `code`
   column, no Coupon Wallet); real pricing for the 4 complex deal types (shown/evaluated, not
   cart-applicable); star/rewards accrual; live payment processing.
+- **Deal branch-availability + reorder fix (MENU-003, issue #98, `packages/api` + `apps/mobile`,
+  delivered 17-07-26 on `feat/menu-004-category-filter-polish`, CODE-COMPLETE, NOT YET VERIFIED —
+  device walkthrough owed, plan stays in `active/`):** closed a real bug where a deal could be
+  ordered even when a branch could not fulfil it. New shared
+  `packages/api/src/routes/lib/deal-availability.ts` (`resolveAvailableDealProductIds`) is used by
+  BOTH the read path (`branches.ts` menu listing) and the write path (`orders.ts` placement), so
+  list and placement can never disagree. A deal-product now lists at a branch only if it has ≥1
+  component AND every component is available (`branch_product_availability.is_available = true`)
+  and active — **zero-component deals are hidden everywhere** (locked product decision).
+  `POST /orders` now rejects placing a deal whose components are unavailable, proven by a real
+  automated test verified non-vacuous (disable-a-component-and-fail). Reorder
+  (`apps/mobile/src/features/orders/hooks/use-reorder.ts`) previously fetched ONLY the regular menu,
+  which structurally excludes every deal — so historical deal lines were ALWAYS flagged
+  unavailable on reorder, a real (if narrow) bug fixed by also fetching `?isDeal=true` and merging
+  categories. The dev seed (`packages/api/src/db/seed/{data,seed}.ts`) previously had ZERO
+  `is_deal` seed data (only the legacy `offers` discount-model rows) — this is why the bug went
+  unnoticed; two seed deals with non-overlapping components were added, wired ahead of the existing
+  branch-availability seed loop so they inherit real `branch_product_availability` rows. Gates: API
+  460/460, `packages/utils` 39/39, 3 typechecks clean — all independently reproduced by vc-tester.
+  PVL was first-pass CONDITIONAL (3 CONCERNs incl. one real chronologically-impossible checklist
+  step) → 1 supplement cycle → PASS. **Known gap filed (not a regression):** the admin UI has no
+  indicator when a deal is invisible to customers because a component went unavailable, or because
+  it has zero components — see
+  `process/features/admin-dashboard/backlog/menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md`
+  (corrected 17-07-26 — an earlier draft overstated the zero-component risk; the admin create
+  wizard is actually double-guarded against saving with zero items, so that state is reachable only
+  via a raw API call, not through normal admin UI use). **Owed before archival:** AC10 device
+  walkthrough (toggle a component off in staff, confirm only the dependent deal vanishes at that
+  branch) and a production zero-component-deals pre-flight count (no production DB target found in
+  this repo as of this pass). Delivered by:
+  `process/features/ordering-cart/active/menu-003-branch-availability_17-07-26/`.
+- **Home category filter wired to product grid (MENU-004, issue #103, `apps/mobile`, delivered
+  17-07-26 on the same branch, CODE-COMPLETE, NOT YET VERIFIED — device walkthrough owed, plan
+  stays in `active/`):** the Home tab's category chip selector previously rendered chips and
+  filtered nothing — purely decorative. Selection state was lifted from
+  `category-selector.tsx` (props widened to `selectedId`/`onSelect`, local state removed) to
+  `(tabs)/index.tsx`; the product grid now filters through a new PURE
+  `apps/mobile/src/features/home/lib/filter-products-by-category.ts` (TDD-first, 8 real tests,
+  proven non-vacuous — breaking the filter to a passthrough turns 4/8 red). Empty-category state
+  reuses the existing shared `EmptyState` from `packages/ui`, gated to fire only for a genuine
+  zero-match category (after the pre-existing empty-branch-menu check, not before). **Deliberate
+  SPEC divergence from issue #103's literal AC4 wording:** switching branches now CLEARS the active
+  category filter rather than re-applying it — a locked user decision, to avoid stranding the
+  customer on an empty state for a category the new branch may not have. Three of the issue's ACs
+  were already satisfied before this plan started (Home was already branch-scoped, category ids
+  already aligned 1:1 with the regular menu, and NAV-001 had already fixed add-to-cart-bar
+  clearance) — the SPEC explicitly declined to manufacture extra polish scope once research
+  confirmed theming/pricing/gating/the component library/the empty-state pattern were all already
+  correct. Gates: mobile vitest 51/51 (+8), mobile jest 27/27, `packages/utils` 39/39, typecheck
+  clean — all independently reproduced by vc-tester. **Owed before archival:** 5 Agent-Probe ACs
+  (chip-tap filters grid, empty state renders, branch-switch reset, light/dark on Order + Product
+  Details) — same app session can cover both this and MENU-003's AC10. Delivered by:
+  `process/features/ordering-cart/active/menu-004-category-filter-polish_17-07-26/`.
 - **Staff order status actions (STAFF-003, 14-07-26):** a `PATCH` state-machine endpoint for staff
   to transition order status (valid transitions only, illegal/terminal → 409, branch-isolated → 403,
   atomic compare-and-swap to avoid a race on concurrent transitions) plus a Completed Orders screen
@@ -1119,7 +1272,10 @@ Scanned against the canonical Context Group Detection Table
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
-- Only 1 UI package (`packages/ui`) with 3 source files → below the 3+ dedicated dirs threshold for `uxui/`
+- Only 1 UI package (`packages/ui`) — **stale count, corrected 17-07-26:** it has grown to 27
+  component source files + 24 test suites (from the theming-convention hardening pass, see delta
+  below), still below the 3+ dedicated-dirs threshold for `uxui/` (it's one flat `components/` dir,
+  not 3 separate domains)
 - No workflow/queue system → no `workflows/` group
 
 Re-run `vc-generate-context` (delta mode) once the `database/` or `auth/` thresholds are formally
@@ -1197,7 +1353,7 @@ jojo-mobile/                           (package.json name: jojo-potato)
           (tabs)/                      -- authenticated 5-tab shell for customer role (Home/Order/Rewards/Branches/Account, PRD order)
             _layout.{ios,android,web}.tsx  -- per-platform Tabs.Screen wiring (base _layout.tsx is a dead-at-runtime re-export of _layout.web)
             index.tsx                  -- Home tab root -- real business UI, wired navigation to branches/products
-            order/                      -- index, product/[productId], cart, tracking/[orderId], history (real, backend-wired); checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker), confirmation/[orderId].tsx (fetchOrder() → real GET /orders/:id) — see "Checkout-flow UI rework" bullet
+            order/                      -- index, checkout.tsx (useCheckout() → real POST /orders), payment-method.tsx (payment-method picker) — see "Checkout-flow UI rework" bullet. NOTE (17-07-26, NAV-005, commit f2eed0a): shared screens formerly nested under this tab (product/[productId], cart, tracking/[orderId], history, branch/[branchId]) were MOVED OUT into top-level `(tabs)/{product,cart,tracking,history,branch}/` route groups — `(tabs)/order/product/[productId].tsx` no longer exists, replaced by `(tabs)/product/[productId].tsx`. NAV-001..NAV-005 (tab-bar clearance, notifications route, ScreenHeader rollout, tracking route, this move) are all CODE DONE and committed, but each remains Agent-Probe-UNVERIFIED per its own plan — see `process/general-plans/active/nav-*` for current status.
             branches/                   -- real: index (list), [branchId] (detail + menu)
             rewards/, account/          -- still <ComingSoon> placeholders (not in scope for pickup-order-flow)
           (staff)/                     -- role-gated shell for staff/admin/super_admin; guarded by Stack.Protected in root _layout.tsx
@@ -1389,6 +1545,50 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
   `process/context/tests/all-tests.md` on jsdom's inability to test real SSR/hydration timing. No
   new backlog notes filed (the reverse-proxy note was already filed by the plan's author during
   PLAN). HEAD this delta: `7b43d0e`.)
+- Previous delta: 2026-07-20 (STAFF-005 #106 UPDATE PROCESS — staff dashboard home stat block +
+  prep-time autofill bug fix, `apps/mobile` only. CODE DONE, EVL-confirmed green by an
+  independently spawned vc-tester (mobile vitest 63/63 incl. 9 new, jest 78/78, typecheck 0,
+  api STAFF-003 ETA regression 23/23, format:check clean on touched files). Documented the durable
+  "react-query cache-hit revisit breaks useState+object-identity seed guards" bug pattern (root
+  cause of the prep-time-blank bug, fixed via a `hasSeeded`-keyed `useReducer`). Filed 1 new
+  backlog note (`staff-dashboard/backlog/guard-theme-mode-branch-not-merged_NOTE_20-07-26.md` —
+  `guard:theme-mode` red on `development` with 25 pre-existing violations, confirmed unrelated to
+  this work, pending `mobile-dark-mode-audit_17-07-26` merge); did not duplicate the existing
+  `staff-mobile-rn-test-runner-gap_NOTE_13-07-26.md` (already covers the Agent-Probe residuals) or
+  `dark-mode-hex-literal-baseline_NOTE_17-07-26.md` (a different, narrower, already-green finding).
+  Task folder stays in `active/` — Agent-Probe walkthroughs (dashboard visual, nav, stale-read
+  cadence, prep-time no-flash, dark-mode visual) are owed by the user per the plan's own Phase
+  Completion Rules. Working tree at this delta (uncommitted, not yet committed by this UPDATE
+  PROCESS pass): `apps/mobile/src/app/(staff)/{index,branch-pickup-settings}.tsx`,
+  `apps/mobile/src/features/staff/lib/staff-status-config.ts` (edit) + 3 new files
+  (`dashboard-counts.ts`, `prep-time-reducer.ts`, `staff-status-taxonomy.ts`) + their
+  `__tests__/`; current branch at this delta: `development`.)
+- Previous delta: 2026-07-17 (MENU-003 + MENU-004 UPDATE PROCESS — doc-only reconciliation, no source
+  changes this pass. Added the missing MENU-003 (deal branch-availability + reorder fix, #98) and
+  MENU-004 (Home category filter wired to product grid, #103) bullets — both CODE-COMPLETE,
+  committed on `feat/menu-004-category-filter-polish`, NEITHER VERIFIED (device walkthroughs
+  owed); both task folders stay in `active/`, not archived. Corrected 2 stale claims:
+  `tests/all-tests.md` said `packages/utils` had no test runner (false — vitest, 39/39, verified
+  live) and `all-context.md` said the mobile Deals tab still read the old `GET /deals`
+  discount-model routes (stale — the `kid-friendly-ui-deals-unification` Phase B repoint already
+  landed; only the cart's coupon display still reads the old routes). Corrected an overstated
+  admin backlog note (`menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md` wrongly claimed
+  zero-component deal creation was the wizard's "natural default" — verified the wizard is
+  actually double-guarded against it; only a raw API call can reach that state). Filed 1 new
+  backlog note: `general-plans/backlog/crlf-line-ending-format-check-drift_NOTE_17-07-26.md`
+  (Windows `core.autocrlf` breaks `pnpm format:check` repo-wide and makes `git status` misleading
+  — observed 3x this session). Recorded the NAV-005 route move
+  (`(tabs)/order/product/[productId].tsx` → `(tabs)/product/[productId].tsx`, commit `f2eed0a`,
+  a separate parallel workstream that landed on this branch mid-session). HEAD this delta:
+  `076403c`.)
+- Previous delta: 2026-07-17 (mobile-dark-mode-audit UPDATE PROCESS — required-`mode`-prop hardening
+  across all 27 `packages/ui` components, 3 real dark-mode bugs fixed, StatusBar derivation fixed
+  and locked by a feasibility probe, new `guard:theme-mode` CI-adjacent script, real resolved-style
+  regression tests; corrected two stale claims — `apps/mobile` typecheck baseline is 0 errors, not
+  3 (BRN-001/002/003 stubs since fixed), and `packages/ui` has 27 components + 24 test suites, not
+  "3 source files"; plan kept in `active/` pending owed on-device Agent-Probe walkthroughs. This
+  delta is on branch `spec/mobile-dark-mode-audit`, developed in parallel with the admin-dashboard
+  deltas below — merged into this branch via `origin/development`, not yet merged the other way.)
 - Previous delta: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, UPDATE PROCESS — doc-only
   reconciliation, no source changes this pass; source already committed by the user before this
   pass began (commit `ba88318` on branch `feat/adm-007-analytics`). Phase 7 delivered `GET
