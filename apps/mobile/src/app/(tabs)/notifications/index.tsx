@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { AppNotification, NotificationType } from '@jojopotato/types';
-import { EmptyState, NotificationRow, ScreenHeader, Toggle } from '@jojopotato/ui';
+import { EmptyState, NotificationRow, ScreenHeader, Toast, Toggle } from '@jojopotato/ui';
 import { router, useIsFocused, type Href } from 'expo-router';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useNotifications } from '@/features/notifications/hooks/use-notifications';
 import { resolveRoute } from '@/features/notifications/lib/notification-factory';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -56,6 +57,7 @@ export default function NotificationsScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
+  const { toast, showToast, hideToast } = useToast();
 
   /*
     Hide the floating tab bar on this screen. Notifications is a leaf screen you
@@ -81,7 +83,7 @@ export default function NotificationsScreen() {
   const onToggleMarketing = async (value: boolean) => {
     const result = await setMarketingOptIn(value);
     if (!result.ok) {
-      Alert.alert("Couldn't update preference", result.error ?? 'Please try again.');
+      showToast(result.error ?? 'Please try again.', 'error');
     }
   };
 
@@ -152,6 +154,15 @@ export default function NotificationsScreen() {
             </View>
           )}
         </ScrollView>
+
+        <Toast
+          visible={toast.visible}
+          message={toast.message}
+          severity={toast.severity}
+          mode={mode}
+          bottomOffset={insets.bottom + Spacing.four}
+          onDismiss={hideToast}
+        />
       </SafeAreaView>
     </View>
   );

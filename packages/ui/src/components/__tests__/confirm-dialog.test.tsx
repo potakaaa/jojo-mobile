@@ -8,6 +8,7 @@ async function setup(over: Partial<ComponentProps<typeof ConfirmDialog>> = {}) {
   const onCancel = jest.fn();
   const utils = await render(
     <ConfirmDialog
+      mode="light"
       visible
       title="Clear your cart?"
       message="You'll lose the items you added."

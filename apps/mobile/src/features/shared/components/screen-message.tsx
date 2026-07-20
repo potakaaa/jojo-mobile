@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Palette, Spacing, TypeScale } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 interface ScreenMessageProps {
@@ -23,6 +24,8 @@ export function ScreenMessage({
   children,
 }: ScreenMessageProps) {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   return (
     <View style={[styles.center, { backgroundColor: theme.background }]}>
       <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
@@ -31,7 +34,7 @@ export function ScreenMessage({
       ) : null}
       {children}
       {actionLabel && onAction ? (
-        <Button label={actionLabel} onPress={onAction} style={styles.action} />
+        <Button label={actionLabel} onPress={onAction} style={styles.action} mode={mode} />
       ) : null}
     </View>
   );

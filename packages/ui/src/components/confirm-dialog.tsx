@@ -18,7 +18,7 @@ export interface ConfirmDialogProps {
   cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   /** `destructive` colors the confirm button as an accent (jred) warning. */
   variant?: ConfirmDialogVariant;
 }
@@ -44,7 +44,7 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   onCancel,
-  mode = 'light',
+  mode,
   variant = 'default',
 }: ConfirmDialogProps) {
   const theme = Colors[mode];

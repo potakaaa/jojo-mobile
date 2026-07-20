@@ -4,7 +4,7 @@ import { type ThemeMode } from '../theme';
 export interface GoogleButtonProps {
   onPress: () => void;
   disabled?: boolean;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   /** Override the label, e.g. "Sign up with Google". Defaults to "Continue with Google". */
   label?: string;
   /** Show a spinner in place of the icon and disable interaction. */
@@ -20,7 +20,7 @@ export interface GoogleButtonProps {
 export function GoogleButton({
   onPress,
   disabled = false,
-  mode = 'light',
+  mode,
   label = 'Continue with Google',
   loading = false,
 }: GoogleButtonProps) {

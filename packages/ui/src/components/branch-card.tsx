@@ -10,7 +10,7 @@ export interface BranchCardProps {
   branch: PickupBranch;
   isOpen?: boolean; // optional; falls back to branch.isOpen
   onPress?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   footer?: ReactNode;
   onChange?: () => void;
 }
@@ -21,14 +21,7 @@ export interface BranchCardProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchCard({
-  branch,
-  isOpen,
-  onPress,
-  mode = 'light',
-  footer,
-  onChange,
-}: BranchCardProps) {
+export function BranchCard({ branch, isOpen, onPress, mode, footer, onChange }: BranchCardProps) {
   const theme = Colors[mode];
   const [selected, setSelected] = useState(false);
   const interactive = onChange === undefined;

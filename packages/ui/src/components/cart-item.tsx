@@ -15,7 +15,7 @@ export interface CartItemProps {
   onDecrement?: () => void;
   /** When supplied, renders a trash affordance that removes the whole line. */
   onRemove?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -43,7 +43,7 @@ export function CartItem({
   onIncrement,
   onDecrement,
   onRemove,
-  mode = 'light',
+  mode,
   style,
 }: CartItemProps) {
   const theme = Colors[mode];

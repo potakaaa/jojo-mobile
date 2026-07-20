@@ -3,6 +3,7 @@ import { ProductCard } from '@jojopotato/ui';
 import { FlatList, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveImageUrl } from '@/lib/image-url';
 
 export interface ProductGridProps {
@@ -17,6 +18,9 @@ export interface ProductGridProps {
  * vertical scrolling, avoiding nested-VirtualizedList warnings.
  */
 export function ProductGrid({ products, onProductPress }: ProductGridProps) {
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
+
   return (
     <FlatList
       data={products}
@@ -30,6 +34,7 @@ export function ProductGrid({ products, onProductPress }: ProductGridProps) {
             product={item}
             imageSource={imageUri ? { uri: imageUri } : undefined}
             onPress={onProductPress ? () => onProductPress(item.id) : undefined}
+            mode={mode}
           />
         );
       }}

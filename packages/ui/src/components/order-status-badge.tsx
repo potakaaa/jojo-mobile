@@ -5,7 +5,7 @@ import { Colors, FontFamily, Palette, Radii, Spacing, TypeScale, type ThemeMode 
 
 export interface OrderStatusBadgeProps {
   status: OrderStatus;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -23,7 +23,7 @@ const STATUS_META: Record<OrderStatus, { label: string; color: string }> = {
 /**
  * Pill badge conveying a single order's status via a color-coded label.
  */
-export function OrderStatusBadge({ status, mode = 'light', style }: OrderStatusBadgeProps) {
+export function OrderStatusBadge({ status, mode, style }: OrderStatusBadgeProps) {
   const theme = Colors[mode];
   const meta = STATUS_META[status];
 

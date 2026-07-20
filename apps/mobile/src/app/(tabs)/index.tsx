@@ -288,7 +288,7 @@ export default function HomeScreen() {
           {/* Deals strip */}
           <View style={styles.sectionTitleRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Deals & offers</Text>
-            <Badge label="Save" />
+            <Badge label="Save" mode={mode} />
           </View>
           {dealsQuery.isPending ? (
             <SectionLoader />
@@ -360,7 +360,7 @@ export default function HomeScreen() {
               />
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Popular this week</Text>
-                <Badge label="Popular" />
+                <Badge label="Popular" mode={mode} />
               </View>
               {/*
                 The branch HAS products, but the selected category has none of

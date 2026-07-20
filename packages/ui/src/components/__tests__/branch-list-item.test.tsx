@@ -12,6 +12,7 @@ test('does NOT render the pickup badge when isOpen is false', async () => {
       isOpen={false}
       showDistance={false}
       isEnabled={false}
+      mode="light"
     />,
   );
 
@@ -31,6 +32,7 @@ test('renders "Pickup available" badge when isOpen and isAcceptingPickup are tru
       isOpen
       showDistance={false}
       isEnabled
+      mode="light"
     />,
   );
 
@@ -49,6 +51,7 @@ test('renders "Pickup unavailable" badge when isOpen is true but isAcceptingPick
       isOpen
       showDistance={false}
       isEnabled={false}
+      mode="light"
     />,
   );
 

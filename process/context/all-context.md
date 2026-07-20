@@ -59,7 +59,59 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 17-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 17-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Mobile dark-mode bug-class fix + StatusBar legibility (`packages/ui` + `apps/mobile`, delivered
+  17-07-26, branch `spec/mobile-dark-mode-audit`, EVL-green, commits `fcd8e10`..`71357d7` — NOT YET
+  MERGED, no PR; code-complete but Agent-Probe on-device walkthroughs still owed, see below):**
+  **durable architectural fact for all future `packages/ui` work: `mode: ThemeMode` is now a
+  REQUIRED prop on all 27 themed components — no default value.** The root cause of the reported
+  dark-mode bug was never per-screen token misuse; it was that every themed component defaulted
+  `mode = 'light'`, so a screen that forgot to pass `mode` silently rendered the wrong theme instead
+  of erroring. The fix converts this from a runtime footgun into a compile-time gate: dropping the
+  default makes `tsc --noEmit` exhaustively enumerate every missing-`mode` call site — a reusable
+  technique (prop-default removal beats both a manual audit sweep and a bespoke lint rule when a
+  compiler check can substitute). The tsc sweep surfaced **98 defects across 36 files** off a
+  measured clean baseline (0 errors); only 17 errors / 11 files were real production-screen
+  breakage — 31 of the mobile errors (63%) were in the dev-only `component-showcase.tsx`; the rest
+  were `packages/ui`'s own test fixtures needing a `mode=` prop added. **Three real dark-mode bugs
+  fixed:** `order/history.tsx:74` (the originally reported `<Card>`), `order/history.tsx:93` (a
+  THIRD defect nobody predicted — an `OrderStatusBadge` 19 lines below the known Card, found only
+  because the sweep is exhaustive by construction), and `order/cart.tsx:239` (reorder-conflict
+  `Card`). **Two sites deliberately pinned `mode="light"` with inline justification comments** (not
+  bugs): `tracking/[orderId].tsx:96` (sits on a hardcoded cream surface) and `promo-banner.tsx:35`
+  (a permanently-yellow banner regardless of scheme) — CLAUDE.md's own theming convention already
+  requires a fixed-mode surface's text to read that same fixed mode's tokens, not the device scheme.
+  StatusBar: new `apps/mobile/src/lib/status-bar.ts` exports `resolveStatusBarStyle(appScheme) =
+  appScheme === 'dark' ? 'light' : 'dark'` (a scheme-SOURCE swap — `_layout.tsx` previously read the
+  raw OS scheme via `style="auto"`, now reads the app's resolved theme), wired at `_layout.tsx:150`,
+  mapping direction locked by a feasibility probe (see the archived plan's FEASIBILITY file).
+  **New durable CI-adjacent guard:** `apps/mobile/scripts/check-theme-mode.mjs` (run via `pnpm
+  --filter @jojopotato/mobile guard:theme-mode`) derives its 27 tracked component names from
+  source (not hardcoded), hard-fails on spread attributes on a tracked component's JSX call (a
+  spread source can widen to `any` and bypass both the tsc required-prop check and a literal-
+  attribute grep the same way — found for real in `packages/ui`'s own `confirm-dialog.test.tsx`),
+  bans any raw RN `useColorScheme` import outside the two `use-color-scheme.ts`/`.web.ts` wrapper
+  files, and extends hex-literal checking into `apps/mobile` (the pre-existing
+  `packages/ui/scripts/check-raw-tokens.mjs`/`check-tokens` script only ever covered
+  `packages/ui/src/components/**`). **Concrete vacuous-test evidence found this session:**
+  `button.test.tsx` had 3 tsc errors yet PASSED at runtime pre-fix — `Button` never dereferenced
+  `theme` on its tested paths, so a wrong/absent `mode` was invisible to its own test; this is why
+  the new dark-mode regression tests assert RESOLVED style output, not just prop-presence. **Final
+  gates (EVL-confirmed by an independently spawned vc-tester, not execute-agent self-report):** ui
+  typecheck 0, mobile typecheck 0, ui 65/65 jest, mobile 40/40 vitest + 37/37 jest, check-tokens OK,
+  guard:theme-mode OK (27 components / 184 call sites / 0 violations), format:check clean.
+  **Known, accepted gap:** live OS-theme-change listener behavior (`Appearance.addChangeListener`)
+  cannot be exercised under jest-expo — `Appearance` is stubbed at two layers there (proven by 3
+  separate probes) — so 5 resolver-precedence tests substitute for it; the actual OS-resume flip is
+  Agent-Probe only. **On-device Agent-Probe walkthroughs are owed by the user** (4-way OS/app
+  StatusBar matrix on iOS AND Android separately — an Android result does NOT transfer to iOS per
+  this session's own finding — app-restart persistence, OS-background-resume) — per the plan's own
+  Phase Completion Rules, **the plan stays in `active/`, not archived, until those are performed.**
+  Delivered by: `process/general-plans/active/mobile-dark-mode-audit_17-07-26/` (plan, SPEC,
+  feasibility verdict, PVL iteration report, EXECUTE report Sections A+B, results.tsv — see the
+  task folder for full evidence; the Sections C/D/E/F EXECUTE report is written this UPDATE PROCESS
+  pass as a separate co-located file).
 
 - **Admin dashboard Basic Analytics Dashboard (`apps/admin` + `packages/api`, Phase 7 — ADM-007,
   #45, delivered 17-07-26, branch `feat/adm-007-analytics`, commit `ba88318`, ✅ VERIFIED —
@@ -779,10 +831,13 @@ top of it later without re-plumbing the project.
     AC-8 Active Orders back-list refresh is forward-compatible pending STAFF-002 mock replacement
     with live data. `mustStopBeforeFinalize: true` — HIGH-risk trust-boundary; human review of the
     5-artifact risk evidence pack (`harness/`) required before production deploy.
-  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions):** `apps/mobile` has 3
-    pre-existing typecheck errors in BRN-001/002/003 files tied to missing type stubs for
-    `@gorhom/bottom-sheet`, `expo-maps`, and `expo-location`. These existed before STAFF-003 and
-    are zero-diff from this plan's blast radius. Do not treat them as STAFF-003 regressions.
+  - **Pre-existing mobile typecheck errors (NOT STAFF-003 regressions, historical — RESOLVED by
+    17-07-26):** at STAFF-003 delivery time, `apps/mobile` had 3 pre-existing typecheck errors in
+    BRN-001/002/003 files tied to missing type stubs for `@gorhom/bottom-sheet`, `expo-maps`, and
+    `expo-location`. These existed before STAFF-003 and were zero-diff from that plan's blast
+    radius. **Stale as of the mobile-dark-mode-audit session (17-07-26): the measured baseline that
+    session was 0 typecheck errors in both `apps/mobile` and `packages/ui`** — the 3 errors have
+    since been fixed by unrelated work. Do not assume any typecheck baseline noise exists today.
   - Full plan: `process/features/staff-dashboard/completed/staff-003-order-status-actions_14-07-26/`
 - **Ordering / pickup flow (customer-facing):** real, working end-to-end. New authenticated API
   surface in `packages/api/src/routes/` (`branches.ts`, `orders.ts`) plus
@@ -1140,7 +1195,10 @@ Scanned against the canonical Context Group Detection Table
 - `docker-compose.yml` (root) provides local/CI Postgres, but no Dockerfile / app container image → `container/` group threshold not met
 - CI/CD config now present (`.github/workflows/ci.yml` — format/lint/typecheck/test/build) → re-evaluate a `cicd/` group if CI docs grow
 - No infra-as-code (terraform/pulumi/CDK/SST) → no `infra/` group
-- Only 1 UI package (`packages/ui`) with 3 source files → below the 3+ dedicated dirs threshold for `uxui/`
+- Only 1 UI package (`packages/ui`) — **stale count, corrected 17-07-26:** it has grown to 27
+  component source files + 24 test suites (from the theming-convention hardening pass, see delta
+  below), still below the 3+ dedicated-dirs threshold for `uxui/` (it's one flat `components/` dir,
+  not 3 separate domains)
 - No workflow/queue system → no `workflows/` group
 
 Re-run `vc-generate-context` (delta mode) once the `database/` or `auth/` thresholds are formally
@@ -1406,6 +1464,14 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
   (`(tabs)/order/product/[productId].tsx` → `(tabs)/product/[productId].tsx`, commit `f2eed0a`,
   a separate parallel workstream that landed on this branch mid-session). HEAD this delta:
   `076403c`.)
+- Previous delta: 2026-07-17 (mobile-dark-mode-audit UPDATE PROCESS — required-`mode`-prop hardening
+  across all 27 `packages/ui` components, 3 real dark-mode bugs fixed, StatusBar derivation fixed
+  and locked by a feasibility probe, new `guard:theme-mode` CI-adjacent script, real resolved-style
+  regression tests; corrected two stale claims — `apps/mobile` typecheck baseline is 0 errors, not
+  3 (BRN-001/002/003 stubs since fixed), and `packages/ui` has 27 components + 24 test suites, not
+  "3 source files"; plan kept in `active/` pending owed on-device Agent-Probe walkthroughs. This
+  delta is on branch `spec/mobile-dark-mode-audit`, developed in parallel with the admin-dashboard
+  deltas below — merged into this branch via `origin/development`, not yet merged the other way.)
 - Previous delta: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, UPDATE PROCESS — doc-only
   reconciliation, no source changes this pass; source already committed by the user before this
   pass began (commit `ba88318` on branch `feat/adm-007-analytics`). Phase 7 delivered `GET

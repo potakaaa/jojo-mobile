@@ -65,6 +65,19 @@ jobs:
             turbo-typecheck-${{ github.job }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm turbo run typecheck
 
+  guard:
+    name: Theme Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run check-tokens guard:theme-mode
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -124,7 +137,7 @@ jobs:
   ci-success:
     name: CI Success
     if: always()
-    needs: [format, lint, typecheck, test, build]
+    needs: [format, lint, typecheck, guard, test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs succeeded

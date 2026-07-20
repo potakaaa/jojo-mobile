@@ -1,4 +1,4 @@
-import { Badge, Button, Card, DealCard, ScreenHeader } from '@jojopotato/ui';
+import { Badge, Button, Card, DealCard, ScreenHeader, Toast } from '@jojopotato/ui';
 import {
   buildDirectionsUrl,
   distanceKm,
@@ -9,7 +9,6 @@ import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -24,6 +23,7 @@ import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { BranchDetailResponse, mapApiBranch, mapApiBranchDeal } from '@/features/branches/api';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserLocation } from '@/hooks/use-user-location';
@@ -48,6 +48,7 @@ export default function BranchDetailsScreen() {
   const { coords, status: locationStatus } = useUserLocation();
   const { setSelectedBranch } = useBranch();
   const insets = useSafeAreaInsets();
+  const { toast, showToast, hideToast } = useToast();
 
   /*
     Hide the floating tab bar on this screen — it is the ROOT of its own
@@ -146,9 +147,9 @@ export default function BranchDetailsScreen() {
     const url = buildDirectionsUrl(branch.latitude, branch.longitude, branch.name, platform);
     // openURL rejects when no handler exists for the scheme (e.g. maps app
     // missing, or an unsupported scheme on web) — catch it so it never surfaces
-    // as an unhandled rejection, and tell the user via the app's Alert pattern.
+    // as an unhandled rejection, and tell the user via the shared toast.
     Linking.openURL(url).catch(() =>
-      Alert.alert('Could not open maps', 'No maps app is available to show directions.'),
+      showToast('No maps app is available to show directions.', 'error'),
     );
   };
 
@@ -264,6 +265,15 @@ export default function BranchDetailsScreen() {
             style={styles.cta}
           />
         </ScrollView>
+
+        <Toast
+          visible={toast.visible}
+          message={toast.message}
+          severity={toast.severity}
+          mode={mode}
+          bottomOffset={insets.bottom + Spacing.four}
+          onDismiss={hideToast}
+        />
       </SafeAreaView>
     </View>
   );
