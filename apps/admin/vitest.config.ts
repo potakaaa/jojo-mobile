@@ -14,5 +14,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     css: false,
+    // Picking a date drives a real Radix popover, a react-day-picker month grid and
+    // the SVG clock dial through jsdom, and a form with both a start and an end does
+    // it twice. That lands around 1.5s locally but ~6s on a CI runner, which blew the
+    // 5s default. The work is real, not a hang — this is headroom for the slower box,
+    // so a genuine deadlock still fails the run rather than hanging it forever.
+    testTimeout: 20_000,
   },
 });
