@@ -4,5 +4,5 @@ import { ProductCard } from '../product-card';
 import { MOCK_PRODUCT } from './mocks';
 
 test('renders ProductCard without throwing', () => {
-  render(<ProductCard product={MOCK_PRODUCT} />);
+  render(<ProductCard mode="light" product={MOCK_PRODUCT} />);
 });

@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { resolveImageUrl } from '@/lib/image-url';
 
@@ -31,6 +32,8 @@ function chunk<T>(items: T[], size: number): T[][] {
  */
 export function CategorySection({ category, onProductPress }: CategorySectionProps) {
   const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
   const rows = chunk(category.products, 2);
 
   return (
@@ -57,6 +60,7 @@ export function CategorySection({ category, onProductPress }: CategorySectionPro
                       product={productToMenuItem(product, true)}
                       imageSource={imageUri ? { uri: imageUri } : undefined}
                       onPress={() => onProductPress(product.id)}
+                      mode={mode}
                     />
                   </View>
                 );

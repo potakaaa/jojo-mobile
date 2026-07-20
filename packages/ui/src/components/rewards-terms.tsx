@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Colors, FontFamily, Spacing, TypeScale, type ThemeMode } from '../theme';
 
 export interface RewardsTermsProps {
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -22,7 +22,7 @@ export const REWARDS_TERMS_RULES = [
   'Stars have no cash value and cannot be transferred.',
 ] as const;
 
-export function RewardsTerms({ mode = 'light', style }: RewardsTermsProps) {
+export function RewardsTerms({ mode, style }: RewardsTermsProps) {
   const theme = Colors[mode];
 
   return (

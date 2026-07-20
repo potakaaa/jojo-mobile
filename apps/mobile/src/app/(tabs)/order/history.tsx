@@ -1,9 +1,10 @@
 import type { Order } from '@jojopotato/types';
-import { Button, Card, EmptyState, OrderStatusBadge, ScreenHeader } from '@jojopotato/ui';
+import { Button, Card, EmptyState, OrderStatusBadge, ScreenHeader, Toast } from '@jojopotato/ui';
 import { formatCurrency, reorderEligibility, summarizeOrderItems } from '@jojopotato/utils';
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
@@ -11,6 +12,7 @@ import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useReorder } from '@/features/orders/hooks/use-reorder';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -28,8 +30,17 @@ export default function OrderHistoryScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { data: orders, loading, error, refetch } = useOrderHistory();
   const { branches } = useBranch();
-  const { reorder, isReordering } = useReorder();
+  // Aliased: `error` is already taken by useOrderHistory above.
+  const { reorder, isReordering, error: reorderError } = useReorder();
+  const { toast, showToast, hideToast } = useToast();
+  const insets = useSafeAreaInsets();
   const navigateToOrderTracking = useNavigateToOrderTracking();
+
+  // The hook reports the failure as data; deciding to show it as a toast is this
+  // screen's call. Must sit above the early returns below (rules of hooks).
+  useEffect(() => {
+    if (reorderError) showToast(reorderError, 'error');
+  }, [reorderError, showToast]);
 
   /*
     All FOUR return paths (loading / error / empty / list) render the SAME header
@@ -94,7 +105,12 @@ export default function OrderHistoryScreen() {
         `paddingBottom: Spacing.six` on styles.content stays — breathing room is a
         different concern from the device inset, so the two are NOT a double-count.
         No bottom CTA and no resolveTabBarClearance call exist here: this
-        SafeAreaView is the only inset source.
+        SafeAreaView is the only inset source for the list content. The Toast below
+        is absolutely positioned (see toast.tsx), so RN positions it relative to
+        this SafeAreaView's outer/padding-box edge, not its inset content box —
+        `insets.bottom` still has to be added to its own offset explicitly, same as
+        every other Toast call site in the app, or it renders flush against the
+        home indicator regardless of this SafeAreaView's own bottom padding.
       */}
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Order History" onBack={() => router.back()} mode={mode} />
@@ -109,7 +125,7 @@ export default function OrderHistoryScreen() {
             const itemsSummary = summarizeOrderItems(item.items);
             return (
               <Pressable accessibilityRole="button" onPress={() => openOrder(item)}>
-                <Card>
+                <Card mode={mode}>
                   <View style={styles.row}>
                     <Text style={[styles.orderNumber, { color: theme.text }]}>
                       {item.orderNumber}
@@ -128,7 +144,7 @@ export default function OrderHistoryScreen() {
                     {formatPlacedDate(item.placedAt)}
                   </Text>
                   <View style={styles.badgeRow}>
-                    <OrderStatusBadge status={item.status} />
+                    <OrderStatusBadge status={item.status} mode={mode} />
                   </View>
                   {reorderEligibility(item.status) ? (
                     <View style={styles.reorderRow} onStartShouldSetResponder={() => true}>
@@ -146,6 +162,15 @@ export default function OrderHistoryScreen() {
               </Pressable>
             );
           }}
+        />
+
+        <Toast
+          visible={toast.visible}
+          message={toast.message}
+          severity={toast.severity}
+          mode={mode}
+          bottomOffset={insets.bottom + Spacing.four}
+          onDismiss={hideToast}
         />
       </SafeAreaView>
     </View>

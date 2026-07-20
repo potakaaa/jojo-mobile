@@ -16,7 +16,7 @@ import {
 export interface DealCardProps {
   deal: Deal;
   onPress?: () => void;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
   validUntil?: string;
 }
@@ -27,7 +27,7 @@ export interface DealCardProps {
  * `validUntil` is provided, a caption "Valid until: …" row renders below the
  * description; omitting it leaves existing call sites unaffected.
  */
-export function DealCard({ deal, onPress, mode = 'light', style, validUntil }: DealCardProps) {
+export function DealCard({ deal, onPress, mode, style, validUntil }: DealCardProps) {
   const theme = Colors[mode];
 
   return (

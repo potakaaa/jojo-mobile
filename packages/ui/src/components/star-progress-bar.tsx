@@ -10,7 +10,7 @@ export interface StarProgress {
 
 export interface StarProgressBarProps {
   progress: StarProgress;
-  mode?: ThemeMode;
+  mode: ThemeMode;
   style?: ViewStyle;
 }
 
@@ -21,7 +21,7 @@ export interface StarProgressBarProps {
  * the threshold the caption flips to "Reward unlocked" (AC2); otherwise it shows
  * how many stars remain (AC1).
  */
-export function StarProgressBar({ progress, mode = 'light', style }: StarProgressBarProps) {
+export function StarProgressBar({ progress, mode, style }: StarProgressBarProps) {
   const theme = Colors[mode];
   const { currentStars, requiredStars } = progress;
   const fraction = requiredStars > 0 ? Math.min(1, Math.max(0, currentStars / requiredStars)) : 0;
