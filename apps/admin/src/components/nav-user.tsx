@@ -16,13 +16,13 @@ export function NavUser() {
   const userInitials = user?.email?.charAt(0).toUpperCase() || 'U';
 
   return (
-    <SidebarMenu className="border-t-2 border-foreground p-2">
+    <SidebarMenu className="border-t-2 border-foreground p-2 group-data-[collapsible=icon]:p-0">
       <SidebarMenuItem>
-        <div className="flex items-center gap-3 p-2">
+        <div className="flex items-center gap-3 p-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:p-0">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-foreground bg-primary font-display font-bold">
             {userInitials}
           </div>
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex flex-1 flex-col overflow-hidden group-data-[collapsible=icon]:hidden">
             <span className="truncate text-sm font-semibold">{user?.email}</span>
             <div className="mt-1 flex">
               <span className="rounded-full border-2 border-foreground px-2 py-0.5 text-xs font-semibold">
@@ -35,6 +35,7 @@ export function NavUser() {
       <SidebarMenuItem>
         <SidebarMenuButton
           onClick={handleSignOut}
+          tooltip="Sign out"
           className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="size-4" />

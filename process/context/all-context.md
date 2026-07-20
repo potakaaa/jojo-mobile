@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-20 (CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,7 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 17-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 20-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
 - **Cart server-side persistence (CART-003 #99, `packages/api` + `apps/mobile` + `packages/types`,
   delivered 20-07-26, task folder
@@ -116,6 +116,42 @@ top of it later without re-plumbing the project.
   `process/features/ordering-cart/active/cart-persistence_20-07-26/cart-persistence_PLAN_20-07-26.md`
   (+ co-located SPEC + REPORT in the same task folder).
 
+- **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
+  commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
+  Agent-Probe walkthrough owed):** the pathless `(dashboard)` layout route's `beforeLoad` guard
+  early-returned during SSR (`typeof document === 'undefined'`), so with TanStack Start's default
+  `ssr: true` the server resolved it to a no-op and hydration REUSED that resolved match — a hard
+  page load / direct URL / refresh by a logged-out user briefly rendered full dashboard chrome
+  before any redirect. Fixed by setting `ssr: false` on the route (cascades to every child route
+  automatically — `branches`/`orders`/`products`/`deals`/`offers`/`promotions`/`categories`/
+  `rewards`/`analytics`) and deleting the early-return, so `beforeLoad` genuinely re-runs on every
+  load. Swapped `getSidebarState`'s `createServerFn` for a plain client `document.cookie` read
+  (`createServerFn` throws outright when called from a client-only loader — not merely slower).
+  **Durable fact (read before touching this route again): a real server-side auth check is
+  structurally impossible in the current topology** — the better-auth session cookie is set by the
+  API origin and is never attached to the admin app's own SSR page request (different origin); no
+  cookie-forwarding code can fix this, the cookie simply isn't in the request. `requireAdmin` on
+  `/api/admin/*` remains the real security boundary; this route guard is UX/correctness only. Do
+  not "fix" this back to a server-side check without first landing the same-origin/reverse-proxy
+  change tracked in
+  `process/features/admin-dashboard/backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`.
+  **Also durable: `ssr: false` + no `pendingComponent` = a genuinely blank server-rendered window**
+  (`<ClientOnly fallback={pendingElement}>` wraps the whole subtree; no `pendingComponent` existed
+  anywhere in the app) — closed in the same session (unplanned, commit `75175b6`) with a
+  `pendingComponent` that renders the real sidebar chrome (identical across all children, zero
+  layout shift) plus one brand-styled activity indicator revealed after a 160ms delay. A separate,
+  unrelated desktop UX gap (no visible sidebar-collapse control — only the undiscoverable
+  Cmd/Ctrl+B shortcut) was also fixed in the same session (commit `7b43d0e`,
+  `collapsible="icon"` + trigger relocated to the sidebar header). All 4 automated gates
+  (typecheck/test/build/format) independently re-confirmed green this UPDATE PROCESS pass (admin
+  test suite 80/80). **Known gap, not new debt:** the actual SSR-timing fix end-to-end (does a real
+  hard-refresh in a real browser skip server-rendering and redirect before paint) cannot be
+  automated — jsdom cannot simulate real SSR/hydration timing or a real network round-trip; the 3
+  Agent-Probe scenarios (logged-out hard-load redirect, logged-in hard-load render, sidebar-state
+  persistence across refresh) are owed, user-run, not yet performed. Plan stays in `active/`
+  (not `VERIFIED` yet). Delivered by:
+  `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/adm-route-guard-ssr_PLAN_20-07-26.md`
+  (+ co-located REPORT in the same task folder).
 - **Mobile dark-mode bug-class fix + StatusBar legibility (`packages/ui` + `apps/mobile`, delivered
   17-07-26, branch `spec/mobile-dark-mode-audit`, EVL-green, commits `fcd8e10`..`71357d7` — NOT YET
   MERGED, no PR; code-complete but Agent-Probe on-device walkthroughs still owed, see below):**
@@ -1312,6 +1348,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard work (program COMPLETE — 8/8 phases VERIFIED) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — the 8-phase program (P0-P7) is fully VERIFIED, no next phase; read the umbrella plan's `## Current Execution State` for the closeout summary and the flagged (not yet actioned) archival decision. Any NEW admin-dashboard work (Tier 3 Customers module, further scope) should be scoped as a fresh plan/feature-folder task, not resumed inside this umbrella. See `backlog/` for standing residuals (AC7/AC9/AC10 Agent-Probe items, `is_accepting_pickup` Known-Gap, `deal_components` CHECK deferred, `products.is_deal` partial index deferred; ADM-008-era notes — see the coupons feature bullet) |
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
+| admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
 
 ## Context Group Lifecycle
 
@@ -1567,6 +1604,27 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
   `packages/api/src/routes/__tests__/cart.integration.test.ts`,
   `packages/api/src/routes/cart.ts`, `packages/api/src/routes/lib/cart-revalidation.ts`) + the
   new task folder; current branch at this delta: `development`.)
+- Previous delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
+  reconciliation, doc-only, all 3 commits already on disk when this pass began. `ssr:false` set on
+  the `(dashboard)` layout route + `typeof document` early-return removed (`4929b27`), closing a
+  hard-load/direct-URL/refresh bug where a logged-out user briefly saw dashboard chrome before
+  redirect (server resolved `beforeLoad` to a no-op under `ssr:true`, hydration reused that
+  result). `getSidebarState` server-fn swapped for a client `document.cookie` read (necessary, not
+  preferential — `createServerFn` throws in a client-loader context). Two unplanned follow-on
+  commits rode along: a branded `pendingComponent` loading state (`75175b6`, closing the resulting
+  blank-window trade-off from `ssr:false` with no prior `pendingComponent` anywhere in the app) and
+  a desktop sidebar-collapse control fix (`7b43d0e`, unrelated pre-existing UX gap). All 4
+  automated gates independently re-confirmed green this pass (typecheck/test 80-80/build/format).
+  **Durable fact recorded: a server-side auth check is structurally impossible in the current
+  admin/API cross-origin topology** — filed as backlog
+  (`admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`, already present from PLAN, confirmed
+  accurate this pass). CODE DONE, EVL-green, NOT VERIFIED — the plan's own Phase Completion Rules
+  require a 3-scenario user-run Agent-Probe walkthrough before `VERIFIED`; kept in `active/`, not
+  archived. Wrote `adm-route-guard-ssr_REPORT_20-07-26.md`; updated the plan's Status line; added
+  a routing-table row and an implementation-state bullet here; added one line to
+  `process/context/tests/all-tests.md` on jsdom's inability to test real SSR/hydration timing. No
+  new backlog notes filed (the reverse-proxy note was already filed by the plan's author during
+  PLAN). HEAD this delta: `7b43d0e`.)
 - Previous delta: 2026-07-20 (STAFF-005 #106 UPDATE PROCESS — staff dashboard home stat block +
   prep-time autofill bug fix, `apps/mobile` only. CODE DONE, EVL-confirmed green by an
   independently spawned vc-tester (mobile vitest 63/63 incl. 9 new, jest 78/78, typecheck 0,

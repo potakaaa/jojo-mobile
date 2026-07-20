@@ -87,6 +87,26 @@
   --font-display: 'Fredoka', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 
+  /* Motion — the one branded loop. `animate-press` replays the same tactile
+   * press the sidebar buttons perform on :active (offset shadow collapses as the
+   * element travels into it), so the dashboard pending state moves in the design
+   * system's own vocabulary instead of a generic spin. Consumers MUST pair it
+   * with `motion-reduce:animate-none`; the static `shadow-offset-md` underneath
+   * keeps the element correct when the animation is off. */
+  --animate-press: jojo-press 1s ease-in-out infinite;
+
+  @keyframes jojo-press {
+    0%,
+    100% {
+      transform: translate(0, 0);
+      box-shadow: var(--shadow-offset-md);
+    }
+    50% {
+      transform: translate(3px, 3px);
+      box-shadow: 2px 2px 0 var(--color-ink);
+    }
+  }
+
   /* Type scale — theme.ts TypeScale (Tailwind v4 --text-* namespace) */
   --text-display: 32px;
   --text-h1: 26px;
