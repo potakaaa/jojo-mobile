@@ -8,7 +8,12 @@ feature: admin-dashboard
 # ADM Route Guard SSR Fix — Plan
 
 **Date**: 20-07-26
-**Status**: DRAFT — awaiting VALIDATE
+**Status**: CODE DONE, EVL-green (commit `4929b27`) — NOT VERIFIED. All 4 automated gates
+independently re-confirmed 20-07-26 (typecheck/test 80-80/build/format all PASS). The 3 Agent-Probe
+scenarios (AC6a-c) remain owed — user-run, not yet performed. Two unplanned follow-on commits
+(`75175b6` branded loading state, `7b43d0e` sidebar collapse UX) landed in the same session; see
+`adm-route-guard-ssr_REPORT_20-07-26.md` for full detail. Kept in `active/` per Phase Completion
+Rules below — do not archive until `VERIFIED`.
 **Complexity**: SIMPLE (single-file behavioral fix, one already-decided approach)
 **SPEC/INNOVATE:** Skipped — bug fix with a single locked approach (see Decision below), no
 product-discovery surface, no open design choice. RESEARCH already identified root cause and

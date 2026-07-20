@@ -1,6 +1,8 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, EVL-confirmed green; **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
+Last updated: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix, CODE DONE + EVL-green,
+Agent-Probe walkthrough owed — see admin-dashboard bullet below and §Scan Metadata; + Phase 7 —
+Basic Analytics Dashboard, ADM-007, doc-only UPDATE PROCESS reconciliation — ✅ VERIFIED, EVL-confirmed green; **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; merged with ADM-008 post-merge fix batch, push-notification real-delivery hardening + kid-friendly-ui deals-unification delta)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +61,44 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 17-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 20-07-26, incl. admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
+  commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
+  Agent-Probe walkthrough owed):** the pathless `(dashboard)` layout route's `beforeLoad` guard
+  early-returned during SSR (`typeof document === 'undefined'`), so with TanStack Start's default
+  `ssr: true` the server resolved it to a no-op and hydration REUSED that resolved match — a hard
+  page load / direct URL / refresh by a logged-out user briefly rendered full dashboard chrome
+  before any redirect. Fixed by setting `ssr: false` on the route (cascades to every child route
+  automatically — `branches`/`orders`/`products`/`deals`/`offers`/`promotions`/`categories`/
+  `rewards`/`analytics`) and deleting the early-return, so `beforeLoad` genuinely re-runs on every
+  load. Swapped `getSidebarState`'s `createServerFn` for a plain client `document.cookie` read
+  (`createServerFn` throws outright when called from a client-only loader — not merely slower).
+  **Durable fact (read before touching this route again): a real server-side auth check is
+  structurally impossible in the current topology** — the better-auth session cookie is set by the
+  API origin and is never attached to the admin app's own SSR page request (different origin); no
+  cookie-forwarding code can fix this, the cookie simply isn't in the request. `requireAdmin` on
+  `/api/admin/*` remains the real security boundary; this route guard is UX/correctness only. Do
+  not "fix" this back to a server-side check without first landing the same-origin/reverse-proxy
+  change tracked in
+  `process/features/admin-dashboard/backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`.
+  **Also durable: `ssr: false` + no `pendingComponent` = a genuinely blank server-rendered window**
+  (`<ClientOnly fallback={pendingElement}>` wraps the whole subtree; no `pendingComponent` existed
+  anywhere in the app) — closed in the same session (unplanned, commit `75175b6`) with a
+  `pendingComponent` that renders the real sidebar chrome (identical across all children, zero
+  layout shift) plus one brand-styled activity indicator revealed after a 160ms delay. A separate,
+  unrelated desktop UX gap (no visible sidebar-collapse control — only the undiscoverable
+  Cmd/Ctrl+B shortcut) was also fixed in the same session (commit `7b43d0e`,
+  `collapsible="icon"` + trigger relocated to the sidebar header). All 4 automated gates
+  (typecheck/test/build/format) independently re-confirmed green this UPDATE PROCESS pass (admin
+  test suite 80/80). **Known gap, not new debt:** the actual SSR-timing fix end-to-end (does a real
+  hard-refresh in a real browser skip server-rendering and redirect before paint) cannot be
+  automated — jsdom cannot simulate real SSR/hydration timing or a real network round-trip; the 3
+  Agent-Probe scenarios (logged-out hard-load redirect, logged-in hard-load render, sidebar-state
+  persistence across refresh) are owed, user-run, not yet performed. Plan stays in `active/`
+  (not `VERIFIED` yet). Delivered by:
+  `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/adm-route-guard-ssr_PLAN_20-07-26.md`
+  (+ co-located REPORT in the same task folder).
 
 - **Admin dashboard Basic Analytics Dashboard (`apps/admin` + `packages/api`, Phase 7 — ADM-007,
   #45, delivered 17-07-26, branch `feat/adm-007-analytics`, commit `ba88318`, ✅ VERIFIED —
@@ -1098,6 +1137,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard work (program COMPLETE — 8/8 phases VERIFIED) | `all-context.md` | `process/features/admin-dashboard/active/admin-dashboard_14-07-26/` — the 8-phase program (P0-P7) is fully VERIFIED, no next phase; read the umbrella plan's `## Current Execution State` for the closeout summary and the flagged (not yet actioned) archival decision. Any NEW admin-dashboard work (Tier 3 Customers module, further scope) should be scoped as a fresh plan/feature-folder task, not resumed inside this umbrella. See `backlog/` for standing residuals (AC7/AC9/AC10 Agent-Probe items, `is_accepting_pickup` Known-Gap, `deal_components` CHECK deferred, `products.is_deal` partial index deferred; ADM-008-era notes — see the coupons feature bullet) |
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
+| admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
 
 ## Context Group Lifecycle
 
@@ -1328,7 +1368,28 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, UPDATE PROCESS — doc-only
+- Last delta: 2026-07-20 (`apps/admin` `(dashboard)` route SSR auth-guard fix — UPDATE PROCESS
+  reconciliation, doc-only, all 3 commits already on disk when this pass began. `ssr:false` set on
+  the `(dashboard)` layout route + `typeof document` early-return removed (`4929b27`), closing a
+  hard-load/direct-URL/refresh bug where a logged-out user briefly saw dashboard chrome before
+  redirect (server resolved `beforeLoad` to a no-op under `ssr:true`, hydration reused that
+  result). `getSidebarState` server-fn swapped for a client `document.cookie` read (necessary, not
+  preferential — `createServerFn` throws in a client-loader context). Two unplanned follow-on
+  commits rode along: a branded `pendingComponent` loading state (`75175b6`, closing the resulting
+  blank-window trade-off from `ssr:false` with no prior `pendingComponent` anywhere in the app) and
+  a desktop sidebar-collapse control fix (`7b43d0e`, unrelated pre-existing UX gap). All 4
+  automated gates independently re-confirmed green this pass (typecheck/test 80-80/build/format).
+  **Durable fact recorded: a server-side auth check is structurally impossible in the current
+  admin/API cross-origin topology** — filed as backlog
+  (`admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`, already present from PLAN, confirmed
+  accurate this pass). CODE DONE, EVL-green, NOT VERIFIED — the plan's own Phase Completion Rules
+  require a 3-scenario user-run Agent-Probe walkthrough before `VERIFIED`; kept in `active/`, not
+  archived. Wrote `adm-route-guard-ssr_REPORT_20-07-26.md`; updated the plan's Status line; added
+  a routing-table row and an implementation-state bullet here; added one line to
+  `process/context/tests/all-tests.md` on jsdom's inability to test real SSR/hydration timing. No
+  new backlog notes filed (the reverse-proxy note was already filed by the plan's author during
+  PLAN). HEAD this delta: `7b43d0e`.)
+- Previous delta: 2026-07-17 (Phase 7 — Basic Analytics Dashboard, ADM-007, UPDATE PROCESS — doc-only
   reconciliation, no source changes this pass; source already committed by the user before this
   pass began (commit `ba88318` on branch `feat/adm-007-analytics`). Phase 7 delivered `GET
   /api/admin/analytics?from=&to=[&branchId=]` — one combined route returning 8 KPIs

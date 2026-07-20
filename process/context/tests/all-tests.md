@@ -8,7 +8,7 @@ date: 14-07-26
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-15
+Last updated: 2026-07-20
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -123,7 +123,13 @@ preflight OPTIONS on `/api/auth/sign-in/email`, a real cross-origin sign-in, and
 mobile-path guard). A real-browser AC8 walkthrough found that credentialed CORS must be mounted on
 BOTH `/api/auth/*` and `/api/admin` — `trustedOrigins` alone (CSRF allowlist) does not add HTTP CORS
 headers, so a browser blocks the response without them even when the origin is trusted. As Phase 2+
-build real admin CRUD screens, `apps/admin`'s vitest is the runner to extend.
+build real admin CRUD screens, `apps/admin`'s vitest is the runner to extend. **`apps/admin`'s
+jsdom-based vitest cannot test real SSR/hydration timing** (discovered 20-07-26, `(dashboard)`
+route SSR auth-guard fix): tests can prove a route's `beforeLoad`/loader decision logic in
+isolation (mocked `fetch`, direct `Route.options.beforeLoad()` invocation), but whether a real hard
+refresh in a real browser actually skips server-rendering and redirects before paint needs a real
+TanStack Start server + real network round-trip — jsdom has neither. Any `ssr: false` route's
+end-to-end timing behavior is Agent-Probe-only for this reason, not a gap unique to one plan.
 
 Until a mobile-side (RN component) E2E runner is chosen, "verification" for RN-rendered UI still
 means:
