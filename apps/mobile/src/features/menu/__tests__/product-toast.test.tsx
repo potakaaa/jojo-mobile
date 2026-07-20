@@ -65,7 +65,7 @@ function setupCart(over: Record<string, unknown> = {}) {
   // see use-cart.ts) — the mock must resolve `true` to match the success path
   // these tests exercise, or the screen's real ok-check would show the failure
   // toast instead.
-  const addItem = jest.fn(() => Promise.resolve(true));
+  const addItem = jest.fn<() => Promise<boolean>>().mockResolvedValue(true);
   mockUseCart.mockReturnValue({
     cart: { items: [], pickupBranchId: 'b1' },
     addItem,
