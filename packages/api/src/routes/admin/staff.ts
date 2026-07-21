@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { db } from '../../db/client';
 import { branches, staffInvites, users } from '../../db/schema/index';
+import { ADMIN_WEB_ORIGIN } from '../../lib/auth';
 import { serializeAdminStaffInvite, serializeAdminStaffSummary } from '../lib/serializers';
 import { AdminApiError, handleAdminError } from './lib/errors';
 
@@ -23,14 +24,16 @@ const inviteFrom = process.env.RESEND_FROM ?? 'Jojo Potato <onboarding@resend.de
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /**
- * Deliver an invite accept link. The link targets `/staff-invite/native` (the
- * email-clickable deep-link bounce), NOT `/staff-invite/start` (a JSON API the app
- * calls after landing). Send failure NEVER rolls back the invite row (matching
- * `sendMagicLink`'s precedent — the invite is real and accept-able even if the mail
- * bounced). The raw token appears ONLY here, never in the API response body or the DB.
+ * Deliver an invite accept link. The link targets the `apps/admin` WEB accept page
+ * (`${ADMIN_WEB_ORIGIN}/staff-invite-accept`, ADM-012 #142), where the invitee
+ * completes profile + password setup in the browser — NOT the mobile `jojopotato://`
+ * deep-link bounce (`/staff-invite/native`) used before ADM-012. Send failure NEVER
+ * rolls back the invite row (matching `sendMagicLink`'s precedent — the invite is
+ * real and accept-able even if the mail bounced). The raw token appears ONLY here,
+ * never in the API response body or the DB.
  */
 async function sendStaffInvite(email: string, rawToken: string): Promise<void> {
-  const acceptUrl = `${process.env.BETTER_AUTH_URL}/staff-invite/native?token=${encodeURIComponent(rawToken)}`;
+  const acceptUrl = `${ADMIN_WEB_ORIGIN}/staff-invite-accept?token=${encodeURIComponent(rawToken)}`;
   if (!inviteResend) {
     console.log(`[admin] staff invite for ${email} (RESEND_API_KEY unset): ${acceptUrl}`);
     return;

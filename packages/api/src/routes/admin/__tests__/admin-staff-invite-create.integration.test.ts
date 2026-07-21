@@ -104,6 +104,19 @@ function extractInviteToken(email: string): string {
   throw new Error(`invite token for ${email} not found in logs`);
 }
 
+/** Extract the full accept URL from the send-or-log fallback line (ADM-012 AC10). */
+function extractInviteAcceptUrl(email: string): string {
+  const calls = logSpy.mock.calls;
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const msg = String(calls[i]?.[0] ?? '');
+    if (msg.includes('[admin] staff invite for') && msg.includes(email)) {
+      const m = msg.match(/(https?:\/\/\S+)/);
+      if (m) return m[1]!;
+    }
+  }
+  throw new Error(`invite accept URL for ${email} not found in logs`);
+}
+
 beforeAll(async () => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   ({ auth } = await import('../../../lib/auth'));
@@ -260,6 +273,25 @@ describe('POST /api/admin/staff/invite (create)', () => {
       .from(schema.staffInvites)
       .where(eq(schema.staffInvites.email, email));
     expect(row!.intendedBranchId).toBeNull();
+  });
+
+  it('points the invite accept link at the web accept page, not the mobile deep-link (ADM-012 AC10)', async () => {
+    const email = `weblink-${unique()}@example.com`;
+
+    const res = await request(app)
+      .post('/api/admin/staff/invite')
+      .set('Cookie', superAdminCookies.join('; '))
+      .send({ email, intendedRole: 'admin' })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(201);
+
+    const acceptUrl = extractInviteAcceptUrl(email);
+    const adminOrigin = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100';
+    // Targets the apps/admin WEB accept route, carrying the raw token as ?token=.
+    expect(acceptUrl.startsWith(`${adminOrigin}/staff-invite-accept?token=`)).toBe(true);
+    // NOT the pre-ADM-012 mobile-redirect endpoint or a deep link.
+    expect(acceptUrl).not.toContain('/staff-invite/native');
+    expect(acceptUrl).not.toContain('jojopotato://');
   });
 
   it('rejects an invite for an email that already has an account (409), no row written (AC9)', async () => {

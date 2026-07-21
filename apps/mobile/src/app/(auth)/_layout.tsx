@@ -14,7 +14,6 @@ export default function AuthLayout() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="login" />
       <Stack.Screen name="magic-link" />
-      <Stack.Screen name="invite-accept" />
       <Stack.Screen name="phone-otp" options={{ headerShown: true, title: 'Phone sign-in' }} />
       <Stack.Screen name="terms" options={{ headerShown: true, title: 'Terms & Privacy' }} />
     </Stack>

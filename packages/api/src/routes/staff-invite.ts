@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { fromNodeHeaders } from 'better-auth/node';
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
@@ -21,6 +22,12 @@ import { requireSession } from '../middleware/require-session';
 export const staffInviteRouter: ExpressRouter = Router();
 
 const tokenBodySchema = z.object({ token: z.string().min(1) });
+
+// Client-boundary re-assertion of better-auth's own 8/128 password bounds
+// (its `setPassword` re-checks these independently — this is a deliberate explicit
+// gate that rejects a length violation with 400 BEFORE any credential mutation,
+// NOT a duplicated framework config). ADM-012 (#142).
+const setPasswordSchema = z.object({ newPassword: z.string().min(8).max(128) });
 
 function hashToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
@@ -223,6 +230,47 @@ staffInviteRouter.post('/consume', requireSession, async (req, res) => {
   } catch (err) {
     console.error('[staff-invite] unexpected error consuming invite', err);
     res.status(500).json({ error: 'Failed to accept invite' });
+  }
+});
+
+/**
+ * POST /staff-invite/set-password (ADM-012, #142) — SESSION-gated. Sets a durable
+ * password on the invitee's freshly-accepted account (which landed via magic-link
+ * verify and so has no credential yet), so they can later sign in with email +
+ * password. better-auth's `setPassword` operates on the SESSION user only — it can
+ * never target another account, and `role`/`email`/`branch` are structurally not
+ * inputs here.
+ *
+ * Statuses: 401 unauthenticated (requireSession); 400 length violation (8–128,
+ * zero credential mutation); 200 `{ ok: true }` on success. An account that ALREADY
+ * has a password (D4 — e.g. re-visiting the accept link) is treated as a graceful
+ * no-op success (`PASSWORD_ALREADY_SET`), never a 500, leaving the existing password
+ * untouched.
+ */
+staffInviteRouter.post('/set-password', requireSession, async (req, res) => {
+  const parsed = setPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Password must be 8-128 characters' });
+    return;
+  }
+
+  try {
+    await auth.api.setPassword({
+      body: { newPassword: parsed.data.newPassword },
+      headers: fromNodeHeaders(req.headers),
+    });
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    // D4: an already-has-password account is an expected no-op path, not an error.
+    // better-auth throws APIError('BAD_REQUEST', PASSWORD_ALREADY_SET) shaped as
+    // { status: 'BAD_REQUEST', body: { code: 'PASSWORD_ALREADY_SET', ... } }.
+    const e = err as { status?: string; body?: { code?: string } };
+    if (e?.status === 'BAD_REQUEST' && e?.body?.code === 'PASSWORD_ALREADY_SET') {
+      res.status(200).json({ ok: true });
+      return;
+    }
+    console.error('[staff-invite] unexpected error setting password', err);
+    res.status(500).json({ error: 'Failed to set password' });
   }
 });
 

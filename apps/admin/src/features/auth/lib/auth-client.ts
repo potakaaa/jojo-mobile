@@ -34,6 +34,14 @@ export const authClient = createAuthClient({
         // Read-only on the client (mirrors the server's `input: false`) — `role`
         // is server-owned and never a settable signup/update input.
         role: { type: 'string', input: false },
+        // Self-owned profile fields the client may write via `updateUser` on its
+        // OWN record (mirrors the server's `input: true`) — the ADM-012 (#142) web
+        // staff-invite accept page's profile step calls
+        // `updateUser({ name, birthday, address, onboardedAt })`. Same registration
+        // as the mobile client. `role` is deliberately NOT among these.
+        birthday: { type: 'string', input: true },
+        address: { type: 'string', input: true },
+        onboardedAt: { type: 'date', input: true },
       },
     }),
     magicLinkClient(),

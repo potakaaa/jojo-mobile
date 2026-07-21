@@ -143,6 +143,23 @@ async function readUser(email: string) {
   return row;
 }
 
+/** POST /staff-invite/set-password with the given session cookies (ADM-012). */
+function setPassword(sessionCookies: string[], newPassword: string) {
+  return request(app)
+    .post('/staff-invite/set-password')
+    .set('Cookie', sessionCookies.join('; '))
+    .send({ newPassword })
+    .set('Content-Type', 'application/json');
+}
+
+/** Independent email/password sign-in — proves a credential is durable. */
+function signInEmail(email: string, password: string) {
+  return request(app)
+    .post('/api/auth/sign-in/email')
+    .send({ email, password })
+    .set('Content-Type', 'application/json');
+}
+
 beforeAll(async () => {
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   ({ auth } = await import('../../lib/auth'));
@@ -329,6 +346,159 @@ describe('staff-invite accept flow', () => {
  * cors() short-circuits OPTIONS before the router (and its rate-limiter) runs, so the
  * preflight cases do not consume the /start rate-limit budget.
  */
+/**
+ * ADM-012 (#142) — set-password + profile setup on the web accept flow. The
+ * invitee's account lands via magic-link verify (no credential yet); `/set-password`
+ * gives it a durable password, and `auth.api.updateUser` persists the required
+ * profile fields — both self-scoped to the session user, never touching role/branch.
+ */
+describe('staff-invite set-password + profile setup (ADM-012)', () => {
+  it('persists a durable credential; a fresh independent sign-in with the new password succeeds (AC1)', async () => {
+    const email = `setpw-fresh-${unique()}@example.com`;
+    const rawToken = await createInvite(email, 'admin');
+    const sessionCookies = await startAndVerify(rawToken);
+
+    const sp = await setPassword(sessionCookies, 'brandnew-pw-123');
+    expect(sp.status).toBe(200);
+    expect(sp.body).toEqual({ ok: true });
+
+    // Fresh sign-in with the just-set password (no reuse of the magic-link session).
+    const signin = await signInEmail(email, 'brandnew-pw-123');
+    expect(signin.status).toBe(200);
+    expect(signin.headers['set-cookie']).toBeTruthy();
+  });
+
+  it('is session-gated (401 unauthenticated); a set-password never mutates role/branch (AC2)', async () => {
+    // 401 with no session.
+    const unauth = await request(app)
+      .post('/staff-invite/set-password')
+      .send({ newPassword: 'x'.repeat(10) })
+      .set('Content-Type', 'application/json');
+    expect(unauth.status).toBe(401);
+
+    // role/branch byte-identical before/after for an accepted staff invitee.
+    const email = `setpw-scope-${unique()}@example.com`;
+    const rawToken = await createInvite(email, 'staff', activeBranchId);
+    const sessionCookies = await startAndVerify(rawToken);
+    await request(app)
+      .post('/staff-invite/consume')
+      .set('Cookie', sessionCookies.join('; '))
+      .send({ token: rawToken })
+      .set('Content-Type', 'application/json');
+
+    const before = await readUser(email);
+    const sp = await setPassword(sessionCookies, 'scoped-pw-1234');
+    expect(sp.status).toBe(200);
+    const after = await readUser(email);
+    expect(after).toMatchObject({ role: before!.role, assignedBranchId: before!.assignedBranchId });
+    expect(after!.role).toBe('staff');
+    expect(after!.assignedBranchId).toBe(activeBranchId);
+  });
+
+  it('enforces the 8–128 length bound: 7 and 129 rejected (zero mutation), 8 and 128 succeed (AC3)', async () => {
+    // Rejection cases reuse one fresh session — a 400 never mutates.
+    const rejectEmail = `setpw-reject-${unique()}@example.com`;
+    const rejectCookies = await startAndVerify(await createInvite(rejectEmail, 'admin'));
+
+    const tooShort = await setPassword(rejectCookies, 'a'.repeat(7));
+    expect(tooShort.status).toBe(400);
+    const tooLong = await setPassword(rejectCookies, 'a'.repeat(129));
+    expect(tooLong.status).toBe(400);
+
+    // Zero mutation: the rejected 7-char password never becomes a valid credential.
+    const rejectedSignin = await signInEmail(rejectEmail, 'a'.repeat(7));
+    expect(rejectedSignin.status).not.toBe(200);
+
+    // 8-char succeeds (fresh account).
+    const minEmail = `setpw-min-${unique()}@example.com`;
+    const minCookies = await startAndVerify(await createInvite(minEmail, 'admin'));
+    const min = await setPassword(minCookies, 'a'.repeat(8));
+    expect(min.status).toBe(200);
+
+    // 128-char succeeds (fresh account).
+    const maxEmail = `setpw-max-${unique()}@example.com`;
+    const maxCookies = await startAndVerify(await createInvite(maxEmail, 'admin'));
+    const max = await setPassword(maxCookies, 'a'.repeat(128));
+    expect(max.status).toBe(200);
+  });
+
+  it('handles an existing-password account gracefully — no 500, original password still works (AC4)', async () => {
+    const email = `setpw-existing-${unique()}@example.com`;
+    const original = 'original-pw-123';
+    // signUpAndGetCookie creates an account that ALREADY has a credential.
+    const cookies = await signUpAndGetCookie(email, original);
+
+    const sp = await setPassword(cookies, 'attempted-new-pw-456');
+    expect(sp.status).toBe(200); // PASSWORD_ALREADY_SET treated as a no-op success
+    expect(sp.body).toEqual({ ok: true });
+
+    // The original password is untouched and still signs in.
+    const signinOrig = await signInEmail(email, original);
+    expect(signinOrig.status).toBe(200);
+
+    // The attempted new password was never applied.
+    const signinNew = await signInEmail(email, 'attempted-new-pw-456');
+    expect(signinNew.status).not.toBe(200);
+  });
+
+  it('persists profile fields (name/birthday/address/onboardedAt) and reads them back (AC5)', async () => {
+    const email = `profile-${unique()}@example.com`;
+    const rawToken = await createInvite(email, 'admin');
+    const sessionCookies = await startAndVerify(rawToken);
+    const authedHeaders = new Headers({ cookie: sessionCookies.join('; ') });
+
+    const birthday = '1992-03-10';
+    const address = '9 Fry Street';
+    const onboardedAt = new Date();
+    await auth.api.updateUser({
+      body: { name: 'Freshly Onboarded', birthday, address, onboardedAt },
+      headers: authedHeaders,
+    });
+
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.email, email));
+    expect(row!.name).toBe('Freshly Onboarded');
+    expect(String(row!.birthday)).toContain(birthday);
+    expect(row!.address).toBe(address);
+    expect(row!.onboardedAt).not.toBeNull();
+  });
+
+  it('a profile update never mutates role/branch, for staff/admin/super_admin (AC7)', async () => {
+    const cases: Array<{ role: 'staff' | 'admin' | 'super_admin'; branch?: string }> = [
+      { role: 'staff', branch: activeBranchId },
+      { role: 'admin' },
+      { role: 'super_admin' },
+    ];
+
+    for (const c of cases) {
+      const email = `profile-scope-${c.role}-${unique()}@example.com`;
+      const rawToken = await createInvite(email, c.role, c.branch);
+      const sessionCookies = await startAndVerify(rawToken);
+      await request(app)
+        .post('/staff-invite/consume')
+        .set('Cookie', sessionCookies.join('; '))
+        .send({ token: rawToken })
+        .set('Content-Type', 'application/json');
+
+      const before = await readUser(email);
+      await auth.api.updateUser({
+        body: {
+          name: 'Renamed Person',
+          birthday: '1990-01-01',
+          address: '1 Spud Lane',
+          onboardedAt: new Date(),
+        },
+        headers: new Headers({ cookie: sessionCookies.join('; ') }),
+      });
+      const after = await readUser(email);
+
+      expect(after!.role, `role unchanged for ${c.role}`).toBe(before!.role);
+      expect(after!.assignedBranchId, `branch unchanged for ${c.role}`).toBe(
+        before!.assignedBranchId,
+      );
+    }
+  });
+});
+
 describe('staff-invite CORS for the admin web origin (Section H)', () => {
   const ADMIN_ORIGIN = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100';
   const DISALLOWED_ORIGIN = 'http://evil.example.com';
