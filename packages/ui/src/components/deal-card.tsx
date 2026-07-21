@@ -20,6 +20,13 @@ export interface DealCardProps {
   style?: ViewStyle;
   validUntil?: string;
   /**
+   * DEAL-004 flag-not-hide: when `false`, the deal is rendered but visually muted
+   * (dimmed) with an "Unavailable at this branch" badge — the branch cannot fulfil
+   * one of its components. `undefined`/`true` renders the normal card. Additive;
+   * existing call sites that omit it are unaffected.
+   */
+  available?: boolean;
+  /**
    * DEAL-005 Phase 3 — a fully-formatted availability sentence for a scheduled
    * deal, e.g. "Available Mon–Fri, 8:00 AM – 8:25 PM". Rendered as its own
    * UNLABELED caption row (the string is already a complete sentence — do NOT
@@ -34,8 +41,9 @@ export interface DealCardProps {
  * discount badge. Tapping is optional and visual-only by default. When
  * `validUntil` is provided, a caption "Valid until: …" row renders below the
  * description; when `scheduleSummary` is provided, its (already complete)
- * sentence renders as an unlabeled caption row. Omitting either leaves existing
- * call sites unaffected.
+ * sentence renders as an unlabeled caption row. When `available === false` the
+ * card is dimmed and shows an "Unavailable at this branch" badge (DEAL-004
+ * flag-not-hide). Omitting either leaves existing call sites unaffected.
  */
 export function DealCard({
   deal,
@@ -43,18 +51,22 @@ export function DealCard({
   mode,
   style,
   validUntil,
+  available,
   scheduleSummary,
 }: DealCardProps) {
   const theme = Colors[mode];
+  const isUnavailable = available === false;
 
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityState={isUnavailable ? { disabled: true } : undefined}
       onPress={onPress}
       style={[
         styles.container,
         { backgroundColor: theme.backgroundElement, borderColor: theme.border },
         Shadows.offsetSm,
+        isUnavailable && styles.unavailable,
         style,
       ]}
     >
@@ -85,6 +97,13 @@ export function DealCard({
             {scheduleSummary}
           </Text>
         ) : null}
+        {isUnavailable ? (
+          <View style={[styles.unavailableBadge, { borderColor: theme.border }]}>
+            <Text style={[styles.unavailableText, { color: theme.textSecondary }]}>
+              Unavailable at this branch
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -95,6 +114,21 @@ const styles = StyleSheet.create({
     borderRadius: Radii.md,
     borderWidth: 2,
     overflow: 'hidden',
+  },
+  unavailable: {
+    opacity: 0.55,
+  },
+  unavailableBadge: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.half,
+    paddingVertical: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    borderWidth: 2,
+    borderRadius: Radii.full,
+  },
+  unavailableText: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.caption,
   },
   image: {
     width: '100%',

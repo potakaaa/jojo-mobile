@@ -85,9 +85,9 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
     pathname: '/(tabs)/deals/deal/[dealId]',
     params: { dealId: 'x' },
   });
-  // coupon → coupon wallet (no params by design)
+  // coupon → rewards tab (coupons-wallet screen removed; no params by design)
   expect(resolveRoute(item('c', '2026-07-14T10:00:00.000Z', 'coupon_expiring'))).toEqual({
-    pathname: '/(tabs)/rewards/coupons',
+    pathname: '/(tabs)/rewards',
   });
   // rewards
   expect(resolveRoute(item('r', '2026-07-14T10:00:00.000Z', 'reward_unlocked'))).toEqual({

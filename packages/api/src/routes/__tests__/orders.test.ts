@@ -756,11 +756,19 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
   let rewardNullId: string; // reward with no eligible_product_id
   let product2Id: string; // a product the reward is NOT bound to (LD5)
 
-  const freshUser = async (label: string): Promise<string> => {
+  // Star Expendable: reward redemption now DEDUCTS `user_stars.current_stars` and
+  // the resolver rejects (400) when the balance can't cover `required_stars` (5 for
+  // these fixtures). Every reward-coupon test user therefore needs a seeded balance;
+  // seed a generous 100 by default so a single redemption never underflows. Tests
+  // that specifically exercise the insufficient-balance path pass a smaller amount.
+  const freshUser = async (label: string, stars = 100): Promise<string> => {
     const [u] = await db
       .insert(schema.users)
       .values({ name: label, email: `${label}-${uid()}@example.com` })
       .returning();
+    await db
+      .insert(schema.userStars)
+      .values({ user_id: u!.id, current_stars: stars, lifetime_stars: stars });
     return u!.id;
   };
   const mintCoupon = (userId: string, rewardIdArg: string, code: string) =>
@@ -840,7 +848,64 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
       );
     expect(redeemed).toHaveLength(1);
     expect(redeemed[0]!.order_id).toBe(res.json.order.id);
-    expect(redeemed[0]!.stars).toBe(0);
+    // Star Expendable: redemption records the negative star cost (reward.required_stars = 5).
+    expect(redeemed[0]!.stars).toBe(-5);
+  });
+
+  // Star Expendable AC1 + AC3: redemption decrements current_stars by exactly
+  // required_stars and leaves lifetime_stars untouched (monotonic, D6).
+  it('decrements current_stars by required_stars and leaves lifetime_stars unchanged', async () => {
+    const u = await freshUser('rwBal', 30); // current=30, lifetime=30; reward costs 5
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(201);
+
+    const [stars] = await db.select().from(schema.userStars).where(eq(schema.userStars.user_id, u));
+    expect(stars!.current_stars).toBe(25); // 30 - 5
+    expect(stars!.lifetime_stars).toBe(30); // unchanged (monotonic)
+  });
+
+  // Star Expendable AC4: redemption is rejected (400) when current_stars <
+  // required_stars; the coupon stays available (unburned), the balance is
+  // unchanged, and no redeemed ledger row is written.
+  it('rejects redemption (400) when current_stars < required_stars; coupon unburned, balance + ledger untouched', async () => {
+    const u = await freshUser('rwPoor', 3); // current=3 < reward cost 5
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+
+    // Coupon left available (never burned).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+
+    // Balance unchanged.
+    const [stars] = await db.select().from(schema.userStars).where(eq(schema.userStars.user_id, u));
+    expect(stars!.current_stars).toBe(3);
+    expect(stars!.lifetime_stars).toBe(3);
+
+    // No redeemed ledger row.
+    const redeemed = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(redeemed).toHaveLength(0);
+
+    // No order row persisted.
+    const orders = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(orders).toHaveLength(0);
   });
 
   // AC6

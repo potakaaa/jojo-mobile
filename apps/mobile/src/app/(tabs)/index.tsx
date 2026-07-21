@@ -339,7 +339,7 @@ export default function HomeScreen() {
             <EmptyState
               iconName="pricetag-outline"
               title="No deals right now"
-              description="Check back soon for new offers at your branch."
+              description="Check back soon — new deals are coming."
               mode={mode}
             />
           ) : (
@@ -352,6 +352,7 @@ export default function HomeScreen() {
                 <DealCard
                   key={product.id}
                   deal={dealProductToCard(product)}
+                  available={product.available}
                   mode={mode}
                   style={styles.dealCard}
                   scheduleSummary={formatDealScheduleSummary(product.schedule)}

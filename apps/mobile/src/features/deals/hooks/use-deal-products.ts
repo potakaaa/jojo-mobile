@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { getMenu } from '@/lib/api-client';
+import { getDealProducts } from '@/lib/api-client';
 
 /**
  * Deals-as-products browse hooks (ADM-004 repoint, Phase B). A "deal" is a
@@ -18,23 +18,22 @@ import { getMenu } from '@/lib/api-client';
  */
 
 /**
- * Deal-products list. Keyed on the cart's current pickup branch so switching
- * branches refetches automatically. Deal-products are branch availability-scoped
- * (`branch_product_availability`), so the query is disabled until a branch is
- * selected (no branch → no branch-scoped deals → the screen shows its empty
- * state). Flattens the returned `Category[]` into a single `Product[]`.
+ * Deal-products list (DEAL-004 all-branch). Reads `GET /deals/products`, which is
+ * ALL-BRANCH — no branch selection is required to see deals (AC1). The query runs
+ * whether or not a branch is selected (no `enabled` gate). The cart's pickup
+ * branch is still part of the query key so switching branches refetches the
+ * per-branch `available` flag; when no branch is selected, every deal comes back
+ * `available: true`. Flattens the returned `Category[]` into a single `Product[]`.
  */
 export function useDealProducts(): UseQueryResult<Product[]> {
   const { cart } = useCart();
-  const branchId = cart.pickupBranchId;
+  // Empty pickupBranchId (no branch chosen) → fetch the all-branch catalog with
+  // every deal available:true; a real branch id → per-branch availability flags.
+  const branchId = cart.pickupBranchId || undefined;
 
   return useQuery({
-    queryKey: ['deal-products', branchId],
-    queryFn: async () => {
-      const menu = await getMenu(branchId, { isDeal: true });
-      return menu.categories.flatMap((category) => category.products);
-    },
-    enabled: !!branchId,
+    queryKey: ['deal-products', branchId ?? null],
+    queryFn: () => getDealProducts(branchId),
     refetchOnWindowFocus: true,
   });
 }

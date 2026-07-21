@@ -76,8 +76,9 @@ export function resolveRoute(n: AppNotification): ResolvedRoute {
     case 'deal_details':
       return { pathname: '/(tabs)/deals/deal/[dealId]', params: n.targetParams };
     case 'coupon_wallet':
-      // May 404 until the Coupon Wallet screen exists (A4 — accepted gap).
-      return { pathname: '/(tabs)/rewards/coupons' };
+      // The coupons-wallet screen was removed; reward coupons now redeem from the
+      // rewards tab directly, so this deep link lands there.
+      return { pathname: '/(tabs)/rewards' };
     case 'rewards':
       return { pathname: '/(tabs)/rewards' };
   }
