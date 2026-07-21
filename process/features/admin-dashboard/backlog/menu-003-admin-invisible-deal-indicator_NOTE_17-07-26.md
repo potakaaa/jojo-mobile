@@ -116,6 +116,6 @@ own absolute window and recurrence columns; they have no visibility into
   `lib/entity-status.ts`) — the existing precedent this would extend
 - Related: DEAL-005 Phase 1
   (`process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`) and Phase 2
-  (`process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/`) — closed the
+  (`process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`) — closed the
   time-window invisibility gap via `Scheduled`/`Live`/`Expired`/`Recurring` badges; component-
   availability and zero-component invisibility remain open

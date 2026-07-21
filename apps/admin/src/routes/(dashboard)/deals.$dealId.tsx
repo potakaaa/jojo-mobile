@@ -73,6 +73,8 @@ function DealDetailPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const deal = dealQuery.data;
+  // One evaluation shared by every badge below (same clock, no repeated work).
+  const status = deal ? dealStatus(deal) : null;
 
   // DEAL-005 window editor. The fields DERIVE from the loaded deal and are only
   // shadowed once the admin actually edits (`windowDraft !== null`) — deliberately
@@ -211,17 +213,15 @@ function DealDetailPage() {
             <section className="flex flex-col gap-2 rounded-xl border-2 border-foreground p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display text-h2 font-bold text-foreground">{deal.name}</h1>
-                <StatusBadge tone={dealStatus(deal).tone}>{dealStatus(deal).label}</StatusBadge>
+                <StatusBadge tone={status!.tone}>{status!.label}</StatusBadge>
                 {/* DEAL-005 Phase 2 — additional, alongside the phase badge (E4). */}
-                {dealStatus(deal).recurring ? (
-                  <StatusBadge tone="neutral">Recurring</StatusBadge>
-                ) : null}
+                {status!.recurring ? <StatusBadge tone="neutral">Recurring</StatusBadge> : null}
                 {/* DEAL-005 Phase 2 — cosmetic "live in today's Manila hours?" hint,
                     only shown for a recurring deal that is otherwise Live right now. */}
-                {dealStatus(deal).recurringActive === true ? (
+                {status!.recurringActive === true ? (
                   <StatusBadge tone="success">Active now</StatusBadge>
                 ) : null}
-                {dealStatus(deal).recurringActive === false ? (
+                {status!.recurringActive === false ? (
                   <StatusBadge tone="muted">Not active now</StatusBadge>
                 ) : null}
               </div>

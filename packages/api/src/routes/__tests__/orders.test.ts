@@ -2051,12 +2051,18 @@ describe('POST /orders — DEAL-005 Phase 2 recurrence', () => {
     };
   })(new Date());
   const beforeNoon = wall.hhmm < '12:00';
-  const coversNow = beforeNoon
-    ? { start: '00:00', end: '12:00' }
-    : { start: '12:00', end: '23:59' };
+  // A window that CONTAINS the current Manila minute, with maximal drift margin —
+  // the route re-reads the clock at request time, so a tight window could flake
+  // across a minute boundary.
+  // ponytail: half-open end maxes at "23:59", so the single Manila minute 23:59 is
+  // unrepresentable ("24:00" is invalid) — ~1min/day residual. Fully closing it
+  // needs injecting the clock into the route, which intentionally uses server time.
+  const coversNow = { start: '00:00', end: '23:59' };
+  // A window that EXCLUDES the current minute — a fixed band on the far side of the
+  // day, so a small clock drift can never slide `now` into it.
   const excludesNow = beforeNoon
-    ? { start: '12:00', end: '23:59' }
-    : { start: '00:00', end: '12:00' };
+    ? { start: '22:00', end: '23:00' }
+    : { start: '00:00', end: '01:00' };
   const today = wall.dayOfWeek;
   const notToday = (today + 3) % 7;
 

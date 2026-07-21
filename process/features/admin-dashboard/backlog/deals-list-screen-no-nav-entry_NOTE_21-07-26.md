@@ -54,5 +54,6 @@ unaffected.
    and either delete it or repurpose it (e.g. "View all deals for this branch" when the Home strip
    is truncated).
 
-No fix applied yet — this is a tracking note only. Next task: scope and build the entry point (or
-make the deliberate call to remove the orphaned screen) as its own small plan.
+Resolved via option 1 (commit `ab3d916` — a "See all" entry on the Home tab's "Deals & offers"
+header). Options 2 and 3 above are recorded only as the alternatives considered; no further action
+is owed. This note is kept for history.

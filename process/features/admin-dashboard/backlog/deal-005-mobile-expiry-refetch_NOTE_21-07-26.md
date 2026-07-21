@@ -5,10 +5,12 @@ date: 21-07-26
 feature: admin-dashboard
 ---
 
-# Mobile deals don't auto-drop when a recurring window closes (defer to DEAL-005 Phase 3)
+# Mobile deals don't auto-drop when a recurring window closes (post-DEAL-005-Phase-3 follow-up)
 
-**Status:** accepted, deferred to Phase 3 (mobile surfacing). NOT a Phase 2 bug, NOT a server
-correctness bug.
+**Status:** OPEN — accepted/deferred. Phase 3 (mobile surfacing) is now ✅ VERIFIED but
+deliberately kept the app-wide fetch-on-focus behavior (it added read-only schedule captions, not
+an auto-drop). So the surviving follow-up is narrowed to just the auto-refetch/expiry question
+below. NOT a Phase 2 bug, NOT a server correctness bug.
 
 ## TL;DR
 
@@ -20,19 +22,16 @@ react-query cache**: the mobile deals screen uses ~30s `staleTime` + fetch-on-fo
 (the app-wide convention), so a window that closes while the screen is open/backgrounded isn't
 reflected until a refetch (refocus / restart).
 
-## Why this belongs in Phase 3, not Phase 2
+## What Phase 3 settled, and what it left open
 
-- Phase 2's design keeps mobile schedule-blind (D2: out-of-window = hidden, zero window data on
-  the customer wire). There is nothing schedule-aware to fix on mobile within Phase 2 scope.
-- Phase 3 is exactly the mobile schedule-surfacing phase ("Starts Friday" affordances). Whatever
-  we do about an expired card — a `refetchInterval` on the deals query to auto-drop it, or a
-  richer "starts soon / off now" state — is the same decision. Make it once, there.
+- **Settled:** Phase 3 added read-only schedule captions to the customer wire (the D2 stance
+  relaxed to "annotate currently-live deals"), so "surface recurring state to the customer" is
+  done.
+- **Still open (this note):** whether deal cards should auto-drop the moment a window boundary
+  passes (add a `refetchInterval` to the deals query) or keep the current app-wide fetch-on-focus
+  behavior. Phase 3 chose fetch-on-focus to stay consistent with every other screen; a card can
+  therefore linger past its daily `recur_end_time` until the next refetch. Server enforcement is
+  unaffected — placement re-validates and rejects.
 
-## What Phase 3 should decide
-
-1. Whether deal cards should auto-drop when a window boundary passes (add `refetchInterval`) or
-   keep the current fetch-on-focus behavior.
-2. Whether to surface recurring state to the customer at all (this is a wire-contract change —
-   D2 currently sends no window data), e.g. "Available Mon–Fri 8am–8pm" or a countdown.
-
-No action owed before Phase 3 is planned.
+No action owed unless a product decision calls for real-time auto-drop; it would be its own small
+plan.
