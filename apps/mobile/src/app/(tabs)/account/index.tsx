@@ -91,6 +91,11 @@ export default function AccountScreen() {
               onPress={() => router.push('/(tabs)/history')}
               color={theme.accent}
             />
+            <AccountLink
+              label="Terms & Privacy"
+              onPress={() => router.push('/(tabs)/terms')}
+              color={theme.accent}
+            />
           </View>
         </Card>
 
