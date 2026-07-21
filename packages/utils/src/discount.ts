@@ -241,7 +241,7 @@ export function checkRewardEligibility(
     return {
       eligible: false,
       reason: 'no_eligible_product',
-      message: 'This reward has no eligible product configured.',
+      message: "This reward isn't available right now.",
     };
   }
   const inCart = cart.items.some((it) => it.menuItemId === reward.eligibleProductId);

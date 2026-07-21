@@ -1,0 +1,22 @@
+{
+  "evl_confirmation_run": {
+    "date": "2026-07-21T11:03:00+08:00",
+    "invoked_by": "orchestrator (EVL Step 3)",
+    "agent": "vc-tester",
+    "plan": "process/features/ordering-cart/active/reward-auto-redeem_21-07-26/reward-auto-redeem_PLAN_21-07-26.md",
+    "mode": "exact validate-contract gate re-run (not diff-aware)",
+    "note": "Independent re-run of execute-agent's claimed-green gates. execute-agent report treated as unconfirmed hypothesis.",
+    "gates": [
+      { "gate": "types typecheck", "command": "pnpm --filter @jojopotato/types exec tsc --noEmit", "status": "PASS", "exit": 0 },
+      { "gate": "api typecheck", "command": "pnpm --filter @jojopotato/api exec tsc --noEmit", "status": "PASS", "exit": 0 },
+      { "gate": "mobile typecheck", "command": "pnpm --filter @jojopotato/mobile exec tsc --noEmit", "status": "PASS", "exit": 0 },
+      { "gate": "mobile vitest", "command": "vitest run --passWithNoTests", "status": "PASS", "files": 11, "tests": 77, "new_suites": ["derive-reward-tiers.test.ts (7)", "find-eligible-menu-item.test.ts (5)"] },
+      { "gate": "mobile jest-expo", "command": "jest", "status": "PASS", "suites": 26, "tests": 101, "note": "includes new rewards-screen.test.tsx; plan's 'test:jest' command name is inaccurate — mobile 'test' script runs vitest && jest" },
+      { "gate": "api vitest (integration)", "command": "pnpm --filter @jojopotato/api test", "status": "PASS", "files": 39, "tests": 538, "note": "live Postgres up; includes AC2 rewards integration assertion" },
+      { "gate": "format:check", "command": "pnpm format:check", "status": "FAIL", "exit": 1, "file": "packages/api/src/routes/__tests__/orders.test.ts", "detail": "two hand-wrapped Drizzle .select().from().where() chains exceed prettier print-width preference; prettier wants them single-line. Formatting-only, no logic change. File is modified (M) in working tree — in-scope touched file." }
+    ],
+    "overall": "DONE_WITH_CONCERNS",
+    "failing_gate": "format:check",
+    "fix": "run: pnpm exec prettier --write packages/api/src/routes/__tests__/orders.test.ts"
+  }
+}

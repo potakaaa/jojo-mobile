@@ -68,6 +68,24 @@ describe('DealsListScreen — renders from Product-shaped deals', () => {
 
     expect(getByText('No deals right now')).toBeTruthy();
   });
+
+  // DEAL-004 AC3 flag-not-hide: an unavailable deal is STILL listed, with the
+  // "Unavailable at this branch" badge — never dropped from the list.
+  test('lists an unavailable deal (not hidden) with the unavailable badge', async () => {
+    mockUseDeals.mockReturnValue({
+      data: [{ ...dealProduct, available: false }],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useDealProducts>);
+
+    const { getByText } = await renderWithProviders(<DealsListScreen />);
+
+    // The deal is still present in the list...
+    expect(getByText('Combo Deal')).toBeTruthy();
+    // ...and flagged unavailable.
+    expect(getByText('Unavailable at this branch')).toBeTruthy();
+  });
 });
 
 describe('DealDetailsScreen — Product data, What’s inside, add-to-cart CTA', () => {
@@ -103,5 +121,28 @@ describe('DealDetailsScreen — Product data, What’s inside, add-to-cart CTA',
     });
     expect(opts).toEqual([]);
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/cart');
+  });
+
+  // DEAL-004 AC3: when the selected branch can't fulfil the deal, the CTA is
+  // gated — the button reads "Unavailable at this branch" and pressing it does
+  // NOT add to cart or navigate.
+  test('gates the CTA when the deal is unavailable at the selected branch', async () => {
+    const addItem = jest.fn();
+    mockUseCart.mockReturnValue({ addItem } as unknown as ReturnType<typeof useCart>);
+    mockUseDeal.mockReturnValue({
+      data: { ...dealProduct, available: false },
+      isLoading: false,
+      isError: false,
+    });
+
+    const { getByText, getByRole } = await renderWithProviders(<DealDetailsScreen />);
+
+    // The unavailable CTA label renders instead of "Add to cart".
+    expect(getByText("This deal isn't available at your selected branch right now.")).toBeTruthy();
+
+    // Pressing the disabled CTA is a no-op — no add-to-cart, no navigation.
+    fireEvent.press(getByRole('button', { name: 'Unavailable at this branch' }));
+    expect(addItem).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

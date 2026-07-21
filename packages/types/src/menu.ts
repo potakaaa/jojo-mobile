@@ -54,6 +54,14 @@ export interface Product {
   isDeal?: boolean;
   /** The deal's "what's inside" list — present only on deal-products (4b display). */
   components?: DealComponent[];
+  /**
+   * DEAL-004 all-branch deal listing: `true` when no branch is selected or the
+   * selected branch can fulfil every component; `false` when a branch is selected
+   * and a component is unavailable there. Present ONLY on deal-products returned
+   * by `GET /deals/products` (flag-not-hide — an unavailable deal is still listed,
+   * only this flag varies). A regular menu product omits it. Optional/additive.
+   */
+  available?: boolean;
 }
 
 /**

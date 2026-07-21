@@ -20,6 +20,7 @@ import {
   productOptions,
   products,
   rewards,
+  userStars,
 } from '../../db/schema/index';
 import { numericToCents, serializeDeal } from './serializers';
 
@@ -34,7 +35,12 @@ export interface CouponCartItem {
 }
 
 export type CouponResolution =
-  | { ok: true; discount: AppliedDiscount; rewardCouponId: string | null }
+  | {
+      ok: true;
+      discount: AppliedDiscount;
+      rewardCouponId: string | null;
+      requiredStars: number | null;
+    }
   | { ok: false; status: number; reason: string; message: string };
 
 /**
@@ -158,6 +164,7 @@ export async function resolveCouponDiscount(
       rewardName: rewards.name,
       rewardType: rewards.reward_type,
       rewardEligibleProductId: rewards.eligible_product_id,
+      rewardRequiredStars: rewards.required_stars,
     })
     .from(coupons)
     .leftJoin(rewards, eq(coupons.reward_id, rewards.id))
@@ -204,9 +211,33 @@ export async function resolveCouponDiscount(
       };
     }
 
+    // Star Expendable (D5): stars are a real spendable currency. Reject when the
+    // caller's balance can't cover the reward's cost. Runs in the SHARED resolver
+    // so `/coupons/apply` (preview) and `POST /orders` (placement) enforce it
+    // symmetrically. A missing `user_stars` row reads as `current = 0`, so any
+    // reward requiring stars is correctly rejected. This is the SOLE floor —
+    // `user_stars.current_stars` has no DB CHECK ≥ 0 — so the guard MUST precede
+    // the placement decrement (which it does: this is the resolver, called before
+    // the tx decrement in orders.ts).
+    if (couponRow.rewardRequiredStars != null) {
+      const [balance] = await dbc
+        .select({ current: userStars.current_stars })
+        .from(userStars)
+        .where(eq(userStars.user_id, userId));
+      if ((balance?.current ?? 0) < couponRow.rewardRequiredStars) {
+        return {
+          ok: false,
+          status: 400,
+          reason: 'insufficient_stars',
+          message: "You don't have enough stars to redeem this reward.",
+        };
+      }
+    }
+
     return {
       ok: true,
       rewardCouponId: coupon.id,
+      requiredStars: couponRow.rewardRequiredStars,
       discount: {
         source: 'reward',
         refId: coupon.id,
@@ -333,6 +364,7 @@ export async function resolveCouponDiscount(
       return {
         ok: true,
         rewardCouponId: coupon.id,
+        requiredStars: null,
         discount: { source: 'deal', refId: offer.id, label: offer.title, amountCents },
       };
     }
@@ -361,6 +393,7 @@ export async function resolveCouponDiscount(
       return {
         ok: true,
         rewardCouponId: coupon.id,
+        requiredStars: null,
         discount: {
           source: 'deal',
           refId: offer.id,

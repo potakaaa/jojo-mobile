@@ -218,6 +218,13 @@ export interface ApiMenuProduct {
   // menu response body is byte-unchanged for non-deal products. Additive.
   isDeal?: boolean;
   components?: AdminDealComponent[];
+  // DEAL-004 all-branch deal listing (GET /deals/products). Populated ONLY on the
+  // deal-menu branch (alongside `isDeal`/`components`): `true` when no branch is
+  // selected or the branch can fulfil every component; `false` when a branch is
+  // selected and a component is unavailable there. Flag-not-hide (AC3): an
+  // unavailable deal is still returned, only the flag varies. OMITTED entirely on
+  // the regular (non-deal) menu — the regular response body stays byte-identical.
+  available?: boolean;
 }
 
 export interface ApiMenuCategory {
@@ -336,6 +343,7 @@ export function serializeMenuProduct(
   product: ProductRow,
   options: ProductOptionRow[],
   components?: AdminDealComponent[],
+  available?: boolean,
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
     size: [],
@@ -355,13 +363,22 @@ export function serializeMenuProduct(
     options: grouped,
   };
 
-  // Deal-menu case only: `components` is passed (possibly empty) by the
-  // `?isDeal=true` menu handler. Regular menu calls pass `undefined`, so both
-  // `isDeal`/`components` keys are OMITTED entirely — the regular response stays
-  // byte-identical to pre-ADM-004 output (chosen over `isDeal: false` so the
-  // existing menu contract is provably unchanged for non-deal products).
+  // Deal-menu case only: `components` is passed (possibly empty) by the deal-menu
+  // handlers (`?isDeal=true` menu OR the DEAL-004 `GET /deals/products` route).
+  // Regular menu calls pass `undefined`, so `isDeal`/`components`/`available` keys
+  // are ALL OMITTED entirely — the regular response stays byte-identical to
+  // pre-ADM-004 output (chosen over `isDeal: false` so the existing menu contract
+  // is provably unchanged for non-deal products). `available` is itself optional:
+  // the `?isDeal=true` menu (which drops unavailable deals) passes `undefined` so
+  // the key stays omitted there; only `GET /deals/products` (flag-not-hide) passes
+  // a boolean.
   if (components !== undefined) {
-    return { ...base, isDeal: product.is_deal, components };
+    return {
+      ...base,
+      isDeal: product.is_deal,
+      components,
+      ...(available === undefined ? {} : { available }),
+    };
   }
   return base;
 }

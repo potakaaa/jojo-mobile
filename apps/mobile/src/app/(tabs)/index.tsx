@@ -331,7 +331,7 @@ export default function HomeScreen() {
             <EmptyState
               iconName="pricetag-outline"
               title="No deals right now"
-              description="Check back soon for new offers at your branch."
+              description="Check back soon — new deals are coming."
               mode={mode}
             />
           ) : (

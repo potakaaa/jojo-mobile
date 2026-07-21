@@ -16,6 +16,7 @@ import {
   productOptions,
   products,
   starTransactions,
+  userStars,
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
@@ -378,6 +379,10 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       let couponDiscountCents = 0;
       let rewardCouponIdToConsume: string | null = null;
       let rewardLabel = '';
+      // Star Expendable: how many stars this reward costs (0 for offer coupons /
+      // no coupon). Captured from the resolver so the loyalty ledger + balance
+      // decrement below spend the exact amount.
+      let requiredStars = 0;
       // Distinguishes coupon family: only a reward coupon writes the "Redeemed
       // reward" loyalty-ledger row (the atomic burn stays shared by both families).
       let couponIsReward = false;
@@ -398,6 +403,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         rewardCouponIdToConsume = resolution.rewardCouponId;
         rewardLabel = resolution.discount.label;
         couponIsReward = resolution.discount.source === 'reward';
+        requiredStars = resolution.requiredStars ?? 0;
       }
 
       // Unified discount: deal + reward-coupon amounts, dual-clamped to [0, subtotal].
@@ -487,15 +493,27 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // so it must not write a "Redeemed reward" star_transactions row (that would
         // pollute the customer's loyalty history). The burn above stays shared.
         if (couponIsReward) {
-          // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
-          // redemption spends reward VALUE, it does not change the star COUNT.
+          // Star Expendable: a redemption SPENDS stars. Exactly one `redeemed`
+          // ledger row records `-requiredStars`, and `user_stars.current_stars` is
+          // decremented by the same amount in this SAME transaction (atomic with the
+          // burn above). The resolver's insufficient-balance guard (400) already
+          // rejected any placement that couldn't cover the cost, so the balance can
+          // never go negative here. `lifetime_stars` stays monotonic (D6) — only
+          // `current_stars` decreases.
           await tx.insert(starTransactions).values({
             user_id: userId,
             order_id: createdOrder.id,
             type: 'redeemed',
-            stars: 0,
+            stars: -requiredStars,
             description: `Redeemed reward: ${rewardLabel}`,
           });
+          await tx
+            .update(userStars)
+            .set({
+              current_stars: sql`${userStars.current_stars} - ${requiredStars}`,
+              updated_at: new Date(),
+            })
+            .where(eq(userStars.user_id, userId));
         }
       }
 

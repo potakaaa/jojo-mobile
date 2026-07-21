@@ -22,6 +22,7 @@ import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { cartRouter } from './routes/cart';
 import { couponsRouter } from './routes/coupons';
+import { dealsProductsRouter } from './routes/deals-products';
 import { dealsRouter } from './routes/deals';
 import { notificationsRouter } from './routes/notifications';
 import { ordersRouter } from './routes/orders';
@@ -230,6 +231,32 @@ app.get('/api/branches/:id', async (req, res) => {
 // App order-flow routes (public branch reads + session-gated orders), mounted
 // after express.json() so they get parsed JSON bodies.
 app.use('/branches', branchesRouter);
+// DEAL-004 all-branch deal listing. E1 (HARD gate): MUST be mounted BEFORE
+// `/deals` — `dealsRouter` defines `GET /:id`, so `/deals/products` would be
+// captured as `/deals/:id` (id = "products", a non-uuid → 404) if `/deals` were
+// hit first. Mounting the more-specific `/deals/products` prefix first makes
+// Express match it before falling through to the `/deals` router. Locked by a
+// route-precedence regression test in deals-products.test.ts.
+app.use('/deals/products', dealsProductsRouter);
+// DEAL-004 old-model route retirement (Step 28 / OD2-A / AC7 / AC10):
+//
+// The customer deal-BROWSE surface has moved to the bundle-product model above
+// (`/deals/products` → `products.is_deal`). The mobile client's old browse hook
+// (`getDeals` → `GET /deals`) and its dead `applyDealById` (`GET /deals/:id`
+// apply CTA) were BOTH deleted in the mobile app. No customer-facing mobile
+// BROWSE code calls `/deals` or `/deals/:id` anymore.
+//
+// This mount is KEPT (not removed) — the E3 "keep route file + tests as
+// internal-evidence with a documented note" option, chosen deliberately over
+// removal because `GET /deals/:id` remains a LIVE dependency of the FROZEN
+// STAR-004 coupon-display path (E4): `(tabs)/cart/index.tsx`'s
+// `useDeal(appliedDiscount.refId)` calls `getDeal(offer.id)` → `GET /deals/:id`
+// to hydrate an applied OFFER-coupon's label (`resolveCouponDiscount` sets
+// `source:'deal', refId: offer.id`). Removing this mount would 404 that path and
+// break the coupon label — a frozen surface. `deals.test.ts` is retained as the
+// regression lock for this still-live `/deals/:id` offer-read. See
+// `deal-004-unification_PLAN_20-07-26.md` and ADM-008 (#86) for the offers/coupon
+// engine that keeps this route load-bearing.
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
 // Customer notifications (PUSH-004) — session-gated at mount, same posture as

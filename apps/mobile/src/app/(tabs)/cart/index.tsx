@@ -185,10 +185,16 @@ export default function CartScreen() {
   );
   const rewardBaselineSigRef = useRef<string | null>(null);
 
-  // Re-fetch the applied deal from the real deals API so richer display data
-  // (title, discountLabel) is sourced from the backend, not just the stored
-  // label (deals-screens plan Decision #3). `useDeal` no-ops on a falsy id and
-  // returns `undefined` on miss; downstream reads fall back to stored fields.
+  // STAR-004 coupon/reward applied-discount display path (NOT a product-model
+  // deal read — DEAL-004 leaves this untouched). `cart.appliedDiscount.refId` is
+  // a COUPON/OFFER id set by `POST /coupons/apply`, not a `products.id`; this
+  // `useDeal` → `GET /deals/:id` call hydrates richer display data (title,
+  // discountLabel) for the applied coupon/reward from the backend, falling back
+  // to the stored label. Product-model deals are plain cart lines with NO
+  // `appliedDiscount`, so they never reach this path — which is why DEAL-004
+  // retires the customer `/deals` BROWSE routes but keeps `use-deal.ts` alive for
+  // this coupon display. `useDeal` no-ops on a falsy id and returns `undefined`
+  // on miss; downstream reads fall back to stored fields.
   const { data: appliedDeal } = useDeal(cart.appliedDiscount?.refId ?? '');
 
   // Expiry/ineligibility-at-checkout: if the applied deal has become ineligible

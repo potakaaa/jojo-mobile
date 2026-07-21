@@ -1,7 +1,6 @@
 import type { AppliedDiscount, Cart, Deal } from '@jojopotato/types';
 
 import { applyCouponCode } from '@/features/deals/lib/coupon-api';
-import { getDeal } from '@/lib/api-client';
 
 export type ApplyDealResult =
   { ok: true; discount: AppliedDiscount } | { ok: false; reason: string; message: string };
@@ -37,40 +36,9 @@ export async function resolveAndApplyDeal(
   return applyCouponCode(code.trim(), cart, pickupBranchId);
 }
 
-/**
- * Apply a deal directly by id — the deal-details "Apply" CTA. Fetches the real
- * deal from `GET /deals/:id` (development's real-deal source), rejects the four
- * complex deal types (they compute no real discount — the server rejects them at
- * placement, so the client must not carry a guessed discount there), then
- * resolves the deal's `code` and validates + applies it through the unified
- * server endpoint (`POST /coupons/apply`) — deal and reward codes share one
- * server-backed path (STAR-004). A code-less deal has no server representation
- * and cannot be applied this way (documented consequence of the unification).
- */
-export async function applyDealById(
-  dealId: string,
-  cart: Cart,
-  pickupBranchId: string,
-): Promise<ApplyDealResult> {
-  let deal: Deal;
-  try {
-    deal = await getDeal(dealId);
-  } catch {
-    return { ok: false, reason: 'not_found', message: 'Deal not found.' };
-  }
-  if (isComplexDealType(deal.dealType)) {
-    return {
-      ok: false,
-      reason: 'not_found',
-      message: "This deal can't be applied at checkout yet.",
-    };
-  }
-  if (!deal.code) {
-    return {
-      ok: false,
-      reason: 'not_found',
-      message: 'This deal can only be applied with a code.',
-    };
-  }
-  return applyCouponCode(deal.code, cart, pickupBranchId);
-}
+// DEAL-004: `applyDealById` (the OLD-model deal-details "Apply" CTA that read
+// `GET /deals/:id` and applied a deal by id) was REMOVED — it had zero live
+// callers (the deal-details screen now adds deal-PRODUCTS to the cart as plain
+// lines via `useDealProduct` + `productToMenuItem`, no discount/eligibility math).
+// The `code`-input coupon path (`resolveAndApplyDeal` above → `POST /coupons/apply`)
+// is the sole surviving deal-apply surface and is unchanged.
