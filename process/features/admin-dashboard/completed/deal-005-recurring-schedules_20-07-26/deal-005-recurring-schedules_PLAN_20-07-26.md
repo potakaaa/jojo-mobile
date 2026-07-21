@@ -17,15 +17,19 @@ locked ground truth throughout this plan.
 Branch: `adm-deal-005-p2` (already checked out — same branch Phase 1 landed on).
 
 Date: 20-07-26
-Status: **CODE DONE + EVL-green — NOT VERIFIED.** EXECUTE complete (commit `c189f16`), all 12 ACs
+Status: **✅ VERIFIED (21-07-26).** EXECUTE complete (commit `c189f16`), all 12 ACs
 Fully-Automated and EVL-confirmed green by an independently spawned tester: API 547→601 (+54),
 admin 127→157 (+30), both typechecks/build/format clean, migration `0018` applies cleanly. The
 TZ-pin control experiment confirmed the `TZ:'UTC'` pin (E2) is a real, load-bearing gate (16 tests
 fail against a deliberately-broken host-local implementation with the pin on; 0 fail with it off).
-**No manual browser walkthrough has been performed** (day-of-week picker, time inputs, recurring
-badge, manage-page edit/clear flow are all unexercised in a real browser) — per Phase Completion
-Rules below, this phase stays in `active/`, not archived, until that walkthrough is done. See the
-co-located `deal-005-recurring-schedules_REPORT_20-07-26.md` for full EXECUTE/EVL evidence.
+The manual browser walkthrough (day-of-week picker, time inputs, recurring badge, manage-page
+edit/clear flow) was performed and PASSED 21-07-26 — the one issue initially flagged (a recurring
+deal appearing live past its end time) was traced to a user data-entry AM/PM mixup, not a defect;
+server enforcement was independently re-confirmed correct by direct code + DB inspection. Per
+Phase Completion Rules below, this phase is archived to `completed/`. A verification-time
+cosmetic addition (a live "Active now"/"Not active now" recurring-state badge, uncommitted) was
+also delivered this session — see the co-located
+`deal-005-recurring-schedules_REPORT_20-07-26.md` for full EXECUTE/EVL/verification evidence.
 Original VALIDATE status (unchanged, kept for history): VALIDATE complete (V1–V7, single pass) —
 **Gate: PASS**. All findings resolved directly in this plan text (4 corrections + 5 binding
 Execute-Agent Instructions — see `## Validate Contract` below).
@@ -554,12 +558,23 @@ requirement:
 
 **UPDATE PROCESS pass (20-07-26): CODE DONE + EVL-green confirmed, holding at that status —
 NOT stamped ✅ VERIFIED.** All EVL evidence above is real and independently confirmed. The plan
-stays deliberately conservative here: even though every Verification Evidence row is
+stayed deliberately conservative there: even though every Verification Evidence row is
 Fully-Automated (so no gate technically *requires* a browser pass), the new admin UI surfaces
-(day-of-week picker, time inputs, recurring badge, manage-page edit/clear) have never been
-exercised in a real browser. Task folder remains in `active/`. Next step: user performs the
-manual walkthrough, then a short follow-up UPDATE PROCESS pass stamps `✅ VERIFIED` and archives
-to `completed/`. See `deal-005-recurring-schedules_REPORT_20-07-26.md` for full detail.
+(day-of-week picker, time inputs, recurring badge, manage-page edit/clear) had never been
+exercised in a real browser.
+
+**UPDATE PROCESS pass (21-07-26): ✅ VERIFIED — walkthrough performed and passed.** The user ran
+the manual admin-UI walkthrough this session (day-of-week picker, time-range inputs, recurring
+badge on both `deal-list.tsx` and `deals.$dealId.tsx`, manage-page edit/clear of a recurring
+window, create-wizard toggle). The one issue initially flagged — a recurring deal appearing
+live/not-graying-out past its stated end time — was traced to a **user data-entry error** (AM/PM
+mixup: the deal was in fact still inside its 08:00–20:25 Manila window), not a server or UI
+defect; server enforcement (`resolveLiveDealProductIds` in `branches.ts`, `orders.ts` placement,
+the pure `isDealScheduleLive` helper) was independently re-confirmed correct by direct code
+inspection and a live DB query during the session. Task folder archived to `completed/`. A small
+verification-time cosmetic addition (a real-time "Active now" / "Not active now" recurring-state
+badge in `apps/admin`, additive, uncommitted) was also delivered — see
+`deal-005-recurring-schedules_REPORT_20-07-26.md` for full detail on both passes.
 
 ## Validate Contract
 

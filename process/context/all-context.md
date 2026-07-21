@@ -1,8 +1,10 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules — CODE DONE + EVL-green, NOT
-VERIFIED, manual browser walkthrough owed, task folder stays in active/, see the admin-dashboard
-bullet below and §Scan Metadata; merged with DEAL-005 Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-21 (DEAL-005 Phase 2 — Recurring Deal Schedules — ✅ VERIFIED, manual browser
+walkthrough passed (the one flagged issue was a user AM/PM data-entry error, not a defect), task
+folder archived to completed/, plus a small uncommitted verification-time admin recurring-state
+badge addition — see the admin-dashboard bullet below and §Scan Metadata; merged with DEAL-005
+Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -130,8 +132,8 @@ top of it later without re-plumbing the project.
   archived).
 
 - **DEAL-005 Phase 2 — Recurring Deal Schedules (`packages/api` + `apps/admin`, issue #127,
-  delivered 20-07-26, branch `adm-deal-005-p2`, commit `c189f16`, CODE DONE + EVL-green — NOT
-  VERIFIED, manual browser walkthrough owed, task folder stays in `active/`):** adds day-of-week +
+  delivered 20-07-26, branch `adm-deal-005-p2`, commit `c189f16`, ✅ VERIFIED 21-07-26 — manual
+  browser walkthrough passed, task folder archived):** adds day-of-week +
   time-of-day recurrence on top of Phase 1's absolute window, additively on the same
   `deal_schedules` row (migration `0018` — 3 nullable columns, zero backfill, every existing
   Phase 1 row unaffected). **D6 (durable, supersedes issue #127's own stated resolution rule):
@@ -179,19 +181,33 @@ top of it later without re-plumbing the project.
   API 547→601 tests (+54), admin 127→157 tests (+30), both typechecks/build/format clean,
   migration `0018` applies cleanly. All 12 ACs Fully-Automated and passing (AC1 Manila-correctness
   and AC4 no-backfill both explicitly Known-Gap-banned by the plan's own contract and honored — no
-  Known-Gap used anywhere). **Unlike Phase 1, no manual browser walkthrough has been performed** —
-  the day-of-week picker, time inputs, recurring badge, and manage-page edit/clear flow are all
-  unexercised in a real browser; this phase is held at CODE DONE + EVL-green, task folder stays
-  in `active/`. Phase 3 (mobile "Starts Friday" surfacing) remains unbuilt, out of scope, already
-  tracked. Two backlog notes touched this pass:
-  `process/features/admin-dashboard/backlog/deal-005-one-window-per-deal_NOTE_20-07-26.md` (new,
-  the E3 write-path scope gap) and
+  Known-Gap used anywhere). **The manual browser walkthrough was performed and PASSED 21-07-26** —
+  the day-of-week picker, time inputs, recurring badge, and manage-page edit/clear flow were all
+  exercised in a real browser. The one issue initially flagged (a recurring deal appearing "live"
+  past its stated end time) was traced to a **user data-entry AM/PM mixup**, not a defect — the
+  deal was in fact still inside its configured window; server enforcement
+  (`resolveLiveDealProductIds` in `branches.ts`, `orders.ts` placement, `isDealScheduleLive`) was
+  independently re-confirmed correct by direct code + live DB inspection during the walkthrough
+  session. **Verification-time addition, UNCOMMITTED as of this pass:** a small cosmetic-only
+  real-time "Active now"/"Not active now" recurring-state badge in `apps/admin`
+  (`entity-status.ts`'s new `recurringActiveNow` helper, populated only when the primary status
+  tone is `success`; rendered in both `deal-list.tsx` and `deals.$dealId.tsx`, matching E4's
+  "both consumers" invariant) — additive, zero API/schema/migration surface touched, admin suite
+  157→163 (+6), typecheck/format clean. Phase 3 (mobile "Starts Friday" surfacing) remains
+  unbuilt, out of scope, already tracked; a related mobile stale-cache observation from this
+  session (recurring cards linger past a window's daily end time until refocus — server-correct,
+  client-cache-only) was filed as a backlog note for Phase 3 to decide, not fixed here (Phase 2 is
+  deliberately mobile-schedule-blind by design, D2):
+  `process/features/admin-dashboard/backlog/deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`. Two
+  backlog notes from the 20-07-26 pass remain relevant:
+  `process/features/admin-dashboard/backlog/deal-005-one-window-per-deal_NOTE_20-07-26.md` (the E3
+  write-path scope gap) and
   `process/features/admin-dashboard/backlog/menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md`
-  (amended in place — DEAL-005's badges close the time-window-invisibility half of that gap; the
+  (DEAL-005's badges close the time-window-invisibility half of that gap; the
   component-availability/zero-component halves remain open). Delivered by:
-  `process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md`
-  (+ co-located `deal-005-recurring-schedules_REPORT_20-07-26.md` in the same task folder — stays
-  in `active/`, not archived).
+  `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md`
+  (+ co-located `deal-005-recurring-schedules_REPORT_20-07-26.md` in the same task folder, now
+  archived).
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -1426,7 +1442,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
-| deal scheduling / `deal_schedules` / issue #127 Phase 2 follow-up or Phase 3 work | `all-context.md` | `process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/` — Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) is CODE DONE + EVL-green but NOT VERIFIED — the manual browser walkthrough (day-of-week picker, time inputs, recurring badge, manage-page edit/clear) is owed; task folder stays in `active/`. Read this plan + report for the recurrence semantics (D4-D6), the E3 single-row write-path scope limit, and the TZ-pin test-infra fact before doing the walkthrough or starting Phase 3 (mobile surfacing) or the deferred multi-row admin authoring flow (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`). Phase 1 (absolute window) is ✅ VERIFIED and archived at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`. |
+| deal scheduling / `deal_schedules` / issue #127 Phase 3 work | `all-context.md` | Phase 1 (absolute window) and Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) are BOTH ✅ VERIFIED and archived — Phase 1 at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`, Phase 2 at `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`. Read the Phase 2 plan + report for the recurrence semantics (D4-D6), the E3 single-row write-path scope limit, the TZ-pin test-infra fact, and the deferred mobile-expiry-refetch decision (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`, `deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`) before starting Phase 3 (mobile "Starts Friday" surfacing) or the deferred multi-row admin authoring flow. Note: a small uncommitted admin recurring-state badge addition (`apps/admin/src/lib/entity-status.ts` + 2 consumers) landed on top of Phase 2's committed source — check `git status` before assuming a clean tree. |
 
 ## Context Group Lifecycle
 
@@ -1657,7 +1673,35 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules UPDATE PROCESS — doc-only
+- Last delta: 2026-07-21 (DEAL-005 Phase 2 — Recurring Deal Schedules, VERIFICATION UPDATE PROCESS
+  — the owed manual browser walkthrough was performed and PASSED this session (day-of-week
+  picker, time inputs, recurring badge on both consumers, manage-page edit/clear). The one issue
+  initially flagged — a recurring deal appearing live past its stated end time — was traced to a
+  **user data-entry AM/PM mixup**, not a defect; server enforcement (`resolveLiveDealProductIds`
+  in `branches.ts`, `orders.ts` placement, the pure `isDealScheduleLive` helper) was independently
+  re-confirmed correct by direct code inspection plus a live DB query during the session. Phase 2
+  is now ✅ VERIFIED — task folder archived `active/` → `completed/`. A small, additive,
+  UNCOMMITTED verification-time addition also landed this session: a real-time "Active now"/"Not
+  active now" recurring-state badge in `apps/admin` (`entity-status.ts`'s new
+  `manilaWallClock`/`recurringActiveNow` helpers, populated only when the primary status tone is
+  `success`; rendered in both `deal-list.tsx` and `deals.$dealId.tsx` per E4's "both consumers"
+  invariant) — zero API/schema/migration surface touched, admin suite 157→163 (+6), typecheck/
+  format clean; not independently EVL-reconfirmed by a separate tester (small cosmetic addition,
+  not a full EXECUTE pass). This addition is uncommitted in the working tree — Phase 2's own
+  source remains committed at `c189f16` from the prior session; the user will commit the badge
+  addition separately. A mobile-side observation from this session's walkthrough (recurring deal
+  cards linger past a window's daily end time until a manual refocus — server-correct, client
+  stale-react-query-cache only) was filed as a new backlog note rather than fixed, since Phase 2
+  is deliberately mobile-schedule-blind by design (D2):
+  `process/features/admin-dashboard/backlog/deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`.
+  Updated this file's header, the DEAL-005 Phase 2 implementation-state bullet (✅ VERIFIED, badge
+  addition recorded), and the routing-table row (both Phase 1 and Phase 2 now point at
+  `completed/`). Appended an addendum to
+  `deal-005-recurring-schedules_REPORT_20-07-26.md` and stamped the plan Status/Phase Completion
+  Rules ✅ VERIFIED. No commit was made by this pass (doc-only + archival move; the badge addition
+  and its own commit remain the user's to make). HEAD unchanged from the prior delta: `c189f16`
+  (working tree carries the uncommitted badge addition + the new backlog note on top).)
+- Previous delta: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules UPDATE PROCESS — doc-only
   reconciliation, source already committed by the user before this pass began (commit `c189f16`
   on branch `adm-deal-005-p2`). Phase 2 of issue #127 added day-of-week + time-of-day recurrence
   additively on the existing `deal_schedules` table (migration `0018`, 3 nullable columns, zero

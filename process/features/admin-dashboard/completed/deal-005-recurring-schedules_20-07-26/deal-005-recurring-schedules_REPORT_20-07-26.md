@@ -1,7 +1,7 @@
 ---
 phase: deal-005-recurring-schedules-phase2
-date: 2026-07-20
-status: COMPLETE_WITH_GAPS
+date: 2026-07-21
+status: COMPLETE
 feature: admin-dashboard
 plan: process/features/admin-dashboard/active/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md
 ---
@@ -250,3 +250,96 @@ pnpm format:check
 
 None. No new dependencies were added — `smallint(...).array()` is standard `drizzle-orm/pg-core`,
 already installed.
+
+---
+
+## Addendum (21-07-26) — Manual Walkthrough Passed + Verification-Time Badge Addition
+
+### Walkthrough result: PASSED
+
+The user performed the owed manual admin-UI walkthrough this session: day-of-week picker,
+time-range inputs on the create wizard, the recurring badge on both `deal-list.tsx` and
+`deals.$dealId.tsx`, and the manage-page edit/clear flow for a recurring window.
+
+**One issue was initially flagged:** a recurring deal appeared to stay "live" / not gray out past
+its stated end time. **Diagnosis: user data-entry error, not a defect.** The deal's configured
+window was 08:00–20:25 Manila — the user had misread it as already past due to an AM/PM mixup; the
+deal was in fact still correctly inside its window. Server enforcement was independently
+re-confirmed correct by direct inspection during the session:
+- `packages/api/src/routes/branches.ts` → `resolveLiveDealProductIds` (menu-read enforcement)
+- `packages/api/src/routes/orders.ts` (placement-time re-check)
+- `packages/api/src/routes/lib/deal-schedule.ts:117` — pure `isDealScheduleLive` helper
+- A live DB query against the deal's actual `deal_schedules` row confirmed the configured window
+  matched the (correct) live/not-live state observed in the app.
+
+No code defect found. Phase 2 is now **✅ VERIFIED** — the sole owed residual (the manual
+walkthrough) is satisfied.
+
+### Verification-time addition: real-time recurring-state badge (uncommitted)
+
+Not part of the original Phase 2 plan/SPEC — delivered during this session at the user's request
+after the walkthrough, as a small cosmetic-only, additive UI change. The server remains the sole
+visibility authority; zero API/schema/migration surface was touched.
+
+**Files changed (all in `apps/admin`, uncommitted in the working tree as of this pass):**
+
+| File | Change |
+|---|---|
+| `apps/admin/src/lib/entity-status.ts` | New local fixed-offset Manila wall-clock helper `manilaWallClock` (+08:00, `getUTC*` accessors only — mirrors the server's `toManilaWallClock` convention documented in this same report's "Durable Facts" section). New `recurringActive: boolean \| null` field on `DealStatusDescriptor`. New `recurringActiveNow` helper: `null` when the deal is non-recurring; otherwise `true` iff the current Manila day is in `recurDays` AND `recurStartTime <= manila.hhmm < recurEndTime` (half-open, matching D5's existing convention). `recurringActive` is populated ONLY when the primary status tone is `success` — it deliberately never shows on Expired/Inactive/Scheduled states. The existing `dealStatusLabel` and the locked `recurring: boolean` field (E4, the flicker-avoidance decision at `entity-status.ts:62-72`) are untouched — this addition supplements them rather than replacing them. |
+| `apps/admin/src/features/deals/components/deal-list.tsx` | Kept the existing `Recurring` chip; added a conditional `Active now` (tone `success`) / `Not active now` (tone `muted`) badge driven by the new `recurringActive` field. |
+| `apps/admin/src/routes/(dashboard)/deals.$dealId.tsx` | Same conditional badge addition as `deal-list.tsx` (E4's "both consumers" invariant preserved — a badge added to only one of the two would repeat the exact class of bug E4 was designed to prevent). |
+| `apps/admin/src/lib/entity-status.test.ts` | +6 new tests: inside-window → `true`; past-end → `false`; wrong-day → `false`; non-recurring → `null`; expired-window (tone not `success`) → `null`; Manila-offset boundary case (UTC Friday 23:30 = Manila Saturday 07:30). |
+
+**Gates (run by the execute-agent this session, not independently EVL-reconfirmed by a separate
+tester — this is a small verification-time cosmetic addition, not a full EXECUTE pass):**
+- Admin typecheck: clean
+- Admin test suite: 157 → 163 (+6), all green
+- `pnpm format:check`: clean on all 4 touched files
+
+**Status: uncommitted.** Phase 2 source itself was already committed at `c189f16` (prior session).
+This badge addition sits on top, uncommitted in the working tree as of this UPDATE PROCESS pass —
+per standing instruction, this UPDATE PROCESS session does not commit; the user commits it
+separately when ready.
+
+### Mobile observation deferred to Phase 3
+
+A mobile-side observation from this session's verification (recurring deal cards linger past a
+window's daily end time until a manual refocus, due to react-query's ~30s `staleTime` +
+fetch-on-focus convention — server-correct, client-stale-cache only) was filed as a backlog note
+rather than fixed here, since Phase 2 is deliberately mobile-schedule-blind by design (D2):
+`process/features/admin-dashboard/backlog/deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`
+(already on disk from earlier this session — not duplicated).
+
+### Updated Closeout Packet (supersedes the 20-07-26 packet above)
+
+1. **Selected plan path:**
+   `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md`
+   (post-archival path — see item 6)
+2. **Closeout classification:** Ready for UPDATE PROCESS archival — ✅ VERIFIED, walkthrough
+   passed, zero defects found.
+3. **What was finished:** the owed manual walkthrough (passed); a small additive, uncommitted
+   admin-badge cosmetic enhancement (real-time "Active now"/"Not active now" recurring state).
+4. **Verified vs unverified:** Verified — all 12 ACs (unchanged from the 20-07-26 pass) plus the
+   manual UI walkthrough, now passed. Nothing remains unverified for Phase 2 proper.
+4b. **Validate-contract compliance:** unchanged — present, inline in plan, `Gate: PASS`,
+   `generated-by: outer-pvl`.
+5. **Cleanup done vs still needed:** Done this pass — plan Status stamped ✅ VERIFIED, this
+   addendum written, `all-context.md` updated, task folder archived to `completed/`. Still
+   needed: the user commits the uncommitted admin-badge addition (and the already-filed backlog
+   note) when ready — no commit was made by this UPDATE PROCESS pass.
+6. **Single best next valid state:** Task folder archived. Phase 3 (mobile "Starts Friday"
+   surfacing, including the deferred mobile-expiry-refetch decision above) is the next scoped
+   piece of issue #127, not yet planned.
+7. **Commit checkpoint:** Process commit belongs after UPDATE PROCESS, and even then only for the
+   doc-only changes this pass makes (plan/report/context edits + archival move) — the admin-badge
+   source addition is a separate, still-uncommitted change the user will commit on their own
+   schedule; this pass does not invoke `vc-git-manager`.
+8. **Regression status:** N/A — not a phase-program inner loop; AC11/AC12 already covered
+   zero-regression against the Phase 1 baseline in the 20-07-26 EVL pass.
+9. **SPEC achievement:** unchanged — 12/12 met (see the SPEC Achievement section above).
+
+**Drift score: MEDIUM** (2 signals this addendum pass — (a) 4 files touched [+1, under 10]; (d)
+task folder archived `active/` → `completed/` [+1]). No `.claude/`/`.codex`/protocol-doc files
+touched this pass.
+
+Recommend UPDATE PROCESS -- significant changes detected.
