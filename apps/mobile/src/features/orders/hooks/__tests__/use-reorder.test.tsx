@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import type { Order } from '@jojopotato/types';
+import type { MenuResponse, Order } from '@jojopotato/types';
 import { act, renderHook } from '@testing-library/react-native';
+import { router } from 'expo-router';
 
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useReorderConflicts } from '@/features/cart/hooks/use-reorder-conflicts';
@@ -93,5 +94,87 @@ describe('useReorder error lifecycle', () => {
       await result.current.reorder(order());
     });
     expect(result.current.error).toBeNull();
+  });
+});
+
+// Regression: CART-003 made the cart an async server resource, so the reorder
+// must AWAIT its `addItem` writes before navigating — otherwise the cart screen
+// paints empty (the reported bug), and a rejected add must not be swallowed.
+describe('useReorder cart writes (CART-003 async cart)', () => {
+  function orderWithItem(): Order {
+    return {
+      ...order(),
+      items: [
+        {
+          id: 'li1',
+          productId: 'p1',
+          productNameSnapshot: 'Original Corndog',
+          quantity: 2,
+          unitPriceCents: 5000,
+          totalPriceCents: 10000,
+          selectedOptions: [],
+        },
+      ],
+    } as unknown as Order;
+  }
+
+  function menuWithProduct(): MenuResponse {
+    return {
+      categories: [
+        {
+          id: 'c1',
+          name: 'Corndogs',
+          products: [
+            {
+              id: 'p1',
+              name: 'Original Corndog',
+              description: null,
+              basePriceCents: 5000,
+              imageUrl: null,
+              options: {},
+            },
+          ],
+        },
+      ],
+    } as unknown as MenuResponse;
+  }
+
+  test('awaits the item adds, then navigates to the cart', async () => {
+    jest.spyOn(queryClient, 'fetchQuery').mockResolvedValue(menuWithProduct() as never);
+    const addItem = jest.fn(async () => true);
+    mockUseCart.mockReturnValue({
+      addItem,
+      setBranch: jest.fn(),
+      clearCart: jest.fn(),
+    } as unknown as ReturnType<typeof useCart>);
+
+    const { result } = await renderHook(() => useReorder());
+    await act(async () => {
+      await result.current.reorder(orderWithItem());
+    });
+
+    expect(addItem).toHaveBeenCalledTimes(1);
+    expect(addItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), [], 2);
+    expect(jest.mocked(router.push)).toHaveBeenCalledWith('/(tabs)/cart');
+    expect(result.current.error).toBeNull();
+  });
+
+  test('surfaces an error when an add fails, rather than silently landing on an empty cart', async () => {
+    jest.spyOn(queryClient, 'fetchQuery').mockResolvedValue(menuWithProduct() as never);
+    const addItem = jest.fn(async () => false); // server rejected the add
+    mockUseCart.mockReturnValue({
+      addItem,
+      setBranch: jest.fn(),
+      clearCart: jest.fn(),
+    } as unknown as ReturnType<typeof useCart>);
+
+    const { result } = await renderHook(() => useReorder());
+    await act(async () => {
+      await result.current.reorder(orderWithItem());
+    });
+
+    expect(result.current.error).toBe(
+      'Some items could not be added to your cart. Please try again.',
+    );
   });
 });

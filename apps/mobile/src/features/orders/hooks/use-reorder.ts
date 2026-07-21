@@ -80,10 +80,26 @@ export function useReorder(): {
         clearCart();
 
         const { available, unavailable } = reconcileReorder(order, menu);
-        for (const line of available) {
-          addItem(productToMenuItem(line.product, true), line.optionsForCart, line.quantity);
-        }
         setConflicts(unavailable);
+
+        // CART-003 turned the cart into a network resource: `addItem` is now an
+        // async server write, not an instant in-memory update. Fire every add
+        // (they queue in order behind the `clearCart` above via the shared serial
+        // mutation scope) and AWAIT them all — otherwise `router.push` below runs
+        // before the rows exist server-side and the cart screen paints empty.
+        const results = await Promise.all(
+          available.map((line) =>
+            addItem(productToMenuItem(line.product, true), line.optionsForCart, line.quantity),
+          ),
+        );
+
+        // Re-read authoritative server state before landing on the cart, so a
+        // late in-flight invalidation from the writes above can't paint it empty.
+        await queryClient.invalidateQueries({ queryKey: ['cart'] });
+
+        if (results.some((ok) => !ok)) {
+          setError('Some items could not be added to your cart. Please try again.');
+        }
 
         router.push('/(tabs)/cart');
       } catch {
