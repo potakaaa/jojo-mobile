@@ -1,12 +1,14 @@
-import type {
-  MarketingNotificationType,
-  NotificationTargetScreen,
-  OrderNotificationType,
+import {
+  MARKETING_NOTIFICATION_TYPES,
+  type MarketingNotificationType,
+  type NotificationTargetScreen,
+  type OrderNotificationType,
 } from '@jojopotato/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, inArray } from 'drizzle-orm';
 
 import { db } from '../../db/client';
 import { deviceTokens, notifications, orders, users } from '../../db/schema/index';
+import { isWithinQuietHours } from '../../lib/marketing-quiet-hours';
 import { isPermanentPushError, sendPush, type PushPayload } from '../../lib/push-provider';
 
 type OrderRow = typeof orders.$inferSelect;
@@ -175,4 +177,137 @@ export async function dispatchMarketingNotification(
     data: { type },
   });
   return true;
+}
+
+/**
+ * Per-user marketing frequency cap (PUSH-005 / #82, D4, micro-decision 3). Code-
+ * level constants (tunable; SPEC's "≤3/24h, ~1–4/month" — 8/30d is the upper-safe
+ * end of that range). NOT admin-configurable (SPEC out of scope).
+ */
+export const MAX_PER_24H = 3;
+export const MAX_PER_30D = 8;
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * ONE_DAY_MS;
+
+/**
+ * The marketing types that COUNT toward the frequency cap (E4). Deliberately
+ * EXCLUDES `reward_unlocked`: its in-app `notifications` row is written
+ * UNCONDITIONALLY by `notifyRewardUnlocked` (it is NOT opt-in-gated), so counting
+ * it would let an earned-reward unlock the customer never opted into suppress a
+ * coupon-expiry reminder they did — spending budget it should not spend. AC10b
+ * locks this decision.
+ */
+const CAP_COUNTED_TYPES: readonly MarketingNotificationType[] = MARKETING_NOTIFICATION_TYPES.filter(
+  (t) => t !== 'reward_unlocked',
+);
+
+/** Discriminated outcome of a guarded marketing dispatch (for testability). */
+export type MarketingDispatchResult =
+  'sent' | 'gated-opt-out' | 'gated-quiet-hours' | 'gated-frequency' | 'error';
+
+/**
+ * Count the user's cap-counted marketing `notifications` rows in the 24h and 30d
+ * windows ending at `now`. One read over the 30d window; the 24h count is a
+ * client-side partition of the same rows (avoids a second round-trip).
+ */
+async function countRecentMarketingNotifications(
+  userId: string,
+  now: Date,
+): Promise<{ within24h: number; within30d: number }> {
+  const since30d = new Date(now.getTime() - THIRTY_DAYS_MS);
+  const since24h = new Date(now.getTime() - ONE_DAY_MS);
+  const rows = await db
+    .select({ created_at: notifications.created_at })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.user_id, userId),
+        inArray(notifications.type, [...CAP_COUNTED_TYPES]),
+        gte(notifications.created_at, since30d),
+      ),
+    );
+  let within24h = 0;
+  for (const row of rows) {
+    if (row.created_at >= since24h) within24h += 1;
+  }
+  return { within24h, within30d: rows.length };
+}
+
+/**
+ * The ONLY entry point marketing triggers use (PUSH-005 / #82, D4). Wraps the
+ * marketing send with the full gate chain, checked in this exact order:
+ *   1. opt-in (`users.marketingOptIn === true`) — unconditional, FIRST.
+ *   2. quiet hours (fixed Manila +08:00, `isWithinQuietHours(now)`) — DROP.
+ *   3. frequency cap (24h / 30d windows over cap-counted marketing rows).
+ *   4. send — insert the `notifications` row (unless `writeRow === false`) then
+ *      `loadPushTokens` + `sendAndPrune`.
+ *
+ * ENTITY dedup (D2 — one-shot per user/window/deal) happens in each trigger
+ * BEFORE calling this guard, NOT here — a gated (dropped) send writes no row, so a
+ * poll trigger naturally re-attempts on the next non-quiet tick.
+ *
+ * `writeRow: false` (reward-unlocked push): the in-app row already exists
+ * (`notifyRewardUnlocked` wrote it unconditionally), so this only runs the gates +
+ * push send, never a second row. Reuses the module-private `loadPushTokens` /
+ * `sendAndPrune` directly (E3) — it must NOT delegate to
+ * `dispatchMarketingNotification` (which would re-run opt-in and always write a
+ * row, breaking the `writeRow:false` path and double-counting).
+ *
+ * Transactional `dispatchOrderNotification` is NEVER routed through this guard —
+ * order-status pushes are always delivered and never counted against the cap.
+ *
+ * Never throws (swallow + log, like its siblings) — fail-safe: on an unexpected
+ * error nothing is sent and the caller's flow (a trigger scan / the reward-unlock
+ * path) is never broken.
+ */
+export async function dispatchMarketingNotificationIfAllowed(
+  userId: string,
+  type: MarketingNotificationType,
+  payload: MarketingPayload,
+  opts: { now?: () => Date; writeRow?: boolean } = {},
+): Promise<MarketingDispatchResult> {
+  const now = opts.now ? opts.now() : new Date();
+  const writeRow = opts.writeRow !== false; // default true
+  try {
+    // 1. Opt-in gate — unconditional, FIRST. Only an explicit true opts in.
+    const [user] = await db
+      .select({ marketingOptIn: users.marketingOptIn })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (user?.marketingOptIn !== true) return 'gated-opt-out';
+
+    // 2. Quiet hours — drop entirely (no row, no send).
+    if (isWithinQuietHours(now)) return 'gated-quiet-hours';
+
+    // 3. Frequency cap — over cap-counted marketing rows only.
+    const { within24h, within30d } = await countRecentMarketingNotifications(userId, now);
+    if (within24h >= MAX_PER_24H || within30d >= MAX_PER_30D) return 'gated-frequency';
+
+    // 4. Send. Insert the row unless the caller already wrote it (writeRow:false).
+    if (writeRow) {
+      await db.insert(notifications).values({
+        user_id: userId,
+        type,
+        title: payload.title,
+        body: payload.body,
+        target_screen: payload.targetScreen,
+        target_params: payload.targetParams ?? null,
+        // Stamp created_at at the logical `now` so cap windows are consistent
+        // across multiple guarded sends in one logical tick/submission.
+        created_at: now,
+      });
+    }
+
+    const tokens = await loadPushTokens(userId);
+    await sendAndPrune(tokens, { title: payload.title, body: payload.body, data: { type } });
+    return 'sent';
+  } catch (err) {
+    // Fail-safe: a marketing dispatch failure must never break a trigger scan or
+    // the reward-unlock path. Distinct from 'gated-opt-out' so a real failure
+    // (e.g. sendAndPrune throwing post-insert) is never mistaken for a genuine
+    // opt-out in logs/metrics — an opt-out spike vs. an outage look different.
+    console.error('[notify] guarded marketing dispatch failed', err);
+    return 'error';
+  }
 }

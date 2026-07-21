@@ -26,6 +26,7 @@ export * from './components/cart-summary';
 export * from './components/empty-state';
 export * from './components/flavor-selector';
 export * from './components/size-selector';
+export * from './components/quantity-stepper';
 export * from './components/addon-selector';
 export * from './components/pickup-time-badge';
 export * from './components/toggle';

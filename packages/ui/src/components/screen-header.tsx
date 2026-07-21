@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Colors, FontFamily, Spacing, TypeScale, type ThemeMode } from '../theme';
@@ -12,6 +13,12 @@ export interface ScreenHeaderProps {
    * have nowhere to go back to.
    */
   onBack?: () => void;
+  /**
+   * Optional trailing action rendered flush to the header's right edge (e.g. a
+   * cart icon). The title flexes to fill the space between it and the back
+   * control. Omitted for the common title-only header.
+   */
+  right?: ReactNode;
   mode?: ThemeMode;
   style?: ViewStyle;
 }
@@ -36,7 +43,7 @@ export interface ScreenHeaderProps {
  * Supplies NO safe-area inset of its own: the host screen owns that, matching
  * the staff screens, which wrap it in `<SafeAreaView edges={['top', ...]}>`.
  */
-export function ScreenHeader({ title, onBack, mode = 'light', style }: ScreenHeaderProps) {
+export function ScreenHeader({ title, onBack, right, mode = 'light', style }: ScreenHeaderProps) {
   const theme = Colors[mode];
 
   return (
@@ -56,9 +63,14 @@ export function ScreenHeader({ title, onBack, mode = 'light', style }: ScreenHea
         its title as a heading to VoiceOver/TalkBack for free. Without this, every
         screen that adopts ScreenHeader loses heading-based navigation.
       */}
-      <Text accessibilityRole="header" style={[styles.headerTitle, { color: theme.text }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.headerTitle, { color: theme.text }]}
+        numberOfLines={1}
+      >
         {title}
       </Text>
+      {right ?? null}
     </View>
   );
 }
@@ -73,6 +85,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   headerTitle: {
+    flex: 1,
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h2,
   },
