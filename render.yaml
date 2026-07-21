@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: jojopotato-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: .
+    buildCommand: corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --frozen-lockfile --prod=false
+    startCommand: pnpm --filter @jojopotato/api start
+    preDeployCommand: pnpm --filter @jojopotato/api db:migrate
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: BETTER_AUTH_URL
+        sync: false
+      - key: ADMIN_WEB_ORIGIN
+        sync: false
+      - key: APP_SCHEME
+        value: jojopotato
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: EXPO_ACCESS_TOKEN
+        sync: false

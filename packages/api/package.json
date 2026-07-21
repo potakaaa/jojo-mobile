@@ -8,6 +8,7 @@
     "dev:bypass": "node scripts/dev-bypass.mjs",
     "dev:ngrok": "ngrok http 3000",
     "build": "tsc",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
