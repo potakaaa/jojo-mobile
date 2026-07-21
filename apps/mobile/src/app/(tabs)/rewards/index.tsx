@@ -57,6 +57,22 @@ function txLabel(tx: StarTransaction): string {
 }
 
 /**
+ * Split a transaction's label into a bold heading + an optional secondary
+ * line (e.g. "Redeemed reward: Free regular fries or lemonade" ->
+ * heading "Redeemed reward", subtitle "Free regular fries or lemonade").
+ * Falls back to a heading-only row when there's no ": " to split on.
+ */
+function splitTxLabel(tx: StarTransaction): { heading: string; subtitle: string | null } {
+  const label = txLabel(tx);
+  const separatorIndex = label.indexOf(': ');
+  if (separatorIndex === -1) return { heading: label, subtitle: null };
+  return {
+    heading: label.slice(0, separatorIndex),
+    subtitle: label.slice(separatorIndex + 2),
+  };
+}
+
+/**
  * Rewards tab — McDonald's-style unified tier list. Shows the caller's star
  * balance + a progress bar to the next locked tier, one list of ALL active
  * reward tiers (locked → "X more stars needed"; unlocked → Redeem), then the
@@ -276,24 +292,32 @@ export default function RewardsScreen() {
               mode={mode}
             />
           ) : (
-            history.map((tx) => (
-              <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
-                <View style={styles.historyRowText}>
-                  <Text style={[styles.historyLabel, { color: theme.text }]}>{txLabel(tx)}</Text>
-                  <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
-                    {formatTxDate(tx.createdAt)}
+            history.map((tx) => {
+              const { heading, subtitle } = splitTxLabel(tx);
+              return (
+                <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+                  <View style={styles.historyRowText}>
+                    <Text style={[styles.historyLabel, { color: theme.text }]}>{heading}</Text>
+                    {subtitle ? (
+                      <Text style={[styles.historySubtitle, { color: theme.textSecondary }]}>
+                        {subtitle}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
+                      {formatTxDate(tx.createdAt)}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.historyStars,
+                      { color: tx.stars < 0 ? theme.textSecondary : theme.accent },
+                    ]}
+                  >
+                    {tx.stars > 0 ? `+${tx.stars}` : tx.stars} ★
                   </Text>
                 </View>
-                <Text
-                  style={[
-                    styles.historyStars,
-                    { color: tx.stars < 0 ? theme.textSecondary : theme.accent },
-                  ]}
-                >
-                  {tx.stars > 0 ? `+${tx.stars}` : tx.stars} ★
-                </Text>
-              </View>
-            ))
+              );
+            })
           )}
 
           {/* Terms & Conditions */}
@@ -389,15 +413,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: 1,
   },
   historyRowText: {
+    flex: 1,
+    minWidth: 0,
     gap: Spacing.half,
   },
   historyLabel: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.body,
+  },
+  historySubtitle: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
   historyDate: {
     fontFamily: FontFamily.body.regular,
@@ -406,6 +437,7 @@ const styles = StyleSheet.create({
   historyStars: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.body,
+    flexShrink: 0,
   },
   termsCard: {
     marginTop: Spacing.one,
