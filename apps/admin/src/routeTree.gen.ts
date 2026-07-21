@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as dashboardRouteRouteImport } from './routes/(dashboard)/route'
 import { Route as dashboardIndexRouteImport } from './routes/(dashboard)/index'
+import { Route as dashboardStaffRouteImport } from './routes/(dashboard)/staff'
 import { Route as dashboardRewardsRouteImport } from './routes/(dashboard)/rewards'
 import { Route as dashboardPromotionsRouteImport } from './routes/(dashboard)/promotions'
 import { Route as dashboardProductsRouteImport } from './routes/(dashboard)/products'
@@ -22,6 +23,7 @@ import { Route as dashboardComponentsRouteImport } from './routes/(dashboard)/co
 import { Route as dashboardCategoriesRouteImport } from './routes/(dashboard)/categories'
 import { Route as dashboardBranchesRouteImport } from './routes/(dashboard)/branches'
 import { Route as dashboardAnalyticsRouteImport } from './routes/(dashboard)/analytics'
+import { Route as dashboardStaffIndexRouteImport } from './routes/(dashboard)/staff.index'
 import { Route as dashboardRewardsIndexRouteImport } from './routes/(dashboard)/rewards.index'
 import { Route as dashboardPromotionsIndexRouteImport } from './routes/(dashboard)/promotions.index'
 import { Route as dashboardProductsIndexRouteImport } from './routes/(dashboard)/products.index'
@@ -45,6 +47,11 @@ const dashboardRouteRoute = dashboardRouteRouteImport.update({
 const dashboardIndexRoute = dashboardIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardStaffRoute = dashboardStaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
   getParentRoute: () => dashboardRouteRoute,
 } as any)
 const dashboardRewardsRoute = dashboardRewardsRouteImport.update({
@@ -96,6 +103,11 @@ const dashboardAnalyticsRoute = dashboardAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
   getParentRoute: () => dashboardRouteRoute,
+} as any)
+const dashboardStaffIndexRoute = dashboardStaffIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => dashboardStaffRoute,
 } as any)
 const dashboardRewardsIndexRoute = dashboardRewardsIndexRouteImport.update({
   id: '/',
@@ -162,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/products': typeof dashboardProductsRouteWithChildren
   '/promotions': typeof dashboardPromotionsRouteWithChildren
   '/rewards': typeof dashboardRewardsRouteWithChildren
+  '/staff': typeof dashboardStaffRouteWithChildren
   '/': typeof dashboardIndexRoute
   '/deals/$dealId': typeof dashboardDealsDealIdRoute
   '/offers/$offerId': typeof dashboardOffersOfferIdRoute
@@ -173,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/products/': typeof dashboardProductsIndexRoute
   '/promotions/': typeof dashboardPromotionsIndexRoute
   '/rewards/': typeof dashboardRewardsIndexRoute
+  '/staff/': typeof dashboardStaffIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -191,6 +205,7 @@ export interface FileRoutesByTo {
   '/products': typeof dashboardProductsIndexRoute
   '/promotions': typeof dashboardPromotionsIndexRoute
   '/rewards': typeof dashboardRewardsIndexRoute
+  '/staff': typeof dashboardStaffIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -206,6 +221,7 @@ export interface FileRoutesById {
   '/(dashboard)/products': typeof dashboardProductsRouteWithChildren
   '/(dashboard)/promotions': typeof dashboardPromotionsRouteWithChildren
   '/(dashboard)/rewards': typeof dashboardRewardsRouteWithChildren
+  '/(dashboard)/staff': typeof dashboardStaffRouteWithChildren
   '/(dashboard)/': typeof dashboardIndexRoute
   '/(dashboard)/deals/$dealId': typeof dashboardDealsDealIdRoute
   '/(dashboard)/offers/$offerId': typeof dashboardOffersOfferIdRoute
@@ -217,6 +233,7 @@ export interface FileRoutesById {
   '/(dashboard)/products/': typeof dashboardProductsIndexRoute
   '/(dashboard)/promotions/': typeof dashboardPromotionsIndexRoute
   '/(dashboard)/rewards/': typeof dashboardRewardsIndexRoute
+  '/(dashboard)/staff/': typeof dashboardStaffIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -232,6 +249,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/promotions'
     | '/rewards'
+    | '/staff'
     | '/'
     | '/deals/$dealId'
     | '/offers/$offerId'
@@ -243,6 +261,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/promotions/'
     | '/rewards/'
+    | '/staff/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -261,6 +280,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/promotions'
     | '/rewards'
+    | '/staff'
   id:
     | '__root__'
     | '/(dashboard)'
@@ -275,6 +295,7 @@ export interface FileRouteTypes {
     | '/(dashboard)/products'
     | '/(dashboard)/promotions'
     | '/(dashboard)/rewards'
+    | '/(dashboard)/staff'
     | '/(dashboard)/'
     | '/(dashboard)/deals/$dealId'
     | '/(dashboard)/offers/$offerId'
@@ -286,6 +307,7 @@ export interface FileRouteTypes {
     | '/(dashboard)/products/'
     | '/(dashboard)/promotions/'
     | '/(dashboard)/rewards/'
+    | '/(dashboard)/staff/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -314,6 +336,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof dashboardIndexRouteImport
+      parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/staff': {
+      id: '/(dashboard)/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof dashboardStaffRouteImport
       parentRoute: typeof dashboardRouteRoute
     }
     '/(dashboard)/rewards': {
@@ -385,6 +414,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/analytics'
       preLoaderRoute: typeof dashboardAnalyticsRouteImport
       parentRoute: typeof dashboardRouteRoute
+    }
+    '/(dashboard)/staff/': {
+      id: '/(dashboard)/staff/'
+      path: '/'
+      fullPath: '/staff/'
+      preLoaderRoute: typeof dashboardStaffIndexRouteImport
+      parentRoute: typeof dashboardStaffRoute
     }
     '/(dashboard)/rewards/': {
       id: '/(dashboard)/rewards/'
@@ -536,6 +572,18 @@ const dashboardRewardsRouteChildren: dashboardRewardsRouteChildren = {
 const dashboardRewardsRouteWithChildren =
   dashboardRewardsRoute._addFileChildren(dashboardRewardsRouteChildren)
 
+interface dashboardStaffRouteChildren {
+  dashboardStaffIndexRoute: typeof dashboardStaffIndexRoute
+}
+
+const dashboardStaffRouteChildren: dashboardStaffRouteChildren = {
+  dashboardStaffIndexRoute: dashboardStaffIndexRoute,
+}
+
+const dashboardStaffRouteWithChildren = dashboardStaffRoute._addFileChildren(
+  dashboardStaffRouteChildren,
+)
+
 interface dashboardRouteRouteChildren {
   dashboardAnalyticsRoute: typeof dashboardAnalyticsRoute
   dashboardBranchesRoute: typeof dashboardBranchesRoute
@@ -547,6 +595,7 @@ interface dashboardRouteRouteChildren {
   dashboardProductsRoute: typeof dashboardProductsRouteWithChildren
   dashboardPromotionsRoute: typeof dashboardPromotionsRouteWithChildren
   dashboardRewardsRoute: typeof dashboardRewardsRouteWithChildren
+  dashboardStaffRoute: typeof dashboardStaffRouteWithChildren
   dashboardIndexRoute: typeof dashboardIndexRoute
 }
 
@@ -561,6 +610,7 @@ const dashboardRouteRouteChildren: dashboardRouteRouteChildren = {
   dashboardProductsRoute: dashboardProductsRouteWithChildren,
   dashboardPromotionsRoute: dashboardPromotionsRouteWithChildren,
   dashboardRewardsRoute: dashboardRewardsRouteWithChildren,
+  dashboardStaffRoute: dashboardStaffRouteWithChildren,
   dashboardIndexRoute: dashboardIndexRoute,
 }
 

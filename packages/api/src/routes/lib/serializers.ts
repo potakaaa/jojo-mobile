@@ -1186,3 +1186,40 @@ export function serializeAdminOrderDetail(
     dealId: order.deal_id,
   };
 }
+
+// ─── Admin staff serializer (ADM-009 — staff management) ─────────────────────
+
+/**
+ * Admin-only staff-roster shape (ADM-009, #124) — every user with a staff-level
+ * role, plus their currently assigned branch (name resolved via a LEFT JOIN so an
+ * unassigned staff member still serializes cleanly with both fields null).
+ * Declared LOCALLY here matching the `AdminBranch`/`AdminReward` convention.
+ * `name` is carried alongside `email` (both are `NOT NULL` `users` columns) so the
+ * Staff screen can show a human-readable identity, not just an email.
+ */
+export interface AdminStaffSummary {
+  id: string;
+  name: string;
+  email: string;
+  role: 'staff' | 'admin' | 'super_admin';
+  assignedBranchId: string | null;
+  branchName: string | null;
+}
+
+export function serializeAdminStaffSummary(row: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  assignedBranchId: string | null;
+  branchName: string | null;
+}): AdminStaffSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role as AdminStaffSummary['role'],
+    assignedBranchId: row.assignedBranchId,
+    branchName: row.branchName,
+  };
+}
