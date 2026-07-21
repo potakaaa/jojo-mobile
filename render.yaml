@@ -6,8 +6,7 @@ services:
     region: singapore
     rootDir: .
     buildCommand: corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --frozen-lockfile --prod=false
-    startCommand: pnpm --filter @jojopotato/api start
-    preDeployCommand: pnpm --filter @jojopotato/api db:migrate
+    startCommand: pnpm --filter @jojopotato/api db:migrate && pnpm --filter @jojopotato/api start
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
