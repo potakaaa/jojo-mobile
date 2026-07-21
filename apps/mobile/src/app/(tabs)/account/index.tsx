@@ -130,6 +130,13 @@ export default function AccountScreen() {
             label="Help"
             onPress={() => router.push('/(tabs)/account/help')}
           />
+          <SettingsRow.Divider mode={mode} />
+          <SettingsRow
+            mode={mode}
+            icon="document-text-outline"
+            label="Terms & Privacy"
+            onPress={() => router.push('/(tabs)/terms')}
+          />
         </Card>
 
         {/* Appearance */}
