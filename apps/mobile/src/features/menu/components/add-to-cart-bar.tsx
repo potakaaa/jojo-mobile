@@ -86,6 +86,12 @@ export const getAddToCartBarHeight = (insetsBottom: number): number =>
 export interface AddToCartBarProps {
   /** Live unit price in integer cents (base + selected option deltas). */
   unitPriceCents: number;
+  /**
+   * Selected quantity (default 1). The bar's displayed Total is
+   * `unitPriceCents × quantity`; the layout/height are unaffected (still one
+   * price line) so `getAddToCartBarHeight` stays exact.
+   */
+  quantity?: number;
   /** True once all required option groups have a selection (AC8). */
   canAdd: boolean;
   /** False when the product is unavailable at the selected branch (AC11). */
@@ -99,7 +105,13 @@ export interface AddToCartBarProps {
  * incomplete surfaces an inline validation message rather than adding (AC9).
  * When the product is unavailable it shows an unavailable state instead (AC11).
  */
-export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: AddToCartBarProps) {
+export function AddToCartBar({
+  unitPriceCents,
+  quantity = 1,
+  canAdd,
+  isAvailable,
+  onAdd,
+}: AddToCartBarProps) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
@@ -139,7 +151,7 @@ export function AddToCartBar({ unitPriceCents, canAdd, isAvailable, onAdd }: Add
         <View>
           <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Total</Text>
           <Text style={[styles.price, { color: theme.text }]}>
-            {formatCurrency(unitPriceCents)}
+            {formatCurrency(unitPriceCents * quantity)}
           </Text>
         </View>
         {isAvailable ? (
