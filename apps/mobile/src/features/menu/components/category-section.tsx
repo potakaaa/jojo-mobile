@@ -11,6 +11,12 @@ import { resolveImageUrl } from '@/lib/image-url';
 export interface CategorySectionProps {
   category: Category;
   onProductPress: (productId: string) => void;
+  /**
+   * Optional callback receiving this section's Y offset within its parent scroll
+   * container, fired on layout. The Order tab uses it to record each category's
+   * scroll position for the category quick-nav. Omitting it is a no-op.
+   */
+  onLayoutY?: (y: number) => void;
 }
 
 /** Chunk a flat list into fixed-size rows (2-column grid rows here). */
@@ -30,14 +36,14 @@ function chunk<T>(items: T[], size: number): T[][] {
  * an outer `ScrollView`, and nesting a `FlatList`/`VirtualizedList` there
  * triggers RN's nested-list warning regardless of `scrollEnabled`.
  */
-export function CategorySection({ category, onProductPress }: CategorySectionProps) {
+export function CategorySection({ category, onProductPress, onLayoutY }: CategorySectionProps) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const rows = chunk(category.products, 2);
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} onLayout={(e) => onLayoutY?.(e.nativeEvent.layout.y)}>
       <Text style={[styles.title, { color: theme.text }]}>{category.name}</Text>
       {category.products.length === 0 ? (
         <Text style={[styles.empty, { color: theme.textSecondary }]}>

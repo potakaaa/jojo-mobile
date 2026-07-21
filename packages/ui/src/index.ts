@@ -24,6 +24,7 @@ export * from './components/coupon-card';
 export * from './components/cart-item';
 export * from './components/cart-summary';
 export * from './components/empty-state';
+export * from './components/skeleton';
 export * from './components/flavor-selector';
 export * from './components/size-selector';
 export * from './components/quantity-stepper';
