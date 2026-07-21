@@ -1,6 +1,15 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Colors, FontFamily, Radii, Shadows, Spacing, TypeScale, type ThemeMode } from '../theme';
+import {
+  Colors,
+  FontFamily,
+  Palette,
+  Radii,
+  Shadows,
+  Spacing,
+  TypeScale,
+  type ThemeMode,
+} from '../theme';
 import { Button } from './button';
 
 export type ConfirmDialogVariant = 'default' | 'destructive';
@@ -30,11 +39,16 @@ export interface ConfirmDialogProps {
  * owns `visible` and both callbacks — so the underlying action stays unchanged
  * from the pre-dialog behavior.
  *
- * Rendered as a plain absolutely-positioned overlay (not RN `Modal`), mirroring
- * the existing checkout confirm-sheet pattern: RN `Modal` does not render its
- * children in the jest-expo test tree after a visibility toggle, which would
- * make the AC-A4 per-screen wiring gates untestable. The overlay fills its
- * screen-root parent, so consumers render it at the screen root.
+ * Rendered in an RN `Modal` so the scrim covers the ENTIRE device screen. An
+ * in-screen absolutely-positioned overlay cannot: RN resolves `position:absolute`
+ * against the parent's padding box, so nested under a `SafeAreaView` the scrim
+ * stopped at the safe-area inset, and it could never dim the floating tab bar
+ * (which renders in the navigator's layer, above any screen). Both showed up as
+ * a darkened rectangle inset from the real screen bounds.
+ *
+ * `statusBarTranslucent` + `navigationBarTranslucent` extend the modal window
+ * under the Android system bars — without them the scrim stops at the status bar
+ * and the same seam reappears at the top.
  */
 export function ConfirmDialog({
   visible,
@@ -51,60 +65,76 @@ export function ConfirmDialog({
   if (!visible) return null;
 
   return (
-    <View style={styles.overlay} accessibilityViewIsModal>
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        accessibilityRole="button"
-        accessibilityLabel={`Dismiss ${title}`}
-        onPress={onCancel}
-      />
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: theme.background, borderColor: theme.border },
-          Shadows.offsetMd,
-        ]}
-      >
-        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-        {message ? (
-          <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>
-        ) : null}
-        <View style={styles.actions}>
-          <Button
-            label={cancelLabel}
-            variant="outline"
-            mode={mode}
-            onPress={onCancel}
-            style={styles.action}
-          />
-          <Button
-            label={confirmLabel}
-            variant={variant === 'destructive' ? 'accent' : 'primary'}
-            mode={mode}
-            onPress={onConfirm}
-            style={styles.action}
-          />
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onCancel}
+    >
+      <View style={styles.overlay} accessibilityViewIsModal>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          accessibilityRole="button"
+          accessibilityLabel={`Dismiss ${title}`}
+          onPress={onCancel}
+        />
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.background, borderColor: theme.border },
+            Shadows.offsetMd,
+          ]}
+        >
+          <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+          {message ? (
+            <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>
+          ) : null}
+          <View style={styles.actions}>
+            {/*
+              Stable testIDs: the dialog's labels are caller-supplied and often
+              duplicate a button already on the screen behind it (e.g. staff
+              order-detail's "Reject"), so a label-based query is ambiguous.
+            */}
+            <Button
+              testID="confirm-dialog-cancel"
+              label={cancelLabel}
+              variant="outline"
+              size="sm"
+              mode={mode}
+              onPress={onCancel}
+              style={styles.action}
+            />
+            <Button
+              testID="confirm-dialog-confirm"
+              label={confirmLabel}
+              variant={variant === 'destructive' ? 'accent' : 'primary'}
+              size="sm"
+              mode={mode}
+              onPress={onConfirm}
+              style={styles.action}
+            />
+          </View>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    // Fills the Modal's own window, which already spans the whole device screen.
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'stretch',
-    // Standard modal scrim, matching the existing checkout confirm sheet's
-    // backdrop (not a brand token — an established dimming convention).
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    // Brand-ink scrim at a lighter opacity than the old flat rgba(0,0,0,0.4) —
+    // pure black over the warm cream background read as a muddy, overly heavy
+    // gray wash (reported as "the outside box is darkened"). Palette.ink is
+    // already the app's near-black text/border color, so a lighter tint of it
+    // dims the backdrop without looking washed-out or off-brand.
+    backgroundColor: `${Palette.ink}59`, // ink at ~35% opacity (0x59 / 0xff)
     padding: Spacing.four,
-    zIndex: 20,
-    elevation: 20,
   },
   card: {
     gap: Spacing.three,
@@ -127,5 +157,9 @@ const styles = StyleSheet.create({
   },
   action: {
     flex: 1,
+    // Two buttons share the card width, so each gets ~half of it. Trim the side
+    // padding below even the Button default so caller-supplied labels — which
+    // can be long ("Stay signed in", "Clear and switch") — stay on one line.
+    paddingHorizontal: Spacing.two,
   },
 });

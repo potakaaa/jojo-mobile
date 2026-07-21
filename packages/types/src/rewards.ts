@@ -49,6 +49,11 @@ export interface StarTransaction {
  * `numericToCents`-converted (integer cents) or `null` when the reward carries no
  * monetary value. Added by STAR-002 for the Rewards screen's reward preview /
  * available-rewards list.
+ *
+ * `eligibleProductId` is the `products.id` UUID of the item a free-item /
+ * free-upgrade reward unlocks, or `null` for rewards with no associated product
+ * (fixed/percentage discounts). Surfaced additively so the mobile Redeem flow can
+ * auto-add the eligible item to the cart (reward-auto-redeem).
  */
 export interface Reward {
   id: string;
@@ -57,6 +62,7 @@ export interface Reward {
   rewardType: string;
   rewardValue: number | null;
   isActive: boolean;
+  eligibleProductId: string | null;
 }
 
 /**

@@ -44,118 +44,123 @@ export default function AccountScreen() {
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
-        ]}
-      >
-        {/* Hero */}
-        <Card mode={mode} style={styles.hero}>
-          <Avatar mode={mode} name={user?.name} size={68} />
-          <View style={styles.heroText}>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting()} 👋</Text>
-            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
-              {displayName}
-            </Text>
-            {email ? (
-              <Text style={[styles.email, { color: theme.textSecondary }]} numberOfLines={1}>
-                {email}
+    /*
+      Root View wraps the SafeAreaView so ConfirmDialog below can be a SIBLING of
+      it, not a child. ConfirmDialog's scrim is `position:absolute` with 0 insets,
+      which RN resolves against its parent's PADDING box — nested inside the
+      SafeAreaView it stopped at the safe-area inset, leaving the status-bar strip
+      and screen edges undimmed (a visible darkened rectangle short of the real
+      screen bounds). Rendering it at the true screen root is the same pattern
+      product/index.tsx already uses. The background moves to this root so the
+      screen still paints edge-to-edge.
+    */
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            Platform.OS !== 'web' && { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
+          ]}
+        >
+          {/* Hero */}
+          <Card mode={mode} style={styles.hero}>
+            <Avatar mode={mode} name={user?.name} size={68} />
+            <View style={styles.heroText}>
+              <Text style={[styles.greeting, { color: theme.textSecondary }]}>{greeting()} 👋</Text>
+              <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+                {displayName}
               </Text>
-            ) : null}
-          </View>
-        </Card>
-
-        {/* Profile-completion nudge */}
-        {profileIncomplete ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Finish setting up your profile"
-            onPress={() => router.push('/(tabs)/account/edit-profile')}
-            style={({ pressed }) => [
-              styles.nudge,
-              { backgroundColor: theme.tint, borderColor: theme.border },
-              pressed ? styles.nudgePressed : Shadows.offsetSm,
-            ]}
-          >
-            <View style={styles.nudgeIcon}>
-              <Ionicons name="sparkles" size={20} color={Palette.ink} />
+              {email ? (
+                <Text style={[styles.email, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {email}
+                </Text>
+              ) : null}
             </View>
-            <View style={styles.nudgeText}>
-              <Text style={styles.nudgeTitle}>Finish setting up</Text>
-              <Text style={styles.nudgeBody}>
-                Add your {missingLabel(hasBirthday, hasAddress)} to personalize your experience.
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Palette.ink} />
-          </Pressable>
-        ) : null}
+          </Card>
 
-        {/* Read-only profile fields */}
-        <SectionLabel text="Profile" />
-        <Card mode={mode} style={styles.listCard}>
-          <SettingsRow mode={mode} icon="gift-outline" label="Birthday" value={birthday} />
-          <SettingsRow.Divider mode={mode} />
-          <SettingsRow mode={mode} icon="location-outline" label="Address" value={address} />
-        </Card>
+          {/* Profile-completion nudge */}
+          {profileIncomplete ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Finish setting up your profile"
+              onPress={() => router.push('/(tabs)/account/edit-profile')}
+              style={({ pressed }) => [
+                styles.nudge,
+                { backgroundColor: theme.tint, borderColor: theme.border },
+                pressed ? styles.nudgePressed : Shadows.offsetSm,
+              ]}
+            >
+              <View style={styles.nudgeIcon}>
+                <Ionicons name="sparkles" size={20} color={Palette.ink} />
+              </View>
+              <View style={styles.nudgeText}>
+                <Text style={styles.nudgeTitle}>Finish setting up</Text>
+                <Text style={styles.nudgeBody}>
+                  Add your {missingLabel(hasBirthday, hasAddress)} to personalize your experience.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Palette.ink} />
+            </Pressable>
+          ) : null}
 
-        {/* Menu */}
-        <SectionLabel text="Account" />
-        <Card mode={mode} style={styles.listCard}>
-          <SettingsRow
-            mode={mode}
-            icon="create-outline"
-            label="Edit profile"
-            onPress={() => router.push('/(tabs)/account/edit-profile')}
-          />
-          <SettingsRow.Divider mode={mode} />
-          <SettingsRow
-            mode={mode}
-            icon="notifications-outline"
-            label="Notifications"
-            onPress={() => router.push('/(tabs)/notifications')}
-          />
-          <SettingsRow.Divider mode={mode} />
-          <SettingsRow
-            mode={mode}
-            icon="receipt-outline"
-            label="Order History"
-            onPress={() => router.push('/(tabs)/history')}
-          />
-          <SettingsRow.Divider mode={mode} />
-          <SettingsRow
-            mode={mode}
-            icon="help-circle-outline"
-            label="Help"
-            onPress={() => router.push('/(tabs)/account/help')}
-          />
-          <SettingsRow.Divider mode={mode} />
-          <SettingsRow
-            mode={mode}
-            icon="document-text-outline"
-            label="Terms & Privacy"
-            onPress={() => router.push('/(tabs)/terms')}
-          />
-        </Card>
+          {/* Read-only profile fields */}
+          <SectionLabel text="Profile" />
+          <Card mode={mode} style={styles.listCard}>
+            <SettingsRow mode={mode} icon="gift-outline" label="Birthday" value={birthday} />
+            <SettingsRow.Divider mode={mode} />
+            <SettingsRow mode={mode} icon="location-outline" label="Address" value={address} />
+          </Card>
 
-        {/* Appearance */}
-        <SectionLabel text="Appearance" />
-        <Card mode={mode}>
-          <ThemeToggle />
-        </Card>
+          {/* Menu */}
+          <SectionLabel text="Account" />
+          <Card mode={mode} style={styles.listCard}>
+            <SettingsRow
+              mode={mode}
+              icon="create-outline"
+              label="Edit profile"
+              onPress={() => router.push('/(tabs)/account/edit-profile')}
+            />
+            <SettingsRow.Divider mode={mode} />
+            <SettingsRow
+              mode={mode}
+              icon="notifications-outline"
+              label="Notifications"
+              onPress={() => router.push('/(tabs)/notifications')}
+            />
+            <SettingsRow.Divider mode={mode} />
+            <SettingsRow
+              mode={mode}
+              icon="time-outline"
+              label="Order History"
+              onPress={() => router.push('/(tabs)/history')}
+            />
+            <SettingsRow.Divider mode={mode} />
+            <SettingsRow
+              mode={mode}
+              icon="help-circle-outline"
+              label="Help"
+              onPress={() => router.push('/(tabs)/account/help')}
+            />
+          </Card>
 
-        <Button
-          mode={mode}
-          variant="outline"
-          label="Log out"
-          onPress={() => setConfirmSignOut(true)}
-        />
+          {/* Appearance */}
+          <SectionLabel text="Appearance" />
+          <Card mode={mode}>
+            <ThemeToggle />
+          </Card>
 
-        <Text style={[styles.version, { color: theme.textSecondary }]}>
-          Jojo Potato · v{version}
-        </Text>
-      </ScrollView>
+          <Button
+            mode={mode}
+            variant="outline"
+            label="Log out"
+            onPress={() => setConfirmSignOut(true)}
+          />
+
+          <Text style={[styles.version, { color: theme.textSecondary }]}>
+            Jojo Potato · v{version}
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
 
       <ConfirmDialog
         visible={confirmSignOut}
@@ -171,7 +176,7 @@ export default function AccountScreen() {
         }}
         onCancel={() => setConfirmSignOut(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -249,6 +254,7 @@ function ThemeToggle() {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   safe: { flex: 1 },
   scroll: { padding: Spacing.four, gap: Spacing.three },
   hero: {

@@ -348,6 +348,13 @@ describe('G3 (AC3, HARD) — deactivate stops NEW unlocks; pre-issued coupon sur
     await db
       .insert(schema.coupons)
       .values({ user_id: user.id, reward_id: rewardId, code, status: 'available' });
+    // Star Expendable: the shared resolver rejects a reward preview when the caller
+    // can't afford `required_stars` (1 here). Seed a covering balance so this test
+    // exercises what it means to (pre-issued coupon survives deactivation + redeems),
+    // not the new insufficient-balance guard.
+    await db
+      .insert(schema.userStars)
+      .values({ user_id: user.id, current_stars: 5, lifetime_stars: 5 });
 
     const before = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
 

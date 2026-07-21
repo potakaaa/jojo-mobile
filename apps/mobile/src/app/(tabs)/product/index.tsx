@@ -268,39 +268,56 @@ export default function ProductDetailsScreen() {
               ) : null}
             </View>
 
-            <View style={styles.priceRow}>
-              <Text style={[styles.basePrice, { color: theme.text }]}>
+            {/* Price tag — a jyellow "comic" chip instead of a plain inline number. */}
+            <View
+              style={[
+                styles.priceTag,
+                { borderColor: theme.border, backgroundColor: Palette.jyellow },
+                Shadows.offsetSm,
+              ]}
+            >
+              <Text style={[styles.basePrice, { color: Palette.ink }]}>
                 {formatCurrency(product.basePriceCents)}
               </Text>
-              <Text style={[styles.priceCaption, { color: theme.textSecondary }]}>base price</Text>
+              <Text style={styles.priceCaption}>base price</Text>
             </View>
 
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-            {/* Quantity — new control; the sticky bar Total tracks qty × unit price. */}
-            <View style={styles.quantityRow}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Quantity</Text>
-              <QuantityStepper
-                value={quantity}
-                onChange={setQuantity}
-                min={1}
-                max={99}
-                mode={mode}
-              />
+            {/* Quantity — its own carded section; the sticky bar Total tracks qty × unit price. */}
+            <View
+              style={[
+                styles.sectionCard,
+                { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                Shadows.offsetSm,
+              ]}
+            >
+              <View style={styles.quantityRow}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Quantity</Text>
+                <QuantityStepper
+                  value={quantity}
+                  onChange={setQuantity}
+                  min={1}
+                  max={99}
+                  mode={mode}
+                />
+              </View>
             </View>
-
-            {groups.length > 0 ? (
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            ) : null}
 
             {groups.map((group) => (
-              <OptionGroupSelector
+              <View
                 key={group.type}
-                group={group}
-                required={requiredTypes.includes(group.type)}
-                selectedIds={selection[group.type] ?? []}
-                onChange={(optionId) => handleChange(group.type, optionId)}
-              />
+                style={[
+                  styles.sectionCard,
+                  { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                  Shadows.offsetSm,
+                ]}
+              >
+                <OptionGroupSelector
+                  group={group}
+                  required={requiredTypes.includes(group.type)}
+                  selectedIds={selection[group.type] ?? []}
+                  onChange={(optionId) => handleChange(group.type, optionId)}
+                />
+              </View>
             ))}
 
             {isDeal && product.components ? <DealContents components={product.components} /> : null}
@@ -362,7 +379,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.four,
-    gap: Spacing.four,
+    gap: Spacing.three,
   },
   heroWrap: {
     position: 'relative',
@@ -371,11 +388,11 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   titleBlock: {
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
   imageWrap: {
     width: '100%',
-    aspectRatio: 1.25,
+    aspectRatio: 1.35,
     borderRadius: Radii.xl,
     borderWidth: 2,
     overflow: 'hidden',
@@ -399,30 +416,40 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h1,
+    fontSize: TypeScale.h2,
   },
   description: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.body,
     lineHeight: TypeScale.body * 1.4,
   },
-  priceRow: {
+  priceTag: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: Spacing.two,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two + 2,
+    borderWidth: 2,
+    borderRadius: Radii.full,
   },
   basePrice: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
+    fontSize: TypeScale.h3,
   },
   priceCaption: {
-    fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.bodySmall,
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.caption,
+    color: Palette.ink,
+    opacity: 0.7,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  divider: {
-    height: 2,
-    borderRadius: Radii.full,
-    opacity: 0.5,
+  sectionCard: {
+    borderWidth: 2,
+    borderRadius: Radii.md,
+    paddingVertical: Spacing.two + 2,
+    paddingHorizontal: Spacing.three,
   },
   quantityRow: {
     flexDirection: 'row',

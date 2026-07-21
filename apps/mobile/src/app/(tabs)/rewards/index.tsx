@@ -1,26 +1,34 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { Reward, StarTransaction } from '@jojopotato/types';
 import {
   Badge,
   Button,
   Card,
   EmptyState,
-  Palette,
   RewardsTerms,
   StarProgressBar,
+  Toast,
 } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, MaxContentWidth, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
+import { useCart } from '@/features/cart/hooks/use-cart';
+import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
+import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
+import { useMenu } from '@/features/menu/hooks/use-menu';
+import { deriveRewardTiers, type RewardTier } from '@/features/rewards/lib/derive-reward-tiers';
+import { findEligibleMenuItem } from '@/features/rewards/lib/find-eligible-menu-item';
 import { useAvailableRewards } from '@/features/rewards/hooks/use-available-rewards';
 import { useMyCoupons } from '@/features/rewards/hooks/use-my-coupons';
 import { useRewardsHistory } from '@/features/rewards/hooks/use-rewards-history';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -49,11 +57,30 @@ function txLabel(tx: StarTransaction): string {
 }
 
 /**
- * Rewards tab (STAR-002). Shows the caller's star progress toward the next
- * reward, the reward preview, the available-rewards catalog, the reverse-chron
- * star history, and the T&C. Backed by three react-query hooks (summary /
- * available / history), all of which refetch on window focus so the screen
- * reflects a server-side star credit without an app restart (AC5).
+ * Split a transaction's label into a bold heading + an optional secondary
+ * line (e.g. "Redeemed reward: Free regular fries or lemonade" ->
+ * heading "Redeemed reward", subtitle "Free regular fries or lemonade").
+ * Falls back to a heading-only row when there's no ": " to split on.
+ */
+function splitTxLabel(tx: StarTransaction): { heading: string; subtitle: string | null } {
+  const label = txLabel(tx);
+  const separatorIndex = label.indexOf(': ');
+  if (separatorIndex === -1) return { heading: label, subtitle: null };
+  return {
+    heading: label.slice(0, separatorIndex),
+    subtitle: label.slice(separatorIndex + 2),
+  };
+}
+
+/**
+ * Rewards tab — McDonald's-style unified tier list. Shows the caller's star
+ * balance + a progress bar to the next locked tier, one list of ALL active
+ * reward tiers (locked → "X more stars needed"; unlocked → Redeem), then the
+ * star history. Redeeming applies the reward coupon via `POST /coupons/apply`
+ * (`resolveAndApplyDeal` → `applyDiscount`) and opens the cart — the raw coupon
+ * code is NEVER rendered. Backed by four react-query hooks (summary / available
+ * / history / coupons), all of which refetch on window focus so the screen
+ * reflects a server-side star credit or a newly-minted coupon without a restart.
  */
 export default function RewardsScreen() {
   const theme = useTheme();
@@ -65,8 +92,11 @@ export default function RewardsScreen() {
   const availableQuery = useAvailableRewards();
   const historyQuery = useRewardsHistory();
   const couponsQuery = useMyCoupons();
+  const menuQuery = useMenu();
 
-  const [roadmapOpen, setRoadmapOpen] = useState(false);
+  const { cart, addItem, applyDiscount } = useCart();
+  const { toast, showToast, hideToast } = useToast();
+  const [applying, setApplying] = useState(false);
 
   // Loading: wait for the primary summary (the tracker) before rendering.
   if (summaryQuery.isLoading) return <ScreenLoader />;
@@ -86,23 +116,93 @@ export default function RewardsScreen() {
   const summary = summaryQuery.data;
   const availableRewards = availableQuery.data ?? [];
   const history = historyQuery.data?.transactions ?? [];
-  // Reward coupons the customer can redeem now: reward-backed + still available.
-  // Surfacing the code in-app is the minimal STAR-004 code-visibility affordance
-  // (the full Coupon Wallet is CPN-001, out of scope).
-  const availableRewardCoupons = (couponsQuery.data ?? []).filter(
-    (c) => c.status === 'available' && c.rewardId !== null,
-  );
+  const coupons = couponsQuery.data ?? [];
 
-  // Battle-pass roadmap: active reward tiers, ascending. Unlock keys off
-  // cumulative lifetime stars (monotonic — matches STAR-003's unlock logic).
-  const roadmap = [...availableRewards].sort((a, b) => a.requiredStars - b.requiredStars);
-  // Claimable = tiers the user's cumulative stars have reached. The actual
-  // claim/redeem ACTION is STAR-004 (redemption) + CPN-001 (coupon wallet), so
-  // this list is read-only here; the full track lives in the roadmap popup.
-  const claimable = roadmap.filter((reward) => summary.lifetimeStars >= reward.requiredStars);
+  // One derivation: the full active tier list (ascending) + the progress-bar
+  // target (smallest locked threshold, or null when everything is unlocked).
+  const { tiers, nextLockedThreshold } = deriveRewardTiers(
+    availableRewards,
+    summary.currentStars,
+    coupons,
+  );
+  const allUnlocked = nextLockedThreshold === null;
 
   const rewardValueLabel = (reward: Reward): string | null =>
     reward.rewardValue === null ? null : formatCurrency(reward.rewardValue);
+
+  /**
+   * Redeem an unlocked tier in one tap. Guards on a selected branch, auto-adds the
+   * tier's eligible item to the cart (idempotent — skips if already present), then
+   * resolves + applies the reward coupon server-side and opens the cart. On any
+   * failure it toasts the reason and does NOT navigate; the raw coupon code is never
+   * rendered. Double-tap-guarded via `applying`.
+   */
+  const handleRedeem = async (tier: RewardTier) => {
+    if (applying) return;
+    setApplying(true);
+    try {
+      // Branch guard first — no branch means nothing can be added or applied. We
+      // navigate to the branch selector rather than auto-selecting (setBranch wipes
+      // the cart). Toast wording must contain "pick a branch" (AC1).
+      if (!cart.pickupBranchId) {
+        showToast('Pick a branch first to redeem your rewards.', 'error');
+        router.push('/(tabs)/branches');
+        return;
+      }
+
+      const { couponCode, reward } = tier;
+      const eligibleProductId = reward.eligibleProductId;
+
+      // Auto-add the eligible item (free-item / free-upgrade rewards). Rewards with
+      // no eligible product (fixed/percentage discounts) fall straight through to
+      // the existing apply path (AC6).
+      // cartForValidation is projected forward when we add a new item so the server
+      // receives a cart that already contains the item (the local `cart` closure is
+      // a React render-time snapshot and stays stale after the await).
+      let cartForValidation = cart;
+      if (eligibleProductId) {
+        const product = findEligibleMenuItem(eligibleProductId, menuQuery.data);
+        if (product === null) {
+          // Item not available at this branch — stop, stay on screen (AC5).
+          showToast("This reward item isn't available at your current branch.", 'error');
+          return;
+        }
+        const alreadyInCart = cart.items.some((i) => i.menuItemId === eligibleProductId);
+        if (!alreadyInCart) {
+          const ok = await addItem(productToMenuItem(product, true), [], 1);
+          if (!ok) {
+            showToast('Could not add the reward item. Please try again.', 'error');
+            return;
+          }
+          cartForValidation = {
+            ...cart,
+            items: [
+              ...cart.items,
+              {
+                lineId: `optimistic-${eligibleProductId}`,
+                menuItemId: eligibleProductId,
+                quantity: 1,
+                productNameSnapshot: product.name,
+                unitPriceCents: product.basePriceCents,
+                selectedOptions: [],
+              },
+            ],
+          };
+        }
+      }
+
+      const result = await resolveAndApplyDeal(couponCode!, cartForValidation, cart.pickupBranchId);
+      if (!result.ok) {
+        showToast(result.message, 'error');
+        return;
+      }
+      applyDiscount(result.discount);
+      setAppliedCouponCode(couponCode!);
+      router.push('/(tabs)/cart');
+    } finally {
+      setApplying(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -119,106 +219,70 @@ export default function RewardsScreen() {
         >
           <Text style={[styles.title, { color: theme.text }]}>Jojo Stars</Text>
 
-          {/* Progress tracker (AC1/AC2) */}
+          {/* Star balance + progress toward the next locked tier (AC1). */}
           <Card style={styles.trackerCard} mode={mode}>
             <View style={styles.trackerHeader}>
               <Text style={[styles.trackerStars, { color: theme.text }]}>
-                {summary.currentStars} of {summary.requiredStars} stars
+                {summary.currentStars} ★
               </Text>
-              {summary.isUnlocked ? (
-                <Badge label="Reward ready" variant="success" mode={mode} />
-              ) : null}
+              {allUnlocked ? <Badge label="All unlocked" variant="success" mode={mode} /> : null}
             </View>
             <StarProgressBar
               progress={{
                 currentStars: summary.currentStars,
-                requiredStars: summary.requiredStars,
+                requiredStars: nextLockedThreshold ?? summary.currentStars,
               }}
               mode={mode}
             />
-            {summary.reward ? (
-              <View style={styles.rewardPreview}>
-                <Text style={[styles.rewardLabel, { color: theme.textSecondary }]}>
-                  Your reward
-                </Text>
-                <Text style={[styles.rewardName, { color: theme.text }]}>
-                  {summary.reward.name}
-                </Text>
-                {rewardValueLabel(summary.reward) ? (
-                  <Text style={[styles.rewardValue, { color: theme.accent }]}>
-                    Worth {rewardValueLabel(summary.reward)}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-            {roadmap.length > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setRoadmapOpen(true)}
-                style={styles.roadmapLink}
-              >
-                <Text style={[styles.roadmapLinkText, { color: theme.accent }]}>
-                  View full roadmap
-                </Text>
-                <Ionicons name="chevron-forward" size={14} color={theme.accent} />
-              </Pressable>
-            ) : null}
+            <Text style={[styles.trackerHint, { color: theme.textSecondary }]}>
+              {allUnlocked
+                ? "You've unlocked every reward — redeem one below."
+                : `${Math.max(0, nextLockedThreshold - summary.currentStars)} more stars to your next reward.`}
+            </Text>
           </Card>
 
-          {/* Your reward code(s) (STAR-004) — the redeemable code the customer
-              enters in the cart. Selectable text (no clipboard dependency in the
-              app). Only rendered when an available reward coupon exists. */}
-          {availableRewardCoupons.length > 0 ? (
-            <>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Your reward code</Text>
-              {availableRewardCoupons.map((coupon) => (
-                <Card key={coupon.id} style={styles.codeCard} mode={mode}>
-                  <View style={styles.codeCardText}>
-                    <Text style={[styles.codeCardLabel, { color: theme.textSecondary }]}>
-                      {coupon.reward?.name ?? 'Reward'}
-                    </Text>
-                    <Text
-                      selectable
-                      style={[styles.codeValue, { color: theme.text }]}
-                      accessibilityLabel={`Reward code ${coupon.code}`}
-                    >
-                      {coupon.code}
-                    </Text>
-                    <Text style={[styles.codeHint, { color: theme.textSecondary }]}>
-                      Enter this code in your cart to redeem.
-                    </Text>
-                  </View>
-                  <Badge label="Available" variant="success" mode={mode} />
-                </Card>
-              ))}
-            </>
-          ) : null}
-
-          {/* Available rewards — only tiers the user can claim now. The Claim/
-              redeem CTA itself is STAR-004 + CPN-001, so this stays read-only
-              (a "Ready" badge) until those ship. */}
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Available rewards</Text>
-          {claimable.length === 0 ? (
+          {/* Unified tier list (AC2/AC3/AC6) — all active tiers, ascending. */}
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Rewards</Text>
+          {tiers.length === 0 ? (
             <Text style={[styles.emptyLine, { color: theme.textSecondary }]}>
-              No rewards ready to claim yet — keep earning stars.
+              No rewards available yet — check back soon.
             </Text>
           ) : (
-            claimable.map((reward) => (
-              <Card key={reward.id} style={styles.rewardRow} mode={mode}>
+            tiers.map((tier) => (
+              <Card key={tier.reward.id} style={styles.rewardRow} mode={mode}>
                 <View style={styles.rewardRowText}>
-                  <Text style={[styles.rewardRowName, { color: theme.text }]}>{reward.name}</Text>
-                  {rewardValueLabel(reward) ? (
+                  <Text style={[styles.rewardRowName, { color: theme.text }]}>
+                    {tier.reward.name}
+                  </Text>
+                  {rewardValueLabel(tier.reward) ? (
                     <Text style={[styles.rewardRowValue, { color: theme.textSecondary }]}>
-                      Worth {rewardValueLabel(reward)}
+                      Worth {rewardValueLabel(tier.reward)}
                     </Text>
                   ) : null}
+                  <Text style={[styles.rewardRowMeta, { color: theme.textSecondary }]}>
+                    {tier.status === 'locked'
+                      ? `${tier.starsNeeded} more stars needed`
+                      : `${tier.reward.requiredStars} ★`}
+                  </Text>
                 </View>
-                <Badge label="Ready" variant="success" mode={mode} />
+                {tier.status === 'unlocked' ? (
+                  <Button
+                    label="Redeem"
+                    mode={mode}
+                    disabled={applying}
+                    loading={applying}
+                    onPress={() => handleRedeem(tier)}
+                  />
+                ) : tier.status === 'claimable_no_coupon' ? (
+                  <Button label="Redeeming soon" mode={mode} disabled onPress={() => {}} />
+                ) : (
+                  <Badge label="Locked" variant="default" mode={mode} />
+                )}
               </Card>
             ))
           )}
 
-          {/* Reward history (AC3) */}
+          {/* Star history (AC8) — unchanged logic. */}
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Star history</Text>
           {history.length === 0 ? (
             <EmptyState
@@ -228,102 +292,49 @@ export default function RewardsScreen() {
               mode={mode}
             />
           ) : (
-            history.map((tx) => (
-              <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
-                <View style={styles.historyRowText}>
-                  <Text style={[styles.historyLabel, { color: theme.text }]}>{txLabel(tx)}</Text>
-                  <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
-                    {formatTxDate(tx.createdAt)}
+            history.map((tx) => {
+              const { heading, subtitle } = splitTxLabel(tx);
+              return (
+                <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+                  <View style={styles.historyRowText}>
+                    <Text style={[styles.historyLabel, { color: theme.text }]}>{heading}</Text>
+                    {subtitle ? (
+                      <Text style={[styles.historySubtitle, { color: theme.textSecondary }]}>
+                        {subtitle}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
+                      {formatTxDate(tx.createdAt)}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.historyStars,
+                      { color: tx.stars < 0 ? theme.textSecondary : theme.accent },
+                    ]}
+                  >
+                    {tx.stars > 0 ? `+${tx.stars}` : tx.stars} ★
                   </Text>
                 </View>
-                <Text
-                  style={[
-                    styles.historyStars,
-                    { color: tx.stars < 0 ? theme.textSecondary : theme.accent },
-                  ]}
-                >
-                  {tx.stars > 0 ? `+${tx.stars}` : tx.stars} ★
-                </Text>
-              </View>
-            ))
+              );
+            })
           )}
 
-          {/* Terms & Conditions (AC4) */}
+          {/* Terms & Conditions */}
           <Card style={styles.termsCard} mode={mode}>
             <RewardsTerms mode={mode} />
           </Card>
         </ScrollView>
       </SafeAreaView>
 
-      {/* Battle-pass roadmap popup — the full tier track with unlock status. */}
-      <Modal
-        visible={roadmapOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRoadmapOpen(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setRoadmapOpen(false)}>
-          <Pressable
-            style={[
-              styles.modalCard,
-              { backgroundColor: theme.background, borderColor: theme.border },
-            ]}
-            onPress={() => {}}
-          >
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Rewards roadmap</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              {summary.lifetimeStars} {summary.lifetimeStars === 1 ? 'star' : 'stars'} earned so far
-            </Text>
-
-            <View style={styles.roadmapTiers}>
-              {roadmap.map((tier) => {
-                const unlocked = summary.lifetimeStars >= tier.requiredStars;
-                const remaining = tier.requiredStars - summary.lifetimeStars;
-                return (
-                  <View key={tier.id} style={styles.tierRow}>
-                    <View
-                      style={[
-                        styles.tierDot,
-                        {
-                          backgroundColor: unlocked ? Palette.jgold : theme.backgroundElement,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={unlocked ? 'star' : 'lock-closed'}
-                        size={15}
-                        color={unlocked ? Palette.ink : theme.textSecondary}
-                      />
-                    </View>
-                    <View style={styles.tierText}>
-                      <Text style={[styles.tierName, { color: theme.text }]}>{tier.name}</Text>
-                      <Text style={[styles.tierReq, { color: theme.textSecondary }]}>
-                        {tier.requiredStars} stars
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.tierStatus,
-                        { color: unlocked ? Palette.green : theme.textSecondary },
-                      ]}
-                    >
-                      {unlocked ? 'Unlocked' : `${remaining} to go`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-
-            <Button
-              label="Close"
-              variant="outline"
-              mode={mode}
-              onPress={() => setRoadmapOpen(false)}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={getFloatingTabBarClearance(insets.bottom) + Spacing.two}
+        onDismiss={hideToast}
+      />
     </View>
   );
 }
@@ -361,21 +372,10 @@ const styles = StyleSheet.create({
   },
   trackerStars: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h3,
+    fontSize: TypeScale.h1,
   },
-  rewardPreview: {
-    gap: Spacing.half,
-  },
-  rewardLabel: {
+  trackerHint: {
     fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.caption,
-  },
-  rewardName: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
-  },
-  rewardValue: {
-    fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.bodySmall,
   },
   sectionTitle: {
@@ -386,29 +386,6 @@ const styles = StyleSheet.create({
   emptyLine: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
-  },
-  codeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-  },
-  codeCardText: {
-    flex: 1,
-    gap: Spacing.half,
-  },
-  codeCardLabel: {
-    fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.caption,
-  },
-  codeValue: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h3,
-    letterSpacing: 1,
-  },
-  codeHint: {
-    fontFamily: FontFamily.body.regular,
-    fontSize: TypeScale.caption,
   },
   rewardRow: {
     flexDirection: 'row',
@@ -428,19 +405,30 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
   },
+  rewardRowMeta: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.caption,
+  },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: 1,
   },
   historyRowText: {
+    flex: 1,
+    minWidth: 0,
     gap: Spacing.half,
   },
   historyLabel: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.body,
+  },
+  historySubtitle: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
   historyDate: {
     fontFamily: FontFamily.body.regular,
@@ -449,75 +437,9 @@ const styles = StyleSheet.create({
   historyStars: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.body,
+    flexShrink: 0,
   },
   termsCard: {
     marginTop: Spacing.one,
-  },
-  roadmapLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.half,
-    marginTop: Spacing.one,
-  },
-  roadmapLinkText: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.bodySmall,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.four,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: Radii.lg,
-    borderWidth: 2,
-    padding: Spacing.four,
-    gap: Spacing.two,
-  },
-  modalTitle: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
-  },
-  modalSubtitle: {
-    fontFamily: FontFamily.body.medium,
-    fontSize: TypeScale.bodySmall,
-  },
-  roadmapTiers: {
-    gap: Spacing.one,
-    marginVertical: Spacing.one,
-  },
-  tierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.one,
-  },
-  tierDot: {
-    width: 32,
-    height: 32,
-    borderRadius: Radii.full,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tierText: {
-    flex: 1,
-    gap: Spacing.half,
-  },
-  tierName: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
-  },
-  tierReq: {
-    fontFamily: FontFamily.body.regular,
-    fontSize: TypeScale.caption,
-  },
-  tierStatus: {
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.caption,
   },
 });

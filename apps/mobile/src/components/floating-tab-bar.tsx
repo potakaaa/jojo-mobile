@@ -18,14 +18,20 @@ import { isNestedTabRoute } from './floating-tab-bar.helpers';
 
 // Cross-tree signal: lets a screen hide the floating tab bar while a full-screen
 // overlay (e.g. the checkout confirm drawer) is open, so the bar doesn't paint over
-// it. ponytail: tiny external store, not a context provider — one flag, one consumer.
-let tabBarHidden = false;
+// it. Reference-counted (a Set of request tokens), NOT a single shared boolean —
+// React Navigation keeps other tab-root screens (product/tracking/branch/history/
+// cart) mounted after they lose focus, and each one also calls
+// `useHideTabBarWhile(useIsFocused())`. With a single boolean, an unfocused
+// screen's own effect re-running (active flips to false) would unconditionally
+// force the flag back to "shown", racing with — and sometimes winning against —
+// the newly-focused screen's "hide" request, in tree-render order rather than
+// focus order. A losing screen never touches the request set at all, so it can
+// never clear someone else's still-active request.
+const hideRequests = new Set<object>();
 const tabBarListeners = new Set<() => void>();
-const getTabBarHidden = () => tabBarHidden;
+const getTabBarHidden = () => hideRequests.size > 0;
 
-function setTabBarHidden(next: boolean) {
-  if (tabBarHidden === next) return;
-  tabBarHidden = next;
+function notifyTabBarListeners() {
   tabBarListeners.forEach((listener) => listener());
 }
 
@@ -39,8 +45,14 @@ function subscribeTabBar(listener: () => void) {
 /** Hide the floating tab bar while `active` is true; auto-restores on unmount. */
 export function useHideTabBarWhile(active: boolean) {
   useEffect(() => {
-    setTabBarHidden(active);
-    return () => setTabBarHidden(false);
+    if (!active) return undefined;
+    const token = {};
+    hideRequests.add(token);
+    notifyTabBarListeners();
+    return () => {
+      hideRequests.delete(token);
+      notifyTabBarListeners();
+    };
   }, [active]);
 }
 

@@ -11,11 +11,12 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Terms & Privacy screen — the root of the top-level `(tabs)/terms` stack,
- * reached only from the Account tab today (`router.push('/(tabs)/terms')`). Shows
- * the shared `<ScreenHeader>` + the combined Terms & Privacy copy from the single
- * shared `features/legal` content module (identical to the pre-auth `(auth)/terms`
- * screen — no copy duplication). See `./_layout.tsx` for why this lives above the tabs.
+ * Terms & Conditions screen — the root of the top-level `(tabs)/terms` stack,
+ * reached from the Help screen today (`router.push('/(tabs)/terms')`). Shows the
+ * shared `<ScreenHeader>` + the Terms-and-Conditions copy from the single shared
+ * `features/legal` content module (filtered to `group="terms"`; identical to the
+ * pre-auth `(auth)/terms` screen — no copy duplication). See `./_layout.tsx` for
+ * why this lives above the tabs.
  */
 export default function TermsScreen() {
   const theme = useTheme();
@@ -41,7 +42,7 @@ export default function TermsScreen() {
         edge: the device inset arrives once via resolveTabBarClearance(…) below.
       */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScreenHeader title="Terms & Privacy" onBack={() => router.back()} mode={mode} />
+        <ScreenHeader title="Terms and Conditions" onBack={() => router.back()} mode={mode} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
@@ -56,7 +57,7 @@ export default function TermsScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <TermsPrivacyBody theme={theme} />
+          <TermsPrivacyBody theme={theme} group="terms" />
         </ScrollView>
       </SafeAreaView>
     </View>

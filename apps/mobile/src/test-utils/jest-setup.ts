@@ -36,6 +36,30 @@ jest.mock('react-native-reanimated', () => {
       },
     );
 
+  // `Easing` curves shape an animation's timing; jsdom never runs the animation,
+  // so every curve can be the identity function and every modifier can return
+  // the curve it was handed. Only the identities matter — `Easing.inOut(...)`
+  // must return something callable, and `Easing.ease` must be passable into it
+  // (tracking/index.tsx's LiveBadge does exactly `Easing.inOut(Easing.ease)`).
+  // Without this the whole object is `undefined` and any screen reading a curve
+  // off it throws at render, which is what previously made the tracking screen
+  // untestable under jest.
+  const identityEasing = (t: number) => t;
+  const easingModifier = (easing: unknown = identityEasing) => easing;
+  const Easing = {
+    ease: identityEasing,
+    linear: identityEasing,
+    quad: identityEasing,
+    cubic: identityEasing,
+    sin: identityEasing,
+    circle: identityEasing,
+    exp: identityEasing,
+    in: easingModifier,
+    out: easingModifier,
+    inOut: easingModifier,
+    bezier: () => ({ factory: () => identityEasing }),
+  };
+
   return {
     __esModule: true,
     default: {
@@ -53,8 +77,14 @@ jest.mock('react-native-reanimated', () => {
     useSharedValue: (value: unknown) => ({ value }),
     withTiming: passthrough,
     withSpring: passthrough,
+    // `withRepeat(animation, reps, reverse)` — the trailing args only describe
+    // playback, which jsdom never performs, so passing the animation straight
+    // through matches `withTiming`/`withSpring` above and leaves the shared
+    // value holding a concrete number rather than `undefined`.
+    withRepeat: passthrough,
     interpolate: passthrough,
     interpolateColor: passthrough,
+    Easing,
     // Common entering/exiting animation builders as chainable no-op configs.
     FadeIn: makeAnimationBuilder(),
     FadeOut: makeAnimationBuilder(),

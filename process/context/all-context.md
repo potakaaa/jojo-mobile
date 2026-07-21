@@ -1,15 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules — ✅ VERIFIED,
-EVL-confirmed green, committed, AND the AC5-AC7 Agent-Probe walkthrough was performed and passed by
-the user this session (the AC5 nav-entry blocker was fixed by a "See all" entry on the Home tab,
-commit `ab3d916`) — task folder archived to completed/; **issue #127 is now fully delivered, all 3
-phases ✅ VERIFIED**, see the admin-dashboard bullet below and §Scan Metadata; merged
-with DEAL-005 Phase 2 — Recurring Deal Schedules — ✅ VERIFIED, manual browser
-walkthrough passed (the one flagged issue was a user AM/PM data-entry error, not a defect), task
-folder archived to completed/, plus a small uncommitted verification-time admin recurring-state
-badge addition; merged with DEAL-005
-Phase 1 — Scheduled Deals — ✅ VERIFIED, EVL-green AND user manual walkthrough passed, task folder archived to completed/; merged with CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed (migrations renumbered 0018/0019 behind dev's 0017_fast_the_hood during the development merge); merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-21 (Order tab enhancement — mobile `(tabs)/order/index.tsx` visual/UX polish, CODE DONE + EVL-confirmed green, Agent-Probe walkthrough owed; merged with 2026-07-20 CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -68,198 +59,48 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 21-07-26, incl. DEAL-005 Phase 1 scheduled deals + Phase 2 recurring schedules + Phase 3 mobile surfacing + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 21-07-26, incl. Order tab enhancement + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
 
-- **DEAL-005 Phase 1 — Scheduled Deals: Simple Window (`packages/api` + `apps/admin`, issue #127,
-  delivered 20-07-26, branch `adm-deal-005-p2`, commit `5e9261b4`, ✅ VERIFIED — EVL-confirmed
-  green AND user manual walkthrough performed and passed, task folder archived):** adds an
-  optional time window to deal-products (`products.is_deal = true`) via a new `deal_schedules`
-  table (migration `0017`, purely additive — one `CREATE TABLE`, zero changes to `products`, no
-  backfill). **The semantic rule, durable:** zero `deal_schedules` rows = always live (the
-  no-backfill guarantee, AC3, Known-Gap banned); one or more rows = live only inside the
-  **union** of their `[starts_at, ends_at)` windows (half-open — `starts_at` inclusive, `ends_at`
-  exclusive), decided ONCE in a shared pure helper
-  (`packages/api/src/routes/lib/deal-schedule.ts`'s `isDealScheduleLive()`) and called by BOTH
-  enforcement points so they cannot disagree about a window's final instant — an inline
-  comparison re-derived at either call site would have been exactly this class of bug. The two
-  enforcement points are the `?isDeal=true` menu query (`branches.ts`, targeted second query per
-  a binding Execute-Agent Instruction, not an inline SQL join, so a naive `INNER JOIN` can never
-  silently exclude every zero-schedule-row deal) and order placement (`orders.ts`, re-checks
-  against `now` at placement time, not cart-add time, rejecting with a specific message when a
-  window closed in between). **Corrects the issue's own suggestion:** deal windows are real
-  timestamps (an admin picks "starts 6pm Friday"), NOT Manila calendar-day buckets —
-  `manilaDateRangeToUtc` (`routes/admin/lib/analytics-range.ts`) is the wrong tool here (it
-  buckets whole days for KPI aggregation and would reintroduce the exact midnight-rounding
-  off-by-one the issue worried about); the correct, already-proven convention is
-  `offers.start_at`/`end_at`'s real-instant comparison, reused verbatim. **Deliberately no
-  unique constraint on `deal_schedules.deal_product_id` and no Drizzle `.onConflictDoUpdate()`**
-  — Phase 1 writes 0-or-1 rows via a transactional select-then-branch replace at the API layer;
-  a unique constraint would have to be dropped again when Phase 2 (recurrence) adds multiple
-  rows per deal, which is exactly the second-migration cost this table shape was chosen to
-  avoid. **Deliberate FK divergence, recorded so a future reader doesn't "fix" it:**
-  `deal_schedules` uses `onDelete: 'cascade'` (pure metadata, garbage without its deal) while the
-  neighbouring `deal_components` uses `NO ACTION` (describes what the deal IS, protected against
-  a hard delete) — since product deletes are soft today, neither fires in practice. **No third
-  read path exists** (verified by direct source read, not assumed): the public `GET /deals`,
-  `GET /deals/:id`, and the `GET /api/branches/:id` inline handler in `packages/api/src/index.ts`
-  all read the legacy `offers` table, never `products.is_deal`; `apps/mobile`'s
-  `useDealProduct()` is a pure client-side derivation over `useDealProducts()`, which calls the
-  same `?isDeal=true` menu route as enforcement point 1 — two enforcement points is the complete
-  set. **D2 (locked): out-of-window = HIDDEN, not annotated** — no window data reaches the
-  customer wire contract (`GET /deals`, `GET /deals/:id`, the menu response's deal-product
-  shape), so `apps/mobile` needed zero changes this phase. Consequence recorded: this makes issue
-  #127's Phase 3 (mobile "Starts Friday" affordances) a **contract change**, not additive, when
-  it is eventually built. **D1 (locked): proceeded despite the issue's stated dependency on
-  #104** — the schema and its enforcement point survive #104 regardless of how it resolves
-  branch-scoping. Admin surface: `routes/admin/deals.ts` CRUD gained optional
-  `startsAt`/`endsAt` (mirrors `offers.ts`'s `endAt <= startAt` 400-reject convention, but both
-  fields independently nullable here); `apps/admin`'s create wizard Step 1 and the deal manage
-  page (`deals.$dealId.tsx`) both gained the shared `DateTimeField` component (reusing
-  `offer-form.tsx`'s `localNow`/`min`/`endMin` pattern verbatim); a Scheduled/Live/Expired badge
-  extends `apps/admin/src/lib/entity-status.ts`'s existing `dealStatus`/`windowPhase`. **The
-  manage-page window fields are DERIVED from the loaded deal, never seeded into local `useState`**
-  — deliberately avoiding the STAFF-005 "react-query cache-hit revisit breaks useState +
-  object-identity seed guards" bug class (already recorded in this file's STAFF-005 entry); this
-  is the second occurrence of that pattern being designed around, cross-referenced rather than
-  duplicated. Gates, independently EVL-confirmed by a separately spawned tester (not
-  execute-agent's self-report): API 505→547 tests, admin 111→127 tests, both typechecks clean,
-  `pnpm format:check` clean, migration `0017` applies cleanly. All 11 ACs Fully-Automated and
-  passing (AC3, AC6 both explicitly Known-Gap-banned by the plan's own Verification Evidence
-  table and honored — no Known-Gap used anywhere in this plan). The optional user manual
-  walkthrough (empty-window/future-start-hidden+Scheduled/past-end-hidden+Expired/
-  in-window-visible+Live/cleared-window-visible/in-cart-expiry-rejection/inverted-window-wizard-
-  block) was performed and passed this session — unlike several recent phases in this program,
-  no Agent-Probe residual is owed. Phases 2 (`deal_schedules` recurrence) and 3 (mobile
-  surfacing) of issue #127 remain unbuilt and out of scope — not planned by this pass. Delivered
-  by:
-  `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/deal-005-scheduled-deals_PLAN_20-07-26.md`
-  (+ co-located `deal-005-scheduled-deals_REPORT_20-07-26.md` in the same task folder, now
-  archived).
-
-- **DEAL-005 Phase 2 — Recurring Deal Schedules (`packages/api` + `apps/admin`, issue #127,
-  delivered 20-07-26, branch `adm-deal-005-p2`, commit `c189f16`, ✅ VERIFIED 21-07-26 — manual
-  browser walkthrough passed, task folder archived):** adds day-of-week +
-  time-of-day recurrence on top of Phase 1's absolute window, additively on the same
-  `deal_schedules` row (migration `0018` — 3 nullable columns, zero backfill, every existing
-  Phase 1 row unaffected). **D6 (durable, supersedes issue #127's own stated resolution rule):
-  recurrence NARROWS the row it sits on** — one row means "within this absolute window, live only
-  on these days, only during this time-of-day range." Union-across-rows (Phase 1's existing
-  semantic) is unchanged, which is also how issue #127's "overlapping schedule rows produce one
-  continuous live period" AC is satisfied for free. **The single hardest correctness fact of this
-  phase, and it INVERTS Phase 1's own conclusion — both halves must be remembered together:**
-  Phase 1 correctly AVOIDED Manila timezone conversion for the absolute window (real instants,
-  `manilaDateRangeToUtc` would have been wrong there); Phase 2 REQUIRES it, because day-of-week
-  and time-of-day are inherently Manila wall-clock concepts and the stored instant is UTC —
-  Manila Saturday 07:00 is Friday 23:00 UTC, so a host-local `getDay()`/`getHours()` fires on the
-  wrong calendar day for any deal starting before 08:00 Manila. Fixed by one new helper,
-  `toManilaWallClock()` in `packages/api/src/routes/lib/deal-schedule.ts`, called exactly once
-  inside the ALREADY-SHARED `isDealScheduleLive()` — both enforcement points (`branches.ts` menu
-  read, `orders.ts` placement) needed **zero code changes**, since they already delegate
-  exclusively to that one helper (D6's strongest justification). Pure epoch-plus-fixed-+08:00-
-  offset arithmetic, UTC accessors only, no DST (reuses the fixed-offset FACT already documented
-  in `analytics-range.ts`, never that file's own date-bucketing helper, which buckets whole days
-  and would be wrong here). **D5: overnight spans (e.g. 22:00–02:00) are REJECTED at the API**,
-  not wrapped — an admin splits them into two rows, keeping the live-check a plain same-day
-  string comparison (`"HH:mm"`, half-open `<=`/`<`) with no wrap case. **Headline test-infra
-  finding, recorded in full in `process/context/tests/all-tests.md`: the TZ pin
-  (`packages/api/vitest.config.ts`'s new `env: { TZ: 'UTC' }`) is a real, load-bearing gate, not
-  ceremony.** This dev machine's own system timezone is `Asia/Manila`; a deliberately-broken
-  host-local `toManilaWallClock()` passed the entire 601-test suite with TZ unpinned (every
-  Manila-offset assertion silently vacuous) and failed 16 tests with the pin on. **A second
-  no-backfill guarantee, mutation-verified:** a row with all-three-recurrence-columns-null
-  behaves exactly as Phase 1 — forcing a null-recurrence row down the recurrence path turns 2 of
-  3 regression tests red. **A genuinely new gotcha found this phase: `writeDealSchedule`'s
-  emptiness check must cover all FIVE window-related fields, not just the two absolute bounds** —
-  Phase 2 created a legal shape Phase 1 never anticipated ("every Friday 2–5pm, forever" has NO
-  absolute bounds), and a bounds-only emptiness check would have silently DELETED such a row;
-  regression-tested. **Scope narrowing (E3, locked during VALIDATE, filed as a backlog note): the
-  admin write path stays single-row-replace-only for this plan** — an admin can author one
-  recurrence rule per deal, not "lunch AND dinner" as two independent rows, even though the
-  underlying `isDealScheduleLive()` union-of-rows logic already supports it and is proven at the
-  pure-function level. A real multi-row admin authoring flow is a legitimate future phase. Admin
-  gained a new standalone `DayOfWeekPicker` component (Sun–Sat toggle group, no prior precedent),
-  reused `ClockDial` directly for time-of-day input (exact `"HH:mm"` value-contract match, no new
-  time-picker built), and a `recurring: boolean` field on `dealStatus()`'s return shape, rendered
-  as an additional badge in BOTH of its only two consumers (`deal-list.tsx`,
-  `deals.$dealId.tsx` — E4, binding; without this the flag would compute correctly and pass its
-  own unit test while being invisible in the running app). Gates, independently EVL-confirmed:
-  API 547→601 tests (+54), admin 127→157 tests (+30), both typechecks/build/format clean,
-  migration `0018` applies cleanly. All 12 ACs Fully-Automated and passing (AC1 Manila-correctness
-  and AC4 no-backfill both explicitly Known-Gap-banned by the plan's own contract and honored — no
-  Known-Gap used anywhere). **The manual browser walkthrough was performed and PASSED 21-07-26** —
-  the day-of-week picker, time inputs, recurring badge, and manage-page edit/clear flow were all
-  exercised in a real browser. The one issue initially flagged (a recurring deal appearing "live"
-  past its stated end time) was traced to a **user data-entry AM/PM mixup**, not a defect — the
-  deal was in fact still inside its configured window; server enforcement
-  (`resolveLiveDealProductIds` in `branches.ts`, `orders.ts` placement, `isDealScheduleLive`) was
-  independently re-confirmed correct by direct code + live DB inspection during the walkthrough
-  session. **Verification-time addition, UNCOMMITTED as of this pass:** a small cosmetic-only
-  real-time "Active now"/"Not active now" recurring-state badge in `apps/admin`
-  (`entity-status.ts`'s new `recurringActiveNow` helper, populated only when the primary status
-  tone is `success`; rendered in both `deal-list.tsx` and `deals.$dealId.tsx`, matching E4's
-  "both consumers" invariant) — additive, zero API/schema/migration surface touched, admin suite
-  157→163 (+6), typecheck/format clean. Phase 3 (mobile "Starts Friday" surfacing) remains
-  unbuilt, out of scope, already tracked; a related mobile stale-cache observation from this
-  session (recurring cards linger past a window's daily end time until refocus — server-correct,
-  client-cache-only) was filed as a backlog note for Phase 3 to decide, not fixed here (Phase 2 is
-  deliberately mobile-schedule-blind by design, D2):
-  `process/features/admin-dashboard/backlog/deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`. Two
-  backlog notes from the 20-07-26 pass remain relevant:
-  `process/features/admin-dashboard/backlog/deal-005-one-window-per-deal_NOTE_20-07-26.md` (the E3
-  write-path scope gap) and
-  `process/features/admin-dashboard/backlog/menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md`
-  (DEAL-005's badges close the time-window-invisibility half of that gap; the
-  component-availability/zero-component halves remain open). Delivered by:
-  `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/deal-005-recurring-schedules_PLAN_20-07-26.md`
-  (+ co-located `deal-005-recurring-schedules_REPORT_20-07-26.md` in the same task folder, now
-  archived).
-
-- **DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules (`packages/api` + `packages/utils` +
-  `packages/types` + `packages/ui` + `apps/mobile`, issue #127, delivered 21-07-26, branch
-  `adm-deal-005-p2`, commit `f0685f9` (source) + `83fc7f4` (SPEC+PLAN) + `ab3d916` (nav-entry fix),
-  ✅ VERIFIED — EVL-confirmed green, committed, AND the AC5-AC7 Agent-Probe walkthrough performed
-  and passed by the user, task folder archived to `completed/`. **This closes issue #127 —
-  Phases 1, 2, and 3 are now all ✅ VERIFIED.**):** annotates a CURRENTLY-live
-  scheduled deal (Phase 1 absolute window and/or Phase 2 recurrence) with a read-only days/hours
-  caption — "Available Mon–Fri, 8:00 AM – 8:25 PM" (recurring) or "Available until Jul 25, 6:00 PM"
-  (absolute-only) — on the Deals tab list, the Home strip, and Deal Details. A deal with zero
-  `deal_schedules` rows shows nothing extra, same as today. **Nothing about which deals are shown
-  changes** — the server's live/visible filter (`branches.ts`, `orders.ts`) is untouched by design;
-  this phase is purely an additive read-side annotation. New sibling `resolveLiveDealSchedules()`
-  in `deal-schedule.ts` reuses the existing row-fetch via a shared private helper;
-  `resolveLiveDealProductIds()` (the function `orders.ts`'s write path calls) is byte-unchanged —
-  only `branches.ts`'s read-path call site was switched. New additive wire field,
-  `schedule?: ApiDealScheduleWindow[]`, on the `?isDeal=true` menu response (`serializers.ts`), key
-  OMITTED entirely for always-live/zero-row deals and the regular (non-deal) menu — verified by a
-  real automated wire-shape assertion, not just formatter-level tests. New pure formatter
-  `packages/utils/src/deal-schedule-display.ts` (`formatDealScheduleSummary`) does **zero** Manila
-  timezone math on `recurDays`/`recurStartTime`/`recurEndTime` (already Manila wall-clock, per
-  Phase 2's own design) — the one place real Manila math is needed is `endsAt` (a raw UTC instant),
-  formatted via the same fixed `+08:00`-shift-then-`getUTC*` technique as Phase 2's
-  `toManilaWallClock()`, reused not reinvented. Imports the shared `DealScheduleWindow` interface
-  from `@jojopotato/types` (a VALIDATE-time Plan Update, P1 — `packages/utils` already depends on
-  `@jojopotato/types` in 4 other files, so the plan's original "duplicate the type" premise was
-  corrected before EXECUTE). New `DealCard.scheduleSummary?: string` prop — deliberately NOT the
-  existing `validUntil` prop, which is load-bearing for the unrelated legacy `offers`-model deals
-  section on `(tabs)/branch/index.tsx` (reusing it would have produced a double-labeled
-  "Valid until: Available Mon–Fri, …" string). Gates, independently EVL-confirmed: `packages/utils`
-  12/12 new, `packages/ui` deal-card 4/4 new, `packages/api` full suite 604/604 (+3 new wire-shape
-  assertions), 5 typechecks clean, `pnpm format:check` clean, zero regressions. All 6
-  Fully-Automated ACs (AC1-AC4, AC8, AC9) green; Known-Gap unused anywhere. **New finding, found
-  and fixed same session:** while scoping the AC5 walkthrough, confirmed by direct grep that the
-  standalone Deals-tab list screen (`(tabs)/deals/index.tsx`) had **no reachable navigation entry
-  point** anywhere in the app — `router.push('/(tabs)/deals')` appeared only in code comments,
-  never in an actual call site; the Home strip navigated straight to Deal Details, bypassing the
-  list screen entirely. This pre-existing gap (not introduced by this phase) blocked AC5 — fixed
-  by adding a "See all" entry to the Home tab's "Deals & offers" header (commit `ab3d916`, links to
-  `/(tabs)/deals`, uses `theme.tint`, no hardcoded color). Backlog note
-  `process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md` is now
-  marked RESOLVED. **The AC5-AC7 Agent-Probe walkthrough (Deals tab list, Home strip, Deal
-  Details — light + dark) was performed and PASSED by the user this session** — 9/9 ACs met, no
-  residual owed. Task folder archived to `completed/`. Delivered by:
-  `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md`
-  (+ co-located SPEC + `deal-005-mobile-surfacing_REPORT_21-07-26.md` in the same task folder, now
-  archived).
+- **Order tab visual/UX enhancement (`order-tab-enhance`, `packages/ui` + `apps/mobile`, delivered
+  21-07-26, branch `feat/product-ux-enhance`, task folder
+  `process/general-plans/active/order-tab-enhance_21-07-26/`, CODE DONE + EVL-confirmed green,
+  NOT YET VERIFIED — 1 Agent-Probe walkthrough owed, stays in `active/`, uncommitted as of this
+  delta):** presentation/UX-only polish of the branch-scoped menu-browse Order tab
+  (`(tabs)/order/index.tsx`) — no data/API/cart-logic changes. The header is now a real
+  `ScreenHeader` composition with a cart+history icon row and a live `Badge` overlay
+  (`useCart().itemCount`, hidden at 0); a new category quick-nav chip bar (Order-tab-local,
+  `features/menu/components/category-quick-nav.tsx`, mirrors `BranchSwitcher`'s safe
+  horizontal-ScrollView-inside-vertical-ScrollView pattern) appears only when a branch has more
+  than 3 menu categories and scrolls to the tapped section; the loading state is a menu-shaped
+  skeleton instead of a bare spinner; error/empty states now use the shared `EmptyState`
+  (Retry → `refetch()`; empty-menu → scroll back to the branch switcher). **New durable
+  `packages/ui` primitive: `Skeleton`** (`packages/ui/src/components/skeleton.tsx`, exported from
+  the barrel) — a themed, static-fill (non-reanimated, to stay testable per the known jest
+  layout-animation gap) rectangle following `badge.tsx`'s file shape; future loading-state work
+  anywhere in the app should reuse this rather than a bespoke placeholder. **Durable fact:
+  `ProductCard`'s footer glyph is no longer an ambiguous `+`** — it is now an `Ionicons
+  chevron-forward` view/navigation affordance with a queryable `testID="product-card-affordance"`
+  handle; the change is additive/visual-only (prop contract and tap behavior unchanged), confirmed
+  non-breaking across all 3 real consumers (Home `product-grid.tsx`, Order/Deals via
+  `category-section.tsx`, `component-showcase.tsx`) — future work should not reintroduce a `+`-style
+  glyph on this card, since it was specifically resolved as confusing (customers couldn't tell if
+  it added to cart or opened details). `CategorySection` gained an additive optional
+  `onLayoutY?: (y) => void` prop for the quick-nav's scroll-offset tracking — omitting it is a
+  no-op, no existing caller affected. Final gates (independently EVL-reconfirmed by a spawned
+  vc-tester, not taken on execute-agent's own report): `packages/ui` test 32 suites/113 pass +
+  typecheck clean + check-tokens OK + lint clean; `apps/mobile` test vitest 65/65 + jest 27
+  suites/105 pass + typecheck clean (confirms no NAV-005 typed-route errors on this branch) +
+  `guard:theme-mode` OK (32 components/212 call sites/0 violations) + lint 0 errors;
+  `format:check` clean. All 10 automated SPEC acceptance criteria (AC1–AC10) scored **met**; the
+  sole AC11 (on-device light/dark polish + quick-nav scroll landing + skeleton feel) is Agent-Probe
+  by design — no RN E2E/navigation runner exists project-wide (same standing gap as CART-003,
+  MENU-003, MENU-004, mobile-dark-mode-audit, STAFF-005). Per the plan's own Phase Completion
+  Rules, the task folder stays in `active/` until the user performs that walkthrough. All 10
+  touched/new files remain **uncommitted** on `feat/product-ux-enhance` as of this delta — the
+  branch/commit strategy (direct commit vs PR) was deliberately left to the user's decision, not
+  assumed. Delivered by:
+  `process/general-plans/active/order-tab-enhance_21-07-26/order-tab-enhance_PLAN_21-07-26.md`
+  (+ co-located SPEC + REPORT in the same task folder).
 
 - **Cart server-side persistence (CART-003 #99, `packages/api` + `apps/mobile` + `packages/types`,
   delivered 20-07-26, task folder
@@ -1780,106 +1621,34 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules, FINAL
-  UPDATE PROCESS closeout — the AC5-AC7 Agent-Probe walkthrough was performed and PASSED by the
-  user this session. The AC5 nav-entry blocker (the standalone Deals-tab list screen had no
-  reachable navigation entry point anywhere in the app) was fixed by commit `ab3d916` — a "See
-  all" entry added to the Home tab's "Deals & offers" header, linking to `/(tabs)/deals`
-  (`theme.tint` token, no hardcoded color; mobile typecheck + prettier clean) — which unblocked the
-  full walkthrough. All 9 ACs (6 Fully-Automated + 3 Agent-Probe) are now met. **This closes issue
-  #127 — Phases 1, 2, and 3 are all ✅ VERIFIED.** Stamped the plan Status line and Phase
-  Completion Rules ✅ VERIFIED; updated the REPORT's AC status table (9/9 met) and closeout packet;
-  marked the `deals-list-screen-no-nav-entry_NOTE_21-07-26.md` backlog note RESOLVED; updated this
-  file's header, the DEAL-005 Phase 3 implementation-state bullet, and the deal-scheduling
-  routing-table row (now pointing at all 3 archived Phase folders). Archived the task folder
-  `active/deal-005-mobile-surfacing_21-07-26/` → `completed/`. Ran `vc-audit-context` (Tier-1 gate
-  for context-doc edits) — result recorded below. No commit was made by this pass (left for the
-  user to commit). HEAD this delta: `cdab2b6`, on top of `ab3d916` (nav-entry fix) and `f0685f9`/
-  `83fc7f4` (Phase 3 source/docs); before that, `c24e90d`/`5ae3b25` (Phase 2's VERIFIED close-out +
-  the recurring-state badge — see the Phase 2 delta below for that history).
-
-  **Prior delta (superseded detail, kept for history):** the same-day earlier UPDATE PROCESS pass
-  (HEAD `83fc7f4`/`cdab2b6` at that time) was a doc-only reconciliation that left Phase 3 at CODE
-  DONE, NOT VERIFIED, with AC5 blocked — see git history for that intermediate state; this final
-  delta supersedes it entirely.)
-- Previous delta: 2026-07-21 (DEAL-005 Phase 2 — Recurring Deal Schedules, VERIFICATION UPDATE PROCESS
-  — the owed manual browser walkthrough was performed and PASSED this session (day-of-week
-  picker, time inputs, recurring badge on both consumers, manage-page edit/clear). The one issue
-  initially flagged — a recurring deal appearing live past its stated end time — was traced to a
-  **user data-entry AM/PM mixup**, not a defect; server enforcement (`resolveLiveDealProductIds`
-  in `branches.ts`, `orders.ts` placement, the pure `isDealScheduleLive` helper) was independently
-  re-confirmed correct by direct code inspection plus a live DB query during the session. Phase 2
-  is now ✅ VERIFIED — task folder archived `active/` → `completed/`. A small, additive,
-  UNCOMMITTED verification-time addition also landed this session: a real-time "Active now"/"Not
-  active now" recurring-state badge in `apps/admin` (`entity-status.ts`'s new
-  `manilaWallClock`/`recurringActiveNow` helpers, populated only when the primary status tone is
-  `success`; rendered in both `deal-list.tsx` and `deals.$dealId.tsx` per E4's "both consumers"
-  invariant) — zero API/schema/migration surface touched, admin suite 157→163 (+6), typecheck/
-  format clean; not independently EVL-reconfirmed by a separate tester (small cosmetic addition,
-  not a full EXECUTE pass). This addition is uncommitted in the working tree — Phase 2's own
-  source remains committed at `c189f16` from the prior session; the user will commit the badge
-  addition separately. A mobile-side observation from this session's walkthrough (recurring deal
-  cards linger past a window's daily end time until a manual refocus — server-correct, client
-  stale-react-query-cache only) was filed as a new backlog note rather than fixed, since Phase 2
-  is deliberately mobile-schedule-blind by design (D2):
-  `process/features/admin-dashboard/backlog/deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`.
-  Updated this file's header, the DEAL-005 Phase 2 implementation-state bullet (✅ VERIFIED, badge
-  addition recorded), and the routing-table row (both Phase 1 and Phase 2 now point at
-  `completed/`). Appended an addendum to
-  `deal-005-recurring-schedules_REPORT_20-07-26.md` and stamped the plan Status/Phase Completion
-  Rules ✅ VERIFIED. No commit was made by this pass (doc-only + archival move; the badge addition
-  and its own commit remain the user's to make). HEAD unchanged from the prior delta: `c189f16`
-  (working tree carries the uncommitted badge addition + the new backlog note on top).)
-- Previous delta: 2026-07-20 (DEAL-005 Phase 2 — Recurring Deal Schedules UPDATE PROCESS — doc-only
-  reconciliation, source already committed by the user before this pass began (commit `c189f16`
-  on branch `adm-deal-005-p2`). Phase 2 of issue #127 added day-of-week + time-of-day recurrence
-  additively on the existing `deal_schedules` table (migration `0018`, 3 nullable columns, zero
-  backfill) — recurrence narrows the row it sits on (D6), union-across-rows unchanged. The
-  headline finding: day-of-week/time-of-day are Manila wall-clock concepts (inverting Phase 1's
-  own "avoid Manila conversion" conclusion for the absolute window), fixed by one
-  `toManilaWallClock()` helper called once inside the already-shared `isDealScheduleLive()` — both
-  enforcement points needed zero code changes. The TZ-pin control experiment (dev host's own
-  system timezone is Asia/Manila; unpinned suite passes vacuously against a broken host-local
-  implementation, pinned suite correctly fails 16 tests) is recorded in
-  `process/context/tests/all-tests.md` as a durable, generalizable test-infra fact. All 12 ACs
-  Fully-Automated and passing, Known-Gap explicitly banned for AC1 (Manila correctness) and AC4
-  (no-backfill) and honored — none used anywhere in this plan. Gates independently EVL-confirmed:
-  API 547→601, admin 127→157, both typechecks/build/format clean, migration applies cleanly.
-  Corrected the EXECUTE commit message's TZ-defeat test count ("12" → EVL-measured "16", a
-  scope-of-count difference, not a different experiment — unlike Phase 1's own count correction,
-  which was two genuinely different mutations). **Unlike Phase 1, no manual browser walkthrough
-  has been performed this session** — the plan is held at CODE DONE + EVL-green, not stamped
-  VERIFIED; task folder stays in `active/`. Wrote
-  `deal-005-recurring-schedules_REPORT_20-07-26.md`; stamped the plan Status line and Phase
-  Completion Rules section with the CODE-DONE/walkthrough-owed note (not VERIFIED); added an
-  implementation-state bullet and updated the routing-table row here. Filed 1 new backlog note
-  (`deal-005-one-window-per-deal_NOTE_20-07-26.md` — the E3 single-row admin write-path scope
-  gap) and amended 1 existing backlog note in place
-  (`menu-003-admin-invisible-deal-indicator_NOTE_17-07-26.md` — DEAL-005's badges close the
-  time-window-invisibility half of that gap; component-availability/zero-component halves remain
-  open). Did NOT archive the task folder — stays in `active/` pending the owed walkthrough. HEAD
-  this delta: `c189f16`.)
-- Previous delta: 2026-07-20 (DEAL-005 Phase 1 — Scheduled Deals UPDATE PROCESS — doc-only
-  reconciliation, source already committed by the user before this pass began (commit
-  `5e9261b4` on branch `adm-deal-005-p2`). Phase 1 of issue #127 added a nullable
-  `[starts_at, ends_at)` window on deal-products via a new additive `deal_schedules` table
-  (migration `0017`), enforced identically at the `?isDeal=true` menu query and order placement
-  via one shared pure helper (`isDealScheduleLive()`), plus admin CRUD/UI/badge. All 11 ACs
-  Fully-Automated and passing, Known-Gap explicitly banned for AC3 (no-backfill) and AC6
-  (window-closed-at-placement) and honored — none used anywhere in this plan. Gates
-  independently EVL-confirmed: API 505→547, admin 111→127, both typechecks clean, format clean,
-  migration applies cleanly. Corrected the EXECUTE report's test-count wording (its "6
-  tests"/"3 pre-existing" mutation-check claim and the EVL tester's independently-measured "14
-  tests across 4 files" are two different mutations against the same AC3 check, not a
-  discrepancy — both non-vacuous). **Uniquely for this program: the user's manual admin-UI
-  walkthrough was performed and passed this session, so the plan reached ✅ VERIFIED (not merely
-  CODE DONE) with zero owed Agent-Probe residual** — unlike the SSR route-guard and STAFF-005
-  deltas immediately below, which both stayed in `active/` pending exactly that kind of
-  walkthrough. Wrote `deal-005-scheduled-deals_REPORT_20-07-26.md`; stamped the plan Status line
-  and Phase Completion Rules section ✅ VERIFIED; added an implementation-state bullet and a
-  routing-table row here. No new backlog notes filed (zero Known-Gap rows, zero new gaps found;
-  Phases 2/3 of issue #127 are already-tracked future work, not new debt). Archived the task
-  folder `active/` → `completed/`. HEAD this delta: `5e9261b4`.)
+- Last delta: 2026-07-21 (Order tab enhancement UPDATE PROCESS — mobile
+  `(tabs)/order/index.tsx` visual/UX polish, `packages/ui` + `apps/mobile`. CODE DONE,
+  EVL-confirmed green by an independently spawned vc-tester (`packages/ui` test 32 suites/113
+  pass + typecheck + check-tokens + lint clean; `apps/mobile` test vitest 65/65 + jest 27
+  suites/105 pass + typecheck clean + `guard:theme-mode` OK 32 components/212 call sites/0
+  violations + lint 0 errors; `format:check` clean). New durable `packages/ui` `Skeleton`
+  primitive (static-fill, `badge.tsx`-shaped) for future loading-state reuse; `ProductCard`'s
+  ambiguous `+` glyph permanently resolved to an `Ionicons chevron-forward` view affordance with a
+  `testID="product-card-affordance"` query handle — confirmed non-breaking across all 3 real
+  consumers. New Order-tab-local `category-quick-nav.tsx` chip bar (>3-category threshold);
+  `CategorySection` gained an additive optional `onLayoutY` prop. All 10 automated SPEC ACs
+  (AC1–AC10) scored met; AC11 (on-device light/dark walkthrough) is the sole unmet criterion —
+  Agent-Probe by design, same standing no-RN-runner gap as every prior UI-polish plan. 3
+  validate-contract CONCERNs (E1 testID handle, E2 guard:theme-mode hard-green treatment, E3 AC10
+  proof reworded) all resolved during EXECUTE as written, with 3 minor documented in-blast-radius
+  deviations (stronger AC8 query strategy, `useTheme()` in `CategoryQuickNav` matching
+  `BranchSwitcher` precedent, dead-style cleanup). No new backlog notes filed — AC11 is already the
+  named standing gap tracked in `all-tests.md` Known Gaps. Task folder stays in `active/` — the
+  AC11 walkthrough is owed by the user per the plan's own Phase Completion Rules. Working tree at
+  this delta (uncommitted, not yet committed by this UPDATE PROCESS pass): 5 modified files
+  (`apps/mobile/src/app/(tabs)/order/index.tsx`,
+  `apps/mobile/src/features/menu/components/category-section.tsx`,
+  `packages/ui/src/components/__tests__/product-card.test.tsx`,
+  `packages/ui/src/components/product-card.tsx`, `packages/ui/src/index.ts`) + 5 new files
+  (`apps/mobile/src/app/(tabs)/order/__tests__/index.test.tsx`,
+  `apps/mobile/src/features/menu/components/category-quick-nav.tsx` + its `__tests__/`,
+  `packages/ui/src/components/skeleton.tsx` + its `__tests__/`) + the new task folder; current
+  branch at this delta: `feat/product-ux-enhance`.)
 - Previous delta: 2026-07-20 (CART-003 #99 UPDATE PROCESS — cart server-side persistence,
   `packages/api` + `apps/mobile` + `packages/types`. CODE DONE, EVL-confirmed green by an
   independently spawned vc-tester (API suite 505→520 incl. 15 new cart tests, mobile vitest
