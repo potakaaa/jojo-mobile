@@ -28,9 +28,18 @@ const mockUseNotifications = jest.mocked(useNotifications);
 function setup(setMarketingOptIn: jest.Mock) {
   mockUseNotifications.mockReturnValue({
     notifications: [],
+    unreadCount: 0,
     markRead: jest.fn(),
+    markAllRead: jest.fn(),
     marketingOptIn: false,
     setMarketingOptIn,
+    // notif-delete-pagination — the screen now destructures these 5 fields; the
+    // mock must provide behavior-preserving stubs (this suite only exercises the
+    // marketing-toggle path, not delete/pagination).
+    deleteNotification: jest.fn(),
+    hasNextPage: false,
+    fetchNextPage: jest.fn(),
+    isFetchingNextPage: false,
   } as unknown as ReturnType<typeof useNotifications>);
 }
 

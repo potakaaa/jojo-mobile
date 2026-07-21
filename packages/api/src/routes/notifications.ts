@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -15,23 +15,53 @@ import { serializeNotification } from './lib/serializers';
  */
 export const notificationsRouter: Router = Router();
 
-const NOTIFICATIONS_LIST_LIMIT = 100;
+// Cursor-pagination bounds (notif-delete-pagination). Mirrors `orders.ts`'s
+// `DEFAULT_HISTORY_LIMIT`/`MAX_HISTORY_LIMIT` clamp style. The old flat
+// `NOTIFICATIONS_LIST_LIMIT = 100` cap is retired now the client paginates.
+const DEFAULT_NOTIFICATIONS_LIMIT = 10;
+const MAX_NOTIFICATIONS_LIMIT = 50;
 
 /**
- * `GET /notifications` → `{ notifications: AppNotification[] }`.
- * The caller's OWN rows only, newest-first, capped at `NOTIFICATIONS_LIST_LIMIT`
- * (the mobile client renders a flat list with no pagination UI, so a fixed cap —
- * not cursor pagination like `GET /orders` — is the right-sized bound here).
+ * `GET /notifications` → `{ notifications: AppNotification[], nextCursor, unreadCount }`.
+ * The caller's OWN rows only, newest-first, cursor-paginated on `created_at`
+ * (mirrors `GET /orders`). `unreadCount` is an INDEPENDENT server-side count
+ * (`WHERE read_at IS NULL`), NOT derived from the returned page — so the bell
+ * badge stays accurate regardless of scroll position.
  */
 notificationsRouter.get('/', async (req, res) => {
   const userId = req.user!.id;
+
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(Math.max(Math.trunc(limitRaw), 1), MAX_NOTIFICATIONS_LIMIT)
+    : DEFAULT_NOTIFICATIONS_LIMIT;
+
+  const cursor = typeof req.query.cursor === 'string' ? new Date(req.query.cursor) : null;
+  const hasCursor = cursor !== null && !Number.isNaN(cursor.getTime());
+
+  const whereClause = hasCursor
+    ? and(eq(notifications.user_id, userId), lt(notifications.created_at, cursor))
+    : eq(notifications.user_id, userId);
+
   const rows = await db
     .select()
     .from(notifications)
-    .where(eq(notifications.user_id, userId))
+    .where(whereClause)
     .orderBy(desc(notifications.created_at))
-    .limit(NOTIFICATIONS_LIST_LIMIT);
-  res.json({ notifications: rows.map(serializeNotification) });
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? page[page.length - 1]!.created_at.toISOString() : null;
+
+  // Independent unread count — the true total for this user, never page-derived.
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(notifications)
+    .where(and(eq(notifications.user_id, userId), isNull(notifications.read_at)));
+  const unreadCount = countRow?.count ?? 0;
+
+  res.json({ notifications: page.map(serializeNotification), nextCursor, unreadCount });
 });
 
 const deviceTokenSchema = z.object({
@@ -126,6 +156,35 @@ notificationsRouter.patch('/:id/read', async (req, res) => {
   }
 
   res.json({ notification: serializeNotification(updated) });
+});
+
+/**
+ * `DELETE /notifications/:id` — hard-delete the caller's own notification.
+ * 404 (never 403) on a malformed id, a wrong-owner row, or an already-gone row,
+ * so the existence of another user's notification is never leaked (mirrors
+ * `PATCH /:id/read` verbatim — deliberately NOT cart's 403-on-wrong-owner). No
+ * soft-delete column exists; this is a permanent removal. Method-distinct from
+ * `/read-all` and `/:id/read`, so no Express path-collision concern.
+ */
+notificationsRouter.delete('/:id', async (req, res) => {
+  const userId = req.user!.id;
+  const id = String(req.params.id);
+  if (!z.string().uuid().safeParse(id).success) {
+    res.status(404).json({ error: 'Notification not found' });
+    return;
+  }
+
+  const [row] = await db.select().from(notifications).where(eq(notifications.id, id));
+  if (!row || row.user_id !== userId) {
+    res.status(404).json({ error: 'Notification not found' });
+    return;
+  }
+
+  await db
+    .delete(notifications)
+    .where(and(eq(notifications.id, id), eq(notifications.user_id, userId)));
+
+  res.json({ ok: true });
 });
 
 export default notificationsRouter;
