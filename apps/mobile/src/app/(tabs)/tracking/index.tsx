@@ -1,6 +1,6 @@
-import { OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
+import { Button, ConfirmDialog, OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { useCompleteOrder } from '@/features/orders/hooks/use-complete-order';
 import { isTerminalStatus, useOrderQuery } from '@/features/orders/hooks/use-order-query';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -60,6 +61,21 @@ export default function OrderTrackingScreen() {
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error, refetch } = useOrderQuery(orderId);
+  const completion = useCompleteOrder();
+
+  /*
+    The customer's own "picked up" confirmation. Unlike the staff button
+    (`(staff)/order-detail/[orderId].tsx`), which fires immediately, this one is
+    gated behind a ConfirmDialog. That inconsistency is DELIBERATE, not an
+    oversight — please don't "fix" it: `completed` is terminal with no exit in
+    the state machine, and a customer taps this unprompted on their own phone
+    with no one to undo a mistap. Staff act on a shared device with a colleague
+    and a counter queue as context.
+
+    `useState` sits above the loading/error early returns below — this component
+    has three return branches and hooks must run on every one (Rules of Hooks).
+  */
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   /*
     Hide the floating tab bar on this screen. Tracking is a leaf screen you enter
@@ -158,6 +174,59 @@ export default function OrderTrackingScreen() {
                 dark mode. The fixed-cream surface itself is a separate design question. */}
             <OrderStatusTimeline currentStatus={order.status} liveMode={live} mode="light" />
           </View>
+
+          {/*
+            Customer self-confirm pickup. Shown ONLY for `ready` — an equality
+            check, not `!isTerminalStatus(...)`: `ready` is the single status the
+            server route will accept, so offering the button any earlier would
+            just earn a 409.
+
+            SURFACE / THEMING: this block sits in the ScrollView's own content,
+            BELOW `styles.timelineCard` — i.e. on the screen's themed background
+            (`theme.background`), NOT on the card's hardcoded cream surface. So it
+            takes the DEVICE-SCHEME `mode`, unlike the timeline above which is
+            pinned `mode="light"` to match the cream it sits on (CLAUDE.md
+            §Theming). Do not copy the timeline's `mode="light"` down here.
+          */}
+          {order.status === 'ready' && (
+            <View style={styles.pickupAction}>
+              <Button
+                testID="mark-picked-up-button"
+                label="I've picked this up"
+                variant="primary"
+                mode={mode}
+                loading={completion.isPending}
+                onPress={() => setConfirmVisible(true)}
+              />
+              {completion.error ? (
+                <Text style={[styles.pickupError, { color: theme.accent }]}>
+                  {completion.error.message}
+                </Text>
+              ) : null}
+              {/*
+                Inside the `ready` gate on purpose, sharing one lifecycle with the
+                button and the error text above. If a poll lands `completed` while
+                this dialog is open (staff completed the order first), there is no
+                longer anything to confirm — and leaving the dialog mounted would
+                let the user confirm into a guaranteed 409 whose error text just
+                unmounted with the block behind it. Being a Modal, it renders in
+                its own window, so sitting inside the ScrollView costs no layout.
+              */}
+              <ConfirmDialog
+                visible={confirmVisible}
+                title="Got your order?"
+                message="This closes your order and adds your Jojo Star. Only tap this once you have your food."
+                confirmLabel="Yes, I got it"
+                cancelLabel="Not yet"
+                mode={mode}
+                onConfirm={() => {
+                  setConfirmVisible(false);
+                  completion.mutate(orderId);
+                }}
+                onCancel={() => setConfirmVisible(false)}
+              />
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -179,6 +248,12 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h2,
     marginTop: Spacing.half,
+  },
+  pickupAction: { gap: Spacing.two },
+  pickupError: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+    textAlign: 'center',
   },
   timelineCard: {
     backgroundColor: Palette.cream,
