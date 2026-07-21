@@ -9,15 +9,22 @@ feature: admin-dashboard
 
 Date: 21-07-26
 
-Status: **RE-OPENED FOR SCOPE ADDITION, 21-07-26 (same day).** Backend/mobile scope (Sections
-A–G) was previously VALIDATED — PASS and EXECUTED (see `## Validate Contract` below for that
-history). The user has explicitly reopened scope this session to ADD an `apps/admin` WEB accept
-surface (reversing the prior "mobile-only, no web accept" lock — see `## Web Accept Surface
-(apps/admin) — Scope Reopened 21-07-26` below). **This delta (Section H) requires RE-VALIDATION
-before its own EXECUTE — the existing Gate: PASS below covers Sections A–G only, NOT the web
-accept surface or its CORS/plugin changes.** Standalone COMPLEX plan (not a phase program).
-Depends on nothing unbuilt; independent of ADM-010 (unexecuted). Executes AFTER ADM-009
-(committed, clean base) and is recommended to land BEFORE ADM-010.
+Status: **CODE DONE + COMMITTED (`0bf8365`) — NOT VERIFIED. UPDATE PROCESS pass 21-07-26.**
+Sections A–G (backend + mobile accept flow) AND Section H (`apps/admin` web accept surface + CORS
+extension, scope reopened same-day) are both EXECUTED and independently EVL-confirmed green:
+`packages/api` 709/709, `apps/admin` 177/177 + typecheck + build clean, `apps/mobile` typecheck
+clean, root typecheck + format:check clean, zero regressions. Both the base Validate Contract
+(Sections A–G, Gate: PASS) and the Validate Contract Delta (Section H, Delta Gate: PASS) carry
+genuine, separate human APPROVE records (`harness/review-decision.json`,
+`harness/review-decision-delta.json`) — `mustStopBeforeFinalize` is satisfied for both. **This plan
+stays in `active/`, not `completed/` — VERIFIED requires 3 still-owed, user-run Agent-Probe
+walkthroughs (AC7 admin UI, mobile `invite-accept.tsx` on-device incl. the navigation-race
+observation, AC15 web accept page real-browser) that have NOT yet been performed.** See
+`adm-011-add-staff_REPORT_21-07-26.md` (same task folder) for the full UPDATE PROCESS closeout. The
+admin/super_admin-invite-has-no-web-access gap is an accepted, documented Known-Gap deferred to
+issue #142 (`process/features/admin-dashboard/backlog/adm-011-admin-invite-no-web-access_NOTE_21-07-26.md`)
+— it does not block VERIFIED. Standalone COMPLEX plan (not a phase program). Independent of ADM-010
+(unexecuted).
 
 Complexity: COMPLEX — new migration, 5 new/extended routes across an auth-adjacent trust
 boundary, 3 packages touched (packages/api, apps/admin, apps/mobile).
@@ -831,6 +838,10 @@ required before EXECUTE is authorized (manual-first, no implicit approval).
   Contract Known Gaps) is an explicit, accepted Known-Gap and does NOT block VERIFIED status.
 - Do not mark this plan `✅ VERIFIED` on green automated gates alone — the auth-adjacent risk
   class and the mandatory Agent-Probe walkthroughs are both required per SPEC Constraints.
+- **UPDATE PROCESS status (21-07-26): CODE DONE + committed + EVL-green + both human approvals
+  recorded (Sections A–G and Section H separately) — still NOT VERIFIED.** The 3 owed walkthroughs
+  (AC7, mobile on-device, AC15 real-browser) have not been performed. Task folder correctly stays
+  in `active/`, not archived.
 - If EXECUTE or EVL surfaces a gap in the `/staff-invite/start` token-capture mechanism (see
   "Innovate Note" above) that the VALIDATE-corrected `verification`-table read cannot cleanly
   resolve, document the fallback actually taken in the phase report before advancing past
