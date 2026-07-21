@@ -1,6 +1,12 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-21 (ADM-011 — Add Staff: Promote + Invite Flow, issue #141 — CODE DONE,
+Last updated: 2026-07-21 (ADM-012 — Web-First Staff Account Setup, issue #142 — CODE DONE,
+committed `81974a9` (stacks on ADM-011 `0bf8365`), EVL-confirmed green (API 716/716, admin 181/181,
+3 typechecks + admin build + format:check clean), `Gate: CONDITIONAL` explicitly accepted by the
+user in-session — **NOT VERIFIED**, AC12 real-browser walkthrough (staff-role AND admin-role
+invite) + the 5-artifact high-risk evidence pack still owed (both user-deferred), task folder stays
+in `active/`; see the admin-dashboard bullet below and §Scan Metadata; merged with ADM-011 — Add
+Staff: Promote + Invite Flow, issue #141 — CODE DONE,
 committed `0bf8365`, EVL-confirmed green (API 709, admin 177, both typechecks + admin build +
 format:check clean), both human-approval gates recorded (`harness/review-decision.json` for
 Sections A–G, `harness/review-decision-delta.json` for the same-day-reopened Section H `apps/admin`
@@ -142,6 +148,57 @@ top of it later without re-plumbing the project.
   provisioning prerequisite, not new debt. Delivered by:
   `process/features/admin-dashboard/active/adm-011-add-staff_21-07-26/adm-011-add-staff_PLAN_21-07-26.md`
   (+ co-located SPEC + `adm-011-add-staff_REPORT_21-07-26.md` in the same task folder).
+
+- **ADM-012 — Web-First Staff Account Setup (`packages/api` + `apps/admin` + `apps/mobile`, issue
+  #142, delivered 21-07-26, branch `feat/adm-011-add-staff`, commit `81974a9` (stacks on ADM-011
+  `0bf8365`), CODE DONE + EVL-confirmed green, NOT YET VERIFIED — task folder stays in `active/`):**
+  closes the real gap ADM-011 exposed — an invited user had no durable password (magic-link only),
+  and a staff invitee accepting on the WEB was bounced (the `(dashboard)` guard admits
+  admin/super_admin only, but the old accept screen navigated everyone to `/`). New session-gated
+  `POST /staff-invite/set-password` (`packages/api/src/routes/staff-invite.ts`) reuses
+  `auth.api.setPassword` verbatim (8–128 char Zod re-assertion at the boundary, matching
+  better-auth's own default bounds); `PASSWORD_ALREADY_SET` is treated as success
+  (`200 { ok: true }`, zero credential mutation, not logged as an error) — the durable, mechanically
+  confirmed error shape is `err.body?.code === 'PASSWORD_ALREADY_SET'` against installed
+  better-auth 1.6.23. `sendStaffInvite`'s `acceptUrl` was repointed from the mobile deep-link path
+  (`${BETTER_AUTH_URL}/staff-invite/native`) to the web accept page
+  (`${ADMIN_WEB_ORIGIN}/staff-invite-accept`) — `GET /staff-invite/native` itself is deliberately
+  left intact (no dead-link risk for already-sent unconsumed invite emails), only the invite
+  email's generated link changed. `apps/admin`'s accept screen
+  (`staff-invite-accept.tsx`) gained a Profile step (name/birthday/address, byte-identical call
+  shape to mobile customer onboarding's `completeProfile` — `authClient.updateUser({ name,
+  birthday, address, onboardedAt: new Date() })`, `role` structurally excluded server-side via
+  `input: false`) followed by a Password step (confirm-match + an inline strength meter — a small
+  local pure function, **no new npm dependency**), then role-based routing: admin/super_admin →
+  dashboard; staff → a terminal "sign in on the app" card with no dashboard-access affordance.
+  Required a real, VALIDATE-caught plan gap fix: `apps/admin`'s auth-client was missing
+  `birthday`/`address`/`onboardedAt` field registration (`inferAdditionalFields`), which would have
+  silently broken the new `updateUser` call's typecheck. `apps/mobile/(auth)/_layout.tsx` had
+  exactly its `<Stack.Screen name="invite-accept" />` line removed — `invite-accept.tsx` itself is
+  byte-unmodified (confirmed 0-diff), preserved specifically for potential future mobile-onboarding
+  reuse (see the `staff-mobile-onboarding-parity_NOTE_21-07-26.md` backlog note). **Byte-frozen and
+  confirmed untouched by direct diff:** `POST /api/admin/users/:id/role`, `PATCH
+  /api/admin/staff/:id/branch`. One real EXECUTE-time deviation from the plan's checklist: step 15's
+  planned transient `phase: 'routing'` UI state was collapsed into the password-step submit
+  handler's synchronous role check instead — this branch's `react-hooks/set-state-in-effect` ESLint
+  rule forbids the `useEffect`-driven `setState` the transient-state approach would have needed;
+  behavior is identical, one fewer state value in the union. **Durable, filed as backlog debt (not
+  new, pre-existing since ADM-011, zero ADM-012 diff):** `add-staff-dialog.tsx:63` still fails that
+  same lint rule, keeping full `apps/admin` lint red — see
+  `backlog/adm-011-set-state-in-effect-lint-debt_NOTE_21-07-26.md`. Gates, independently
+  EVL-confirmed by a separately-spawned vc-tester (not execute-agent self-report): API 716/716,
+  admin 181/181, 3 typechecks clean, admin build clean, format:check clean. 12/13 SPEC ACs
+  Fully-Automated and passing (AC1–AC11, AC13); **AC12 (full real-browser walkthrough — staff-role
+  AND admin-role invite, strength meter, confirm-mismatch error) is Agent-Probe and still owed**,
+  user-deferred — per the plan's own Phase Completion Rules this is why the plan stays CODE DONE,
+  not VERIFIED. The 5-artifact high-risk evidence pack (auth/identity-adjacent class,
+  `mustStopBeforeFinalize: true`, same precedent as ADM-011) is also still owed before
+  finalize/PR, not before EXECUTE. **Shared-file note:** `staff-invite.ts` is also claimed by
+  ADM-013 (issue #149, staff-invite list/revoke/resend) — ADM-012 landed first; ADM-013 must
+  re-scan `staff-invite.ts` + its integration test file and re-run its own VALIDATE before EXECUTE.
+  Delivered by:
+  `process/features/admin-dashboard/active/adm-012-web-staff-setup_21-07-26/adm-012-web-staff-setup_PLAN_21-07-26.md`
+  (+ co-located SPEC + `adm-012-web-staff-setup_REPORT_21-07-26.md` in the same task folder).
 
 - **DEAL-005 Phase 1 — Scheduled Deals: Simple Window (`packages/api` + `apps/admin`, issue #127,
   delivered 20-07-26, branch `adm-deal-005-p2`, commit `5e9261b4`, ✅ VERIFIED — EVL-confirmed
@@ -1622,7 +1679,9 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
-| ADM-011 add-staff / staff-invite / issue #141 or #142 follow-up work | `all-context.md` | `process/features/admin-dashboard/active/adm-011-add-staff_21-07-26/` — CODE DONE + committed (`0bf8365`) + EVL-green, NOT VERIFIED (3 Agent-Probe walkthroughs owed: AC7 admin UI, mobile on-device incl. navigation-race, AC15 web accept real-browser); read the plan's `## Web Accept Surface` section and the `/staff-invite/start` token-capture correction (Innovate Note) before touching this surface again. For issue #142 (admin/super_admin invite has no web-console access), start from `backlog/adm-011-admin-invite-no-web-access_NOTE_21-07-26.md`'s 4 resolution options |
+| ADM-011 add-staff / staff-invite / issue #141 follow-up work | `all-context.md` | `process/features/admin-dashboard/active/adm-011-add-staff_21-07-26/` — CODE DONE + committed (`0bf8365`) + EVL-green, NOT VERIFIED (3 Agent-Probe walkthroughs owed: AC7 admin UI, mobile on-device incl. navigation-race, AC15 web accept real-browser); read the plan's `## Web Accept Surface` section and the `/staff-invite/start` token-capture correction (Innovate Note) before touching this surface again. Issue #142's original 4-option resolution note is superseded — see ADM-012 below |
+| ADM-012 web-first staff account setup / issue #142 follow-up work | `all-context.md` | `process/features/admin-dashboard/active/adm-012-web-staff-setup_21-07-26/` — CODE DONE + committed (`81974a9`, stacks on `0bf8365`) + EVL-green, NOT VERIFIED (AC12 real-browser walkthrough + 5-artifact high-risk evidence pack owed); read the plan's `## Validate Contract` and the report's Plan Deviations before touching this surface again. `staff-invite.ts` is also claimed by ADM-013 — re-scan before editing |
+| ADM-013 staff-invite management (list/revoke/resend) / issue #149 | `all-context.md` | `process/features/admin-dashboard/active/adm-013-invite-management_21-07-26/` — plan written, VALIDATE = CONDITIONAL, **VALIDATE MUST RE-RUN** after ADM-012 landed on the shared `staff-invite.ts` file (re-scan-before-edit rule); scope widened this session to also cover staff removal (demote-to-customer, reuse-route design) — VALIDATE re-run pending for that too |
 | deal scheduling / `deal_schedules` / issue #127 follow-up work | `all-context.md` | **Issue #127 is fully delivered — all 3 phases ✅ VERIFIED and archived.** Phase 1 (absolute window) at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`, Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) at `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`, Phase 3 (mobile surfacing — days/hours annotation on Deals tab/Home strip/Deal Details, additive `schedule` wire field, `formatDealScheduleSummary`) at `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/`. Read each plan + report for design detail. Remaining tracked follow-ups (not blocking, not part of #127's own scope): the deferred multi-row admin authoring flow (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`) and the mobile fetch-on-focus expiry-lingering behavior (backlog: `deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`, deliberately accepted/deferred). Note: a small uncommitted admin recurring-state badge addition (`apps/admin/src/lib/entity-status.ts` + 2 consumers) landed on top of Phase 2's committed source — check `git status` before assuming a clean tree. |
 
 ## Context Group Lifecycle
@@ -1854,7 +1913,25 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-21 (ADM-011 — Add Staff: Promote + Invite Flow, issue #141, UPDATE PROCESS
+- Last delta: 2026-07-21 (ADM-012 — Web-First Staff Account Setup, issue #142, UPDATE PROCESS
+  closeout. Everything was already COMMITTED (`81974a9`, stacks on ADM-011 `0bf8365`, branch
+  `feat/adm-011-add-staff`) and EVL-confirmed green (API 716/716, admin 181/181, 3 typechecks +
+  admin build + format:check clean, byte-frozen routes and mobile route de-registration verified
+  by direct diff) before this pass began — this pass is doc-only: wrote
+  `adm-012-web-staff-setup_REPORT_21-07-26.md`, stamped the plan's Status line + Phase Completion
+  Rules to CODE DONE + committed + NOT VERIFIED (AC12 real-browser walkthrough + 5-artifact
+  high-risk evidence pack owed, both user-deferred), and added this file's header/
+  implementation-state bullet/routing-table rows (also updated the ADM-011 row and added a new
+  ADM-013 row noting VALIDATE-must-re-run + widened staff-removal scope). **Did NOT archive the
+  task folder** — stays in `active/` pending AC12 + the evidence pack, matching the standing repo
+  pattern (see ADM-011, STAFF-005, cart-persistence, adm-route-guard-ssr). Filed 1 new backlog
+  note: `adm-011-set-state-in-effect-lint-debt_NOTE_21-07-26.md` (pre-existing lint failure in
+  `add-staff-dialog.tsx`, zero ADM-012 diff, keeps full `apps/admin` lint red). Updated the
+  multitrack resume memory (`adm-invite-multitrack-resume-21-07-26.md`) to reflect ADM-012's new
+  state. Ran `vc-audit-context` (Tier-1 REQUIRED gate for context-doc edits) — result recorded in
+  this session's chat output. No commit was made by this pass — left for the user, per standing
+  instruction to never stage/commit on their behalf. HEAD unchanged from before this pass: `81974a9`.)
+- Previous delta: 2026-07-21 (ADM-011 — Add Staff: Promote + Invite Flow, issue #141, UPDATE PROCESS
   closeout. Everything was already COMMITTED (`0bf8365`, branch `feat/adm-011-add-staff`) and
   EVL-confirmed green before this pass began — this pass is doc-only: wrote
   `adm-011-add-staff_REPORT_21-07-26.md`, stamped the plan's Status line + Phase Completion Rules

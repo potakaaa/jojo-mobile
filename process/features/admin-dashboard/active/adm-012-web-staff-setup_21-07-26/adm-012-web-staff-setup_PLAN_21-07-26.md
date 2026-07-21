@@ -8,8 +8,11 @@ feature: admin-dashboard
 # ADM-012 — Web-First Staff Account Setup (PLAN)
 
 **Date**: 21-07-26
-**Status**: CODE NOT STARTED — plan drafted, VALIDATE run (Gate: CONDITIONAL, pending user
-confirmation — see `## Validate Contract` below).
+**Status**: CODE DONE + committed (`81974a9`, stacks on ADM-011 `0bf8365`) — EVL-confirmed green
+(API 716/716, admin 181/181, 3 typechecks clean, admin build clean, format:check clean). **NOT
+VERIFIED** — AC12 (real-browser walkthrough) and the 5-artifact high-risk evidence pack are still
+owed (both user-run, deferred by the user). See
+`adm-012-web-staff-setup_REPORT_21-07-26.md` (same folder) for the full EXECUTE/EVL closeout.
 **Complexity**: COMPLEX (backend route + auth-adjacent write + multi-step web UI + mobile route
 removal + invite-link repoint; touches 4 packages). Not a phase program (single delivery unit, no
 independent validation gates between sub-parts).
@@ -26,9 +29,10 @@ implementation state); test routing per `process/context/tests/all-tests.md`.
 ## Phase Completion Rules
 
 - `CODE DONE` — all 13 Fully-Automated/Agent-Probe gates in Verification Evidence pass except
-  AC12 (Agent-Probe, owed).
+  AC12 (Agent-Probe, owed). **Reached 21-07-26** — see Status line above.
 - `VERIFIED` — CODE DONE plus AC12's manual browser walkthrough (staff-role AND admin-role invite,
   full flow) performed and passed by the user. Do not archive to `completed/` before VERIFIED.
+  **Not yet reached — task folder stays in `active/`.**
 
 ## Acceptance Criteria
 
