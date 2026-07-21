@@ -16,6 +16,7 @@ import {
   productOptions,
   products,
   starTransactions,
+  userStars,
 } from '../db/schema/index';
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
@@ -405,6 +406,10 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       let couponDiscountCents = 0;
       let rewardCouponIdToConsume: string | null = null;
       let rewardLabel = '';
+      // Star Expendable: how many stars this reward costs (0 for offer coupons /
+      // no coupon). Captured from the resolver so the loyalty ledger + balance
+      // decrement below spend the exact amount.
+      let requiredStars = 0;
       // Distinguishes coupon family: only a reward coupon writes the "Redeemed
       // reward" loyalty-ledger row (the atomic burn stays shared by both families).
       let couponIsReward = false;
@@ -425,6 +430,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         rewardCouponIdToConsume = resolution.rewardCouponId;
         rewardLabel = resolution.discount.label;
         couponIsReward = resolution.discount.source === 'reward';
+        requiredStars = resolution.requiredStars ?? 0;
       }
 
       // Unified discount: deal + reward-coupon amounts, dual-clamped to [0, subtotal].
@@ -514,13 +520,30 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // so it must not write a "Redeemed reward" star_transactions row (that would
         // pollute the customer's loyalty history). The burn above stays shared.
         if (couponIsReward) {
-          // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
-          // redemption spends reward VALUE, it does not change the star COUNT.
+          // Atomic star decrement: UPDATE with a balance guard so two concurrent
+          // orders can't both pass the resolver pre-check and both subtract stars.
+          // `lifetime_stars` stays monotonic (D6) — only `current_stars` decreases.
+          const updatedUserStars = await tx
+            .update(userStars)
+            .set({
+              current_stars: sql`${userStars.current_stars} - ${requiredStars}`,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(userStars.user_id, userId),
+                sql`${userStars.current_stars} >= ${requiredStars}`,
+              ),
+            )
+            .returning({ id: userStars.id });
+          if (updatedUserStars.length === 0 && requiredStars > 0) {
+            throw new OrderError(400, "You don't have enough stars to redeem this reward.");
+          }
           await tx.insert(starTransactions).values({
             user_id: userId,
             order_id: createdOrder.id,
             type: 'redeemed',
-            stars: 0,
+            stars: -requiredStars,
             description: `Redeemed reward: ${rewardLabel}`,
           });
         }

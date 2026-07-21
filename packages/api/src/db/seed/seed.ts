@@ -550,6 +550,9 @@ const REWARD_ROADMAP = [
 // product.
 const REWARD_ELIGIBLE_PRODUCT_SLUG_BY_NAME: Record<string, string> = {
   'Free regular fries or lemonade': 'classic-fries',
+  'Free large fries': 'cheese-fries',
+  'Free combo meal': 'fries-corndog-combo',
+  'Free premium loaded fries': 'cheese-fries',
 };
 
 // rewards.name has no unique constraint, so idempotency is app-level: for each

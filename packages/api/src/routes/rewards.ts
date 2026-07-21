@@ -29,6 +29,7 @@ function serializeReward(row: RewardRow): Reward {
     rewardType: row.reward_type,
     rewardValue: row.reward_value === null ? null : numericToCents(row.reward_value),
     isActive: row.is_active,
+    eligibleProductId: row.eligible_product_id ?? null,
   };
 }
 

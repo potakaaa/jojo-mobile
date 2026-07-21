@@ -73,12 +73,15 @@ describe('LiveOrderActions — reject path (AC5)', () => {
   test('confirming Reject runs the unchanged handleTransition exactly once', async () => {
     const { mutate } = setup('pending');
 
-    const { getByRole, findByText, queryByText } = await renderWithProviders(<OrderDetailScreen />);
+    const { getByRole, getByTestId, findByText, queryByText } = await renderWithProviders(
+      <OrderDetailScreen />,
+    );
     await fireEvent.press(getByRole('button', { name: 'Reject' }));
     await findByText('Reject order?');
 
-    // The dialog's own confirm button carries the action label.
-    await fireEvent.press(getByRole('button', { name: 'Reject' }));
+    // The dialog's confirm button carries the SAME label as the screen button
+    // behind it ("Reject"), so target it by testID rather than by role+name.
+    await fireEvent.press(getByTestId('confirm-dialog-confirm'));
 
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenCalledWith({ orderId: 'o1', status: 'rejected' });
@@ -125,19 +128,14 @@ describe('LiveOrderActions — cancel path on a ready order (AC5)', () => {
   test('the ready-order confirm still routes to the unchanged cancelled transition', async () => {
     const { mutate } = setup('ready');
 
-    const { getByRole, getAllByRole, findByText } = await renderWithProviders(
-      <OrderDetailScreen />,
-    );
+    const { getByRole, getByTestId, findByText } = await renderWithProviders(<OrderDetailScreen />);
     await fireEvent.press(getByRole('button', { name: 'Cancel' }));
     await findByText('Cancel order?');
 
-    // With the dialog open, "Cancel" is ambiguous: it is both the trigger and the
-    // dialog's own dismiss label. The dialog's CONFIRM is the last such button,
-    // so press that explicitly rather than relying on match order.
-    const cancelButtons = getAllByRole('button', { name: 'Cancel' });
-    const dialogConfirm = cancelButtons.at(-1);
-    if (!dialogConfirm) throw new Error('expected at least one Cancel button');
-    await fireEvent.press(dialogConfirm);
+    // "Cancel" is triply ambiguous here — the screen trigger, the dialog's
+    // dismiss, AND the dialog's confirm all carry that label. Target the confirm
+    // by testID instead of relying on render order.
+    await fireEvent.press(getByTestId('confirm-dialog-confirm'));
 
     expect(mutate).toHaveBeenCalledWith({ orderId: 'o1', status: 'cancelled' });
   });

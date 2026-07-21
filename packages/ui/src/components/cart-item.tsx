@@ -66,11 +66,11 @@ export function CartItem({
         <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
       )}
       <View style={styles.body}>
-        <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+        <Text style={[styles.name, { color: theme.text }]} numberOfLines={2}>
           {product.name}
         </Text>
         {variantParts ? (
-          <Text style={[styles.variant, { color: theme.textSecondary }]} numberOfLines={1}>
+          <Text style={[styles.variant, { color: theme.textSecondary }]} numberOfLines={2}>
             {variantParts}
           </Text>
         ) : null}
@@ -107,7 +107,7 @@ export function CartItem({
             onPress={onRemove}
             style={[styles.removeButton, { borderColor: theme.border }]}
           >
-            <Ionicons name="trash-outline" size={16} color={theme.accent} />
+            <Ionicons name="trash-outline" size={14} color={theme.accent} />
           </Pressable>
         ) : null}
       </View>
@@ -119,19 +119,19 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
+    gap: Spacing.two,
     padding: Spacing.two,
     borderRadius: Radii.md,
     borderWidth: 2,
   },
   image: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: Radii.sm,
   },
   imagePlaceholder: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: Radii.sm,
   },
   body: {
@@ -140,11 +140,13 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
+    fontSize: TypeScale.bodySmall,
+    lineHeight: TypeScale.bodySmall + 4,
   },
   variant: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
+    lineHeight: TypeScale.caption + 4,
   },
   total: {
     fontFamily: FontFamily.display.bold,
@@ -153,11 +155,11 @@ const styles = StyleSheet.create({
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.one,
   },
   stepButton: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: Radii.full,
     borderWidth: 2,
     alignItems: 'center',
@@ -166,25 +168,25 @@ const styles = StyleSheet.create({
   },
   stepLabel: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.body,
+    fontSize: TypeScale.bodySmall,
     textAlign: 'center',
     includeFontPadding: false,
     textAlignVertical: 'center',
-    lineHeight: TypeScale.body,
+    lineHeight: TypeScale.bodySmall,
   },
   removeButton: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: Radii.full,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: Spacing.one,
+    marginLeft: Spacing.half,
   },
   quantity: {
     fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.body,
-    minWidth: 20,
+    fontSize: TypeScale.bodySmall,
+    minWidth: 16,
     textAlign: 'center',
     includeFontPadding: false,
     textAlignVertical: 'center',

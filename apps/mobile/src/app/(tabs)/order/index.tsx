@@ -76,7 +76,7 @@ export default function OrderScreen() {
         hitSlop={8}
         onPress={() => router.push('/(tabs)/history')}
       >
-        <Ionicons name="receipt-outline" size={24} color={theme.text} />
+        <Ionicons name="time-outline" size={24} color={theme.text} />
       </Pressable>
     </View>
   );

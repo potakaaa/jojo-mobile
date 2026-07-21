@@ -236,6 +236,13 @@ export interface ApiMenuProduct {
   // menu response body is byte-unchanged for non-deal products. Additive.
   isDeal?: boolean;
   components?: AdminDealComponent[];
+  // DEAL-004 all-branch deal listing (GET /deals/products). Populated ONLY on the
+  // deal-menu branch (alongside `isDeal`/`components`): `true` when no branch is
+  // selected or the branch can fulfil every component; `false` when a branch is
+  // selected and a component is unavailable there. Flag-not-hide (AC3): an
+  // unavailable deal is still returned, only the flag varies. OMITTED entirely on
+  // the regular (non-deal) menu — the regular response body stays byte-identical.
+  available?: boolean;
   // DEAL-005 Phase 3: the deal's live `deal_schedules` windows (for the customer
   // "Available Mon–Fri, 8:00 AM – 8:25 PM" annotation). Present ONLY on a
   // currently-live SCHEDULED deal; OMITTED entirely for a schedule-less
@@ -360,6 +367,7 @@ export function serializeMenuProduct(
   product: ProductRow,
   options: ProductOptionRow[],
   components?: AdminDealComponent[],
+  available?: boolean,
   scheduleWindows?: DealScheduleWindow[],
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
@@ -380,19 +388,27 @@ export function serializeMenuProduct(
     options: grouped,
   };
 
-  // Deal-menu case only: `components` is passed (possibly empty) by the
-  // `?isDeal=true` menu handler. Regular menu calls pass `undefined`, so both
-  // `isDeal`/`components` keys are OMITTED entirely — the regular response stays
-  // byte-identical to pre-ADM-004 output (chosen over `isDeal: false` so the
-  // existing menu contract is provably unchanged for non-deal products).
+  // Deal-menu case only: `components` is passed (possibly empty) by the deal-menu
+  // handlers (`?isDeal=true` menu OR the DEAL-004 `GET /deals/products` route).
+  // Regular menu calls pass `undefined`, so `isDeal`/`components`/`available` keys
+  // are ALL OMITTED entirely — the regular response stays byte-identical to
+  // pre-ADM-004 output. `available` is itself optional: the `?isDeal=true` menu
+  // passes `undefined` so the key stays omitted there; only `GET /deals/products`
+  // (flag-not-hide) passes a boolean.
   let result: ApiMenuProduct =
-    components !== undefined ? { ...base, isDeal: product.is_deal, components } : base;
+    components !== undefined
+      ? {
+          ...base,
+          isDeal: product.is_deal,
+          components,
+          ...(available === undefined ? {} : { available }),
+        }
+      : base;
 
   // DEAL-005 Phase 3: attach the deal's live schedule windows ONLY when the deal
   // actually has rows (non-empty). A schedule-less (always-live) deal and every
   // regular product get NO `schedule` key at all — same omit-when-absent
-  // convention as `isDeal`/`components` above, so the wire stays byte-identical
-  // for those (AC3/AC9). `undefined`/`[]` both mean "omit".
+  // convention as `isDeal`/`components` above. `undefined`/`[]` both mean "omit".
   if (scheduleWindows !== undefined && scheduleWindows.length > 0) {
     result = {
       ...result,

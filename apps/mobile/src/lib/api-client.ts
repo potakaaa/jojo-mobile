@@ -1,4 +1,4 @@
-import type { Deal, MenuResponse, PickupBranch } from '@jojopotato/types';
+import type { Deal, MenuResponse, PickupBranch, Product } from '@jojopotato/types';
 
 import { env } from '@/config/env';
 import { resolveImageUrl } from '@/lib/image-url';
@@ -85,10 +85,11 @@ export async function getBranches(): Promise<PickupBranch[]> {
  * no wrapper key, already the `MenuResponse` shape).
  *
  * `options.isDeal` appends `?isDeal=true` to flip the same route to the
- * deal-products view (ADM-004 deals-as-products — mobile Deals tab). Mirrors the
- * `getDeals(branchId?)` conditional-query-string pattern below. Omitting
- * `options` (or passing `{ isDeal: false }`) returns the regular menu unchanged,
- * so every existing single-arg caller is unaffected.
+ * deal-products view (ADM-004 deals-as-products). Omitting `options` (or passing
+ * `{ isDeal: false }`) returns the regular menu unchanged, so every existing
+ * single-arg caller is unaffected. NB: the customer Deals tab/detail/Home strip
+ * now read the dedicated all-branch `getDealProducts` route (DEAL-004), not this
+ * `?isDeal=true` menu flip — the flip is retained only as an internal capability.
  */
 export async function getMenu(
   branchId: string,
@@ -114,23 +115,41 @@ export async function getMenu(
 }
 
 /**
- * `GET /deals` → `{ deals: [...] }` envelope. Appends `?branchId=` only when a
- * branch is supplied (absent branchId → branch-agnostic deals only, server-side).
- * The server `ApiDeal` shape is structurally identical to `Deal` (guarded by the
- * `deals.test.ts` field-name assertions), so no client-side mapping is needed.
+ * `GET /deals/products` → unwrapped `{ categories }` (DEAL-004 all-branch deal
+ * listing). Flattens the returned categories into a single `Product[]`, mirroring
+ * `getMenu`'s flatten. Appends `?branchId=` only when a branch is supplied:
+ *
+ *  - NO branchId → every active deal-product, all `available: true` (no branch
+ *    gate — deals are catalog-wide, AC1).
+ *  - branchId present → every active deal-product still returned, each carrying
+ *    `available: boolean` (flag-not-hide — an unfulfillable deal is listed with
+ *    `available: false`, never dropped, AC3).
+ *
+ * Product image paths are resolved to absolute URLs (tunnel-proof; idempotent),
+ * same as `getMenu`.
  */
-export async function getDeals(branchId?: string): Promise<Deal[]> {
-  const path = branchId ? `/deals?branchId=${encodeURIComponent(branchId)}` : '/deals';
-  const body = await getJson<{ deals: Deal[] }>(path);
-  // Resolve relative image paths to absolute URLs (tunnel-proof); idempotent.
-  return body.deals.map((deal) => ({ ...deal, imageUrl: resolveImageUrl(deal.imageUrl) }));
+export async function getDealProducts(branchId?: string): Promise<Product[]> {
+  const path = branchId
+    ? `/deals/products?branchId=${encodeURIComponent(branchId)}`
+    : '/deals/products';
+  const body = await getJson<{ categories: MenuResponse['categories'] }>(path);
+  return body.categories.flatMap((category) =>
+    category.products.map((product) => ({
+      ...product,
+      imageUrl: resolveImageUrl(product.imageUrl),
+    })),
+  );
 }
 
 /**
- * `GET /deals/:id` → `{ deal }` envelope. Returns the deal regardless of branch
- * scope or window (client eligibility renders the specific reason). A 404
- * (missing/inactive/malformed id) throws via `getJson`, surfaced by `useDeal`
- * as an error/not-found state.
+/**
+ * `GET /deals/:id` → `{ deal }` envelope. STAR-004 coupon/reward display path
+ * ONLY: consumed by `use-deal.ts` to hydrate the label of an applied coupon/reward
+ * `appliedDiscount` (whose `refId` is a coupon/offer id). It is NOT a product-model
+ * deal read — the customer deal-BROWSE routes (`GET /deals`, the old `getDeals`)
+ * were retired by DEAL-004; deals are browsed via `getDealProducts` above. A 404
+ * (missing/inactive/malformed id) throws via `getJson`, surfaced by `useDeal` as an
+ * error/not-found state.
  */
 export async function getDeal(dealId: string): Promise<Deal> {
   const body = await getJson<{ deal: Deal }>(`/deals/${encodeURIComponent(dealId)}`);
