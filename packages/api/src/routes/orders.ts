@@ -493,13 +493,25 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // so it must not write a "Redeemed reward" star_transactions row (that would
         // pollute the customer's loyalty history). The burn above stays shared.
         if (couponIsReward) {
-          // Star Expendable: a redemption SPENDS stars. Exactly one `redeemed`
-          // ledger row records `-requiredStars`, and `user_stars.current_stars` is
-          // decremented by the same amount in this SAME transaction (atomic with the
-          // burn above). The resolver's insufficient-balance guard (400) already
-          // rejected any placement that couldn't cover the cost, so the balance can
-          // never go negative here. `lifetime_stars` stays monotonic (D6) — only
-          // `current_stars` decreases.
+          // Atomic star decrement: UPDATE with a balance guard so two concurrent
+          // orders can't both pass the resolver pre-check and both subtract stars.
+          // `lifetime_stars` stays monotonic (D6) — only `current_stars` decreases.
+          const updatedUserStars = await tx
+            .update(userStars)
+            .set({
+              current_stars: sql`${userStars.current_stars} - ${requiredStars}`,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(userStars.user_id, userId),
+                sql`${userStars.current_stars} >= ${requiredStars}`,
+              ),
+            )
+            .returning({ id: userStars.id });
+          if (updatedUserStars.length === 0 && requiredStars > 0) {
+            throw new OrderError(400, "You don't have enough stars to redeem this reward.");
+          }
           await tx.insert(starTransactions).values({
             user_id: userId,
             order_id: createdOrder.id,
@@ -507,13 +519,6 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             stars: -requiredStars,
             description: `Redeemed reward: ${rewardLabel}`,
           });
-          await tx
-            .update(userStars)
-            .set({
-              current_stars: sql`${userStars.current_stars} - ${requiredStars}`,
-              updated_at: new Date(),
-            })
-            .where(eq(userStars.user_id, userId));
         }
       }
 

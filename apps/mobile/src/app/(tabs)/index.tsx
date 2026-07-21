@@ -344,6 +344,7 @@ export default function HomeScreen() {
                 <DealCard
                   key={product.id}
                   deal={dealProductToCard(product)}
+                  available={product.available}
                   mode={mode}
                   style={styles.dealCard}
                   onPress={() => openDeal(product.id)}

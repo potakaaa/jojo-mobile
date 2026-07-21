@@ -140,6 +140,10 @@ export default function RewardsScreen() {
       // Auto-add the eligible item (free-item / free-upgrade rewards). Rewards with
       // no eligible product (fixed/percentage discounts) fall straight through to
       // the existing apply path (AC6).
+      // cartForValidation is projected forward when we add a new item so the server
+      // receives a cart that already contains the item (the local `cart` closure is
+      // a React render-time snapshot and stays stale after the await).
+      let cartForValidation = cart;
       if (eligibleProductId) {
         const product = findEligibleMenuItem(eligibleProductId, menuQuery.data);
         if (product === null) {
@@ -154,10 +158,24 @@ export default function RewardsScreen() {
             showToast('Could not add the reward item. Please try again.', 'error');
             return;
           }
+          cartForValidation = {
+            ...cart,
+            items: [
+              ...cart.items,
+              {
+                lineId: `optimistic-${eligibleProductId}`,
+                menuItemId: eligibleProductId,
+                quantity: 1,
+                productNameSnapshot: product.name,
+                unitPriceCents: product.basePriceCents,
+                selectedOptions: [],
+              },
+            ],
+          };
         }
       }
 
-      const result = await resolveAndApplyDeal(couponCode!, cart, cart.pickupBranchId);
+      const result = await resolveAndApplyDeal(couponCode!, cartForValidation, cart.pickupBranchId);
       if (!result.ok) {
         showToast(result.message, 'error');
         return;

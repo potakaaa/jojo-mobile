@@ -237,20 +237,22 @@ export function checkRewardEligibility(
       return { eligible: false, reason: 'expired', message: 'This reward has expired.' };
     }
   }
-  if (!reward || reward.eligibleProductId === null) {
+  if (!reward) {
     return {
       eligible: false,
       reason: 'no_eligible_product',
       message: "This reward isn't available right now.",
     };
   }
-  const inCart = cart.items.some((it) => it.menuItemId === reward.eligibleProductId);
-  if (!inCart) {
-    return {
-      eligible: false,
-      reason: 'not_in_cart',
-      message: 'Add the eligible item to your cart to use this reward.',
-    };
+  if (reward.eligibleProductId !== null) {
+    const inCart = cart.items.some((it) => it.menuItemId === reward.eligibleProductId);
+    if (!inCart) {
+      return {
+        eligible: false,
+        reason: 'not_in_cart',
+        message: 'Add the eligible item to your cart to use this reward.',
+      };
+    }
   }
   return { eligible: true };
 }
