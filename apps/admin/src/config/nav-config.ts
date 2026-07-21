@@ -100,10 +100,9 @@ export const navConfig: NavGroup[] = [
       },
       {
         id: 'users',
-        label: 'Users & Roles',
+        label: 'Staff',
         icon: Users,
-        to: '/users',
-        disabled: true,
+        to: '/staff',
       },
     ],
   },

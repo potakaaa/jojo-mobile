@@ -11,6 +11,7 @@ import ordersRouter from './orders';
 import productsRouter from './products';
 import promotionsRouter from './promotions';
 import rewardsRouter from './rewards';
+import staffRouter from './staff';
 import usersRouter from './users';
 
 /**
@@ -62,5 +63,10 @@ adminRouter.use('/analytics', analyticsRouter);
 // Marketing notifications (PUSH-005 — admin-triggered branch promo) — same
 // inherited guard; append-only, never restructure.
 adminRouter.use('/notifications', notificationsRouter);
+
+// Staff management (ADM-009 — branch assignment for staff/admin/super_admin
+// accounts). Same inherited guard; append-only, never restructure. 12th
+// consumer of the append-only aggregator pattern.
+adminRouter.use('/staff', staffRouter);
 
 export default adminRouter;
