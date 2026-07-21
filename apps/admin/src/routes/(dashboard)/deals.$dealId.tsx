@@ -216,6 +216,14 @@ function DealDetailPage() {
                 {dealStatus(deal).recurring ? (
                   <StatusBadge tone="neutral">Recurring</StatusBadge>
                 ) : null}
+                {/* DEAL-005 Phase 2 — cosmetic "live in today's Manila hours?" hint,
+                    only shown for a recurring deal that is otherwise Live right now. */}
+                {dealStatus(deal).recurringActive === true ? (
+                  <StatusBadge tone="success">Active now</StatusBadge>
+                ) : null}
+                {dealStatus(deal).recurringActive === false ? (
+                  <StatusBadge tone="muted">Not active now</StatusBadge>
+                ) : null}
               </div>
               <p className="text-sm text-muted-foreground">
                 Slug <span className="font-mono">{deal.slug}</span> · Base price{' '}

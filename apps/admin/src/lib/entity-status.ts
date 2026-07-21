@@ -52,6 +52,32 @@ function resolveWindowPhase(
 }
 
 /**
+ * Asia/Manila is a fixed +08:00 offset with no DST — the same documented fact the
+ * server's `routes/lib/deal-schedule.ts` and `routes/admin/lib/analytics-range.ts`
+ * rely on. Cosmetic-only local copy so the admin badge can decide "active right
+ * now"; the SERVER stays the authority on customer visibility.
+ */
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Convert a UTC instant to its Asia/Manila WALL-CLOCK day-of-week (0=Sun..6=Sat,
+ * matching `Date#getDay()`) and `"HH:mm"` time-of-day. Cosmetic-only local copy of
+ * the server's `toManilaWallClock` (packages/api/src/routes/lib/deal-schedule.ts) —
+ * the admin client cannot import server code, so ~6 lines are mirrored here.
+ *
+ * DANGER (same warning as the server): after shifting the epoch by the fixed offset,
+ * read ONLY `getUTC*` accessors — NEVER `getDay()`/`getHours()`, which read the host
+ * timezone and are correct only by coincidence on a Manila-set machine. Manila
+ * Saturday 07:00 is Friday 23:00 UTC, so a host-local read fires on the wrong day.
+ */
+function manilaWallClock(now: Date): { day: number; hhmm: string } {
+  const shifted = new Date(now.getTime() + MANILA_OFFSET_MS);
+  const hh = String(shifted.getUTCHours()).padStart(2, '0');
+  const mm = String(shifted.getUTCMinutes()).padStart(2, '0');
+  return { day: shifted.getUTCDay(), hhmm: `${hh}:${mm}` };
+}
+
+/**
  * Deal status COMBINES `is_active` and branch availability — either one can hide
  * the deal from customers. An active deal with zero available branches is flagged
  * as a warning ("Not available at any branch"), never a plain "Active". When the
@@ -70,6 +96,15 @@ export interface DealStatusDescriptor extends StatusDescriptor {
    * per-minute against the recurrence would make the badge flicker and mislead.
    */
   recurring: boolean;
+  /**
+   * DEAL-005 Phase 2 — for a recurring deal that is otherwise Live/Active RIGHT NOW
+   * (primary tone `success`), is `now` inside today's Manila recurring hours?
+   *   - `true`  → "Active now"
+   *   - `false` → "Not active now" (live in its absolute window, but returns later)
+   *   - `null`  → non-recurring, OR not currently Live/Active, so the question is moot.
+   * COSMETIC ONLY — the server enforcement (`isDealScheduleLive`) is the authority.
+   */
+  recurringActive: boolean | null;
 }
 
 export function dealStatus(
@@ -82,13 +117,47 @@ export function dealStatus(
     endsAt?: string | null;
     /** DEAL-005 Phase 2 recurrence days (0=Sun..6=Sat). Null/absent = non-recurring. */
     recurDays?: number[] | null;
+    /** DEAL-005 Phase 2 recurrence hours, Manila WALL-CLOCK `"HH:mm"`. */
+    recurStartTime?: string | null;
+    recurEndTime?: string | null;
   },
   now: Date = new Date(),
 ): DealStatusDescriptor {
+  const label = dealStatusLabel(deal, now);
   return {
-    ...dealStatusLabel(deal, now),
+    ...label,
     recurring: Array.isArray(deal.recurDays) && deal.recurDays.length > 0,
+    // Only ask "active right now?" when the deal is genuinely Live/Active in its
+    // absolute window (success tone). On Expired/Inactive/Scheduled deals the
+    // "Not active now" badge would be noise, so it stays `null` and renders nothing.
+    recurringActive: label.tone === 'success' ? recurringActiveNow(deal, now) : null,
   };
+}
+
+/**
+ * Is a recurring deal inside TODAY'S Manila recurring window at `now`? Returns
+ * `null` for a non-recurring deal (no `recurDays`, or the time bounds absent);
+ * otherwise `true` iff `now`'s Manila day-of-week is in `recurDays` AND its Manila
+ * time-of-day falls in `[recurStartTime, recurEndTime)` — half-open, matching the
+ * server's `isDealScheduleLive`. Zero-padded `"HH:mm"` strings compare correctly.
+ */
+function recurringActiveNow(
+  deal: {
+    recurDays?: number[] | null;
+    recurStartTime?: string | null;
+    recurEndTime?: string | null;
+  },
+  now: Date,
+): boolean | null {
+  const days = deal.recurDays;
+  if (!Array.isArray(days) || days.length === 0) return null;
+  if (deal.recurStartTime == null || deal.recurEndTime == null) return null;
+
+  const wall = manilaWallClock(now);
+  if (!days.includes(wall.day)) return false;
+  if (wall.hhmm < deal.recurStartTime) return false;
+  if (wall.hhmm >= deal.recurEndTime) return false;
+  return true;
 }
 
 /** The pre-Phase-2 label/tone derivation, unchanged. */

@@ -24,6 +24,7 @@ describe('dealStatus', () => {
       label: 'Inactive',
       tone: 'muted',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -32,6 +33,7 @@ describe('dealStatus', () => {
       label: 'Not available at any branch',
       tone: 'warning',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -40,6 +42,7 @@ describe('dealStatus', () => {
       label: 'Active · 2/3 branches',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -48,6 +51,7 @@ describe('dealStatus', () => {
       label: 'Active',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
   });
 });
@@ -102,12 +106,14 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
       label: 'Active · 2/3 branches',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
     // Absent keys behave identically to explicit nulls.
     expect(dealStatus(base, NOW)).toEqual({
       label: 'Active · 2/3 branches',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -116,6 +122,7 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
       label: 'Scheduled',
       tone: 'neutral',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -124,6 +131,7 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
       label: 'Live · 2/3 branches',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
   });
 
@@ -132,13 +140,14 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
       label: 'Expired',
       tone: 'muted',
       recurring: false,
+      recurringActive: null,
     });
   });
 
   it('inactive wins over any window state', () => {
     expect(
       dealStatus({ ...base, isActive: false, startsAt: OPEN_START, endsAt: OPEN_END }, NOW),
-    ).toEqual({ label: 'Inactive', tone: 'muted', recurring: false });
+    ).toEqual({ label: 'Inactive', tone: 'muted', recurring: false, recurringActive: null });
   });
 
   it('zero-branch warning wins over an otherwise-Live window', () => {
@@ -153,7 +162,12 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
         },
         NOW,
       ),
-    ).toEqual({ label: 'Not available at any branch', tone: 'warning', recurring: false });
+    ).toEqual({
+      label: 'Not available at any branch',
+      tone: 'warning',
+      recurring: false,
+      recurringActive: null,
+    });
   });
 
   it('handles open-ended windows on either side', () => {
@@ -178,6 +192,7 @@ describe('dealStatus — DEAL-005 scheduled window', () => {
       label: 'Live',
       tone: 'success',
       recurring: false,
+      recurringActive: null,
     });
   });
 });
@@ -210,24 +225,117 @@ describe('dealStatus — DEAL-005 Phase 2 recurring flag', () => {
       label: 'Inactive',
       tone: 'muted',
       recurring: true,
+      recurringActive: null,
     });
     expect(dealStatus({ ...base, availableBranchCount: 0, recurDays: RECUR }, NOW)).toEqual({
       label: 'Not available at any branch',
       tone: 'warning',
       recurring: true,
+      recurringActive: null,
     });
     expect(
       dealStatus({ ...base, startsAt: FUTURE_START, endsAt: FUTURE_END, recurDays: RECUR }, NOW),
-    ).toEqual({ label: 'Scheduled', tone: 'neutral', recurring: true });
+    ).toEqual({ label: 'Scheduled', tone: 'neutral', recurring: true, recurringActive: null });
     expect(
       dealStatus({ ...base, startsAt: PAST_START, endsAt: PAST_END, recurDays: RECUR }, NOW),
-    ).toEqual({ label: 'Expired', tone: 'muted', recurring: true });
+    ).toEqual({ label: 'Expired', tone: 'muted', recurring: true, recurringActive: null });
   });
 
   it('still reads Live inside the absolute window, whatever the recurring hours are', () => {
     // The deliberate design call: the badge is NOT recurrence-accurate to the minute.
     expect(
       dealStatus({ ...base, startsAt: OPEN_START, endsAt: OPEN_END, recurDays: [0] }, NOW),
-    ).toEqual({ label: 'Live · 2/3 branches', tone: 'success', recurring: true });
+    ).toEqual({
+      label: 'Live · 2/3 branches',
+      tone: 'success',
+      recurring: true,
+      // recurDays present but NO time bounds → the recurrence is under-specified, so
+      // "active now?" is unanswerable and stays null (no "Not active now" badge).
+      recurringActive: null,
+    });
+  });
+});
+
+// ─── DEAL-005 Phase 2 — `recurringActive` (is the deal live in TODAY's Manila hours) ──
+//
+// Cosmetic only: the server's `isDealScheduleLive` is the visibility authority. This
+// drives the admin-only "Active now" / "Not active now" badge. Manila = UTC+8, no DST.
+// 2026-07-16 is a Thursday (day 4); 2026-07-18 is a Saturday (day 6).
+describe('dealStatus — DEAL-005 Phase 2 recurringActive', () => {
+  const base = {
+    isActive: true,
+    availableBranchCount: 2,
+    activeBranchCount: 3,
+    startsAt: OPEN_START,
+    endsAt: OPEN_END,
+  };
+  // UTC 04:00 on Thu 2026-07-16 → Manila Thu 12:00.
+  const THU_MANILA_NOON = new Date('2026-07-16T04:00:00Z');
+  // UTC 12:00 on Thu 2026-07-16 → Manila Thu 20:00.
+  const THU_MANILA_EVENING = new Date('2026-07-16T12:00:00Z');
+
+  it('recurring deal inside today’s Manila window & day → true', () => {
+    expect(
+      dealStatus(
+        { ...base, recurDays: [4], recurStartTime: '09:00', recurEndTime: '17:00' },
+        THU_MANILA_NOON,
+      ).recurringActive,
+    ).toBe(true);
+  });
+
+  it('recurring deal past today’s Manila recurEndTime (still inside absolute window) → false', () => {
+    const status = dealStatus(
+      { ...base, recurDays: [4], recurStartTime: '09:00', recurEndTime: '17:00' },
+      THU_MANILA_EVENING,
+    );
+    // Absolute window is still active — the deal reads Live, just not right now.
+    expect(status.tone).toBe('success');
+    expect(status.recurringActive).toBe(false);
+  });
+
+  it('recurring deal on a Manila day NOT in recurDays → false', () => {
+    // Manila day is Thursday (4); recurDays only lists Monday.
+    expect(
+      dealStatus(
+        { ...base, recurDays: [1], recurStartTime: '09:00', recurEndTime: '17:00' },
+        THU_MANILA_NOON,
+      ).recurringActive,
+    ).toBe(false);
+  });
+
+  it('non-recurring deal (no recurDays) → null', () => {
+    expect(dealStatus(base, THU_MANILA_NOON).recurringActive).toBeNull();
+  });
+
+  it('recurring deal whose absolute window is EXPIRED → null (gated on success tone)', () => {
+    const status = dealStatus(
+      {
+        ...base,
+        startsAt: PAST_START,
+        endsAt: PAST_END,
+        recurDays: [4],
+        recurStartTime: '09:00',
+        recurEndTime: '17:00',
+      },
+      THU_MANILA_NOON,
+    );
+    expect(status.tone).toBe('muted');
+    expect(status.recurringActive).toBeNull();
+  });
+
+  it('uses the Manila day-of-week, not the host/UTC day (offset-boundary proof)', () => {
+    // UTC Fri 2026-07-17 23:30 → Manila Sat 2026-07-18 07:30.
+    const now = new Date('2026-07-17T23:30:00Z');
+    // Recurs on Saturday (6, the Manila day) 07:00–09:00 → active.
+    expect(
+      dealStatus({ ...base, recurDays: [6], recurStartTime: '07:00', recurEndTime: '09:00' }, now)
+        .recurringActive,
+    ).toBe(true);
+    // Recurs on Friday (5, the UTC day) only → NOT active, proving the day check
+    // reads the Manila day, not the raw UTC day-of-week.
+    expect(
+      dealStatus({ ...base, recurDays: [5], recurStartTime: '07:00', recurEndTime: '09:00' }, now)
+        .recurringActive,
+    ).toBe(false);
   });
 });
