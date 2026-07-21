@@ -1,4 +1,4 @@
-import { formatCurrency } from '@jojopotato/utils';
+import { formatCurrency, formatDealScheduleSummary } from '@jojopotato/utils';
 import { Button, EmptyState, ScreenHeader } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -70,6 +70,8 @@ export default function DealDetailsScreen() {
   }
 
   const components = deal.components ?? [];
+  // DEAL-005 Phase 3: the deal's availability annotation, if it's a scheduled deal.
+  const scheduleSummary = formatDealScheduleSummary(deal.schedule);
 
   // Plain add-to-cart: a deal-product is priced at its own base price and enters
   // the cart like any product. It is present in the branch's deals menu, so it is
@@ -133,6 +135,12 @@ export default function DealDetailsScreen() {
           {deal.description ? (
             <Text style={[styles.description, { color: theme.textSecondary }]}>
               {deal.description}
+            </Text>
+          ) : null}
+
+          {scheduleSummary ? (
+            <Text style={[styles.scheduleSummary, { color: theme.textSecondary }]}>
+              {scheduleSummary}
             </Text>
           ) : null}
 
@@ -212,6 +220,10 @@ const styles = StyleSheet.create({
   description: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.body,
+  },
+  scheduleSummary: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
   insideCard: {
     gap: Spacing.one,

@@ -120,24 +120,24 @@ export function isDealScheduleLive(rows: DealScheduleWindow[], now: Date): boole
 }
 
 /**
- * Batched schedule lookup → the subset of `dealProductIds` that are live at `now`.
+ * Batched row fetch → each deal-product's `deal_schedules` windows, grouped by
+ * `deal_product_id`. ONE query regardless of how many deals are passed (never one
+ * per deal), mirroring `resolveAvailableDealProductIds`.
  *
- * ONE query regardless of how many deals are passed (never one per deal), mirroring
- * `resolveAvailableDealProductIds`. Deals with no rows are included in the result
- * BY CONSTRUCTION: the result set starts from the full candidate list and rows only
- * ever narrow it, so a deal absent from `deal_schedules` can never be dropped by a
- * missing join row. That is the AC3 no-backfill guarantee expressed structurally,
- * not as a special case someone could later delete.
+ * Shared privately by BOTH `resolveLiveDealProductIds` (write path) and
+ * `resolveLiveDealSchedules` (read path) so the two never drift to different
+ * queries. A deal with zero rows is simply ABSENT from the returned map — callers
+ * treat a missing entry as `[]` (the always-live no-backfill case).
  *
  * @param dbOrTx `db` or an open transaction. Order placement MUST pass its `tx` so
  *   the check reads the same snapshot as the write.
  */
-export async function resolveLiveDealProductIds(
+async function loadWindowsByDeal(
   dbOrTx: Queryer,
   dealProductIds: string[],
-  now: Date,
-): Promise<Set<string>> {
-  if (!dealProductIds.length) return new Set();
+): Promise<Map<string, DealScheduleWindow[]>> {
+  const windowsByDeal = new Map<string, DealScheduleWindow[]>();
+  if (!dealProductIds.length) return windowsByDeal;
 
   const rows = await dbOrTx
     .select({
@@ -151,7 +151,6 @@ export async function resolveLiveDealProductIds(
     .from(dealSchedules)
     .where(inArray(dealSchedules.deal_product_id, dealProductIds));
 
-  const windowsByDeal = new Map<string, DealScheduleWindow[]>();
   for (const row of rows) {
     const list = windowsByDeal.get(row.dealProductId) ?? [];
     list.push({
@@ -164,6 +163,34 @@ export async function resolveLiveDealProductIds(
     windowsByDeal.set(row.dealProductId, list);
   }
 
+  return windowsByDeal;
+}
+
+/**
+ * Batched schedule lookup → the subset of `dealProductIds` that are live at `now`.
+ *
+ * Deals with no rows are included in the result BY CONSTRUCTION: the result set
+ * starts from the full candidate list and rows only ever narrow it, so a deal
+ * absent from `deal_schedules` can never be dropped by a missing join row. That is
+ * the AC3 no-backfill guarantee expressed structurally, not as a special case
+ * someone could later delete.
+ *
+ * The WRITE path (`orders.ts`) calls this. Its signature and behavior are frozen —
+ * DEAL-005 Phase 3 added the sibling `resolveLiveDealSchedules` for the read path
+ * rather than changing this function.
+ *
+ * @param dbOrTx `db` or an open transaction. Order placement MUST pass its `tx` so
+ *   the check reads the same snapshot as the write.
+ */
+export async function resolveLiveDealProductIds(
+  dbOrTx: Queryer,
+  dealProductIds: string[],
+  now: Date,
+): Promise<Set<string>> {
+  if (!dealProductIds.length) return new Set();
+
+  const windowsByDeal = await loadWindowsByDeal(dbOrTx, dealProductIds);
+
   const live = new Set<string>();
   for (const dealProductId of dealProductIds) {
     // `?? []` is the zero-rows case — `isDealScheduleLive([])` returns true.
@@ -172,6 +199,34 @@ export async function resolveLiveDealProductIds(
     }
   }
   return live;
+}
+
+/**
+ * DEAL-005 Phase 3 — the READ-path sibling of `resolveLiveDealProductIds`.
+ *
+ * Same single batched query and same per-deal `isDealScheduleLive()` decision, but
+ * returns BOTH the live-id set AND the raw windows-by-deal map so the menu read
+ * path can surface each live deal's schedule to the client (the annotation source).
+ * The write path keeps calling `resolveLiveDealProductIds` untouched.
+ *
+ * `schedulesByDeal` carries a window array only for deals that HAVE `deal_schedules`
+ * rows; a zero-row (always-live) deal is simply absent from the map, so the
+ * serializer omits its `schedule` field entirely (AC3).
+ */
+export async function resolveLiveDealSchedules(
+  dbOrTx: Queryer,
+  dealProductIds: string[],
+  now: Date,
+): Promise<{ liveDealIds: Set<string>; schedulesByDeal: Map<string, DealScheduleWindow[]> }> {
+  const schedulesByDeal = await loadWindowsByDeal(dbOrTx, dealProductIds);
+
+  const liveDealIds = new Set<string>();
+  for (const dealProductId of dealProductIds) {
+    if (isDealScheduleLive(schedulesByDeal.get(dealProductId) ?? [], now)) {
+      liveDealIds.add(dealProductId);
+    }
+  }
+  return { liveDealIds, schedulesByDeal };
 }
 
 /**

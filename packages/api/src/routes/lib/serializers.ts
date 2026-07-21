@@ -21,6 +21,7 @@ import type {
   promotions,
   rewards,
 } from '../../db/schema/index';
+import type { DealScheduleWindow } from './deal-schedule';
 
 type BranchRow = InferSelectModel<typeof branches>;
 type CategoryRow = InferSelectModel<typeof categories>;
@@ -195,6 +196,23 @@ export interface ApiMenuOption {
   priceDeltaCents: number;
 }
 
+/**
+ * DEAL-005 Phase 3 — one live schedule window of a deal-product on the wire.
+ * Client-facing camelCase mirror of a `deal_schedules` row (`DealScheduleWindow`
+ * in `deal-schedule.ts`), with `Date` instants serialized to ISO strings. The
+ * `recur*` fields are Manila WALL-CLOCK values, NOT UTC (see `toManilaWallClock`).
+ * Structurally identical to `@jojopotato/types`' `DealScheduleWindow` (the client
+ * reads it as that type); declared locally here matching the no-cross-dependency
+ * boundary convention the rest of this file's `Api*` shapes use.
+ */
+export interface ApiDealScheduleWindow {
+  startsAt: string | null;
+  endsAt: string | null;
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
+}
+
 export interface ApiMenuProduct {
   id: string;
   name: string;
@@ -211,6 +229,12 @@ export interface ApiMenuProduct {
   // menu response body is byte-unchanged for non-deal products. Additive.
   isDeal?: boolean;
   components?: AdminDealComponent[];
+  // DEAL-005 Phase 3: the deal's live `deal_schedules` windows (for the customer
+  // "Available Mon–Fri, 8:00 AM – 8:25 PM" annotation). Present ONLY on a
+  // currently-live SCHEDULED deal; OMITTED entirely for a schedule-less
+  // (always-live) deal and for every regular product — same omit-when-absent
+  // convention as `isDeal`/`components`. Additive; read-only display data.
+  schedule?: ApiDealScheduleWindow[];
 }
 
 export interface ApiMenuCategory {
@@ -329,6 +353,7 @@ export function serializeMenuProduct(
   product: ProductRow,
   options: ProductOptionRow[],
   components?: AdminDealComponent[],
+  scheduleWindows?: DealScheduleWindow[],
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
     size: [],
@@ -353,10 +378,28 @@ export function serializeMenuProduct(
   // `isDeal`/`components` keys are OMITTED entirely — the regular response stays
   // byte-identical to pre-ADM-004 output (chosen over `isDeal: false` so the
   // existing menu contract is provably unchanged for non-deal products).
-  if (components !== undefined) {
-    return { ...base, isDeal: product.is_deal, components };
+  let result: ApiMenuProduct =
+    components !== undefined ? { ...base, isDeal: product.is_deal, components } : base;
+
+  // DEAL-005 Phase 3: attach the deal's live schedule windows ONLY when the deal
+  // actually has rows (non-empty). A schedule-less (always-live) deal and every
+  // regular product get NO `schedule` key at all — same omit-when-absent
+  // convention as `isDeal`/`components` above, so the wire stays byte-identical
+  // for those (AC3/AC9). `undefined`/`[]` both mean "omit".
+  if (scheduleWindows !== undefined && scheduleWindows.length > 0) {
+    result = {
+      ...result,
+      schedule: scheduleWindows.map((w) => ({
+        startsAt: w.starts_at ? w.starts_at.toISOString() : null,
+        endsAt: w.ends_at ? w.ends_at.toISOString() : null,
+        recurDays: w.recur_days ?? null,
+        recurStartTime: w.recur_start_time ?? null,
+        recurEndTime: w.recur_end_time ?? null,
+      })),
+    };
   }
-  return base;
+
+  return result;
 }
 
 export function serializeMenuCategory(

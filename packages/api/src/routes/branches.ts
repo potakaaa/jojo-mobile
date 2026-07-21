@@ -14,7 +14,7 @@ import {
   products,
 } from '../db/schema/index';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
-import { resolveLiveDealProductIds } from './lib/deal-schedule';
+import { resolveLiveDealSchedules, type DealScheduleWindow } from './lib/deal-schedule';
 import {
   serializeBranch,
   serializeMenuCategory,
@@ -167,6 +167,11 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
   // right now. Same lifecycle as `availableDealIds` above — only ever populated on
   // the deals menu, never consulted on the regular menu.
   let liveDealIds = new Set<string>();
+  // DEAL-005 Phase 3: each live deal's raw schedule windows, for the customer
+  // annotation. Same lifecycle — only populated on the deals menu; stays empty on
+  // the regular menu, so `.get()` there always yields `undefined` (no `schedule`
+  // key emitted, regular response byte-unchanged).
+  let schedulesByDeal = new Map<string, DealScheduleWindow[]>();
   if (isDealMenu && productIds.length) {
     const componentRows = await db
       .select({
@@ -204,7 +209,14 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
     // order placement calls the SAME function, so the half-open `[starts_at,
     // ends_at)` boundary cannot drift between browse and buy, and an INNER JOIN
     // shape would silently drop every zero-schedule-row deal.
-    liveDealIds = await resolveLiveDealProductIds(db, productIds, new Date());
+    //
+    // Phase 3: `resolveLiveDealSchedules` returns the SAME live-id set as the
+    // write path's `resolveLiveDealProductIds` (one shared batched query) PLUS the
+    // raw windows-by-deal map, so a live scheduled deal can carry its schedule to
+    // the client (`schedulesByDeal.get(id)`) for the annotation.
+    const resolved = await resolveLiveDealSchedules(db, productIds, new Date());
+    liveDealIds = resolved.liveDealIds;
+    schedulesByDeal = resolved.schedulesByDeal;
   }
 
   // Preserve first-seen category order (already sorted by category.sort_order).
@@ -236,6 +248,12 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       // sets `isDeal`/`components`. Regular menu → pass `undefined` so both keys
       // are omitted entirely (unchanged regular-menu response body).
       isDealMenu ? (componentsByProduct.get(product.id) ?? []) : undefined,
+      // DEAL-005 Phase 3 (Execute-Agent Instruction E2): pass the deal's schedule
+      // windows ONLY on the deals menu. `undefined` on the regular menu and for a
+      // schedule-less deal (map miss) → serializer omits the `schedule` key. The
+      // explicit `isDealMenu ?` ternary mirrors the `components` gate above for
+      // symmetry, even though `schedulesByDeal` is an empty Map on the regular path.
+      isDealMenu ? schedulesByDeal.get(product.id) : undefined,
     );
     productsByCategory.get(category.id)!.push(apiProduct);
   }

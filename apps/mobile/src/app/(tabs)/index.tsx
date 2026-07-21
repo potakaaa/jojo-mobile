@@ -7,6 +7,7 @@ import {
   RewardProgressCard,
   StarProgressBar,
 } from '@jojopotato/ui';
+import { formatDealScheduleSummary } from '@jojopotato/utils';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -318,6 +319,7 @@ export default function HomeScreen() {
                   deal={dealProductToCard(product)}
                   mode={mode}
                   style={styles.dealCard}
+                  scheduleSummary={formatDealScheduleSummary(product.schedule)}
                   onPress={() => openDeal(product.id)}
                 />
               ))}

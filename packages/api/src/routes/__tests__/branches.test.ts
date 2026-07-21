@@ -666,6 +666,52 @@ describe('GET /branches/:branchId/menu?isDeal=true — DEAL-005 scheduled window
     expect(products.map((p: any) => p.id)).not.toContain(unscheduledDealId);
     expect(products.map((p: any) => p.id)).not.toContain(openWindowDealId);
   });
+
+  // DEAL-005 Phase 3 — the schedule now travels to the client for the mobile
+  // annotation. `openWindowDealId` has one absolute-only window (starts_at/ends_at,
+  // no recurrence), so its `schedule` array carries that single window's shape.
+  it('Phase 3: a live scheduled deal carries a `schedule` array with the correct shape', async () => {
+    const { status, json } = await get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    const product = json.categories
+      .flatMap((c: any) => c.products)
+      .find((p: any) => p.id === openWindowDealId);
+    expect(product).toBeDefined();
+    expect(Array.isArray(product.schedule)).toBe(true);
+    expect(product.schedule).toHaveLength(1);
+    const window = product.schedule[0];
+    // Absolute-only window → real ISO instants, null recurrence fields.
+    expect(typeof window.startsAt).toBe('string');
+    expect(typeof window.endsAt).toBe('string');
+    expect(new Date(window.startsAt).toISOString()).toBe(window.startsAt);
+    expect(window.recurDays).toBeNull();
+    expect(window.recurStartTime).toBeNull();
+    expect(window.recurEndTime).toBeNull();
+  });
+
+  // AC3 at the wire boundary — a zero-schedule-row (always-live) deal has NO
+  // `schedule` KEY at all (absent, not `undefined`-valued / null).
+  it('Phase 3: a zero-row deal has NO `schedule` key on the wire', async () => {
+    const { status, json } = await get(`/branches/${branchId}/menu?isDeal=true`);
+    expect(status).toBe(200);
+    const product = json.categories
+      .flatMap((c: any) => c.products)
+      .find((p: any) => p.id === unscheduledDealId);
+    expect(product).toBeDefined();
+    expect('schedule' in product).toBe(false);
+    expect(product.schedule).toBeUndefined();
+  });
+
+  // AC9 regression lock — no product on the REGULAR menu carries a `schedule` key.
+  it('Phase 3: the regular (non-deal) menu carries no `schedule` key on any product', async () => {
+    const { status, json } = await get(`/branches/${branchId}/menu`);
+    expect(status).toBe(200);
+    const products = json.categories.flatMap((c: any) => c.products);
+    expect(products.length).toBeGreaterThan(0);
+    for (const product of products) {
+      expect('schedule' in product).toBe(false);
+    }
+  });
 });
 
 /**
