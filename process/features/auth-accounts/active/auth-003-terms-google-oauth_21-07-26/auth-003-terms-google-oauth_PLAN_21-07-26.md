@@ -147,7 +147,10 @@ commitments, and named third-party processors.
 ### Trigger
 
 Direct user instruction, delivered to the orchestrator after VALIDATE completed on the original
-shape (EXECUTE had not yet started — zero implementation exists on disk for either shape):
+shape. **Correction (post-CodeRabbit review):** at the time of this instruction, the pre-amendment
+combined-screen implementation was already fully EXECUTEd and CODE DONE with all 4 automated gates
+green (see the co-located `auth-003-terms-google-oauth_REPORT_21-07-26.md`) — this amendment
+changes that existing implementation, it does not build from a blank slate:
 
 > "separate terms and conditions and privacy policy, also put it on help and have 2 nav same ui
 > just 2 navs inside the help"

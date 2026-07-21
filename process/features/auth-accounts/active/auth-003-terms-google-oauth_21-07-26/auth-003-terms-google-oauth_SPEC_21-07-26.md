@@ -175,9 +175,11 @@ also put it on help and have 2 nav same ui just 2 navs inside the help"
 
 This is an explicit, dated, user-authorized override of this SPEC's original Constraints-section
 claim that PRD §7 settles a single combined screen. It is not a gap, not re-litigated, and not
-derived from new research — it is a direct product decision delivered after this SPEC was locked
-(VALIDATE on the pre-amendment plan shape had already completed; zero implementation existed on
-disk for either shape at the time of this override).
+derived from new research — it is a direct product decision delivered after this SPEC was locked.
+**Correction (post-CodeRabbit review):** VALIDATE on the pre-amendment plan shape had already
+completed, AND that pre-amendment combined-screen shape was already fully EXECUTEd and CODE DONE
+with all 4 automated gates green at the time of this override — this amendment changes an existing
+implementation, not a blank slate.
 
 Effective changes to this SPEC's scope:
 
