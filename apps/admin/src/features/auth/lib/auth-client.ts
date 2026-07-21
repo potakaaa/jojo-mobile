@@ -1,4 +1,4 @@
-import { inferAdditionalFields } from 'better-auth/client/plugins';
+import { inferAdditionalFields, magicLinkClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
 import { env } from '@/config/env';
@@ -17,6 +17,11 @@ import { env } from '@/config/env';
  *
  * `inferAdditionalFields` mirrors the server's read-only `role` field so
  * `session.user.role` is typed WITHOUT importing any server code into the bundle.
+ *
+ * `magicLinkClient` (Section H, ADM-011) adds ONLY the namespaced
+ * `authClient.magicLink.*` methods (e.g. `.verify`) the web staff-invite accept page
+ * needs. better-auth client plugins are additive and namespaced by construction, so
+ * this does NOT alter the existing `authClient.signIn.email` flow used by `login.tsx`.
  */
 export const authClient = createAuthClient({
   baseURL: env.apiUrl,
@@ -31,5 +36,6 @@ export const authClient = createAuthClient({
         role: { type: 'string', input: false },
       },
     }),
+    magicLinkClient(),
   ],
 });

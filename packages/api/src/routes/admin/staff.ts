@@ -1,12 +1,73 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 import { STAFF_ROLES } from '@jojopotato/types';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
+import { Resend } from 'resend';
 import { z } from 'zod';
 
 import { db } from '../../db/client';
-import { branches, users } from '../../db/schema/index';
-import { serializeAdminStaffSummary } from '../lib/serializers';
+import { branches, staffInvites, users } from '../../db/schema/index';
+import { serializeAdminStaffInvite, serializeAdminStaffSummary } from '../lib/serializers';
 import { AdminApiError, handleAdminError } from './lib/errors';
+
+// Resend-or-log invite delivery — mirrors `auth.ts`'s `sendMagicLink` exactly:
+// real email when RESEND_API_KEY is configured, otherwise a server-side log so
+// local dev / tests exercise the full accept flow without a Resend account (the
+// link still round-trips, it just isn't emailed). Single call site (the invite
+// handler), so no shared helper is extracted (YAGNI, locked Delivery decision).
+const resendApiKey = process.env.RESEND_API_KEY;
+const inviteResend = resendApiKey ? new Resend(resendApiKey) : null;
+const inviteFrom = process.env.RESEND_FROM ?? 'Jojo Potato <onboarding@resend.dev>';
+
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * Deliver an invite accept link. The link targets `/staff-invite/native` (the
+ * email-clickable deep-link bounce), NOT `/staff-invite/start` (a JSON API the app
+ * calls after landing). Send failure NEVER rolls back the invite row (matching
+ * `sendMagicLink`'s precedent — the invite is real and accept-able even if the mail
+ * bounced). The raw token appears ONLY here, never in the API response body or the DB.
+ */
+async function sendStaffInvite(email: string, rawToken: string): Promise<void> {
+  const acceptUrl = `${process.env.BETTER_AUTH_URL}/staff-invite/native?token=${encodeURIComponent(rawToken)}`;
+  if (!inviteResend) {
+    console.log(`[admin] staff invite for ${email} (RESEND_API_KEY unset): ${acceptUrl}`);
+    return;
+  }
+  await inviteResend.emails.send({
+    from: inviteFrom,
+    to: email,
+    subject: "You've been invited to the Jojo Potato staff app",
+    text: `Tap to accept your staff invite and set up your Jojo Potato account: ${acceptUrl}`,
+  });
+}
+
+const inviteSchema = z
+  .object({
+    email: z.email(),
+    intendedRole: z.enum(['staff', 'admin', 'super_admin']),
+    intendedBranchId: z.uuid().nullable().optional(),
+  })
+  .superRefine((val, ctx) => {
+    // D2: a branch is required for (and only for) a `staff` target. Enforced at the
+    // SOURCE here since we own both fields at creation time.
+    if (val.intendedRole === 'staff') {
+      if (!val.intendedBranchId) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'A branch is required for a staff invite',
+          path: ['intendedBranchId'],
+        });
+      }
+    } else if (val.intendedBranchId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A branch may only be set for a staff invite',
+        path: ['intendedBranchId'],
+      });
+    }
+  });
 
 /**
  * Admin Staff management routes (ADM-009, #124). Lists staff-level users and sets
@@ -123,6 +184,99 @@ staffRouter.patch('/:id/branch', async (req, res) => {
     res.status(200).json({ staff: serializeAdminStaffSummary(updated!) });
   } catch (err) {
     handleAdminError(err, res, 'assigning staff branch');
+  }
+});
+
+/**
+ * POST /api/admin/staff/invite (ADM-011, #141) — super_admin-only. Creates a
+ * single-use, expiring, hashed-token invite for an email that has NO account yet.
+ *
+ * GUARD ORDER:
+ *   1. super_admin inline check       → 403 for a plain admin (mirrors users.ts)
+ *   2. Zod body validation            → 400 (bad email/role, or branch-only-for-staff)
+ *   3. existing-account check         → 409 if an account with this email exists
+ *   4. db.transaction:
+ *        a. supersede any prior unconsumed+unexpired invite for this email
+ *        b. generate a 256-bit token, store ONLY its SHA-256 hash, insert the row
+ *   5. AFTER commit: Resend-or-log the accept link (send failure does NOT roll back)
+ *
+ * The raw token is delivered ONLY through the email/log channel and NEVER returned
+ * in the response body (which carries only email/role/branch/expiry).
+ */
+staffRouter.post('/invite', async (req, res) => {
+  try {
+    if (req.adminSession!.role !== 'super_admin') {
+      throw new AdminApiError(403, 'Forbidden');
+    }
+
+    const parsed = inviteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AdminApiError(400, 'Invalid invite');
+    }
+    const { email, intendedRole } = parsed.data;
+    const intendedBranchId =
+      intendedRole === 'staff' ? (parsed.data.intendedBranchId ?? null) : null;
+
+    // An email that already has an account must use the promote flow, not an invite.
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (existing) {
+      throw new AdminApiError(
+        409,
+        'An account with this email already exists — use the promote flow instead',
+      );
+    }
+
+    // Token generated + hashed INSIDE the transaction; the raw token is captured in
+    // a closure variable and only ever sent/logged AFTER the commit succeeds.
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
+
+    const invite = await db.transaction(async (tx) => {
+      // Supersede any prior live invite for this email (single-live-invite-per-email,
+      // enforced app-level — mark consumed, never delete, for audit).
+      await tx
+        .update(staffInvites)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(staffInvites.email, email),
+            isNull(staffInvites.consumedAt),
+            gt(staffInvites.expiresAt, now),
+          ),
+        );
+
+      const [row] = await tx
+        .insert(staffInvites)
+        .values({
+          email,
+          intendedRole,
+          intendedBranchId,
+          tokenHash,
+          expiresAt,
+          createdBy: req.adminSession!.userId,
+        })
+        .returning({
+          email: staffInvites.email,
+          intendedRole: staffInvites.intendedRole,
+          intendedBranchId: staffInvites.intendedBranchId,
+          expiresAt: staffInvites.expiresAt,
+        });
+      return row!;
+    });
+
+    // Post-commit delivery. A send failure must NOT fail the request — the invite
+    // row is real and accept-able regardless (matches sendMagicLink's precedent).
+    try {
+      await sendStaffInvite(email, rawToken);
+    } catch (sendErr) {
+      console.error('[admin] staff invite created but delivery failed', sendErr);
+    }
+
+    res.status(201).json({ invite: serializeAdminStaffInvite(invite) });
+  } catch (err) {
+    handleAdminError(err, res, 'creating staff invite');
   }
 });
 

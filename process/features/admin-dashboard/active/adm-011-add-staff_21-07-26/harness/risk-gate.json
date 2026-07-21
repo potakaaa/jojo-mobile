@@ -1,0 +1,7 @@
+{
+  "riskClass": "auth or identity; permission, secret, or trust-boundary logic",
+  "workDescription": "ADM-011 — add staff via (1) promote-existing-user (composes 2 already-locked routes byte-unmodified) and (2) email invite backed by a new single-use, expiring, hashed-token staff_invites table + a magic-link-backed accept flow that pre-provisions role/branch on account creation. Both paths are super_admin-only and grant privilege up to super_admin.",
+  "approver": "vc-validate-agent (automated Layer 1/Layer 2 fan-out) — see verification.json and adversarial-validation.json for the analysis this classification rests on",
+  "mustStopBeforeFinalize": true,
+  "note": "review-decision.json is deliberately NOT created by this VALIDATE pass. Per the manual-first evidence contract, an explicit human APPROVE/REJECT decision is required before EXECUTE is authorized — this agent does not self-approve a privilege-granting surface. See the plan's Validate Contract 'Gate: CONDITIONAL' and 'Accepted by' fields for what specifically needs human sign-off."
+}

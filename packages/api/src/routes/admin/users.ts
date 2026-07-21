@@ -20,6 +20,10 @@ const roleUpdateSchema = z.object({
   role: z.enum(['customer', 'staff', 'admin', 'super_admin']),
 });
 
+const lookupQuerySchema = z.object({
+  email: z.email(),
+});
+
 /**
  * Canary: `GET /api/admin/me` → `{ role }`. Read-only. Reads `req.adminSession`
  * (attached by `requireAdmin`). No `assignedBranch` — admins are not
@@ -85,6 +89,51 @@ usersRouter.post('/users/:id/role', async (req, res) => {
     }
     console.error('[admin] unexpected error updating user role', err);
     res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+/**
+ * `GET /api/admin/users/lookup?email=` (ADM-011, #141) — exact-match user lookup
+ * powering the "+ Add staff" promote path (find an existing customer to promote).
+ * Registered as `usersRouter.get('/users/lookup', ...)` because `usersRouter` mounts
+ * at the admin ROOT (`adminRouter.use('/', usersRouter)`), matching the role route's
+ * `usersRouter.post('/users/:id/role', ...)` convention.
+ *
+ * GUARD ORDER (mirrors the role route's discipline):
+ *   1. super_admin inline check (FIRST) → 403 for a plain admin
+ *   2. Zod query validation             → 400 on a missing/invalid email
+ *   3. exact-match DB lookup            → returns { user } or { user: null }
+ *
+ * A "no account with this email" result is a normal branch of the add-staff flow
+ * (it routes the admin to the invite path), NOT a 404: it returns 200 `{ user: null }`.
+ * Case-sensitivity note: `users.email` has no citext/lower-index and no normalization
+ * layer exists elsewhere in this codebase for email lookups, so this is a plain
+ * equality match on the stored value (documented known limitation, YAGNI).
+ */
+usersRouter.get('/users/lookup', async (req, res) => {
+  try {
+    if (req.adminSession!.role !== 'super_admin') {
+      throw new AdminApiError(403, 'Forbidden');
+    }
+
+    const parsed = lookupQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new AdminApiError(400, 'Invalid email');
+    }
+
+    const [row] = await db
+      .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+      .from(users)
+      .where(eq(users.email, parsed.data.email));
+
+    res.status(200).json({ user: row ?? null });
+  } catch (err) {
+    if (err instanceof AdminApiError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error('[admin] unexpected error looking up user', err);
+    res.status(500).json({ error: 'Failed to look up user' });
   }
 });
 

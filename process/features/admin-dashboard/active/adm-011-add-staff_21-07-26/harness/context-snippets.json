@@ -1,0 +1,52 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/admin/users.ts",
+      "lines": "18-21, 55-91",
+      "description": "Existing POST /api/admin/users/:id/role — locked guard order (super_admin-only -> self-escalation -> Zod validation -> DB write). ADM-011 reuses this byte-unmodified; confirmed by direct read that no line in this handler needs to change to add the new GET /users/lookup handler alongside it in the same file.",
+      "content": "usersRouter.post('/users/:id/role', async (req, res) => { try { if (req.adminSession!.role !== 'super_admin') throw new AdminApiError(403, 'Forbidden'); if (req.params.id === req.adminSession!.userId) throw new AdminApiError(400, 'Cannot modify own role'); const parsed = roleUpdateSchema.safeParse(req.body); if (!parsed.success) throw new AdminApiError(400, 'Invalid role'); const [updated] = await db.update(users).set({ role: parsed.data.role }).where(eq(users.id, req.params.id)).returning(...); ... } });"
+    },
+    {
+      "file": "packages/api/src/routes/admin/staff.ts",
+      "lines": "60-124",
+      "description": "Existing PATCH /api/admin/staff/:id/branch — locked guard order (Zod body -> uuid guard -> target 404 -> role!=customer 400 -> branch lookup -> write). ADM-011 reuses this byte-unmodified for staff-target promotes; confirmed by direct read.",
+      "content": "staffRouter.patch('/:id/branch', async (req, res) => { ... if (target.role === 'customer') throw new AdminApiError(400, 'Target user is not staff-level'); ... });"
+    },
+    {
+      "file": "packages/api/src/lib/require-admin.ts",
+      "lines": "44-71",
+      "description": "requireAdmin middleware — admits role in {admin, super_admin} only, attaches req.adminSession = {userId, role}. Mounted once at /api/admin in index.ts. ADM-011's new lookup + invite-create routes inherit this automatically; the plan's additional inline super_admin-only check on top of this is a SECOND, narrower gate (admin alone must still 403), matching the existing role-route precedent exactly.",
+      "content": "export function requireAdmin(auth) { return async (req, res, next) => { const session = await auth.api.getSession(...); if (!session || !isAdminRole(role)) { res.status(403).json({error:'Forbidden'}); return; } req.adminSession = { userId: session.user.id, role }; next(); }; }"
+    },
+    {
+      "file": "packages/api/src/middleware/require-session.ts",
+      "lines": "1-27",
+      "description": "requireSession middleware — the CUSTOMER-facing session gate (used by /orders, /cart, /coupons, /rewards). ADM-011's POST /staff-invite/consume applies this at the ROUTE level (not router-mount level, since /start in the same router must stay unauthenticated) — this is the asymmetric-guard design the plan documents and this snippet confirms the exact middleware signature to apply per-route.",
+      "content": "export async function requireSession(req, res, next) { const result = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }); if (!result) { res.status(401).json({ error: 'Authentication required' }); return; } req.user = result.user; req.session = result.session; next(); }"
+    },
+    {
+      "file": "node_modules/.../better-auth/dist/plugins/magic-link/index.mjs",
+      "lines": "25-83",
+      "description": "CRITICAL FINDING: the mint-side (signInMagicLink) handler. opts = { storeToken: 'plain', allowedAttempts: 1, ...options } — packages/api/src/lib/auth.ts's magicLink({...}) config never sets storeToken, so it defaults to 'plain'. createVerificationValue is called with identifier: storedToken (= the RAW magic-link token itself, since storeToken defaults to plain, NOT a hash) and value: JSON.stringify({email, name}). The plan's Innovate Note claim that the row is 'keyed by a hashed token' and can be looked up via identifier = email is FACTUALLY WRONG on both counts: identifier is the TOKEN not the email, and it is stored PLAIN not hashed by this config. See the Validate Contract 'Plan updates applied' for the corrected mechanism.",
+      "content": "async function storeToken(ctx, token) { if (opts.storeToken === 'hashed') return await defaultKeyHasher(token); ...; return token; } ... signInMagicLink: createAuthEndpoint(...)(async (ctx) => { const verificationToken = ...generateRandomString(32,...); const storedToken = await storeToken(ctx, verificationToken); await ctx.context.internalAdapter.createVerificationValue({ identifier: storedToken, value: JSON.stringify({ email, name: ctx.body.name }), expiresAt: ... }); ... });"
+    },
+    {
+      "file": "apps/mobile/src/app/_layout.tsx",
+      "lines": "47-72",
+      "description": "Root Stack.Protected gate — CRITICAL FINDING: as soon as authClient.magicLink.verify() lands a session (role still 'customer', pre-consume), isCustomer = isAuthenticated && !isStaff becomes true and the root gate immediately routes away from (auth) to (onboarding)/(tabs) — BEFORE the new invite-accept.tsx screen's chained POST /staff-invite/consume call has resolved. This is a real navigation-race risk this VALIDATE pass surfaces as a CONCERN requiring Agent-Probe verification + mitigation, not previously called out in the plan.",
+      "content": "const isStaffUser = isAuthenticated && isStaff; const isCustomer = isAuthenticated && !isStaff; <Stack.Protected guard={isStaffUser}>...</Stack.Protected> <Stack.Protected guard={isCustomer && hasCompletedProfile}>...</Stack.Protected> <Stack.Protected guard={isCustomer && !hasCompletedProfile}>...</Stack.Protected> <Stack.Protected guard={!isAuthenticated}>...</Stack.Protected>"
+    },
+    {
+      "file": "apps/admin/src/routes/login.tsx",
+      "lines": "1-25",
+      "description": "CRITICAL FINDING: apps/admin's ONLY sign-in surface is email/password (authClient.signIn.email). Confirmed via repo-wide grep: zero signup screen, zero password-reset/forgot-password screen exist anywhere in apps/admin. A magic-link-provisioned account (which is what ADM-011's invite-accept flow always produces) has no password credential row and therefore cannot ever sign into apps/admin through any built UI. See backlog note adm-011-admin-invite-no-web-access_NOTE_21-07-26.md.",
+      "content": "async function handleSubmit(e) { ... const result = await signIn(email, password); ... } // signIn() -> authClient.signIn.email({email, password}) in use-admin-auth.ts:52"
+    },
+    {
+      "file": "packages/api/src/db/schema/users.ts",
+      "lines": "1-38",
+      "description": "users table — role column (userRoleEnum, default 'customer'), assignedBranchId (nullable FK to branches). Confirms the exact columns Path 1/Path 2's underlying writes target; no schema change needed to this file by ADM-011.",
+      "content": "export const userRoleEnum = pgEnum('user_role', ['customer', 'staff', 'admin', 'super_admin']); export const users = pgTable('users', { id: uuid(...).primaryKey().defaultRandom(), email: varchar('email').unique().notNull(), assignedBranchId: uuid('assigned_branch_id').references(() => branches.id), role: userRoleEnum('role').default('customer').notNull(), ... });"
+    }
+  ]
+}

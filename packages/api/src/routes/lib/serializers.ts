@@ -1223,3 +1223,44 @@ export function serializeAdminStaffSummary(row: {
     branchName: row.branchName,
   };
 }
+
+/**
+ * ADM-011 (#141) admin-only shapes for the "+ Add staff" flow. Declared LOCALLY
+ * here, matching the `AdminBranch`/`AdminReward`/`AdminStaffSummary` convention —
+ * only `packages/api` and `apps/admin` (which defines its own local mirror in the
+ * fetch wrapper) consume them, so no `@jojopotato/types` export is warranted.
+ */
+export interface AdminUserLookupResult {
+  id: string;
+  name: string;
+  email: string;
+  role: 'customer' | 'staff' | 'admin' | 'super_admin';
+}
+
+export interface AdminStaffInviteSummary {
+  email: string;
+  intendedRole: 'staff' | 'admin' | 'super_admin';
+  intendedBranchId: string | null;
+  /** ISO-8601 expiry instant (7 days from creation). */
+  expiresAt: string;
+}
+
+/**
+ * Serialize a `staff_invites` row into the invite-create response shape. NEVER
+ * carries the raw token or its hash (the accept link is delivered only via the
+ * email/log channel — see `staff.ts`'s invite-create handler and the
+ * `staff_invites` schema doc).
+ */
+export function serializeAdminStaffInvite(row: {
+  email: string;
+  intendedRole: string;
+  intendedBranchId: string | null;
+  expiresAt: Date;
+}): AdminStaffInviteSummary {
+  return {
+    email: row.email,
+    intendedRole: row.intendedRole as AdminStaffInviteSummary['intendedRole'],
+    intendedBranchId: row.intendedBranchId,
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
