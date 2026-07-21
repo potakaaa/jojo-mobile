@@ -1,11 +1,14 @@
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
-import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
+import { TermsPrivacyBody } from '@/features/legal/components/terms-privacy-body';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Terms & Conditions. Pushed on top of the public stack with a native header
- * (default back button) — set in `(auth)/_layout.tsx`. Placeholder copy only.
+ * Terms & Privacy. Pushed on top of the public stack with a native header
+ * (default back button) — set in `(auth)/_layout.tsx`. Renders the shared
+ * `TermsPrivacyBody`, whose copy lives in `features/legal/terms-privacy-content.ts`
+ * (the single source shared with the in-tabs `(tabs)/terms` screen).
  */
 export default function TermsRoute() {
   const theme = useTheme();
@@ -15,11 +18,7 @@ export default function TermsRoute() {
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
-      <Text style={[styles.heading, { color: theme.text }]}>Terms &amp; Conditions</Text>
-      <Text style={[styles.body, { color: theme.textSecondary }]}>
-        Placeholder terms. Real legal copy will replace this once the product and provider decisions
-        are finalized.
-      </Text>
+      <TermsPrivacyBody theme={theme} />
     </ScrollView>
   );
 }
@@ -27,6 +26,4 @@ export default function TermsRoute() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.four, gap: Spacing.three },
-  heading: { fontFamily: FontFamily.display.bold, fontSize: TypeScale.h2 },
-  body: { fontFamily: FontFamily.body.regular, fontSize: TypeScale.body, lineHeight: 24 },
 });
