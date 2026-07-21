@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { MenuItem } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { Image } from 'expo-image';
@@ -25,8 +26,9 @@ export interface ProductCardProps {
 /**
  * Single product card: brand photography supplied by the caller via
  * `imageSource` (or a placeholder block when none is passed), name,
- * description, price, and an "Add" affordance. Tapping toggles a local
- * pressed highlight — it does not navigate or add to a cart yet.
+ * description, price, and a view/open affordance (a chevron glyph). Tapping the
+ * card fires the caller's `onPress` (typically navigation to Product Details) —
+ * the chevron is a visual "open" cue, not a separate add-to-cart control.
  */
 export function ProductCard({ product, imageSource, onPress, mode }: ProductCardProps) {
   const theme = Colors[mode];
@@ -80,9 +82,10 @@ export function ProductCard({ product, imageSource, onPress, mode }: ProductCard
             {formatCurrency(product.priceCents)}
           </Text>
           <View
+            testID="product-card-affordance"
             style={[styles.addButton, { opacity: product.isAvailable ? 1 : 0.4 }, Shadows.offsetSm]}
           >
-            <Text style={styles.addButtonLabel}>+</Text>
+            <Ionicons name="chevron-forward" size={18} color={Palette.ink} />
           </View>
         </View>
       </View>
@@ -156,11 +159,5 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.jyellow,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addButtonLabel: {
-    fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.body,
-    color: Palette.ink,
-    lineHeight: TypeScale.body,
   },
 });

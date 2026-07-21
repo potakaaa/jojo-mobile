@@ -75,15 +75,19 @@ function ActiveOrderBanner({ order, onPress }: { order: Order; onPress: () => vo
       <View style={banner.outer}>
         <View style={banner.accentBar} />
         <View style={banner.body}>
-          <Text style={banner.eyebrow}>Active order</Text>
+          <View style={banner.headerRow}>
+            <Text style={banner.eyebrow}>Active order</Text>
+            {etaTime != null && (
+              <View style={banner.etaRow}>
+                <View style={banner.etaDot} />
+                <Text style={banner.etaText}>Ready {etaTime}</Text>
+              </View>
+            )}
+          </View>
           <Text style={banner.orderNum}>{order.orderNumber}</Text>
-          <Text style={banner.status}>{BANNER_COPY[order.status]}</Text>
-          {etaTime != null && (
-            <View style={banner.etaRow}>
-              <View style={banner.etaDot} />
-              <Text style={banner.etaText}>Ready around {etaTime}</Text>
-            </View>
-          )}
+          <Text style={banner.status} numberOfLines={1}>
+            {BANNER_COPY[order.status]}
+          </Text>
         </View>
         <View style={banner.arrow}>
           <Text style={banner.arrowText}>›</Text>
@@ -499,8 +503,15 @@ const banner = StyleSheet.create({
   },
   body: {
     flex: 1,
-    padding: Spacing.four,
-    gap: 4,
+    paddingVertical: Spacing.two + 2,
+    paddingHorizontal: Spacing.three,
+    gap: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
   },
   eyebrow: {
     fontFamily: FontFamily.body.bold,
@@ -511,20 +522,18 @@ const banner = StyleSheet.create({
   },
   orderNum: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h2,
+    fontSize: TypeScale.h3,
     color: Palette.ink,
   },
   status: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
     color: Palette.neutral700,
-    lineHeight: TypeScale.bodySmall * 1.4,
   },
   etaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 2,
   },
   etaDot: {
     width: 5,
@@ -534,19 +543,19 @@ const banner = StyleSheet.create({
   },
   etaText: {
     fontFamily: FontFamily.body.semibold,
-    fontSize: TypeScale.bodySmall,
+    fontSize: TypeScale.caption,
     color: Palette.green,
   },
   arrow: {
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
   },
   arrowText: {
     fontFamily: FontFamily.body.bold,
-    fontSize: 26,
+    fontSize: 22,
     color: Palette.neutral600,
-    lineHeight: 30,
+    lineHeight: 26,
   },
 });
