@@ -173,7 +173,12 @@ export async function resolveCouponDiscount(
   if (couponRow) {
     const { coupon, rewardType } = couponRow;
     const reward =
-      coupon.reward_id !== null ? { eligibleProductId: couponRow.rewardEligibleProductId } : null;
+      coupon.reward_id !== null
+        ? {
+            rewardType: couponRow.rewardType ?? '',
+            eligibleProductId: couponRow.rewardEligibleProductId,
+          }
+        : null;
     const result = checkRewardEligibility(
       { status: coupon.status, expiresAt: coupon.expires_at },
       reward,

@@ -194,6 +194,12 @@ export function computeDealDiscountCents(deal: Deal, cart: Cart): number {
 
 /** Minimal reward shape needed for reward-coupon eligibility. */
 export interface RewardForEligibility {
+  /**
+   * The reward type drives whether a null `eligibleProductId` is valid:
+   * - `free_item` / `free_upgrade` REQUIRE a non-null product → null = misconfigured → reject.
+   * - `fixed_discount` / `percentage_discount` are cart-wide → null is intentional → allow.
+   */
+  rewardType: string;
   eligibleProductId: string | null;
 }
 
@@ -238,6 +244,17 @@ export function checkRewardEligibility(
     }
   }
   if (!reward) {
+    return {
+      eligible: false,
+      reason: 'no_eligible_product',
+      message: "This reward isn't available right now.",
+    };
+  }
+  // Item-specific rewards (free_item / free_upgrade) REQUIRE a configured product.
+  // Cart-wide rewards (fixed_discount / percentage_discount) intentionally have
+  // eligibleProductId === null — don't reject them as misconfigured.
+  const requiresProduct = reward.rewardType === 'free_item' || reward.rewardType === 'free_upgrade';
+  if (requiresProduct && reward.eligibleProductId === null) {
     return {
       eligible: false,
       reason: 'no_eligible_product',
