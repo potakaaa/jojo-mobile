@@ -5,6 +5,7 @@ import branchesRouter from './branches';
 import categoriesRouter from './categories';
 import couponsRouter from './coupons';
 import dealsRouter from './deals';
+import notificationsRouter from './notifications';
 import offersRouter from './offers';
 import ordersRouter from './orders';
 import productsRouter from './products';
@@ -57,5 +58,9 @@ adminRouter.use('/orders', ordersRouter);
 // mutation. Same inherited guard; append-only, never restructure. 11th consumer
 // of the append-only aggregator pattern.
 adminRouter.use('/analytics', analyticsRouter);
+
+// Marketing notifications (PUSH-005 — admin-triggered branch promo) — same
+// inherited guard; append-only, never restructure.
+adminRouter.use('/notifications', notificationsRouter);
 
 export default adminRouter;

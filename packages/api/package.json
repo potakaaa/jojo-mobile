@@ -14,7 +14,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
-    "push:test": "tsx scripts/send-test-push.ts"
+    "push:test": "tsx scripts/send-test-push.ts",
+    "push:receipt": "tsx scripts/check-push-receipt.ts",
+    "trigger-marketing": "tsx scripts/trigger-all-marketing-notifications.ts"
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
