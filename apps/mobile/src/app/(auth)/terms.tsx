@@ -5,10 +5,11 @@ import { TermsPrivacyBody } from '@/features/legal/components/terms-privacy-body
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Terms & Privacy. Pushed on top of the public stack with a native header
- * (default back button) — set in `(auth)/_layout.tsx`. Renders the shared
- * `TermsPrivacyBody`, whose copy lives in `features/legal/terms-privacy-content.ts`
- * (the single source shared with the in-tabs `(tabs)/terms` screen).
+ * Terms & Conditions. Pushed on top of the public stack with a native header
+ * (default back button, titled "Terms & Conditions" — set in `(auth)/_layout.tsx`).
+ * Renders the shared `TermsPrivacyBody` filtered to the Terms document only; its
+ * copy lives in `features/legal/terms-privacy-content.ts` (the single source
+ * shared with the in-tabs `(tabs)/terms` screen).
  */
 export default function TermsRoute() {
   const theme = useTheme();
@@ -18,7 +19,7 @@ export default function TermsRoute() {
       style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
     >
-      <TermsPrivacyBody theme={theme} />
+      <TermsPrivacyBody theme={theme} group="terms" />
     </ScrollView>
   );
 }
