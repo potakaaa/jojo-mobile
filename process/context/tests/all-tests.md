@@ -8,7 +8,11 @@ date: 17-07-26
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-20 (jsdom cannot test real SSR/hydration timing — admin route-guard note; merged with 17-07-26's correction that packages/utils does have a vitest runner, 39/39 tests, verified live during MENU-003/MENU-004, plus mobile-dark-mode-audit's Card coverage delta)
+Last updated: 2026-07-20 (DEAL-005 Phase 2 — packages/api vitest now pins TZ=UTC, closing a real
+vacuous-test risk on Manila-timezone dev hosts; merged with jsdom cannot test real SSR/hydration
+timing — admin route-guard note; merged with 17-07-26's correction that packages/utils does have
+a vitest runner, 39/39 tests, verified live during MENU-003/MENU-004, plus mobile-dark-mode-audit's
+Card coverage delta)
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -198,6 +202,7 @@ Unless the task clearly needs a different path:
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
 - Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).
 - **Dev-machine gotcha (this box, not a repo-wide fact):** host port 5432 is occupied by a native `postgresql.service`, so a plain `docker compose up -d` for Postgres fails to bind. `packages/api`'s vitest integration suites (which need a live migrated Postgres) run fine against the already-running native instance instead — a `jojo` role (with `CREATEDB`) + `jojopotato` database were created against it once (discovered during admin-dashboard Phase 1 RESEARCH), letting vitest's `global-setup.ts` create its own ephemeral `<db>_test` databases per run. If `pnpm --filter @jojopotato/api test` fails with a connection error, check `sudo systemctl status postgresql` before assuming docker compose is the only path.
+- **`packages/api/vitest.config.ts` now pins `env: { TZ: 'UTC' }` (added 20-07-26 by DEAL-005 Phase 2) — a real, load-bearing gate, not decoration, and a durable pattern worth remembering for any future timezone-sensitive test anywhere in this repo.** This dev machine's OWN system timezone is `Asia/Manila`. Before the pin, a deliberately-broken timezone-conversion helper (using host-local `Date` accessors like `now.getDay()`/`now.getHours()` instead of a fixed-offset UTC-arithmetic conversion) passed the ENTIRE 601-test suite — every Manila-offset assertion was silently vacuous, because host-local time already equaled Manila time on this exact machine. With `TZ: 'UTC'` pinned, the same broken helper fails 16 tests. CI (`ubuntu-latest`, defaults to UTC) would likely have caught a regression eventually, but the immediate local dev feedback loop would not have — the failure mode is invisible on any developer machine that happens to share the business's timezone. **Generalization: any test asserting timezone-dependent behavior in this repo is unverified proof of correctness unless the suite's `TZ` is pinned to something OTHER than the assertion's target timezone** (pinning to the same zone the code should convert TO makes the test pass whether or not the conversion logic is even present). Check `packages/api/vitest.config.ts`'s `test.env.TZ` before trusting any new timezone-adjacent test in this package; other packages' vitest configs do not yet have this pin and should get one if they ever grow timezone-sensitive logic.
 
 ## Known Gaps
 

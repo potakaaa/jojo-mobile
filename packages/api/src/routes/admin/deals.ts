@@ -8,13 +8,16 @@ import {
   branches,
   categories,
   dealComponents,
+  dealSchedules,
   products,
 } from '../../db/schema/index';
+import { validateRecurrence, validateWindow } from '../lib/deal-schedule';
 import { notifyNewDeal } from '../../lib/marketing-triggers';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
   type AdminDealComponent,
+  type AdminDealWindow,
 } from '../lib/serializers';
 import { AdminApiError, handleAdminError, isUniqueViolation } from './lib/errors';
 
@@ -78,6 +81,20 @@ const createDealSchema = z.object({
   // reference an active branch (unknown/inactive → 400). An empty array is a valid
   // explicit "no branches" choice (the deal is created invisible everywhere).
   branchIds: z.array(z.uuid()).optional(),
+  // DEAL-005 Phase 1 — optional scheduled live window. Coerced from the same
+  // naive-local datetime string `offers.ts` accepts, and stored as real instants
+  // (never routed through the Manila day-bucket analytics helper). BOTH optional
+  // and nullable, unlike offers which requires both: "always live" is a first-class
+  // Phase-1 state, expressed as NO `deal_schedules` row at all.
+  startsAt: z.coerce.date().nullable().optional(),
+  endsAt: z.coerce.date().nullable().optional(),
+  // DEAL-005 Phase 2 — optional weekly recurrence NARROWING the window above. The
+  // three fields move as a UNIT (all or none); cross-field legality, the day-range
+  // check and D5's overnight rejection all live in `validateRecurrence` so create
+  // and update reject identically. Times are Manila WALL-CLOCK "HH:mm", not UTC.
+  recurDays: z.array(z.number().int()).nullable().optional(),
+  recurStartTime: z.string().nullable().optional(),
+  recurEndTime: z.string().nullable().optional(),
 });
 
 // `.refine` rejects an empty `{}` body so a no-op PATCH can't bump `updated_at`.
@@ -90,6 +107,16 @@ const updateDealSchema = z
     basePriceCents: z.number().int().nonnegative().optional(),
     isActive: z.boolean().optional(),
     isRewardEligible: z.boolean().optional(),
+    // DEAL-005 — omitting a key LEAVES that bound untouched; sending it as `null`
+    // CLEARS it. Sending both as null clears the whole window (the deal returns to
+    // always-live and its `deal_schedules` row is deleted).
+    startsAt: z.coerce.date().nullable().optional(),
+    endsAt: z.coerce.date().nullable().optional(),
+    // DEAL-005 Phase 2 — same omit-leaves / null-clears semantics as the bounds
+    // above. Validated against the MERGED state, never the payload alone.
+    recurDays: z.array(z.number().int()).nullable().optional(),
+    recurStartTime: z.string().nullable().optional(),
+    recurEndTime: z.string().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 
@@ -196,6 +223,96 @@ async function seedBranchAvailability(
 }
 
 /**
+ * DEAL-005 — resolve each deal's single `deal_schedules` window for serialization.
+ * ONE query for the whole list (never per row). A deal absent from the returned map
+ * has no schedule row, which serializes as `startsAt: null, endsAt: null` and means
+ * "always live".
+ *
+ * Phase 1 writes AT MOST ONE row per deal (see `writeDealSchedule`), so taking the
+ * first row per deal is exact here. Phase 2 (multi-row recurrence) will need to
+ * widen this to an array — deliberately left as the simple case rather than
+ * pre-building an abstraction Phase 2 may shape differently.
+ */
+async function fetchSchedules(productIds: string[]): Promise<Map<string, AdminDealWindow>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      dealProductId: dealSchedules.deal_product_id,
+      startsAt: dealSchedules.starts_at,
+      endsAt: dealSchedules.ends_at,
+      recurDays: dealSchedules.recur_days,
+      recurStartTime: dealSchedules.recur_start_time,
+      recurEndTime: dealSchedules.recur_end_time,
+    })
+    .from(dealSchedules)
+    .where(inArray(dealSchedules.deal_product_id, productIds));
+
+  const byDeal = new Map<string, AdminDealWindow>();
+  for (const row of rows) {
+    if (!byDeal.has(row.dealProductId)) {
+      byDeal.set(row.dealProductId, {
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        recurDays: row.recurDays,
+        recurStartTime: row.recurStartTime,
+        recurEndTime: row.recurEndTime,
+      });
+    }
+  }
+  return byDeal;
+}
+
+/** Is every field of a window empty? Then "always live" is expressed as ZERO rows. */
+function isEmptyWindow(window: AdminDealWindow): boolean {
+  return (
+    window.startsAt === null &&
+    window.endsAt === null &&
+    window.recurDays === null &&
+    window.recurStartTime === null &&
+    window.recurEndTime === null
+  );
+}
+
+/**
+ * DEAL-005 — write the deal's single scheduled window: REPLACE, never append.
+ *
+ * The "at most one row per deal" invariant is enforced HERE, structurally, and
+ * deliberately NOT by a unique constraint on `deal_product_id` (Execute-Agent
+ * Instruction E2). A unique constraint would have to be dropped again for Phase 2's
+ * multi-row recurrence — the exact second migration the table shape exists to
+ * avoid — and it is also why `.onConflictDoUpdate()` is not used (it needs a unique
+ * target to conflict on). Delete-then-insert inside the caller's transaction gives
+ * the same single-row guarantee with no schema commitment.
+ *
+ * EVERY field null → the row is deleted and none is written: "always live" is
+ * expressed as ZERO rows, never as an all-null row. Phase 2 widened this emptiness
+ * test to cover the recurrence columns too — checking only the absolute bounds would
+ * delete a recurring row that deliberately has open-ended bounds ("every Friday
+ * 2–5pm, forever"), which is a perfectly legal shape.
+ *
+ * Still SINGLE-ROW replace-only (Execute-Agent Instruction E3): Phase 2 does not add
+ * a multi-row/repeatable admin write path, even though the table shape and
+ * `isDealScheduleLive`'s union logic support one. That authoring flow is a future
+ * phase.
+ */
+async function writeDealSchedule(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  dealProductId: string,
+  window: AdminDealWindow,
+): Promise<void> {
+  await tx.delete(dealSchedules).where(eq(dealSchedules.deal_product_id, dealProductId));
+  if (isEmptyWindow(window)) return;
+  await tx.insert(dealSchedules).values({
+    deal_product_id: dealProductId,
+    starts_at: window.startsAt,
+    ends_at: window.endsAt,
+    recur_days: window.recurDays,
+    recur_start_time: window.recurStartTime,
+    recur_end_time: window.recurEndTime,
+  });
+}
+
+/**
  * Count ACTIVE branches — the denominator for the deal-visibility indicator. A
  * deal is only orderable at active branches, so this is the max it could ever be
  * "available at". One cheap aggregate shared across every row of a list response.
@@ -256,17 +373,23 @@ adminDealsRouter.get('/', async (req, res) => {
 
   // Visibility indicator: per-deal available-branch counts + the active-branch
   // denominator (one aggregate query each, not per-row).
-  const [availableCounts, activeBranchCount] = await Promise.all([
+  const [availableCounts, activeBranchCount, schedules] = await Promise.all([
     fetchAvailableBranchCounts(rows.map((p) => p.id)),
     countActiveBranches(),
+    fetchSchedules(rows.map((p) => p.id)),
   ]);
 
   res.json({
     deals: rows.map((p) =>
-      serializeAdminDealProduct(p, [], {
-        availableBranchCount: availableCounts.get(p.id) ?? 0,
-        activeBranchCount,
-      }),
+      serializeAdminDealProduct(
+        p,
+        [],
+        {
+          availableBranchCount: availableCounts.get(p.id) ?? 0,
+          activeBranchCount,
+        },
+        schedules.get(p.id) ?? null,
+      ),
     ),
   });
 });
@@ -289,16 +412,22 @@ adminDealsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  const [components, availableCounts, activeBranchCount] = await Promise.all([
+  const [components, availableCounts, activeBranchCount, schedules] = await Promise.all([
     fetchComponents(id),
     fetchAvailableBranchCounts([id]),
     countActiveBranches(),
+    fetchSchedules([id]),
   ]);
   res.json({
-    deal: serializeAdminDealProduct(deal, components, {
-      availableBranchCount: availableCounts.get(id) ?? 0,
-      activeBranchCount,
-    }),
+    deal: serializeAdminDealProduct(
+      deal,
+      components,
+      {
+        availableBranchCount: availableCounts.get(id) ?? 0,
+        activeBranchCount,
+      },
+      schedules.get(id) ?? null,
+    ),
   });
 });
 
@@ -325,6 +454,29 @@ adminDealsRouter.post('/', async (req, res) => {
       return;
     }
     const d = parsed.data;
+
+    // DEAL-005 (AC5) — reject an impossible window BEFORE any write, via the same
+    // shared validator the update path uses.
+    const windowError = validateWindow(d.startsAt, d.endsAt);
+    if (windowError) {
+      res.status(400).json({ error: windowError });
+      return;
+    }
+    // DEAL-005 Phase 2 — same posture for the recurrence triple: rejected BEFORE any
+    // write, by the same shared validator the update path uses, so create and update
+    // can never disagree about which shapes are legal.
+    const recurrenceError = validateRecurrence(d.recurDays, d.recurStartTime, d.recurEndTime);
+    if (recurrenceError) {
+      res.status(400).json({ error: recurrenceError });
+      return;
+    }
+    const window: AdminDealWindow = {
+      startsAt: d.startsAt ?? null,
+      endsAt: d.endsAt ?? null,
+      recurDays: d.recurDays ?? null,
+      recurStartTime: d.recurStartTime ?? null,
+      recurEndTime: d.recurEndTime ?? null,
+    };
 
     const categoryId = await resolveDealsCategoryId();
 
@@ -355,9 +507,10 @@ adminDealsRouter.post('/', async (req, res) => {
           throw err;
         }
         await seedBranchAvailability(tx, created!.id, d.branchIds);
+        await writeDealSchedule(tx, created!.id, window);
         return created!;
       });
-      res.status(201).json({ deal: serializeAdminDealProduct(inserted) });
+      res.status(201).json({ deal: serializeAdminDealProduct(inserted, [], undefined, window) });
       // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
       // best-effort. Never blocks or breaks the admin create response.
       void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
@@ -416,12 +569,15 @@ adminDealsRouter.post('/', async (req, res) => {
       }
 
       await seedBranchAvailability(tx, created!.id, d.branchIds);
+      await writeDealSchedule(tx, created!.id, window);
 
       return created!;
     });
 
     const resolvedComponents = await fetchComponents(inserted.id);
-    res.status(201).json({ deal: serializeAdminDealProduct(inserted, resolvedComponents) });
+    res
+      .status(201)
+      .json({ deal: serializeAdminDealProduct(inserted, resolvedComponents, undefined, window) });
     // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
     // best-effort. Never blocks or breaks the admin create response.
     void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
@@ -457,23 +613,90 @@ adminDealsRouter.patch('/:id', async (req, res) => {
     if (d.isActive !== undefined) updates.is_active = d.isActive;
     if (d.isRewardEligible !== undefined) updates.is_reward_eligible = d.isRewardEligible;
 
-    let updated;
-    try {
-      [updated] = await db
-        .update(products)
-        .set(updates)
-        .where(and(eq(products.id, id), eq(products.is_deal, true)))
-        .returning();
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw new AdminApiError(409, 'Slug already in use');
-      }
-      throw err;
-    }
+    // DEAL-005 — a window key is only touched when the caller sent it. Omitting a
+    // bound LEAVES it as stored; sending `null` clears it. Both cleared → the row is
+    // deleted and the deal returns to always-live.
+    // Phase 2 widens this to the recurrence keys too: a PATCH that only flips the
+    // recurrence must still reach the write path.
+    const touchesWindow =
+      d.startsAt !== undefined ||
+      d.endsAt !== undefined ||
+      d.recurDays !== undefined ||
+      d.recurStartTime !== undefined ||
+      d.recurEndTime !== undefined;
 
-    if (!updated) {
-      throw new AdminApiError(404, 'Deal not found');
-    }
+    const { updated, window } = await db.transaction(async (tx) => {
+      let row;
+      try {
+        [row] = await tx
+          .update(products)
+          .set(updates)
+          .where(and(eq(products.id, id), eq(products.is_deal, true)))
+          .returning();
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new AdminApiError(409, 'Slug already in use');
+        }
+        throw err;
+      }
+
+      if (!row) {
+        throw new AdminApiError(404, 'Deal not found');
+      }
+
+      // Select-then-branch (E2): read the current row, merge the caller's partial
+      // window onto it, validate the MERGED state, then replace. Validating the
+      // merge rather than the payload alone is what stops a PATCH that sends only
+      // `startsAt` from silently creating a `startsAt >= endsAt` window against an
+      // already-stored `endsAt` — the same merged-state rule `offers.ts` applies.
+      const [existing] = await tx
+        .select({
+          startsAt: dealSchedules.starts_at,
+          endsAt: dealSchedules.ends_at,
+          recurDays: dealSchedules.recur_days,
+          recurStartTime: dealSchedules.recur_start_time,
+          recurEndTime: dealSchedules.recur_end_time,
+        })
+        .from(dealSchedules)
+        .where(eq(dealSchedules.deal_product_id, id));
+
+      const current: AdminDealWindow = {
+        startsAt: existing?.startsAt ?? null,
+        endsAt: existing?.endsAt ?? null,
+        recurDays: existing?.recurDays ?? null,
+        recurStartTime: existing?.recurStartTime ?? null,
+        recurEndTime: existing?.recurEndTime ?? null,
+      };
+      if (!touchesWindow) return { updated: row, window: current };
+
+      const merged: AdminDealWindow = {
+        startsAt: d.startsAt === undefined ? current.startsAt : d.startsAt,
+        endsAt: d.endsAt === undefined ? current.endsAt : d.endsAt,
+        recurDays: d.recurDays === undefined ? current.recurDays : d.recurDays,
+        recurStartTime: d.recurStartTime === undefined ? current.recurStartTime : d.recurStartTime,
+        recurEndTime: d.recurEndTime === undefined ? current.recurEndTime : d.recurEndTime,
+      };
+      const windowError = validateWindow(merged.startsAt, merged.endsAt);
+      if (windowError) {
+        // Throws inside the transaction, so the product update rolls back too — a
+        // rejected window never half-applies an unrelated name/price edit.
+        throw new AdminApiError(400, windowError);
+      }
+      // Validated on the MERGED state, exactly like the bounds above: a PATCH sending
+      // only `recurStartTime` must not be able to create an overnight span against an
+      // already-stored `recurEndTime`, nor leave a half-specified triple behind.
+      const recurrenceError = validateRecurrence(
+        merged.recurDays,
+        merged.recurStartTime,
+        merged.recurEndTime,
+      );
+      if (recurrenceError) {
+        throw new AdminApiError(400, recurrenceError);
+      }
+
+      await writeDealSchedule(tx, id, merged);
+      return { updated: row, window: merged };
+    });
 
     const [components, availableCounts, activeBranchCount] = await Promise.all([
       fetchComponents(id),
@@ -481,10 +704,15 @@ adminDealsRouter.patch('/:id', async (req, res) => {
       countActiveBranches(),
     ]);
     res.json({
-      deal: serializeAdminDealProduct(updated, components, {
-        availableBranchCount: availableCounts.get(id) ?? 0,
-        activeBranchCount,
-      }),
+      deal: serializeAdminDealProduct(
+        updated,
+        components,
+        {
+          availableBranchCount: availableCounts.get(id) ?? 0,
+          activeBranchCount,
+        },
+        window,
+      ),
     });
   } catch (err) {
     handleAdminError(err, res, 'updating deal');

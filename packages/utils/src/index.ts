@@ -1,5 +1,6 @@
 export * from './async';
 export * from './currency';
+export * from './deal-schedule-display';
 export * from './discount';
 export * from './geo';
 export * from './hours';

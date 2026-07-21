@@ -19,15 +19,32 @@ export interface DealCardProps {
   mode: ThemeMode;
   style?: ViewStyle;
   validUntil?: string;
+  /**
+   * DEAL-005 Phase 3 — a fully-formatted availability sentence for a scheduled
+   * deal, e.g. "Available Mon–Fri, 8:00 AM – 8:25 PM". Rendered as its own
+   * UNLABELED caption row (the string is already a complete sentence — do NOT
+   * route it through `validUntil`, which prefixes "Valid until: …"). Omitting it
+   * leaves existing call sites unaffected.
+   */
+  scheduleSummary?: string;
 }
 
 /**
  * Promotional deal card: optional hero image, title, description, and a
  * discount badge. Tapping is optional and visual-only by default. When
  * `validUntil` is provided, a caption "Valid until: …" row renders below the
- * description; omitting it leaves existing call sites unaffected.
+ * description; when `scheduleSummary` is provided, its (already complete)
+ * sentence renders as an unlabeled caption row. Omitting either leaves existing
+ * call sites unaffected.
  */
-export function DealCard({ deal, onPress, mode, style, validUntil }: DealCardProps) {
+export function DealCard({
+  deal,
+  onPress,
+  mode,
+  style,
+  validUntil,
+  scheduleSummary,
+}: DealCardProps) {
   const theme = Colors[mode];
 
   return (
@@ -61,6 +78,11 @@ export function DealCard({ deal, onPress, mode, style, validUntil }: DealCardPro
         {validUntil ? (
           <Text style={[styles.validUntil, { color: theme.textSecondary }]}>
             Valid until: {validUntil}
+          </Text>
+        ) : null}
+        {scheduleSummary ? (
+          <Text style={[styles.scheduleSummary, { color: theme.textSecondary }]}>
+            {scheduleSummary}
           </Text>
         ) : null}
       </View>
@@ -106,6 +128,10 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.bodySmall,
   },
   validUntil: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+  },
+  scheduleSummary: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },
