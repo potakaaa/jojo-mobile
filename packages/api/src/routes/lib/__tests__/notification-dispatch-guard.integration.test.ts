@@ -10,8 +10,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
  *
  * Covers: AC8 (opt-out per type), AC9 (row shape per type), AC10 (24h + 30d cap;
  * order-status exempt), AC10b (reward_unlocked in-app rows EXCLUDED from the cap —
- * E4), AC11 (quiet-hours drop; order-status exempt), AC11b (event drop vs poll
- * re-attempt asymmetry).
+ * E4), AC10c (the converse: reward_unlocked's PUSH is NOT exempt from the cap
+ * CHECK — it can still be suppressed by budget other types already spent; a
+ * CodeRabbit-flagged asymmetry, locked here as today's actual behavior, not yet
+ * a product decision either way), AC11 (quiet-hours drop; order-status exempt),
+ * AC11b (event drop vs poll re-attempt asymmetry).
  */
 
 process.env.DATABASE_URL ??= 'postgres://jojo:jojo@localhost:5432/jojopotato';
@@ -251,6 +254,43 @@ describe('AC10b — reward_unlocked in-app rows do not spend cap budget (E4)', (
     );
     expect(result).toBe('sent');
     expect(await rowsFor(userId, 'coupon_expiring')).toHaveLength(1);
+  });
+});
+
+// ── AC10c — reward_unlocked's PUSH is NOT exempt from the cap CHECK ──────────
+// (only its in-app ROW is excluded from what COUNTS, per AC10b/E4). This locks
+// today's actual behavior — CodeRabbit flagged it as an untested asymmetry; it
+// is not yet a decided product behavior either way, just a documented one.
+describe('AC10c — reward_unlocked push CAN be cap-suppressed by other types (locked)', () => {
+  it('exhausting the 24h cap with other marketing types then blocks a reward_unlocked push', async () => {
+    const userId = await seedUser(true);
+    const send = (
+      type: (typeof TYPE_CASES)[number]['type'],
+      screen: 'coupon_wallet' | 'rewards' | 'deal_details',
+    ) =>
+      dispatch.dispatchMarketingNotificationIfAllowed(
+        userId,
+        type,
+        { title: 't', body: 'b', targetScreen: screen },
+        { now: () => NON_QUIET },
+      );
+
+    // Exhaust MAX_PER_24H (3) with the 3 other cap-counted types.
+    expect(await send('coupon_expiring', 'coupon_wallet')).toBe('sent');
+    expect(await send('one_more_order', 'rewards')).toBe('sent');
+    expect(await send('new_deal', 'deal_details')).toBe('sent');
+
+    // reward_unlocked's push — called exactly as reward-unlock-notify.ts does
+    // (writeRow: false, since the in-app row is written separately/unconditionally)
+    // — is still subject to the cap CHECK, even though its own row never counted
+    // toward it. This is today's real behavior, not a bug being introduced here.
+    const result = await dispatch.dispatchMarketingNotificationIfAllowed(
+      userId,
+      'reward_unlocked',
+      { title: 'Reward unlocked!', body: 'x', targetScreen: 'rewards' },
+      { now: () => NON_QUIET, writeRow: false },
+    );
+    expect(result).toBe('gated-frequency');
   });
 });
 

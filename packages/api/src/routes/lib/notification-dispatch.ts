@@ -204,7 +204,7 @@ const CAP_COUNTED_TYPES: readonly MarketingNotificationType[] = MARKETING_NOTIFI
 
 /** Discriminated outcome of a guarded marketing dispatch (for testability). */
 export type MarketingDispatchResult =
-  'sent' | 'gated-opt-out' | 'gated-quiet-hours' | 'gated-frequency';
+  'sent' | 'gated-opt-out' | 'gated-quiet-hours' | 'gated-frequency' | 'error';
 
 /**
  * Count the user's cap-counted marketing `notifications` rows in the 24h and 30d
@@ -304,8 +304,10 @@ export async function dispatchMarketingNotificationIfAllowed(
     return 'sent';
   } catch (err) {
     // Fail-safe: a marketing dispatch failure must never break a trigger scan or
-    // the reward-unlock path. Nothing was reliably sent → report as gated.
+    // the reward-unlock path. Distinct from 'gated-opt-out' so a real failure
+    // (e.g. sendAndPrune throwing post-insert) is never mistaken for a genuine
+    // opt-out in logs/metrics — an opt-out spike vs. an outage look different.
     console.error('[notify] guarded marketing dispatch failed', err);
-    return 'gated-opt-out';
+    return 'error';
   }
 }

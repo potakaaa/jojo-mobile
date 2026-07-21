@@ -40,6 +40,8 @@ import { dispatchMarketingNotificationIfAllowed } from '../src/routes/lib/notifi
  *
  * Target account resolves from `DEV_LOGIN_EMAIL` (the same dev-auto-login
  * convention as `pnpm dev:bypass`; see docs/dev-auto-login.md), defaulting to
+ * an empty string if unset — which then fails user resolution below and exits
+ * with a clear error, rather than silently targeting the wrong account.
  */
 
 const MARKETING_TYPES = [
