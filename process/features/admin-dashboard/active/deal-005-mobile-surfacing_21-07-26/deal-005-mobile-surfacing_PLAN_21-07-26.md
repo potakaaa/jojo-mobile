@@ -8,7 +8,11 @@ feature: admin-dashboard
 # DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules (PLAN)
 
 Date: 21-07-26
-Status: DRAFT — awaiting VALIDATE
+Status: CODE DONE — EVL-confirmed green, committed (`f0685f9` source, `83fc7f4` docs, branch
+`adm-deal-005-p2`). NOT VERIFIED — AC5-AC7 Agent-Probe walkthrough owed; AC5 is additionally
+BLOCKED by a missing nav entry point on the Deals-tab list screen (see
+`process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md`). Task
+folder stays in `active/`.
 Complexity: SIMPLE (one feature, ~10 files touched, additive-only server change + one new pure formatter + 3 mobile render sites)
 SPEC: `deal-005-mobile-surfacing_SPEC_21-07-26.md` (same folder) — locked, all 9 ACs Fully-Automated except AC5–AC7 (Agent-Probe)
 
@@ -268,6 +272,12 @@ Mirrors the SPEC's 9 ACs verbatim (see SPEC file for full `proven by:`/`strategy
   walkthrough is explicitly confirmed performed and passed — matching this feature's own
   established precedent (DEAL-005 Phase 1 was VERIFIED only after its walkthrough passed; Phase 2
   is still held at CODE DONE pending exactly this kind of confirmation).
+- **Status as of 21-07-26 UPDATE PROCESS pass: CODE DONE.** All Fully-Automated gates
+  independently re-confirmed green; source + SPEC/PLAN committed (`f0685f9`, `83fc7f4`). AC6/AC7
+  are reachable and owed. AC5 is currently BLOCKED — the Deals-tab list screen has no reachable
+  navigation entry point in the app (new finding, tracked in
+  `deals-list-screen-no-nav-entry_NOTE_21-07-26.md`, not introduced by this phase). See the
+  co-located `deal-005-mobile-surfacing_REPORT_21-07-26.md` for full closeout detail.
 
 ## Resume and Execution Handoff
 
