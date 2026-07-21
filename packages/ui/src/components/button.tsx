@@ -34,6 +34,8 @@ export interface ButtonProps {
   iconName?: keyof typeof Ionicons.glyphMap;
   /** Show a spinner in place of the icon and disable interaction. */
   loading?: boolean;
+  /** Forwarded to the underlying Pressable, for precise test targeting. */
+  testID?: string;
 }
 
 const VARIANT_BACKGROUND: Record<ButtonVariant, string> = {
@@ -58,6 +60,7 @@ export function Button({
   style,
   iconName,
   loading = false,
+  testID,
 }: ButtonProps) {
   const theme = Colors[mode];
   const isDisabled = disabled || loading;
@@ -76,6 +79,7 @@ export function Button({
       accessibilityState={accessibilityState}
       disabled={isDisabled}
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [
         styles.button,
         size === 'sm' && styles.buttonSm,
@@ -109,13 +113,17 @@ const styles = StyleSheet.create({
     // and `sm` inherit this floor since `buttonSm` overrides padding only.
     minHeight: MinTouchTarget,
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    // 16dp (was 24dp): the wider inset left too little room for ordinary labels
+    // on width-constrained buttons (side-by-side `flex: 1` pairs, inline
+    // actions), wrapping them onto a second line. The 48dp touch-target floor
+    // above is unchanged — only the horizontal breathing room shrank.
+    paddingHorizontal: Spacing.three,
     borderRadius: Radii.full,
     borderWidth: 2,
   },
   buttonSm: {
     paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.three,
   },
   pressed: {
     transform: [{ translateX: 2 }, { translateY: 2 }],
@@ -125,12 +133,14 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: FontFamily.display.bold,
-    fontSize: TypeScale.h3,
+    // `body` (16) rather than `h3` (18): the display-bold face is wide, and at
+    // 18 ordinary labels wrapped to two lines on constrained buttons.
+    fontSize: TypeScale.body,
     textAlign: 'center',
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
   labelSm: {
-    fontSize: TypeScale.body,
+    fontSize: TypeScale.bodySmall,
   },
 });

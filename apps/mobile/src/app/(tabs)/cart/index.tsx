@@ -532,34 +532,6 @@ export default function CartScreen() {
           </>
         )}
 
-        <ConfirmDialog
-          visible={pendingReplaceCode !== null}
-          title="Replace applied discount?"
-          message={`This cart already has '${cart.appliedDiscount?.label ?? ''}' applied.`}
-          confirmLabel="Replace"
-          cancelLabel="Cancel"
-          variant="destructive"
-          mode={mode}
-          onConfirm={() => {
-            const code = pendingReplaceCode;
-            setPendingReplaceCode(null);
-            if (code) void runApply(code);
-          }}
-          onCancel={() => setPendingReplaceCode(null)}
-        />
-
-        <ConfirmDialog
-          visible={pendingBranchSwitch !== null}
-          title="Change branch?"
-          message={`Switching to ${pendingBranchSwitch?.name ?? ''} will clear your current cart from ${branch?.name ?? 'this branch'}.`}
-          confirmLabel="Change & clear"
-          cancelLabel="Cancel"
-          variant="destructive"
-          mode={mode}
-          onConfirm={confirmBranchSwitch}
-          onCancel={() => setPendingBranchSwitch(null)}
-        />
-
         <Toast
           visible={toast.visible}
           message={toast.message}
@@ -569,6 +541,41 @@ export default function CartScreen() {
           onDismiss={hideToast}
         />
       </SafeAreaView>
+
+      {/*
+        Both dialogs sit OUTSIDE the SafeAreaView, as siblings at the true screen
+        root. Their scrim is `position:absolute` with 0 insets, which RN resolves
+        against the parent's PADDING box — nested inside the SafeAreaView it would
+        stop at the safe-area inset, leaving the status-bar strip undimmed as a
+        visible darkened rectangle short of the real screen bounds.
+      */}
+      <ConfirmDialog
+        visible={pendingReplaceCode !== null}
+        title="Replace applied discount?"
+        message={`This cart already has '${cart.appliedDiscount?.label ?? ''}' applied.`}
+        confirmLabel="Replace"
+        cancelLabel="Cancel"
+        variant="destructive"
+        mode={mode}
+        onConfirm={() => {
+          const code = pendingReplaceCode;
+          setPendingReplaceCode(null);
+          if (code) void runApply(code);
+        }}
+        onCancel={() => setPendingReplaceCode(null)}
+      />
+
+      <ConfirmDialog
+        visible={pendingBranchSwitch !== null}
+        title="Change branch?"
+        message={`Switching to ${pendingBranchSwitch?.name ?? ''} will clear your current cart from ${branch?.name ?? 'this branch'}.`}
+        confirmLabel="Change & clear"
+        cancelLabel="Cancel"
+        variant="destructive"
+        mode={mode}
+        onConfirm={confirmBranchSwitch}
+        onCancel={() => setPendingBranchSwitch(null)}
+      />
     </View>
   );
 }
