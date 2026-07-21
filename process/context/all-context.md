@@ -1,6 +1,6 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-20 (CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
+Last updated: 2026-07-21 (Order tab enhancement — mobile `(tabs)/order/index.tsx` visual/UX polish, CODE DONE + EVL-confirmed green, Agent-Probe walkthrough owed; merged with 2026-07-20 CART-003 #99 — cart server-side persistence, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with `apps/admin` `(dashboard)` route SSR auth-guard fix — CODE DONE + EVL-green, Agent-Probe walkthrough owed, see the admin-dashboard bullet below and §Scan Metadata; merged with STAFF-005 #106 — staff dashboard home stat block + prep-time autofill bug fix, CODE DONE + EVL-confirmed green, Agent-Probe walkthroughs owed; merged with 2026-07-17 MENU-003 deal branch-availability/reorder fix + MENU-004 Home category filter UPDATE PROCESS reconciliation, plus corrections to 2 stale claims (packages/utils test runner, Deals-tab GET /deals repoint) and 1 overstated admin backlog note; merged with Phase 7 — Basic Analytics Dashboard, ADM-007 — ✅ VERIFIED, EVL-confirmed green, **admin-dashboard program now 8/8 phases COMPLETE**; + Phase 6 Orders View delta; + Phase 5 Rewards CRUD and its merge confirmation (PR #112); + BRN-006 branch status badge fix delta — branch badge gate + two-handler API precedence fact; + ADM-008 post-merge fix batch, push-notification real-delivery hardening, kid-friendly-ui deals-unification deltas)
 
 This file is the root context entrypoint for the repo.
 
@@ -59,7 +59,48 @@ top of it later without re-plumbing the project.
 - PRD reference: `docs/jojo-potato-mobile-prd.md` — the source of truth for product scope,
   navigation structure (§7), and auth flow (§6.1) that current and future plans build against.
 
-## Current Implementation State (as of 20-07-26, incl. mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+## Current Implementation State (as of 21-07-26, incl. Order tab enhancement + mobile dark-mode audit + admin-dashboard Phase 0 + Phase 1 + Phase 2 + Phase 3 + Sidebar Nav + Phase 4a deals-as-products + ADM-008 coupons + Fix 6 free-mechanics + Phase 5 rewards CRUD + Phase 6 orders view + Phase 7 analytics + route-guard SSR fix + STAFF-001 + merge-menu-api-reconciliation + checkout-flow UI)
+
+- **Order tab visual/UX enhancement (`order-tab-enhance`, `packages/ui` + `apps/mobile`, delivered
+  21-07-26, branch `feat/product-ux-enhance`, task folder
+  `process/general-plans/active/order-tab-enhance_21-07-26/`, CODE DONE + EVL-confirmed green,
+  NOT YET VERIFIED — 1 Agent-Probe walkthrough owed, stays in `active/`, uncommitted as of this
+  delta):** presentation/UX-only polish of the branch-scoped menu-browse Order tab
+  (`(tabs)/order/index.tsx`) — no data/API/cart-logic changes. The header is now a real
+  `ScreenHeader` composition with a cart+history icon row and a live `Badge` overlay
+  (`useCart().itemCount`, hidden at 0); a new category quick-nav chip bar (Order-tab-local,
+  `features/menu/components/category-quick-nav.tsx`, mirrors `BranchSwitcher`'s safe
+  horizontal-ScrollView-inside-vertical-ScrollView pattern) appears only when a branch has more
+  than 3 menu categories and scrolls to the tapped section; the loading state is a menu-shaped
+  skeleton instead of a bare spinner; error/empty states now use the shared `EmptyState`
+  (Retry → `refetch()`; empty-menu → scroll back to the branch switcher). **New durable
+  `packages/ui` primitive: `Skeleton`** (`packages/ui/src/components/skeleton.tsx`, exported from
+  the barrel) — a themed, static-fill (non-reanimated, to stay testable per the known jest
+  layout-animation gap) rectangle following `badge.tsx`'s file shape; future loading-state work
+  anywhere in the app should reuse this rather than a bespoke placeholder. **Durable fact:
+  `ProductCard`'s footer glyph is no longer an ambiguous `+`** — it is now an `Ionicons
+  chevron-forward` view/navigation affordance with a queryable `testID="product-card-affordance"`
+  handle; the change is additive/visual-only (prop contract and tap behavior unchanged), confirmed
+  non-breaking across all 3 real consumers (Home `product-grid.tsx`, Order/Deals via
+  `category-section.tsx`, `component-showcase.tsx`) — future work should not reintroduce a `+`-style
+  glyph on this card, since it was specifically resolved as confusing (customers couldn't tell if
+  it added to cart or opened details). `CategorySection` gained an additive optional
+  `onLayoutY?: (y) => void` prop for the quick-nav's scroll-offset tracking — omitting it is a
+  no-op, no existing caller affected. Final gates (independently EVL-reconfirmed by a spawned
+  vc-tester, not taken on execute-agent's own report): `packages/ui` test 32 suites/113 pass +
+  typecheck clean + check-tokens OK + lint clean; `apps/mobile` test vitest 65/65 + jest 27
+  suites/105 pass + typecheck clean (confirms no NAV-005 typed-route errors on this branch) +
+  `guard:theme-mode` OK (32 components/212 call sites/0 violations) + lint 0 errors;
+  `format:check` clean. All 10 automated SPEC acceptance criteria (AC1–AC10) scored **met**; the
+  sole AC11 (on-device light/dark polish + quick-nav scroll landing + skeleton feel) is Agent-Probe
+  by design — no RN E2E/navigation runner exists project-wide (same standing gap as CART-003,
+  MENU-003, MENU-004, mobile-dark-mode-audit, STAFF-005). Per the plan's own Phase Completion
+  Rules, the task folder stays in `active/` until the user performs that walkthrough. All 10
+  touched/new files remain **uncommitted** on `feat/product-ux-enhance` as of this delta — the
+  branch/commit strategy (direct commit vs PR) was deliberately left to the user's decision, not
+  assumed. Delivered by:
+  `process/general-plans/active/order-tab-enhance_21-07-26/order-tab-enhance_PLAN_21-07-26.md`
+  (+ co-located SPEC + REPORT in the same task folder).
 
 - **Cart server-side persistence (CART-003 #99, `packages/api` + `apps/mobile` + `packages/types`,
   delivered 20-07-26, task folder
@@ -1349,6 +1390,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
+| deal scheduling / `deal_schedules` / issue #127 follow-up work | `all-context.md` | **Issue #127 is fully delivered — all 3 phases ✅ VERIFIED and archived.** Phase 1 (absolute window) at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`, Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) at `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`, Phase 3 (mobile surfacing — days/hours annotation on Deals tab/Home strip/Deal Details, additive `schedule` wire field, `formatDealScheduleSummary`) at `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/`. Read each plan + report for design detail. Remaining tracked follow-ups (not blocking, not part of #127's own scope): the deferred multi-row admin authoring flow (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`) and the mobile fetch-on-focus expiry-lingering behavior (backlog: `deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`, deliberately accepted/deferred). Note: a small uncommitted admin recurring-state badge addition (`apps/admin/src/lib/entity-status.ts` + 2 consumers) landed on top of Phase 2's committed source — check `git status` before assuming a clean tree. |
 
 ## Context Group Lifecycle
 
@@ -1579,7 +1621,35 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-20 (CART-003 #99 UPDATE PROCESS — cart server-side persistence,
+- Last delta: 2026-07-21 (Order tab enhancement UPDATE PROCESS — mobile
+  `(tabs)/order/index.tsx` visual/UX polish, `packages/ui` + `apps/mobile`. CODE DONE,
+  EVL-confirmed green by an independently spawned vc-tester (`packages/ui` test 32 suites/113
+  pass + typecheck + check-tokens + lint clean; `apps/mobile` test vitest 65/65 + jest 27
+  suites/105 pass + typecheck clean + `guard:theme-mode` OK 32 components/212 call sites/0
+  violations + lint 0 errors; `format:check` clean). New durable `packages/ui` `Skeleton`
+  primitive (static-fill, `badge.tsx`-shaped) for future loading-state reuse; `ProductCard`'s
+  ambiguous `+` glyph permanently resolved to an `Ionicons chevron-forward` view affordance with a
+  `testID="product-card-affordance"` query handle — confirmed non-breaking across all 3 real
+  consumers. New Order-tab-local `category-quick-nav.tsx` chip bar (>3-category threshold);
+  `CategorySection` gained an additive optional `onLayoutY` prop. All 10 automated SPEC ACs
+  (AC1–AC10) scored met; AC11 (on-device light/dark walkthrough) is the sole unmet criterion —
+  Agent-Probe by design, same standing no-RN-runner gap as every prior UI-polish plan. 3
+  validate-contract CONCERNs (E1 testID handle, E2 guard:theme-mode hard-green treatment, E3 AC10
+  proof reworded) all resolved during EXECUTE as written, with 3 minor documented in-blast-radius
+  deviations (stronger AC8 query strategy, `useTheme()` in `CategoryQuickNav` matching
+  `BranchSwitcher` precedent, dead-style cleanup). No new backlog notes filed — AC11 is already the
+  named standing gap tracked in `all-tests.md` Known Gaps. Task folder stays in `active/` — the
+  AC11 walkthrough is owed by the user per the plan's own Phase Completion Rules. Working tree at
+  this delta (uncommitted, not yet committed by this UPDATE PROCESS pass): 5 modified files
+  (`apps/mobile/src/app/(tabs)/order/index.tsx`,
+  `apps/mobile/src/features/menu/components/category-section.tsx`,
+  `packages/ui/src/components/__tests__/product-card.test.tsx`,
+  `packages/ui/src/components/product-card.tsx`, `packages/ui/src/index.ts`) + 5 new files
+  (`apps/mobile/src/app/(tabs)/order/__tests__/index.test.tsx`,
+  `apps/mobile/src/features/menu/components/category-quick-nav.tsx` + its `__tests__/`,
+  `packages/ui/src/components/skeleton.tsx` + its `__tests__/`) + the new task folder; current
+  branch at this delta: `feat/product-ux-enhance`.)
+- Previous delta: 2026-07-20 (CART-003 #99 UPDATE PROCESS — cart server-side persistence,
   `packages/api` + `apps/mobile` + `packages/types`. CODE DONE, EVL-confirmed green by an
   independently spawned vc-tester (API suite 505→520 incl. 15 new cart tests, mobile vitest
   65/65, mobile jest 78/78, 4 typechecks clean modulo 2 pre-existing unrelated NAV-005 mobile

@@ -1,4 +1,5 @@
 import { DealCard, EmptyState } from '@jojopotato/ui';
+import { formatDealScheduleSummary } from '@jojopotato/utils';
 import { router } from 'expo-router';
 import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,6 +78,7 @@ export default function DealsListScreen() {
                 deal={dealProductToCard(deal)}
                 available={deal.available}
                 mode={mode}
+                scheduleSummary={formatDealScheduleSummary(deal.schedule)}
                 onPress={() =>
                   router.push({
                     pathname: '/(tabs)/deals/deal/[dealId]',

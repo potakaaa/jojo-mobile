@@ -24,6 +24,9 @@ export * from './offer_branches';
 // 5b. Depends on products (self-referential — ADM-004 deals-as-products)
 export * from './deal_components';
 
+// 5c. Depends on products (DEAL-005 — optional live window per deal-product)
+export * from './deal_schedules';
+
 // 6. Depends on products
 export * from './rewards';
 

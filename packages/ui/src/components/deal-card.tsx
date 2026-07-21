@@ -26,19 +26,34 @@ export interface DealCardProps {
    * existing call sites that omit it are unaffected.
    */
   available?: boolean;
+  /**
+   * DEAL-005 Phase 3 — a fully-formatted availability sentence for a scheduled
+   * deal, e.g. "Available Mon–Fri, 8:00 AM – 8:25 PM". Rendered as its own
+   * UNLABELED caption row (the string is already a complete sentence — do NOT
+   * route it through `validUntil`, which prefixes "Valid until: …"). Omitting it
+   * leaves existing call sites unaffected.
+   */
+  scheduleSummary?: string;
 }
 
 /**
  * Promotional deal card: optional hero image, title, description, and a
  * discount badge. Tapping is optional and visual-only by default. When
  * `validUntil` is provided, a caption "Valid until: …" row renders below the
- * description; omitting it leaves existing call sites unaffected. When
- * `available === false` the card is dimmed and shows an "Unavailable at this
- * branch" badge (DEAL-004 flag-not-hide) — the card still renders and can still
- * be tapped to view detail; only the add-to-cart CTA on the detail screen is
- * gated.
+ * description; when `scheduleSummary` is provided, its (already complete)
+ * sentence renders as an unlabeled caption row. When `available === false` the
+ * card is dimmed and shows an "Unavailable at this branch" badge (DEAL-004
+ * flag-not-hide). Omitting either leaves existing call sites unaffected.
  */
-export function DealCard({ deal, onPress, mode, style, validUntil, available }: DealCardProps) {
+export function DealCard({
+  deal,
+  onPress,
+  mode,
+  style,
+  validUntil,
+  available,
+  scheduleSummary,
+}: DealCardProps) {
   const theme = Colors[mode];
   const isUnavailable = available === false;
 
@@ -75,6 +90,11 @@ export function DealCard({ deal, onPress, mode, style, validUntil, available }: 
         {validUntil ? (
           <Text style={[styles.validUntil, { color: theme.textSecondary }]}>
             Valid until: {validUntil}
+          </Text>
+        ) : null}
+        {scheduleSummary ? (
+          <Text style={[styles.scheduleSummary, { color: theme.textSecondary }]}>
+            {scheduleSummary}
           </Text>
         ) : null}
         {isUnavailable ? (
@@ -142,6 +162,10 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.bodySmall,
   },
   validUntil: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+  },
+  scheduleSummary: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },

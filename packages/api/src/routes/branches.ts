@@ -14,6 +14,7 @@ import {
   products,
 } from '../db/schema/index';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
+import { resolveLiveDealSchedules, type DealScheduleWindow } from './lib/deal-schedule';
 import {
   serializeBranch,
   serializeMenuCategory,
@@ -162,6 +163,15 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
   // (and is never consulted) on the regular menu — see the `isDealMenu &&` guard
   // on its only read site in the product loop below.
   let availableDealIds = new Set<string>();
+  // DEAL-005: the subset of candidate deal-products inside their scheduled window
+  // right now. Same lifecycle as `availableDealIds` above — only ever populated on
+  // the deals menu, never consulted on the regular menu.
+  let liveDealIds = new Set<string>();
+  // DEAL-005 Phase 3: each live deal's raw schedule windows, for the customer
+  // annotation. Same lifecycle — only populated on the deals menu; stays empty on
+  // the regular menu, so `.get()` there always yields `undefined` (no `schedule`
+  // key emitted, regular response byte-unchanged).
+  let schedulesByDeal = new Map<string, DealScheduleWindow[]>();
   if (isDealMenu && productIds.length) {
     const componentRows = await db
       .select({
@@ -191,6 +201,22 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
     // still drives the unchanged `components[]` display field for the deals that
     // do survive the filter.
     availableDealIds = await resolveAvailableDealProductIds(db, branchId, productIds);
+
+    // DEAL-005: a deal with schedule rows is listed only inside the union of its
+    // windows; a deal with ZERO rows is always live (no-backfill guarantee, AC3).
+    // A targeted SECOND query calling the shared `isDealScheduleLive()` helper —
+    // deliberately NOT an inline SQL join predicate (Execute-Agent Instruction E1):
+    // order placement calls the SAME function, so the half-open `[starts_at,
+    // ends_at)` boundary cannot drift between browse and buy, and an INNER JOIN
+    // shape would silently drop every zero-schedule-row deal.
+    //
+    // Phase 3: `resolveLiveDealSchedules` returns the SAME live-id set as the
+    // write path's `resolveLiveDealProductIds` (one shared batched query) PLUS the
+    // raw windows-by-deal map, so a live scheduled deal can carry its schedule to
+    // the client (`schedulesByDeal.get(id)`) for the annotation.
+    const resolved = await resolveLiveDealSchedules(db, productIds, new Date());
+    liveDealIds = resolved.liveDealIds;
+    schedulesByDeal = resolved.schedulesByDeal;
   }
 
   // Preserve first-seen category order (already sorted by category.sort_order).
@@ -204,6 +230,12 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
     // a guaranteed no-op on the regular menu (AC4 regression lock).
     if (isDealMenu && !availableDealIds.has(product.id)) continue;
 
+    // DEAL-005: drop deals outside their scheduled window entirely — "not shown",
+    // never shown-as-unavailable (D2: the customer wire contract carries no window
+    // fields). Gated by `isDealMenu &&` exactly like the availability check above,
+    // so it is a guaranteed no-op on the regular catalog.
+    if (isDealMenu && !liveDealIds.has(product.id)) continue;
+
     if (!productsByCategory.has(category.id)) {
       categoryOrder.push(category.id);
       categoryById.set(category.id, { id: category.id, name: category.name });
@@ -216,6 +248,16 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       // sets `isDeal`/`components`. Regular menu → pass `undefined` so both keys
       // are omitted entirely (unchanged regular-menu response body).
       isDealMenu ? (componentsByProduct.get(product.id) ?? []) : undefined,
+      // `available` is not passed here — this route filters unavailable deals out
+      // entirely via `availableDealIds.has()` above (MENU-003 flag-not-hide was for
+      // GET /deals/products; branch menu just hides them). Pass `undefined`.
+      undefined,
+      // DEAL-005 Phase 3 (Execute-Agent Instruction E2): pass the deal's schedule
+      // windows ONLY on the deals menu. `undefined` on the regular menu and for a
+      // schedule-less deal (map miss) → serializer omits the `schedule` key. The
+      // explicit `isDealMenu ?` ternary mirrors the `components` gate above for
+      // symmetry, even though `schedulesByDeal` is an empty Map on the regular path.
+      isDealMenu ? schedulesByDeal.get(product.id) : undefined,
     );
     productsByCategory.get(category.id)!.push(apiProduct);
   }

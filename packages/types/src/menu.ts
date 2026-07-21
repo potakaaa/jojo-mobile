@@ -62,6 +62,34 @@ export interface Product {
    * only this flag varies). A regular menu product omits it. Optional/additive.
    */
   available?: boolean;
+  /**
+   * DEAL-005 Phase 3 — the deal's live `deal_schedules` windows (days/hours),
+   * for the customer-facing "Available Mon–Fri, 8:00 AM – 8:25 PM" annotation.
+   * Present ONLY on a currently-live scheduled deal from
+   * `GET /branches/:id/menu?isDeal=true`; OMITTED entirely for a schedule-less
+   * (always-live) deal and for every regular (non-deal) product — additive,
+   * mirrors the `isDeal`/`components` omit-when-absent convention. Read-only
+   * display data; never used for pricing or eligibility.
+   */
+  schedule?: DealScheduleWindow[];
+}
+
+/**
+ * One live schedule window of a deal-product (DEAL-005 Phase 3), as it arrives on
+ * the wire. Client mirror of the server's `ApiDealScheduleWindow` — camelCase,
+ * ISO-string timestamps. `recur*` fields are Manila WALL-CLOCK values (NOT UTC —
+ * do NO timezone math on them, only string formatting); only `startsAt`/`endsAt`
+ * are raw UTC instants needing the fixed +08:00 Manila shift when formatting.
+ */
+export interface DealScheduleWindow {
+  startsAt: string | null;
+  endsAt: string | null;
+  /** 0=Sun..6=Sat, Manila-indexed; null = a non-recurring (absolute-window) row. */
+  recurDays: number[] | null;
+  /** "HH:mm", Manila wall-clock, inclusive; null when the row is non-recurring. */
+  recurStartTime: string | null;
+  /** "HH:mm", Manila wall-clock, exclusive; null when the row is non-recurring. */
+  recurEndTime: string | null;
 }
 
 /**
