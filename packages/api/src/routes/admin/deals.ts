@@ -10,6 +10,7 @@ import {
   dealComponents,
   products,
 } from '../../db/schema/index';
+import { notifyNewDeal } from '../../lib/marketing-triggers';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
@@ -357,6 +358,9 @@ adminDealsRouter.post('/', async (req, res) => {
         return created!;
       });
       res.status(201).json({ deal: serializeAdminDealProduct(inserted) });
+      // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
+      // best-effort. Never blocks or breaks the admin create response.
+      void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
       return;
     }
 
@@ -418,6 +422,9 @@ adminDealsRouter.post('/', async (req, res) => {
 
     const resolvedComponents = await fetchComponents(inserted.id);
     res.status(201).json({ deal: serializeAdminDealProduct(inserted, resolvedComponents) });
+    // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
+    // best-effort. Never blocks or breaks the admin create response.
+    void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
   } catch (err) {
     handleAdminError(err, res, 'creating deal');
   }
