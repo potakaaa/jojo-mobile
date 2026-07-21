@@ -68,7 +68,7 @@ export default function DealsListScreen() {
             <EmptyState
               iconName="pricetag-outline"
               title="No deals right now"
-              description="Check back soon for new offers at your branch."
+              description="Check back soon for new offers."
               mode={mode}
             />
           ) : (
@@ -76,6 +76,7 @@ export default function DealsListScreen() {
               <DealCard
                 key={deal.id}
                 deal={dealProductToCard(deal)}
+                available={deal.available}
                 mode={mode}
                 scheduleSummary={formatDealScheduleSummary(deal.schedule)}
                 onPress={() =>
