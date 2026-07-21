@@ -11,26 +11,26 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Terms & Conditions screen — the root of the top-level `(tabs)/terms` stack,
- * reached from the Help screen today (`router.push('/(tabs)/terms')`). Shows the
- * shared `<ScreenHeader>` + the Terms-and-Conditions copy from the single shared
- * `features/legal` content module (filtered to `group="terms"`; identical to the
- * pre-auth `(auth)/terms` screen — no copy duplication). See `./_layout.tsx` for
- * why this lives above the tabs.
+ * Privacy Policy screen — the root of the top-level `(tabs)/privacy` stack,
+ * reached from the Help screen today (`router.push('/(tabs)/privacy')`). Shows the
+ * shared `<ScreenHeader>` + the Privacy Policy copy from the single shared
+ * `features/legal` content module (filtered to `group="privacy"`; the same shared
+ * source as the Terms screen — no copy duplication). See `./_layout.tsx` for why
+ * this lives above the tabs.
  */
-export default function TermsScreen() {
+export default function PrivacyScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
 
   /*
-    Hide the floating tab bar on this screen. Terms is a leaf screen you enter and
-    leave, but it is the ROOT of its own top-level stack — so `isNestedTabRoute()`
+    Hide the floating tab bar on this screen. Privacy is a leaf screen you enter
+    and leave, but it is the ROOT of its own top-level stack — so `isNestedTabRoute()`
     is false and the bar would otherwise paint here. Gated on FOCUS, not just mount
     (E3): this screen stays mounted in the Tabs navigator after the user navigates
     away, and an always-true flag would leave the bar hidden on the destination.
-    Losing focus restores it; unmount also restores. Matches `notifications`/`history`.
+    Losing focus restores it; unmount also restores. Matches `terms`/`notifications`.
   */
   useHideTabBarWhile(useIsFocused());
 
@@ -42,7 +42,7 @@ export default function TermsScreen() {
         edge: the device inset arrives once via resolveTabBarClearance(…) below.
       */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScreenHeader title="Terms and Conditions" onBack={() => router.back()} mode={mode} />
+        <ScreenHeader title="Privacy Policy" onBack={() => router.back()} mode={mode} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
@@ -57,7 +57,7 @@ export default function TermsScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <TermsPrivacyBody theme={theme} group="terms" />
+          <TermsPrivacyBody theme={theme} group="privacy" />
         </ScrollView>
       </SafeAreaView>
     </View>
