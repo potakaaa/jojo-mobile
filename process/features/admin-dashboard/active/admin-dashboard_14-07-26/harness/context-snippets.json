@@ -1,0 +1,40 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/lib/require-admin.ts",
+      "lines": "51-73",
+      "description": "requireAdmin middleware — admits role in {admin, super_admin} only (isAdminRole), attaches req.adminSession, 403 {error:'Forbidden'} on any failure, try/catch never leaks a 500.",
+      "content": "export function requireAdmin(auth): RequestHandler { return async (req,res,next) => { try { const session = await auth.api.getSession({headers: toHeaders(req.headers)}); const role = session?.user?.role; if (!session || !isAdminRole(role)) { res.status(403).json({error:'Forbidden'}); return; } req.adminSession = { userId: session.user.id, role }; next(); } catch { res.status(403).json({error:'Forbidden'}); } }; }"
+    },
+    {
+      "file": "packages/api/src/routes/admin/users.ts",
+      "lines": "44-90",
+      "description": "POST /users/:id/role — LOCKED guard order: 5.1 inline super_admin check (403) -> 5.2 self-escalation guard (400, before any DB op) -> 5.3 Zod body validation (400) -> 5.4 Drizzle UPDATE ... RETURNING (404 if no row). All guards throw AdminApiError, caught by one try/catch mirroring OrderError.",
+      "content": "if (req.adminSession!.role !== 'super_admin') throw new AdminApiError(403,'Forbidden'); if (req.params.id === req.adminSession!.userId) throw new AdminApiError(400,'Cannot modify own role'); const parsed = roleUpdateSchema.safeParse(req.body); if (!parsed.success) throw new AdminApiError(400,'Invalid role'); const [updated] = await db.update(users).set({role: parsed.data.role}).where(eq(users.id, req.params.id)).returning({id,email,role}); if (!updated) throw new AdminApiError(404,'User not found');"
+    },
+    {
+      "file": "packages/api/src/index.ts",
+      "lines": "192-200",
+      "description": "Single-mount guard chain: CORS scoped to /api/admin (credentials:true, origin = [ADMIN_WEB_ORIGIN], never wildcard) -> requireAdmin(auth) -> adminRouter. Placed after the /api/staff mount.",
+      "content": "app.use('/api/admin', cors({ origin: [ADMIN_WEB_ORIGIN], credentials: true }), requireAdmin(auth), adminRouter); // ADMIN_WEB_ORIGIN = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100'"
+    },
+    {
+      "file": "packages/api/src/lib/auth.ts",
+      "lines": "79-86",
+      "description": "trustedOrigins appended (not replaced) with the admin web origin; role stays input:false (unchanged) — the role-management route is the only sanctioned write path.",
+      "content": "trustedOrigins: ['jojopotato://', process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:3100', ...(isDev ? ['exp://'] : [])],"
+    },
+    {
+      "file": "packages/api/src/lib/require-staff.ts",
+      "lines": "106-118",
+      "description": "assertBranchScope — additive optional trailing role param; admin/super_admin bypass is the FIRST check (returns true unconditionally). Backward-compatible: existing 2-arg callers unchanged.",
+      "content": "export function assertBranchScope(assignedBranchId, requestedBranchId, role?) { if (role === 'admin' || role === 'super_admin') return true; if (assignedBranchId === null) return false; if (requestedBranchId === null) return true; return assignedBranchId === requestedBranchId; }"
+    },
+    {
+      "file": "apps/admin/src/routes/(dashboard)/route.tsx",
+      "lines": "23-37",
+      "description": "Client convenience guard — beforeLoad verifies session against the REAL server (GET /api/admin/me), not a client-cached flag. Non-OK -> redirect to /login. Skipped during SSR (cookie not forwarded). Server requireAdmin is the real enforcement.",
+      "content": "beforeLoad: async () => { if (typeof document === 'undefined') return; let res; try { res = await fetch(`${env.apiUrl}/api/admin/me`, { credentials: 'include' }); } catch { throw redirect({to:'/login'}); } if (!res.ok) throw redirect({to:'/login'}); }"
+    }
+  ]
+}

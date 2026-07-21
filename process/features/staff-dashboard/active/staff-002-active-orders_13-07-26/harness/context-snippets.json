@@ -1,0 +1,29 @@
+{
+  "task": "STAFF-002 staff order endpoints — trust-boundary surfaces",
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "55-76",
+      "description": "GET /api/staff/orders: branch resolved fresh via resolveBranchScope(db, req.staffSession!.userId); unassigned staff (null) → 403; list filtered by eq(orders.branch_id, branchId). No client-supplied branch id is ever read.",
+      "content": "const branchId = await resolveBranchScope(db, req.staffSession!.userId); if (!branchId) { res.status(403).json({ error: 'No branch assigned' }); return; } ... .where(and(eq(orders.branch_id, branchId), inArray(orders.status, [...ACTIVE_ORDER_STATUSES])))"
+    },
+    {
+      "file": "packages/api/src/routes/staff.ts",
+      "lines": "85-110",
+      "description": "GET /api/staff/orders/:orderId: branch resolved fresh; unassigned → 403; uuid-guarded param (bad id → 404, not 500); order fetched then order.branch_id !== branchId → 403 (AC-5 cross-branch isolation) BEFORE any item fetch.",
+      "content": "if (order.branch_id !== branchId) { res.status(403).json({ error: 'Forbidden' }); return; }"
+    },
+    {
+      "file": "packages/api/src/lib/require-staff.ts",
+      "lines": "55-93",
+      "description": "requireStaff guard applied ONCE at /api/staff mount (index.ts) — rejects non-staff roles with 403. resolveBranchScope reads users.assignedBranchId fresh from the DB (authoritative), NOT the session-carried assignedBranchId which is documented as possibly stale.",
+      "content": "export async function resolveBranchScope(db, userId): Promise<string | null> { const [row] = await db.select({ assignedBranchId: users.assignedBranchId }).from(users).where(eq(users.id, userId)); return row?.assignedBranchId ?? null; }"
+    },
+    {
+      "file": "packages/api/src/routes/lib/serializers.ts",
+      "lines": "205-266",
+      "description": "serializeStaffOrderSummary / serializeStaffOrderDetail: staff response shape carries NO customer PII (no user_id, name, or email) — only order id/number/status/placedAt/total + item names/qty/options. Minimal-disclosure by construction.",
+      "content": "StaffOrderSummary { id, orderNumber, status, placedAt, totalCents, itemSummary } — no user identity fields."
+    }
+  ]
+}

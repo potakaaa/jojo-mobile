@@ -10,7 +10,8 @@
  * Typed against the real shared domain shapes in `@jojopotato/types` so the
  * Home screen renders against the same contracts the eventual API will satisfy.
  */
-import type { MenuCategory, MenuItem, PickupBranch, RewardsAccount } from '@jojopotato/types';
+import type { RewardProgress } from '@jojopotato/ui';
+import type { MenuCategory, MenuItem, PickupBranch } from '@jojopotato/types';
 
 export const MOCK_CATEGORIES: MenuCategory[] = [
   { id: 'classic', name: 'Classic', sortOrder: 1 },
@@ -89,14 +90,28 @@ export const MOCK_PRODUCTS: MenuItem[] = [
 export const MOCK_BRANCH: PickupBranch = {
   id: 'branch-bgc',
   name: 'Jojo Potato — BGC',
+  slug: 'jojo-bgc',
   address: '7th Ave cor 30th St, Bonifacio Global City, Taguig',
   latitude: 14.5509,
   longitude: 121.0512,
+  phone: '+63 2 8888 0001',
+  openingHours: JSON.stringify({
+    mon: { open: '09:00', close: '21:00' },
+    tue: { open: '09:00', close: '21:00' },
+    wed: { open: '09:00', close: '21:00' },
+    thu: { open: '09:00', close: '21:00' },
+    fri: { open: '09:00', close: '22:00' },
+    sat: { open: '09:00', close: '22:00' },
+    sun: { open: '10:00', close: '20:00' },
+  }),
+  isActive: true,
+  isAcceptingPickup: true,
+  estimatedPrepMinutes: 15,
+  priority: 1,
   isOpen: true,
 };
 
-export const MOCK_REWARDS: RewardsAccount = {
-  userId: 'mock-user',
-  points: 1240,
-  tier: 'silver',
+export const MOCK_REWARDS: RewardProgress = {
+  currentStars: 3,
+  requiredStars: 5,
 };

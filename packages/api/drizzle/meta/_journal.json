@@ -1,0 +1,146 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783565007230,
+      "tag": "0000_puzzling_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783570961087,
+      "tag": "0001_daily_carnage",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783908920079,
+      "tag": "0002_bored_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783927846068,
+      "tag": "0003_lean_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783930586644,
+      "tag": "0004_add_branch_priority",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783997122019,
+      "tag": "0005_add_rejected_order_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784001558019,
+      "tag": "0006_legal_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784017078705,
+      "tag": "0007_wet_ser_duncan",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784076165274,
+      "tag": "0008_amusing_night_nurse",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784172488546,
+      "tag": "0009_round_menace",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784172557836,
+      "tag": "0010_nosy_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784172586712,
+      "tag": "0011_windy_dexter_bennett",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784172628973,
+      "tag": "0012_fearless_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0013_rename_deals_to_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784215781536,
+      "tag": "0014_icy_korg",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784250666069,
+      "tag": "0015_lazy_zeigeist",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784250726069,
+      "tag": "0016_rename_offer_fk_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784524306582,
+      "tag": "0017_fast_the_hood",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784527687773,
+      "tag": "0018_curvy_baron_strucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784533631419,
+      "tag": "0019_rainy_tombstone",
+      "breakpoints": true
+    }
+  ]
+}

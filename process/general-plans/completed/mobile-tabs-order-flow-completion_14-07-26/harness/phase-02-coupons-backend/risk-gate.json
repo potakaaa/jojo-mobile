@@ -1,0 +1,14 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 2 — Coupons backend (list + redeem + checkout auto-apply)",
+  "planPath": "process/general-plans/active/mobile-tabs-order-flow-completion_14-07-26/phase-02-coupons-backend_PLAN_14-07-26.md",
+  "riskLevel": "high",
+  "riskClasses": [
+    "billing or credits",
+    "schema/data migration or destructive data mutation",
+    "public API or external contract changes",
+    "permission, secret, or trust-boundary logic"
+  ],
+  "mustStopBeforeFinalize": false,
+  "humanApprovalRequired": true,
+  "why": "Coupons carry monetary value: POST /orders now derives a real server-side discount from a coupon's linked reward/deal and marks the coupon used atomically. The discount is always server-authoritative (client sends only a couponId, never an amount), dual-clamped to the subtotal, and stacking with a deal is sum-clamped so subtotal - discount_total === total always holds. A coupon can be consumed exactly once (CAS available→used under a FOR UPDATE lock, race-safe against concurrent redeem/order-apply). A schema migration (0007_round_menace.sql) adds an additive nullable orders.coupon_id FK. mustStopBeforeFinalize is false because the migration is additive-only (nullable column, NO ACTION FK, no data rewrite) and no outward-facing/irreversible action is taken; humanApprovalRequired flags that a human should sign off on the money/pricing surface before it ships to production."
+}

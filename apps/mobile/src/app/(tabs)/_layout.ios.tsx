@@ -19,6 +19,12 @@ import FloatingTabBar from '@/components/floating-tab-bar';
 export default function TabsIosLayout() {
   return (
     <Tabs
+      // `backBehavior` defaults to `'firstRoute'`, which makes a GO_BACK from any
+      // tab-sibling route (e.g. `/(tabs)/notifications`, `/(tabs)/deals`) return to
+      // the FIRST registered tab — `index` (Home) — rather than the tab the user
+      // actually came from. `'history'` tracks the real visited-route order, so back
+      // returns to the calling tab (open Notifications from Account -> back = Account).
+      backBehavior="history"
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{ headerShown: false, animation: 'fade' }}
     >
@@ -46,6 +52,15 @@ export default function TabsIosLayout() {
           title: 'Rewards',
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons name={focused ? 'star' : 'star-outline'} color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="branches"
+        options={{
+          title: 'Branches',
+          tabBarIcon: ({ focused, color, size }) => (
+            <Ionicons name={focused ? 'location' : 'location-outline'} color={color} size={size} />
           ),
         }}
       />

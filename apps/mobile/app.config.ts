@@ -1,0 +1,120 @@
+import type { ExpoConfig } from 'expo/config';
+
+// Dynamic Expo config (replaces the former static app.json).
+//
+// Google Maps (Android) API key is read from the environment at build time so it
+// never enters git history. Expo CLI auto-loads `.env` / `.env.local` files into
+// process.env before evaluating this config, so `GOOGLE_MAPS_API_KEY` is populated
+// from apps/mobile/.env.local (gitignored). If unset, the key is an empty string
+// and Android maps render blank until a key is provided — iOS (Apple Maps) needs
+// no key.
+//
+// DEV-CLIENT REBUILD REQUIRED: expo-maps is a native module. After changing this
+// config or installing expo-maps, run a fresh dev client build
+// (`npx expo run:ios` or `npx expo run:android`) before the map can be tested —
+// it cannot run in Expo Go.
+
+// WARNING: android/ is a committed bare project, so EAS Build never runs prebuild and
+// this value is inert there — the real key reaches the APK via the GOOGLE_MAPS_API_KEY
+// EAS env var + the manifestPlaceholders wiring in android/app/build.gradle. Do NOT run
+// `expo prebuild`: it writes the literal key into the TRACKED AndroidManifest.xml, and
+// this repo is public. Kept only for a future managed/CNG switch.
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY ?? '';
+
+// EAS project + owner default to the team's shared `jojo-potato` Expo project. A
+// developer with their own Expo account + Firebase project can override both via
+// apps/mobile/.env.local (gitignored, auto-loaded by Expo CLI per the note above)
+// to build/test push notifications against their own project instead of the shared one.
+const easProjectId = process.env.EAS_PROJECT_ID ?? 'a89a764c-ce21-4fa6-a6ab-071b87092350';
+const easOwner = process.env.EAS_OWNER ?? 'jojo-potato';
+
+const config: ExpoConfig = {
+  name: 'Jojo Potato',
+  slug: 'jojo-potato',
+  version: '0.1.0',
+  orientation: 'portrait',
+  icon: './assets/images/icon.png',
+  scheme: 'jojopotato',
+  userInterfaceStyle: 'automatic',
+  backgroundColor: '#FFF8EE',
+  ios: {
+    bundleIdentifier: 'ph.jojopotato.mobile',
+    supportsTablet: false,
+    // expo-maps requires iOS 18.0+ (onMarkerClick / onAnnotationClick are 18.0+).
+    deploymentTarget: '18.0',
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSLocationWhenInUseUsageDescription:
+        'Jojo Potato uses your location to show you the nearest branches.',
+    },
+  },
+  android: {
+    package: 'ph.jojopotato.mobile',
+    adaptiveIcon: {
+      backgroundColor: '#5F3A22',
+      foregroundImage: './assets/images/android-icon-foreground.png',
+      backgroundImage: './assets/images/android-icon-background.png',
+      monochromeImage: './assets/images/android-icon-monochrome.png',
+    },
+    predictiveBackGestureEnabled: false,
+    config: {
+      googleMaps: {
+        apiKey: googleMapsApiKey,
+      },
+    },
+  },
+  web: {
+    output: 'static',
+    favicon: './assets/images/favicon.png',
+  },
+  plugins: [
+    'expo-router',
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#FFF8EE',
+        image: './assets/images/splash-icon.png',
+        imageWidth: 160,
+      },
+    ],
+    'expo-font',
+    'expo-secure-store',
+    'expo-web-browser',
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Jojo Potato uses your location to show you the nearest branches.',
+      },
+    ],
+    [
+      'expo-maps',
+      {
+        requestLocationPermission: true,
+        locationPermission: 'Jojo Potato uses your location to show you the nearest branches.',
+      },
+    ],
+    [
+      'expo-notifications',
+      {
+        // Wires the `remote-notification` UIBackgroundModes entitlement on iOS so
+        // a killed/backgrounded app can still be woken to process a push. No
+        // secret/credential file needs to exist in the repo for this to
+        // typecheck/lint/build (SPEC AC-4).
+        enableBackgroundRemoteNotifications: true,
+      },
+    ],
+  ],
+  experiments: {
+    typedRoutes: true,
+  },
+  extra: {
+    router: {},
+    eas: {
+      projectId: easProjectId,
+    },
+  },
+  owner: easOwner,
+};
+
+export default config;

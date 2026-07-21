@@ -1,0 +1,144 @@
+/**
+ * Global jest setup for `apps/mobile` RN component tests (registered via
+ * `jest.config.js` `setupFiles`). Installs the module mocks every screen test
+ * needs so individual test files never redeclare them.
+ *
+ * 1. `react-native-reanimated` — this repo's pin (4.5.0 + react-native-worklets
+ *    0.10.0) throws `Cannot read properties of undefined (reading 'loadUnpackers')`
+ *    at import time under jest, even through the library's own `/mock` export
+ *    (which still pulls in the broken worklets initializer chain in v4). A
+ *    hand-rolled no-op stub of the APIs actually used (`floating-tab-bar.tsx`
+ *    imports reanimated at module scope, and every tab-root screen transitively
+ *    imports `getFloatingTabBarClearance` from it) is required and proven working.
+ * 2. `expo-router` — a lightweight stub so `router.push`/`useRouter`/
+ *    `useIsFocused` resolve without a real navigation container in jsdom.
+ */
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+
+import { jest } from '@jest/globals';
+
+jest.mock('react-native-reanimated', () => {
+  const RN = require('react-native');
+  const passthrough = (value: unknown) => value;
+
+  // Layout-animation builders (FadeIn/FadeInDown/…) are used as chainable
+  // configs on Animated.View `entering`/`exiting` props. The real objects expose
+  // fluent modifiers (`.duration()`, `.delay()`, `.springify()`); the mock only
+  // needs each to exist and return something chainable, since jsdom never runs
+  // the animation. A Proxy returns a self-referential chainable for ANY modifier,
+  // so a new modifier at a call site never needs a mock update.
+  const makeAnimationBuilder = (): unknown =>
+    new Proxy(
+      {},
+      {
+        get: () => () => makeAnimationBuilder(),
+      },
+    );
+
+  // `Easing` curves shape an animation's timing; jsdom never runs the animation,
+  // so every curve can be the identity function and every modifier can return
+  // the curve it was handed. Only the identities matter — `Easing.inOut(...)`
+  // must return something callable, and `Easing.ease` must be passable into it
+  // (tracking/index.tsx's LiveBadge does exactly `Easing.inOut(Easing.ease)`).
+  // Without this the whole object is `undefined` and any screen reading a curve
+  // off it throws at render, which is what previously made the tracking screen
+  // untestable under jest.
+  const identityEasing = (t: number) => t;
+  const easingModifier = (easing: unknown = identityEasing) => easing;
+  const Easing = {
+    ease: identityEasing,
+    linear: identityEasing,
+    quad: identityEasing,
+    cubic: identityEasing,
+    sin: identityEasing,
+    circle: identityEasing,
+    exp: identityEasing,
+    in: easingModifier,
+    out: easingModifier,
+    inOut: easingModifier,
+    bezier: () => ({ factory: () => identityEasing }),
+  };
+
+  return {
+    __esModule: true,
+    default: {
+      View: RN.View,
+      Text: RN.Text,
+      ScrollView: RN.ScrollView,
+      Image: RN.Image,
+      createAnimatedComponent: (Component: unknown) => Component,
+    },
+    View: RN.View,
+    Text: RN.Text,
+    ScrollView: RN.ScrollView,
+    Image: RN.Image,
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useSharedValue: (value: unknown) => ({ value }),
+    withTiming: passthrough,
+    withSpring: passthrough,
+    // `withRepeat(animation, reps, reverse)` — the trailing args only describe
+    // playback, which jsdom never performs, so passing the animation straight
+    // through matches `withTiming`/`withSpring` above and leaves the shared
+    // value holding a concrete number rather than `undefined`.
+    withRepeat: passthrough,
+    interpolate: passthrough,
+    interpolateColor: passthrough,
+    Easing,
+    // Common entering/exiting animation builders as chainable no-op configs.
+    FadeIn: makeAnimationBuilder(),
+    FadeOut: makeAnimationBuilder(),
+    FadeInDown: makeAnimationBuilder(),
+    FadeInUp: makeAnimationBuilder(),
+    FadeOutDown: makeAnimationBuilder(),
+    FadeOutUp: makeAnimationBuilder(),
+    SlideInDown: makeAnimationBuilder(),
+    SlideOutDown: makeAnimationBuilder(),
+    SlideInUp: makeAnimationBuilder(),
+    SlideOutUp: makeAnimationBuilder(),
+  };
+});
+
+// The better-auth client (`@better-auth/expo` → `@better-auth/core`) ships
+// untranspiled ESM that jest's transform whitelist doesn't cover, and pulling the
+// real auth stack into a component test is pointless. `api-client.ts` only needs
+// `authClient.getCookie()`, so stub the whole module — this unblocks every test
+// that transitively imports `@/lib/api-client` (both Rewards and Coupons screens).
+jest.mock('@/features/auth/lib/auth-client', () => ({
+  authClient: {
+    getCookie: () => '',
+    useSession: () => ({ data: null, isPending: false }),
+    $fetch: jest.fn(),
+  },
+}));
+
+jest.mock('expo-router', () => {
+  const router = {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+    dismiss: jest.fn(),
+  };
+  const Passthrough = ({ children }: { children?: unknown }) => children ?? null;
+  const StackLike = Object.assign(() => null, { Screen: () => null });
+  return {
+    __esModule: true,
+    router,
+    useRouter: () => router,
+    useLocalSearchParams: () => ({}),
+    usePathname: () => '/',
+    // Every top-level screen moved out of a tab's stack by NAV-005 calls
+    // `useHideTabBarWhile(useIsFocused())` to keep the floating tab bar hidden
+    // (a top-level route at its own stack root makes `isNestedTabRoute()` false,
+    // so the bar would otherwise paint on it). There is no real navigation
+    // container in jsdom, so `useIsFocused` is stubbed `true`: a screen being
+    // rendered by a test IS the focused screen, which is also the branch that
+    // exercises the hide path.
+    useIsFocused: () => true,
+    Link: Passthrough,
+    Stack: StackLike,
+    Tabs: StackLike,
+    Redirect: () => null,
+  };
+});

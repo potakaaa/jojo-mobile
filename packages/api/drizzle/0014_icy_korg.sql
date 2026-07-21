@@ -1,0 +1,2 @@
+ALTER TABLE "offers" ADD COLUMN "benefit_product_id" uuid;--> statement-breakpoint
+ALTER TABLE "offers" ADD CONSTRAINT "offers_benefit_product_id_products_id_fk" FOREIGN KEY ("benefit_product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;

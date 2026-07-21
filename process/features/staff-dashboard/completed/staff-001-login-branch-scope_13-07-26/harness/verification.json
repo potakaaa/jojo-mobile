@@ -1,0 +1,53 @@
+{
+  "task": "STAFF-001 — Staff login and branch-scoped access",
+  "result": "PASS",
+  "commands": [
+    {
+      "step": "Full packages/api vitest suite (34 tests incl. 8 new require-staff E2-E7 + 5 auth regression E8)",
+      "command": "DATABASE_URL=postgres://jojo:jojo@localhost:5432/jojopotato pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "34 passed (4 files). Requires docker compose up -d + db:migrate (applied). Covers AC1-server (E3), AC2 (E2/E6), AC3 (E4/E5/E7), AC4 (E7+E8 regression)."
+    },
+    {
+      "step": "packages/api typecheck",
+      "command": "pnpm --filter @jojopotato/api typecheck",
+      "result": "PASS",
+      "notes": "tsc --noEmit clean."
+    },
+    {
+      "step": "packages/types typecheck",
+      "command": "pnpm --filter @jojopotato/types typecheck",
+      "result": "PASS",
+      "notes": "StaffMe + StaffRole export cleanly."
+    },
+    {
+      "step": "apps/mobile typecheck (after expo typed-routes codegen)",
+      "command": "pnpm --filter @jojopotato/mobile typecheck",
+      "result": "PASS",
+      "notes": "(staff) group present in .expo/types/router.d.ts; isStaff + third Stack.Protected + shell files compile."
+    },
+    {
+      "step": "Lint all packages",
+      "command": "pnpm lint",
+      "result": "PASS",
+      "notes": "6/6 packages, 0 errors. 3 pre-existing warnings in unrelated dev-with-tunnel.mjs."
+    }
+  ],
+  "manualChecks": [
+    {
+      "step": "DB column verification",
+      "check": "psql \\d users shows assigned_branch_id uuid + FK users_assigned_branch_id_branches_id_fk -> branches(id)",
+      "result": "PASS"
+    },
+    {
+      "step": "Seed staff user verification",
+      "check": "SELECT email, role, assigned_branch_id IS NOT NULL FROM users WHERE email='staff-branch1@jojopotato.local' => role=staff, has_branch=t (created via auth.api.signUpEmail => has account credential)",
+      "result": "PASS"
+    },
+    {
+      "step": "Mobile role-gate + useStaffMe hook + shell render (Agent-Probe)",
+      "check": "Sign in as staff on Expo -> lands in (staff) shell (not tabs); header shows BrandWordmark + Staff badge; branch name from /api/staff/me; 4 inert nav cards; sign-out returns to (auth). Sign in as customer -> (tabs), no (staff) route. Restart persists staff session.",
+      "result": "DEFERRED — known-gap: no RN test runner. Requires operator manual confirmation (Phase Completion Rule 5). Backlog: mobile-e2e-navigation-harness_NOTE_09-07-26.md."
+    }
+  ]
+}

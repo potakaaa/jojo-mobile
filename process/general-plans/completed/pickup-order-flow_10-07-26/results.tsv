@@ -1,0 +1,8 @@
+cycle	date	gate	gaps_open	notes
+0	10-07-26	CONDITIONAL	5	baseline V1-V7 run; 4 substantive concerns + 1 minor
+1	10-07-26	SUPPLEMENT_APPLIED	0	4 gaps addressed: onConflictDoNothing rewrite, require-session fix, component-showcase touchpoint, history+dev-link gates
+2	13-07-26	PASS	0	fresh V1-V7 re-validation post-supplement; all 5 fixes independently re-verified against source (drizzle onConflictDoNothing API, fromNodeHeaders signature, component-showcase.tsx literal, history+dev-link gates, checkout double-submit guard); 0 new gaps; HALTED_SUCCESS
+0	13-07-26	EVL_BASELINE	N/A	Phase A+B1+B2 landed; both execute agents reported all scoped gates green independently. Starting EVL confirmation run.
+1	13-07-26	FAIL	1	cross-phase menu response shape mismatch (priceCents/id vs basePriceCents/optionId); breaks order placement for products with options; see evl-iteration-001 report
+2	13-07-26	SUPPLEMENT_APPLIED	0	mobile menu client reconciled to real API contract (basePriceCents, optionId); added typecheck-gated contract fixture; re-EVL pending
+3	13-07-26	PASS	0	EVL cycle 2: fix independently re-verified field-by-field (server vs client), distinctness trace confirmed, all 5 gate suites green, no regressions; HALTED_SUCCESS

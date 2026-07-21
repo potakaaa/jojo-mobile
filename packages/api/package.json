@@ -1,0 +1,49 @@
+{
+  "name": "@jojopotato/api",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:bypass": "node scripts/dev-bypass.mjs",
+    "dev:ngrok": "ngrok http 3000",
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/db/seed.ts",
+    "push:test": "tsx scripts/send-test-push.ts",
+    "push:receipt": "tsx scripts/check-push-receipt.ts",
+    "trigger-marketing": "tsx scripts/trigger-all-marketing-notifications.ts"
+  },
+  "dependencies": {
+    "@better-auth/expo": "^1.6.23",
+    "@jojopotato/types": "workspace:*",
+    "@jojopotato/utils": "workspace:*",
+    "better-auth": "^1.6.23",
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.45.2",
+    "expo-server-sdk": "^3.15.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "resend": "^6.17.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@jojopotato/config": "workspace:*",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.15.6",
+    "@types/supertest": "^7.2.0",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.6",
+    "eslint": "^9.39.4",
+    "supertest": "^7.2.2",
+    "tsx": "^4.20.6",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
+  }
+}

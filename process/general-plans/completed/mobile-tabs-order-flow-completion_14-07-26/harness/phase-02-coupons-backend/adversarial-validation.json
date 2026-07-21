@@ -1,0 +1,51 @@
+{
+  "task": "mobile-tabs-order-flow-completion Phase 2 — Coupons backend",
+  "stride": "STRIDE scan of the coupon apply + redeem surface (money-adjacent trust boundary).",
+  "scenarios": [
+    {
+      "scenario": "Tampering — client sends an inflated discount amount to shrink the total it pays",
+      "ruled_out": true,
+      "rationale": "The request schema accepts ONLY couponId (uuid) — there is no discountTotal/couponDiscountCents field. The server derives the discount solely from the coupon's linked reward/deal DB row. Enforced by the zod createOrderSchema and proven by the whole coupon-apply suite (discounts are always the server-computed value)."
+    },
+    {
+      "scenario": "Tampering — free-item reward customer selects the most expensive add-on/size on the eligible line to inflate the free-item discount",
+      "ruled_out": true,
+      "rationale": "The free_item discount is computed from the product's base_price (server-derived), NOT any specific order line's customized unitPriceCents. Proven by the 'free_item base price' test: a line with a +150c size option still discounts only the 500c base."
+    },
+    {
+      "scenario": "Elevation / IDOR — a customer applies or redeems another user's coupon",
+      "ruled_out": true,
+      "rationale": "POST /orders coupon block checks coupon.user_id === session caller → 403. POST /coupons/:id/redeem CAS WHERE includes user_id, and the 0-row follow-up read returns 403 for an owned-mismatch. Proven by 'another user's coupon → 403' (orders) and '403s another user's coupon' (redeem)."
+    },
+    {
+      "scenario": "Repudiation / double-spend — a coupon is consumed more than once via concurrent requests (redeem+order, order+order)",
+      "ruled_out": true,
+      "rationale": "The coupon row is SELECT ... FOR UPDATE-locked inside the placement transaction and held through the CAS mark-used; the standalone redeem uses an atomic CAS on status='available'. Both paths race on the same status='available' condition and are serialized by Postgres row locking. Proven by two independent race tests (concurrent double-apply on /orders; concurrent double-redeem on /coupons) — exactly one succeeds, coupon ends 'used' once."
+    },
+    {
+      "scenario": "Tampering — expired coupon still redeemable because stored status is 'available' (no expiry cron)",
+      "ruled_out": true,
+      "rationale": "Both the redeem CAS WHERE (or(isNull(expires_at), gt(expires_at, now))) and the order-apply validation (expires_at <= now → 409) re-check expiry at action time, independent of the stored status. Proven by 'expired → 409' in both suites; the DB row is never mutated by a rejected attempt."
+    },
+    {
+      "scenario": "Data integrity — combined deal+coupon discount exceeds the subtotal, producing a negative total or an inconsistent discount_total",
+      "ruled_out": true,
+      "rationale": "Each part is individually clamped to [0, subtotal], then the SUM is clamped to subtotal; discount_total and total both derive from that single clamped value, so subtotal - discount_total === total always holds and discount_total never exceeds subtotal. Proven by the 'stacking' and 'stacking clamp' tests."
+    },
+    {
+      "scenario": "Denial/logic — a coupon linked to an unrecognized reward_type (varchar, no DB enum) mis-prices or crashes checkout",
+      "ruled_out": true,
+      "rationale": "An explicit default branch rejects any reward_type outside fixed_discount/percentage_discount/free_item with 400 before any write; a coupon linked to neither reward nor deal is also rejected. Proven by 'unrecognized reward_type → 400'."
+    },
+    {
+      "scenario": "Atomicity — order placement fails after the coupon is locked/validated, leaving the coupon consumed but no order (or vice versa)",
+      "ruled_out": true,
+      "rationale": "The coupon CAS-mark-used runs inside the same transaction as the order insert, after it; any failure throws and rolls back both. Proven by the 'atomicity' test (order-number exhaustion → 500 → coupon stays available, no order row)."
+    },
+    {
+      "scenario": "Migration safety — orders.coupon_id migration corrupts existing order rows",
+      "ruled_out": true,
+      "rationale": "Additive nullable column + NO ACTION FK, drizzle-kit-generated (0007_round_menace.sql), no data rewrite. Existing rows get NULL. Full existing order/deal suite (25 cases) stays green post-migration. NOTE (residual, non-blocking): safety against a production dataset with rows in unexpected states is untested — no such dataset exists (pre-launch)."
+    }
+  ]
+}

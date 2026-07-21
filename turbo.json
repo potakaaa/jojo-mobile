@@ -1,12 +1,21 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": ["APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"],
   "tasks": {
     "dev": {
       "cache": false,
       "persistent": true
     },
+    "dev:bypass": {
+      "cache": false,
+      "persistent": true
+    },
     "dev:tunnel": {
+      "cache": false,
+      "persistent": true
+    },
+    "dev:ngrok": {
       "cache": false,
       "persistent": true
     },
@@ -35,6 +44,26 @@
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
+    },
+    "check-tokens": {
+      "cache": false
+    },
+    "guard:theme-mode": {
+      "cache": false
+    },
+    "test": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
     },
     "clean": {
       "cache": false

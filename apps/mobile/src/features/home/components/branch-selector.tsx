@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export interface BranchSelectorProps {
   branch: PickupBranch;
+  isOpen: boolean; // was derived from branch.isOpen, now passed explicitly
   onPress?: () => void;
 }
 
@@ -17,7 +18,7 @@ export interface BranchSelectorProps {
  * optional `onPress` is accepted for future wiring but the default behavior is
  * visual-only.
  */
-export function BranchSelector({ branch, onPress }: BranchSelectorProps) {
+export function BranchSelector({ branch, isOpen, onPress }: BranchSelectorProps) {
   const theme = useTheme();
   const [selected, setSelected] = useState(false);
 
@@ -47,14 +48,9 @@ export function BranchSelector({ branch, onPress }: BranchSelectorProps) {
       </View>
       <View style={[styles.statusPill, { borderColor: theme.accent }]}>
         <View
-          style={[
-            styles.statusDot,
-            { backgroundColor: branch.isOpen ? Palette.green : theme.accent },
-          ]}
+          style={[styles.statusDot, { backgroundColor: isOpen ? Palette.green : theme.accent }]}
         />
-        <Text style={[styles.status, { color: theme.accent }]}>
-          {branch.isOpen ? 'Open' : 'Closed'}
-        </Text>
+        <Text style={[styles.status, { color: theme.accent }]}>{isOpen ? 'Open' : 'Closed'}</Text>
       </View>
     </Pressable>
   );

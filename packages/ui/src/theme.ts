@@ -107,6 +107,17 @@ export const Spacing = {
 } as const;
 
 /**
+ * Minimum tappable-target size (dp) for interactive controls.
+ *
+ * Added in the kid-friendly UI pass (Phase A, 16-07-26) as an explicit,
+ * flagged addition to the locked design-token table — NOT a reopening of the
+ * `jojopotato-design-system_08-07-26` token set. It encodes the AC-A1 48×48
+ * touch-target floor once so buttons/chips/rows can reference a single source
+ * instead of hardcoding `48`.
+ */
+export const MinTouchTarget = 48;
+
+/**
  * Named border-radius step scale (dp). Derived from the observed radius scale
  * (10/12/14/16/18/20/24/26/34/40 + 999 pill).
  *
@@ -187,13 +198,26 @@ export const Shadows = {
  * Font family names. Values are the exact `@expo-google-fonts` static-weight
  * export identifiers, loaded in `apps/mobile/src/app/_layout.tsx`.
  *
- * `display` = Fredoka (site declares weight range 600–700).
- * `body` = Plus Jakarta Sans (site declares weight range 400–800).
+ * `display.bold` = Plus Jakarta Sans ExtraBold (see the flagged amendment on the
+ * `display` block below); `body` = Plus Jakarta Sans (site declares weight range
+ * 400–800). The `display.semibold` value below is a dead token (zero consumers),
+ * retained only to avoid reshaping the token map.
  */
 export const FontFamily = {
+  /**
+   * Display (heading) family. `bold` was repointed from the previous rounded
+   * display face to `PlusJakartaSans_800ExtraBold` (font-tone-payment-overflow,
+   * 20-07-26) as an explicit, flagged amendment to the locked design-token
+   * table — NOT a reopening of the `jojopotato-design-system_08-07-26` token set
+   * (same precedent as `MinTouchTarget` at theme.ts:109-118). This gives
+   * headings a more professional/grown-up tone while keeping a single source of
+   * truth: all `FontFamily.display.bold` consumers pick up the new family with
+   * zero call-site edits. `semibold` keeps its original value below but has zero
+   * consumers (dead token).
+   */
   display: {
     semibold: 'Fredoka_600SemiBold',
-    bold: 'Fredoka_700Bold',
+    bold: 'PlusJakartaSans_800ExtraBold',
   },
   body: {
     regular: 'PlusJakartaSans_400Regular',

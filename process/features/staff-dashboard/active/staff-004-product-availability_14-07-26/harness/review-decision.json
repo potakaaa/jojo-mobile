@@ -1,0 +1,6 @@
+{
+  "reviewer": "vc-execute-agent (STAFF-004 Phase 1)",
+  "decision": "APPROVE",
+  "rationale": "All 4 new routes inherit requireStaff middleware from mount point — no new auth surface introduced. Branch scope is always session-derived (resolveBranchScope per-request), never accepted from client body — cross-branch mutation is structurally impossible. UPSERT uses onConflictDoUpdate targeting the composite unique index (branch_id, product_id) — no duplicate row risk. Zod validates all inputs at boundaries (UUID check, boolean, int range, at-least-one-field refine). No customer-facing routes touched (E8 enforced). The staff/customer availability asymmetry (staff LEFT JOIN default=available vs customer INNER JOIN requires explicit row) is documented and tested in AC-2/AC-3. 99 tests pass, 0 failures, typecheck clean.",
+  "timestamp": "2026-07-14"
+}

@@ -4,3 +4,28 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# local EAS build output
+builds/
+
+# local env with secrets (also covered by root .gitignore .env.* rule; explicit here
+# so the Google Maps API key in .env.local is never committed)
+.env.local
+.env.*.local
+app.json.bak
+
+# Firebase per-project config (per-project, not app source; must stay OUT of git —
+# this repo is public).
+# NOTE: `eas credentials` does NOT manage google-services.json. Because android/ is a
+# committed bare project, EAS never runs prebuild, so the file must reach the builder
+# via the GOOGLE_SERVICES_JSON file-type EAS env var + the eas-build-pre-install hook
+# in package.json. `eas credentials` only holds the Firebase Admin SDK key (FCM V1
+# send authority). See docs/push-notifications.md §4.
+google-services.json
+GoogleService-Info.plist
+
+# Firebase Admin SDK / FCM v1 service account key — a LIVE private key with
+# Cloud Messaging send authority. Never commit; provision via EAS credentials.
+# Glob (not the exact filename) because the suffix is random per regeneration
+# (e.g. {project}-firebase-adminsdk-{random}.json).
+*firebase-adminsdk*.json

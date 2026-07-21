@@ -1,0 +1,69 @@
+{
+  "scenarios": [
+    {
+      "scenario": "Coupon targets a buy_one_take_one or bundle offer, hoping to trigger the cheapest-eligible-line mis-discount (computeDealDiscountCents's shared cheapestEligibleUnitPrice branch)",
+      "ruled_out": true,
+      "rationale": "Original finding 1 (CRITICAL) from the post-P1 adversarial review, reproduced in source at PVL time. Closed by P1b (66cbb0e): resolveCouponDiscount's first mechanic check is an unconditional PERMANENT reject for deal_type in {buy_one_take_one, bundle}, before any discount math runs, on both preview and placement (single shared resolver). P2 (cceb66b) confirmed untouched — verified live this session via git diff that this branch is byte-for-byte identical between 66cbb0e and cceb66b."
+    },
+    {
+      "scenario": "A free_item/free_upgrade offer is configured with a benefit_product_id out-of-band (e.g. direct SQL, a routine dev-workflow path per the plan's own notes) between when P1 shipped the null-only guard and before P2's real math landed — the P1 guard would have admitted it into the unchanged cheapest-line math",
+      "ruled_out": true,
+      "rationale": "Original finding 2 (MAJOR), the P1->P2 window hole. P1b closed it by making the free-mechanic reject UNCONDITIONAL regardless of benefit_product_id state (not just null-checked) until P2 replaced that exact branch with real dispatch. P2 now correctly redeems a properly configured offer via checkFreeBenefit + the real math functions, and the window is permanently closed because there is no longer any code path where a non-null benefit_product_id falls through to computeDealDiscountCents."
+    },
+    {
+      "scenario": "A legacy or misconfigured percentage_discount/fixed_discount offer with a NULL, zero, or negative discount_value is redeemed — resolves to a ₱0 discount but still burns the coupon for zero customer benefit and zero business cost visibility",
+      "ruled_out": true,
+      "rationale": "P2-cycle finding (F1 in the task's ground truth), discovered by this fix cycle's own adversarial review, not carried over from P1. Closed at THREE independent layers: (1) resolver-side, the percentage_discount/fixed_discount allowlist branch in coupon-apply.ts computes amountCents = Math.max(0, Math.min(computeDealDiscountCents(...), subtotal)) and REJECTS (400, coupon not burned) when amountCents <= 0; (2) admin-authoring side, mechanicBenefitError() requires discountValueCents to be a positive number for these two mechanics on both create and merged-state PATCH, so a new zero/negative-value offer can no longer even be saved; (3) mint side, POST /generate rejects issuing codes against an existing offer whose discount_value is NULL or <= 0. Verified by direct code read this session (context-snippets.json)."
+    },
+    {
+      "scenario": "Partial-update bypass on PATCH /api/admin/offers/:id — an admin flips offerType to a free mechanic while benefit_product_id stays NULL from the prior state, or flips away from a free mechanic while a stale benefit_product_id lingers and is never re-validated because the PATCH body itself doesn't touch that field",
+      "ruled_out": true,
+      "rationale": "Named explicitly as a HIGH-priority vc-predict constraint in the plan's Risks table, and VALIDATE confirmed pre-EXECUTE that the then-current PATCH handler did NOT load the existing row. Fixed in P2 (cceb66b): the handler now loads the existing row FIRST, computes the MERGED state (patch field if present, else existing column value) for offerType/benefitProductId/discountValueCents, and runs mechanicBenefitError() against that merged state whenever the patch touches any of the three fields. Verified by direct code read this session — the merge logic explicitly falls back to `existing.benefit_product_id` / `existing.deal_type` / a numericToCents conversion of `existing.discount_value` when the corresponding field is absent from the request body."
+    },
+    {
+      "scenario": "An admin who set benefitProductId on a free-mechanic offer has no way to CLEAR it (e.g. after flipping the mechanic to a discount type) — the PATCH schema either can't express null or the handler ignores an explicit null, leaving a stale product reference indefinitely",
+      "ruled_out": true,
+      "rationale": "P2-cycle finding (F2 in the task's ground truth). baseOfferSchema declares benefitProductId as z.uuid().nullable().optional() — undefined means 'field not in this patch' (preserve existing), explicit null means 'clear the column'. The PATCH handler's `if (o.benefitProductId !== undefined) updates.benefit_product_id = o.benefitProductId;` correctly writes null through when explicitly sent, distinguishing it from omission. Verified by direct code read this session."
+    },
+    {
+      "scenario": "A deal-product (is_deal=true) or an inactive product is configured as a free-mechanic's benefit_product_id — a deal-product benefit would always 400 at placement via the separate is_deal x couponCode guard (preview says redeemable, placement always rejects); an inactive product can never be added to a cart, so the offer becomes permanently unredeemable while still passing admin validation",
+      "ruled_out": true,
+      "rationale": "P2-cycle finding (F5 in the task's ground truth). assertBenefitProductExists() in admin/offers.ts checks the product exists AND is_active AND NOT is_deal, called on both POST create and PATCH update whenever a non-null benefitProductId is supplied. The apps/admin picker (benefit-product-field.tsx, P3) independently mirrors this by filtering `products.filter((p) => p.isActive && !p.isDeal)` so the UI cannot even present a choice the server would reject — defense in depth, not reliance on the UI alone."
+    },
+    {
+      "scenario": "free_upgrade's computeFreeUpgradeDiscountCents is manipulated to waive more than intended — e.g. by counting non-size option types, negative-delta options, or scaling the waived amount by cart quantity across multiple qualifying lines",
+      "ruled_out": true,
+      "rationale": "Verified by direct code read this session. The function filters strictly on `opt.optionType === 'size' && opt.priceDeltaCents > 0` (non-size options and non-positive deltas are excluded, not summed as negative offsets); per-qualifying-line waived amounts that reduce to <= 0 after filtering are excluded via `.filter((waived) => waived > 0)`; across multiple qualifying lines the function takes `Math.min(...perLineWaived)`, not a sum — enforcing the documented one-unit-per-redemption rule regardless of how many matching lines or what quantity is in the cart."
+    },
+    {
+      "scenario": "A free_upgrade offer's benefit product is in the cart but with no size upgrade selected (or only a downgrade, negative delta) — should reject with a specific reason rather than silently resolving a ₱0 waiver",
+      "ruled_out": true,
+      "rationale": "checkFreeBenefit's free_upgrade-specific branch calls computeFreeUpgradeDiscountCents and rejects with the new EligibilityFailReason member `no_upgrade_to_waive` when the result is <= 0, before the resolver would ever reach a discount computation that could resolve to zero-and-burn. This union member was added to EligibilityFailReason (a value addition, not a shape change) and is emitted ONLY from this new function — the two DO-NOT-TOUCH functions never emit it, confirmed by the byte-identity check."
+    },
+    {
+      "scenario": "A coupon row is created (or could be created) with BOTH reward_id and offer_id set — the resolver's reward-coupon branch (checked first, filtered by `reward_id IS NOT NULL`) would match such a row and skip the entire offer-coupon guard chain, including all of P1/P1b/P2's fixes, unconditionally",
+      "ruled_out": false,
+      "rationale": "This is the plan's own finding 3 (Minor), explicitly DESCOPED, not fixed. Verified this session: coupon-apply.ts's reward-coupon branch (lines ~152-160) filters on `isNotNull(coupons.reward_id)` and, if matched, never falls through to the offer-coupon branch at all — so a dual-FK row genuinely would bypass every guard in this plan. Accepted rationale per the plan: no current write path (admin coupon-generate route, order-placement, or any other route) creates a coupon row with both reward_id and offer_id populated, so this is defense-in-depth against a state the schema currently permits but no code path produces. Tracked as a backlog note to be filed at UPDATE PROCESS (`coupons-reward-offer-mutual-exclusivity-check_NOTE_16-07-26.md`, not yet present in process/features/admin-dashboard/backlog/ as of this pack — verified live this session). A future migration adding a DB CHECK (or application-layer insert guard) would close this permanently; until then it remains an accepted, documented residual risk, not a false claim of full closure."
+    },
+    {
+      "scenario": "usage_limit_per_user / total_usage_limit on an offer are silently unenforced on the coupon-redemption path, allowing unlimited reuse of a single-user-limited or globally-capped promo beyond its configured limit",
+      "ruled_out": false,
+      "rationale": "Explicitly out of scope per the SPEC and the plan's D6/Open Gaps entries — this is a pre-existing gap that applies equally to ALL offer mechanics (not introduced or worsened by this fix), and fixing it is scoped as a NEW PLAN REQUIRED per the plan itself, with a backlog note owed at UPDATE PROCESS. Not part of this fix's blast radius; called out here for completeness since it is money-adjacent, but it is not a regression introduced by the free-mechanic work and does not block finalizing THIS work."
+    },
+    {
+      "scenario": "Client sends its own discount amount, or otherwise influences the computed amountCents, rather than the server deriving it purely from DB-stored state",
+      "ruled_out": true,
+      "rationale": "Unaffected by this plan and reconfirmed by code read: amountCents is always computed server-side from offer.benefit_product_id (DB-stored, never client-supplied) and the server-resolved cart, then dual-clamped. There is no code path where a client-supplied amount reaches the discount computation for offer coupons, mirroring the existing reward-coupon and legacy dealId invariants."
+    },
+    {
+      "scenario": "Concurrent redemption of the same coupon code (double-spend) via two near-simultaneous POST /orders requests",
+      "ruled_out": true,
+      "rationale": "Unchanged by this plan (explicitly outside its blast radius) and independently pre-existing: the atomic burn `UPDATE ... WHERE status='available'` guard (orders.ts) is the double-spend defense, untouched by P1/P1b/P2/P3. Verified this session by grep — the guard comment explicitly marks it as the double-spend defense (AC6-equivalent) and is unmodified in the diffs for all 4 commits."
+    },
+    {
+      "scenario": "The new admin-only benefitProductId field, or the new no_upgrade_to_waive reason value, leaks into a public/customer-facing response shape (POST /coupons/apply, GET /coupons, GET /deals, GET /deals/:id, POST /orders, or the AppliedDiscount cross-app contract)",
+      "ruled_out": true,
+      "rationale": "benefitProductId is added only to AdminOffer / serializeAdminOffer (packages/api/src/routes/lib/serializers.ts), which serves only /api/admin/* routes, not the public routes named above. no_upgrade_to_waive is a new VALUE in the existing `reason` string field on EligibilityResult/apply-reject responses (value addition, not a shape change) — the field itself (`reason: string`) was already part of the wire contract. AC9's wire-freeze assertions plus this session's independent byte-identity check on the two DO-NOT-TOUCH functions corroborate that no public response shape changed."
+    }
+  ]
+}

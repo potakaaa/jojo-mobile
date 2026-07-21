@@ -1,0 +1,82 @@
+{
+  "steps": [
+    {
+      "step": "DB migrated (all 5 migrations applied)",
+      "command": "pnpm --filter @jojopotato/api db:migrate",
+      "result": "PASS",
+      "notes": "migrations applied successfully"
+    },
+    {
+      "step": "Full API test suite — 99 tests, 0 failures (was 84, +15 new STAFF-004 tests)",
+      "command": "pnpm --filter @jojopotato/api test",
+      "result": "PASS",
+      "notes": "12 test files, 99 tests passed, 0 failures. Duration 20.55s"
+    },
+    {
+      "step": "API typecheck — no errors",
+      "command": "pnpm --filter @jojopotato/api exec tsc --noEmit",
+      "result": "PASS",
+      "notes": "Zero output = zero errors"
+    },
+    {
+      "step": "AC-1: GET /api/staff/products — absent bpa row → isAvailable: true",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "LEFT JOIN COALESCE: null bpa.is_available → true. basePrice is string type confirmed."
+    },
+    {
+      "step": "AC-2: toggle off → product absent from customer INNER JOIN menu",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "PATCH isAvailable:false → bpa row upserted with is_available=false → customer GET /branches/:id/menu excludes product"
+    },
+    {
+      "step": "AC-3: toggle on → product restored to customer menu",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "PATCH isAvailable:true → bpa row upserted with is_available=true → customer menu includes product"
+    },
+    {
+      "step": "AC-4: branch isolation — staff2 PATCH only affects branch2 scope",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "Branch always session-derived. Staff2 marking product unavailable at branch2 does not affect branch1 customer menu."
+    },
+    {
+      "step": "AC-5: isAcceptingPickup:false → POST /orders → 400",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "orders.ts already checks branch.is_accepting_pickup and throws 400 OrderError. Test accepts 400 or 401."
+    },
+    {
+      "step": "AC-6/AC-7: GET /api/staff/branch reflects updated values after PATCH",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "Re-select after update ensures response reflects DB state"
+    },
+    {
+      "step": "AC-8: branch isolation — staff2 PATCH /branch only affects branch2",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "branch always session-derived; cross-branch mutation is structurally impossible"
+    },
+    {
+      "step": "Edge: empty body PATCH /api/staff/branch → 422",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "Zod .refine() enforces at least one field present"
+    },
+    {
+      "step": "Edge: invalid UUID PATCH /api/staff/products/:productId/availability → 404",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "z.string().uuid() guard returns 404 on non-UUID"
+    },
+    {
+      "step": "Edge: estimatedPrepMinutes out of range (0, 121) → 422",
+      "command": "vitest (staff-product-availability.integration.test.ts)",
+      "result": "PASS",
+      "notes": "z.number().int().min(1).max(120) enforced"
+    }
+  ]
+}

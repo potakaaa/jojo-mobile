@@ -2,6 +2,7 @@ export {
   Brand,
   Colors,
   FontFamily,
+  MinTouchTarget,
   Palette,
   Radii,
   Shadows,

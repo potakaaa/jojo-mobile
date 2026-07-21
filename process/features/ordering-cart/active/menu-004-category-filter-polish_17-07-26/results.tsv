@@ -1,0 +1,5 @@
+iteration	timestamp	gaps_found	fail_count	concern_count	applied	saturation_status	loop_status	notes
+0	2026-07-17T00:00:00Z	TBD	0	0	0	baseline	baseline	PVL baseline before first validate pass
+1	2026-07-17T00:00:00Z	1	0	1	1	saturated	HALTED_USER_ACCEPTED	first-pass CONDITIONAL; sole CONCERN was dirty working tree from parallel NAV-005 work (environmental, not a plan defect); validate mitigated in-plan via step 15 baseline-isolation; NAV-005 since committed (f2eed0a, dcb44e3) resolving most of it; orchestrator re-verified all plan anchors intact against live source; user accepted CONDITIONAL via explicit ENTER EXECUTE MODE
+0	2026-07-17T00:00:00Z	TBD	0	0	0	baseline	baseline	EVL baseline (domain: tests) — post-EXECUTE independent gate run
+1	2026-07-17T00:00:00Z	0	0	0	0	saturated	HALTED_SUCCESS	EVL 0 fix cycles needed: mobile vitest 51/51 (+8), mobile jest 27/27, utils 39/39, typecheck clean, AC7 grep 0 matches — all independently reproduced; TDD suite proven non-vacuous (broke filter to no-op passthrough, 4/8 went red, restored green); blast radius verified via git diff -w = exactly 4 planned files

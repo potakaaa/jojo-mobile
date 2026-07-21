@@ -1,0 +1,13 @@
+{
+  "task": "STAFF-002 staff order endpoints — review decision",
+  "reviewer": "vc-execute-agent (session self-review) — subject to independent orchestrator EVL re-run",
+  "decision": "approved-with-concerns",
+  "blockingFindings": [],
+  "nonBlockingFindings": [
+    "AC-1 (polling surfaces new order within ~20s) and AC-4 mobile render are Agent-Probe only — no React Native test runner exists (project-wide gap). Documented as backlog: process/features/staff-dashboard/backlog/staff-mobile-rn-test-runner-gap_NOTE_13-07-26.md.",
+    "authClient.$fetch response body is cast (as T) at the mobile boundary — compile-time only, not runtime-validated. Consistent with existing mobile fetch patterns; no runtime schema validation added (out of scope).",
+    "Two within-blast-radius deviations from plan letter (see Plan Deviations in report): (1) uuid-guard added to detail route matching orders.ts convention to avoid a 500 on malformed id; (2) seedTestUser signature kept unchanged — test user id resolved via a follow-up db.select in runSeed(), which the plan explicitly names as the acceptable alternative."
+  ],
+  "notes": "All automated gates green (62 API tests, typecheck, lint, format, idempotent seed x2). Trust-boundary enforcement is proven by 3 automated tests (AC-2 list isolation, AC-5 detail 403, unassigned 403). Branch scope is resolved server-side only; no client branch id honored; no PII in staff responses. Read-only — no write endpoints, no schema change. Decision is approved-with-concerns solely because the mobile-render/polling ACs are unautomatable in this repo and remain Agent-Probe; the server trust boundary itself is fully automated-tested. Final closeout awaits the orchestrator's independent EVL re-run + human sign-off (mustStopBeforeFinalize = true).",
+  "timestamp": "2026-07-13T00:00:00Z"
+}

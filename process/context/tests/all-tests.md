@@ -1,14 +1,18 @@
 ---
 name: context:all-tests
-description: "Test runner selection, commands, and verification order — no runner configured yet"
-keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright
+description: "Test runner selection, commands, and verification order — vitest in packages/api, apps/mobile, and apps/admin; jest-expo in packages/ui"
+keywords: test, tests, testing, typecheck, lint, verification, runner, jest, vitest, detox, playwright, auth, orders, cart, checkout, admin, tanstack, jsdom, testing-library, utils, packages/utils
 related: []
-date: 08-07-26
+date: 17-07-26
 ---
 
 # Jojo Potato - All Tests
 
-Last updated: 2026-07-08
+Last updated: 2026-07-20 (DEAL-005 Phase 2 — packages/api vitest now pins TZ=UTC, closing a real
+vacuous-test risk on Manila-timezone dev hosts; merged with jsdom cannot test real SSR/hydration
+timing — admin route-guard note; merged with 17-07-26's correction that packages/utils does have
+a vitest runner, 39/39 tests, verified live during MENU-003/MENU-004, plus mobile-dark-mode-audit's
+Card coverage delta)
 
 Attach this file first when the task involves testing, verification, or test debugging.
 
@@ -37,8 +41,8 @@ As the project grows, add deeper docs to this group (e.g., `e2e-tests.md`, `debu
 
 ## What This Covers
 
-- test runner selection (currently: none configured)
-- quick commands by package (typecheck/lint only, for now)
+- test runner selection (vitest in `packages/api` + `apps/mobile` + `apps/admin` + `packages/utils`; jest-expo in `packages/ui` + `apps/mobile`; still none in `packages/types`)
+- quick commands by package
 - fast debugging procedures
 - current testing gaps worth remembering
 
@@ -57,22 +61,108 @@ Use this file when you need to:
 
 ## Quick Decision Guide
 
-### There is no test runner configured yet
+### Five runners now exist: Vitest (`packages/api`, `apps/mobile`, `apps/admin`), Jest/jest-expo (`packages/ui`, `apps/mobile`)
 
-No `package.json` in this repo (root, `apps/mobile`, or any `packages/*`) declares Jest, Vitest,
-Detox, Playwright, or any other test runner. `grep -r "jest\|vitest" **/package.json` returns
-nothing outside `node_modules`.
+`packages/api` declares `vitest` (`"test": "vitest run"`) and has real coverage:
+`src/db/schema/__tests__/smoke.test.ts`, `src/lib/__tests__/auth.integration.test.ts` (5
+integration tests covering better-auth's email/password, phone-OTP-stub, magic-link, Google-OAuth
+config, and the `role` `input:false` guard), and `src/routes/__tests__/{branches,orders}.test.ts`
+(covers `order_number` retry-on-collision, session-boundary 401/403 isolation,
+`estimated_ready_at` derivation, concurrent-order-number uniqueness, and back-to-back order
+independence) — run against a real local Postgres via `docker compose up -d` + `db:migrate`, same
+DB the app itself uses. `packages/ui` has component tests for
+`order-status-badge`/`order-status-timeline` and others — check `packages/ui/package.json` for the
+runner wiring before assuming.
 
-Until a runner is chosen, "verification" for this repo means:
+`apps/mobile` runs BOTH vitest (pure-TS, `*.test.ts`) and jest (jest-expo, RN component `*.test.tsx`)
+sequentially via one `test` script — as of 17-07-26 that's **40 vitest tests + 37 jest tests**
+(grew from the mobile-dark-mode-audit fix's new `status-bar.test.ts`, `cart-dark-mode.test.tsx`,
+`history-screen-dark-mode.test.tsx`, and `use-color-scheme-appearance.test.tsx`).
+
+`apps/mobile` gained its first runner — `vitest` (`"test": "vitest run --passWithNoTests"`,
+`apps/mobile/vitest.config.ts`, `environment: 'node'`, scoped to `src/**/__tests__/**/*.test.ts` —
+pure-TS logic only, no RN component rendering). Added by the checkout-flow (CART-002) plan; current
+count 44 tests. This alone does NOT close the "no mobile-side RN component/E2E test runner" gap —
+see the next paragraph for the runner that does (component-level only; E2E/navigation still open).
+
+**`apps/mobile` gained a SECOND runner — `jest`/`jest-expo` for RN component tests (added 15-07-26 by
+the mobile-tabs-order-flow-completion program, Phase 4).** This is the FIRST RN component-test-runner
+precedent for `apps/mobile` (mirrors `packages/ui`'s existing jest-expo setup). `apps/mobile/package.json`'s
+`test` script is now `vitest run --passWithNoTests && jest` — vitest owns pure-TS `*.test.ts` files,
+jest owns component `*.test.tsx` files, run sequentially. `apps/mobile/jest.config.js` mirrors
+`packages/ui`'s pinned dep versions and pnpm-aware `transformIgnorePatterns`. Reusable helpers:
+`apps/mobile/src/test-utils/render.tsx` (exports an ASYNC `renderWithProviders()` — must be
+`await`ed, wraps RTL render to flush the `QueryClientProvider` tree — plus `spyOnAlert()`) and
+`apps/mobile/src/test-utils/jest-setup.ts`, which carries 3 empirically-proven gotcha fixes:
+(a) a hand-rolled `react-native-reanimated` mock (the official `/mock` export crashes on this repo's
+reanimated 4.5.0 + worklets 0.10.0 pin) — **this mock covers `useAnimatedStyle`/`useSharedValue`/
+`withTiming`/`withSpring`/`interpolate(Color)` ONLY; it lacks layout-animation exports
+(`FadeIn`/`FadeOut`/`SlideInDown`/`SlideOutDown`/`Easing`/`cancelAnimation`)**, which means any screen
+using entering/exiting animations (e.g. checkout.tsx) currently crashes at render under jest — a
+known, recorded gap (blocked an optional Phase 6 test; extending the mock is the fix, tracked as a
+recommended backlog item, not yet done); (b) a `SafeAreaProvider` `initialMetrics` fixture
+(`TEST_SAFE_AREA_METRICS` — without fixed metrics the provider does not resolve synchronously in
+jest); (c) a global `expo-router` stub AND a global `jest.mock('@/features/auth/lib/auth-client')` —
+required whenever a screen (even transitively) imports `@/lib/api-client`, since that module pulls in
+`@better-auth/*` ESM that jest cannot transform; new test files get this mock for free. A further
+established pattern: `jest.mock('@/features/auth/hooks/use-auth', () => ({ useAuth: jest.fn() }))`
+for any screen needing a signed-in-user fixture. **This CLOSES the "no RN component test runner"
+project-wide gap for component-level tests.** It does NOT add navigation-level/E2E coverage
+(Detox/Maestro/Playwright) — that part of the gap (see Known Gaps below) remains fully open. Current
+count: 23 tests across 6 suites.
+
+`packages/ui` has `jest`/`jest-expo` (`"test": "jest"`, `packages/ui/jest.config.js`) with component
+tests for `OrderStatusBadge`/`OrderStatusTimeline` and others (from the shared-ui-component-library
+work), plus **`Card` coverage added 17-07-26** by the mobile-dark-mode-audit fix
+(`src/components/__tests__/card.test.tsx` — 4 tests asserting RESOLVED style output for `mode="dark"`
+vs `mode="light"`, including one asserting the two modes resolve to DIFFERENT colours — a real
+mutation check, not a prop-presence-only assertion). 27 component files / 24 test suites total (grew
+from a stale "3 source files" claim — see `all-context.md` correction, 17-07-26). `packages/types`
+still declares no runner.
+
+**`packages/utils` has `vitest` (`"test": "vitest run"`) — CORRECTING a previously-stale claim in
+this file that said it had none.** Verified live 17-07-26 (re-confirmed 4x during MENU-003/MENU-004):
+39/39 tests green across 4 suites (`order-display`, `product-options`, `discount`, `reorder`). Real,
+non-vacuous coverage — `packages/utils/src/reorder.ts`'s `reconcileReorder`/`packages/utils/src/discount.ts`'s
+discount math are both proven by these tests, not Agent-Probe. Do not assign Agent-Probe verification
+tiers to `packages/utils` logic changes — check `packages/utils/package.json` first.
+
+`apps/admin` (added 14-07-26, admin-dashboard Phase 0 — Scaffold) is the FIRST WEB-APP test runner
+precedent in the repo: `vitest` (`"test": "vitest run --passWithNoTests"`) + `@testing-library/react`
++ `jsdom` (`apps/admin/vitest.config.ts` — deliberately SEPARATE from `apps/admin/vite.config.ts` so
+the TanStack Start SSR plugin isn't loaded during tests). One trivial passing test
+(`src/routes/-index.test.tsx` — renamed from `index.test.tsx` during Phase 1 UPDATE PROCESS; the
+leading `-` makes TanStack Start's route generator ignore the file as a route while vitest still
+discovers it via the `*.test.tsx` glob — do this for any future test file placed directly inside
+`apps/admin/src/routes/`) proving the runner precedent end-to-end. Unlike `apps/mobile`'s vitest
+(pure-TS logic only, no rendering), `apps/admin`'s vitest DOES render components via
+`@testing-library/react` — it is a real component-test runner, not just a pure-function runner.
+Phase 1 (Auth/RBAC) added `packages/api/src/lib/__tests__/require-admin.integration.test.ts`
+(mirrors `require-staff.integration.test.ts`'s hermetic self-seeding pattern — no shared fixture
+dependency) — full API suite is now **78/78** (75 at first close, +3 post-AC8 CORS regression tests:
+preflight OPTIONS on `/api/auth/sign-in/email`, a real cross-origin sign-in, and a no-Origin
+mobile-path guard). A real-browser AC8 walkthrough found that credentialed CORS must be mounted on
+BOTH `/api/auth/*` and `/api/admin` — `trustedOrigins` alone (CSRF allowlist) does not add HTTP CORS
+headers, so a browser blocks the response without them even when the origin is trusted. As Phase 2+
+build real admin CRUD screens, `apps/admin`'s vitest is the runner to extend. **`apps/admin`'s
+jsdom-based vitest cannot test real SSR/hydration timing** (discovered 20-07-26, `(dashboard)`
+route SSR auth-guard fix): tests can prove a route's `beforeLoad`/loader decision logic in
+isolation (mocked `fetch`, direct `Route.options.beforeLoad()` invocation), but whether a real hard
+refresh in a real browser actually skips server-rendering and redirects before paint needs a real
+TanStack Start server + real network round-trip — jsdom has neither. Any `ssr: false` route's
+end-to-end timing behavior is Agent-Probe-only for this reason, not a gap unique to one plan.
+
+Until a mobile-side (RN component) E2E runner is chosen, "verification" for RN-rendered UI still
+means:
 
 1. `pnpm typecheck` (tsc --noEmit per package, via turbo)
 2. `pnpm lint` (ESLint flat config per package, via turbo)
-3. manual verification in the Expo app (`pnpm ios` / `pnpm android` / `pnpm web`)
+3. manual verification in the Expo app (`pnpm ios` / `pnpm android` / `pnpm web`) or Agent-Probe walkthrough
+4. `pnpm --filter @jojopotato/mobile test` (vitest, pure-TS logic) / `pnpm --filter @jojopotato/ui test` (jest-expo, component logic) / `pnpm --filter @jojopotato/api test` (vitest, integration) — whichever package was touched
 
-When a plan introduces real logic worth unit-testing (e.g. cart price calculation, currency
-formatting in `packages/utils`), the plan should explicitly propose adding a test runner
-(Vitest is the natural fit for the TS-only packages; Jest via `jest-expo` or Detox/Maestro for
-RN component or e2e coverage) rather than assuming one already exists.
+When a plan introduces real logic worth unit-testing on a package with no runner yet
+(`packages/types`), the plan should explicitly propose adding one (Vitest for
+TS-only packages is the proven pattern in this repo) rather than assuming one already exists.
 
 ## Default Verification Order
 
@@ -93,16 +183,33 @@ Unless the task clearly needs a different path:
 | `apps/mobile` | tsc | `pnpm --filter @jojopotato/mobile typecheck` | single-package typecheck |
 | `apps/mobile` | eslint | `pnpm --filter @jojopotato/mobile lint` | single-package lint |
 | `packages/{types,ui,utils}` | tsc | `pnpm --filter @jojopotato/{types,ui,utils} typecheck` | single-package typecheck |
-| (none) | (no test runner configured) | -- | see Known Gaps |
+| `packages/utils` | vitest | `pnpm --filter @jojopotato/utils test` | `"test": "vitest run"` — 39 tests, 4 suites (order-display, product-options, discount, reorder); no dedicated vitest.config.ts, uses defaults |
+| `packages/api` | vitest | `pnpm --filter @jojopotato/api test` | needs local Postgres via `docker compose up -d` + `db:migrate` first |
+| `apps/mobile` (pure-TS logic + RN component) | vitest + jest/jest-expo | `pnpm --filter @jojopotato/mobile test` | runs `vitest run --passWithNoTests && jest` sequentially — vitest owns `*.test.ts` (node env, no rendering), jest owns `*.test.tsx` (RN component rendering via `test-utils/render.tsx` + `jest-setup.ts`) |
+| `packages/ui` (component) | jest / jest-expo | `pnpm --filter @jojopotato/ui test` | `packages/ui/jest.config.js` |
+| `packages/ui` (raw hex-literal guard) | node script | `pnpm --filter @jojopotato/ui check-tokens` | `packages/ui/scripts/check-raw-tokens.mjs` — scans `packages/ui/src/components/**` only, does NOT reach `apps/mobile` (pre-existing, previously undocumented here) |
+| `apps/mobile` (theme-mode guard) | node script | `pnpm --filter @jojopotato/mobile guard:theme-mode` | `apps/mobile/scripts/check-theme-mode.mjs` (added 17-07-26 by mobile-dark-mode-audit) — derives its tracked component list from source, hard-fails on spread attrs on tracked components, bans raw RN `useColorScheme` imports outside the 2 wrapper hook files, and extends hex-literal checking into `apps/mobile` (closing the gap the `check-tokens` row above leaves open) |
+| `apps/admin` (component) | vitest + @testing-library/react | `pnpm --filter @jojopotato/admin test` | jsdom env, `apps/admin/vitest.config.ts` (separate from `vite.config.ts`) — first web-app component-test runner in the repo |
+| `apps/admin` | tsc | `pnpm --filter @jojopotato/admin typecheck` | single-package typecheck |
+| `apps/admin` | eslint | `pnpm --filter @jojopotato/admin lint` | single-package lint |
+| `apps/admin` | vite | `pnpm --filter @jojopotato/admin build` | outputs to `dist/` — matches existing `turbo.json` glob, no config change needed |
+| `apps/mobile` (E2E/navigation) | (no test runner configured) | -- | see Known Gaps — component-level RN tests now exist (jest, row above); navigation/E2E still absent |
 
 ## Debugging Quick Reference
 
-- No test-specific config exists yet (no `jest.config.*`, `vitest.config.*`, `.env.test`, mocks, or fixtures anywhere in the repo).
+- Test-specific config now exists: `packages/api/vitest.config.ts`, `apps/mobile/vitest.config.ts` (node env, pure-TS only) + `apps/mobile/jest.config.js` (RN component), `apps/admin/vitest.config.ts` (jsdom env, component rendering, separate from `vite.config.ts` to avoid loading the TanStack Start SSR plugin), `packages/ui/jest.config.js`, `packages/utils` (`vitest run`, no dedicated config file — uses vitest defaults). `packages/types` still has none.
 - Typecheck failures are the fastest signal in this repo today — packages are TS-source-only (no build step), so `tsc --noEmit` catches cross-package type breakage immediately via workspace links.
 - `turbo` caches `typecheck`/`lint` results — if a fix doesn't seem to take effect, try `pnpm typecheck --force` or check `.turbo/` cache state.
+- Widening a shared enum/union in `packages/types` (e.g. `OrderStatus`, `PaymentMethod`) can silently break `Record<Enum, ...>`/exhaustive-array consumers in `packages/ui` — `tsc --noEmit` catches these immediately, but always grep for every consumer of the type before assuming "no other consumer" (this was a real VALIDATE-caught FAIL during checkout-flow_13-07-26).
+- **Dev-machine gotcha (this box, not a repo-wide fact):** host port 5432 is occupied by a native `postgresql.service`, so a plain `docker compose up -d` for Postgres fails to bind. `packages/api`'s vitest integration suites (which need a live migrated Postgres) run fine against the already-running native instance instead — a `jojo` role (with `CREATEDB`) + `jojopotato` database were created against it once (discovered during admin-dashboard Phase 1 RESEARCH), letting vitest's `global-setup.ts` create its own ephemeral `<db>_test` databases per run. If `pnpm --filter @jojopotato/api test` fails with a connection error, check `sudo systemctl status postgresql` before assuming docker compose is the only path.
+- **`packages/api/vitest.config.ts` now pins `env: { TZ: 'UTC' }` (added 20-07-26 by DEAL-005 Phase 2) — a real, load-bearing gate, not decoration, and a durable pattern worth remembering for any future timezone-sensitive test anywhere in this repo.** This dev machine's OWN system timezone is `Asia/Manila`. Before the pin, a deliberately-broken timezone-conversion helper (using host-local `Date` accessors like `now.getDay()`/`now.getHours()` instead of a fixed-offset UTC-arithmetic conversion) passed the ENTIRE 601-test suite — every Manila-offset assertion was silently vacuous, because host-local time already equaled Manila time on this exact machine. With `TZ: 'UTC'` pinned, the same broken helper fails 16 tests. CI (`ubuntu-latest`, defaults to UTC) would likely have caught a regression eventually, but the immediate local dev feedback loop would not have — the failure mode is invisible on any developer machine that happens to share the business's timezone. **Generalization: any test asserting timezone-dependent behavior in this repo is unverified proof of correctness unless the suite's `TZ` is pinned to something OTHER than the assertion's target timezone** (pinning to the same zone the code should convert TO makes the test pass whether or not the conversion logic is even present). Check `packages/api/vitest.config.ts`'s `test.env.TZ` before trusting any new timezone-adjacent test in this package; other packages' vitest configs do not yet have this pin and should get one if they ever grow timezone-sensitive logic.
 
 ## Known Gaps
 
-- **No test runner configured at all** — no Jest/Vitest/Detox/Playwright in any `package.json`. This is expected for a fresh skeleton repo but should be flagged in any plan that adds real business logic (cart math, pricing, auth flows) without also proposing a test runner.
-- **No CI pipeline** — no `.github/workflows/`, so `typecheck`/`lint` are not automatically enforced on PRs yet.
-- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app.
+- **Root `pnpm typecheck` is RED on `dev/admin` as of 14-07-26 — pre-existing, not caused by `apps/admin`.** `@jojopotato/mobile` has pre-existing typed-route errors (staff order-detail, deals routes; commit `6e160fe`) unrelated to the admin-dashboard program — `apps/admin`'s own `pnpm --filter @jojopotato/admin typecheck` is clean, and `apps/mobile` had zero file changes in the admin-dashboard Phase 0 diff. Do not attempt to fix this from within the admin-dashboard program; it belongs to a separate mobile-app fix.
+- **RESOLVED (component-level only) — `apps/mobile` now has an RN component test runner** (`jest`/`jest-expo`, added 15-07-26 by mobile-tabs-order-flow-completion Phase 4; see above). Screens can now get real component-level regression coverage (e.g. `branches/index.test.tsx`'s open/closed-branch badge + loading/error + sort-order assertions). **Still open: navigation-level E2E** — no Detox/Maestro/Playwright for full navigation flows. `packages/types`/`packages/utils` still have no runner at all. Flag in any plan that adds real business logic without also proposing test coverage for that surface. Prior gap history (kept for context): `pickup-order-flow` (13-07-26) shipped a non-trivial amount of new mobile business logic with zero automated coverage at the time — screens and mobile API-client mapping functions were verified only by typecheck/lint + a manual Agent-Probe QA script; that EVL confirmation run caught a real bug (`tsc` cannot validate a `fetch` response shape against a bare `as T` cast) that a runtime-validated fixture or a component test would likely have caught earlier — see `process/general-plans/completed/pickup-order-flow_10-07-26/` closeout report. The jest runner added 15-07-26 is the concrete fix for that class of gap going forward, but is not retroactively applied to pre-existing screens.
+- **New, recorded 15-07-26: shared jest reanimated mock (`apps/mobile/src/test-utils/jest-setup.ts`) lacks layout-animation exports** (`FadeIn`/`FadeOut`/`SlideInDown`/`SlideOutDown`/`Easing`/`cancelAnimation`) — any screen using reanimated's entering/exiting animations (e.g. `order/checkout.tsx`) crashes at render under jest. Blocked an optional Phase 6 checkout regression test (non-blocking, documented). Recommended backlog item: extend the mock to unlock jest coverage for animation-heavy screens.
+- **No automated coverage for `apps/mobile`'s `useAuth()` hook** — the better-auth server integration is tested (5 vitest cases in `packages/api`), but the mobile consumption side (`src/features/auth/hooks/use-auth.ts`, `src/features/auth/lib/auth-client.ts`) has no automated test, consistent with the mobile-side runner gap above. Manual/simulator verification (sign-up/login, phone OTP, Google button, magic-link deep link, session persistence across restart, logout) is still required — see backlog note `process/features/auth-accounts/backlog/wire-better-auth-hook-test-coverage_NOTE_09-07-26.md`.
+- ~~No CI pipeline~~ **RESOLVED:** GitHub Actions CI exists (`.github/workflows/ci.yml` — format/lint/typecheck/test/build with a Postgres service).
+- **No e2e coverage** — no Detox/Maestro/Playwright setup for the Expo app; see `process/general-plans/backlog/mobile-e2e-navigation-harness_NOTE_09-07-26.md` (navigation-focused, pre-dates auth; auth flows would be additional scenarios for the same future harness). The `pickup-order-flow` plan's full cold-open→confirmation customer journey is another concrete scenario this future harness should cover — it currently relies on a one-off Agent-Probe manual QA script for its primary happy-path gate.
+- **No live-integration check between parallel EXECUTE phases building opposite sides of a network contract** — surfaced by `pickup-order-flow`'s EVL cycle 1 (API and mobile drifted on menu response field names when built in parallel against a documented-but-not-live-tested contract; caught only by the independent EVL confirmation run, not by `tsc` or either agent's self-report). Not a fixable test-runner gap in the traditional sense, but worth remembering as a process/workflow risk: treat a live-integration checkpoint or a shared runtime-validated contract fixture (see `apps/mobile/src/lib/api-client.contract.ts` — relocated 13-07-26 by `merge-menu-api-reconciliation` from the deleted `features/menu/lib/api-client.contract.ts`, same regression-guard intent preserved) as close to mandatory whenever a plan splits a network-contract's two sides across parallel execute agents.

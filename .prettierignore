@@ -5,4 +5,14 @@ dist
 pnpm-lock.yaml
 ios
 android
+
+# Generated (TanStack Router route tree) — regenerated unformatted, never hand-edited
+**/routeTree.gen.ts
+
 .claude
+.codex
+process
+docs
+AGENTS.md
+CLAUDE.md
+GEMINI.md

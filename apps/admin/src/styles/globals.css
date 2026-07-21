@@ -1,0 +1,215 @@
+/*
+ * Jojo Potato Admin — global styles.
+ * Source of truth for tokens: packages/ui/src/theme.ts (ported, NOT imported —
+ * that file is React Native only and cannot render on web).
+ *
+ * Structure (Tailwind v4 + shadcn/ui v4, LIGHT MODE ONLY this phase):
+ *   1. @import "tailwindcss" + tw-animate-css
+ *   2. Brand fonts (Google Fonts @import — see phase-00 report for the fontsource
+ *      deviation rationale)
+ *   3. @theme        — raw brand primitives (colors/spacing/radii/shadows/fonts/type)
+ *   4. :root         — shadcn semantic slots mapped onto brand primitives (Step 6b)
+ *   5. @theme inline — remap the --color-x utilities onto the semantic slots
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+/*
+ ---break---
+ */
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+ * 3. Brand primitives (theme.ts → Tailwind v4 @theme namespaces)
+ * ------------------------------------------------------------------------- */
+@theme {
+  /* Palette — Tier 1 (confirmed) */
+  --color-cream: #fff6e6;
+  --color-ink: #1c1714;
+  --color-jyellow: #ffd21e;
+  --color-jred: #e81e26;
+  --color-jorange: #ff7a18;
+  --color-jgold: #f7b500;
+  --color-jbrown: #c1440e;
+  --color-panel: #2a2420;
+  --color-panel-border: #4a4038;
+
+  /* Palette — Tier 2 (secondary, supporting) */
+  --color-cream-tint-1: #fff1cc;
+  --color-cream-tint-2: #fbefd2;
+  --color-cream-tint-3: #efe7d2;
+  --color-cream-tint-4: #ffe9d2;
+  --color-cream-tint-5: #fce7e4;
+  --color-gold-light: #ffe27a;
+  --color-green: #1a9a4a;
+  --color-green-dark: #0a6630;
+  --color-red-dark: #c01020;
+  --color-neutral-100: #e8e2d8;
+  --color-neutral-200: #cfc6b9;
+  --color-neutral-300: #c9bfb2;
+  --color-neutral-400: #b9aea0;
+  --color-neutral-500: #8a8076;
+  --color-neutral-600: #6a5a45;
+  --color-neutral-700: #5a4a36;
+  --color-neutral-800: #4a4038;
+  --color-neutral-900: #3a322c;
+  --color-neutral-950: #2a2420;
+
+  /* Spacing — named scale (theme.ts Spacing) */
+  --spacing-half: 2px;
+  --spacing-one: 4px;
+  --spacing-two: 8px;
+  --spacing-three: 16px;
+  --spacing-four: 24px;
+  --spacing-five: 32px;
+  --spacing-six: 64px;
+
+  /* Radii — theme.ts Radii. 2xl/3xl OVERRIDE Tailwind defaults (34/40px win). */
+  --radius-xs: 10px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 34px;
+  --radius-3xl: 40px;
+  --radius-full: 999px;
+
+  /* Shadows — theme.ts Shadows. offset* = signature comic hard shadow (no blur). */
+  --shadow-offset-sm: 4px 4px 0 var(--color-ink);
+  --shadow-offset-md: 5px 5px 0 var(--color-ink);
+  --shadow-offset-lg: 6px 6px 0 var(--color-ink);
+  --shadow-soft-sm: 0 16px 28px rgba(28, 23, 20, 0.4);
+  --shadow-soft-md: 0 24px 40px rgba(28, 23, 20, 0.45);
+  --shadow-soft-lg: 0 40px 70px rgba(28, 23, 20, 0.7);
+
+  /* Fonts — theme.ts FontFamily (web families, loaded via Google Fonts above) */
+  --font-display: 'Fredoka', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+
+  /* Motion — the one branded loop. `animate-press` replays the same tactile
+   * press the sidebar buttons perform on :active (offset shadow collapses as the
+   * element travels into it), so the dashboard pending state moves in the design
+   * system's own vocabulary instead of a generic spin. Consumers MUST pair it
+   * with `motion-reduce:animate-none`; the static `shadow-offset-md` underneath
+   * keeps the element correct when the animation is off. */
+  --animate-press: jojo-press 1s ease-in-out infinite;
+
+  @keyframes jojo-press {
+    0%,
+    100% {
+      transform: translate(0, 0);
+      box-shadow: var(--shadow-offset-md);
+    }
+    50% {
+      transform: translate(3px, 3px);
+      box-shadow: 2px 2px 0 var(--color-ink);
+    }
+  }
+
+  /* Type scale — theme.ts TypeScale (Tailwind v4 --text-* namespace) */
+  --text-display: 32px;
+  --text-h1: 26px;
+  --text-h2: 22px;
+  --text-h3: 18px;
+  --text-body: 16px;
+  --text-body-small: 14px;
+  --text-caption: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. shadcn semantic slots → brand primitives (Step 6b, light mode only)
+ *    Raw values live here; every shadcn primitive reads these.
+ * ------------------------------------------------------------------------- */
+:root {
+  --background: var(--color-cream);
+  --foreground: var(--color-ink);
+  --card: var(--color-cream);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-cream);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-jyellow);
+  --primary-foreground: var(--color-ink);
+  --secondary: var(--color-cream-tint-3);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-cream-tint-1);
+  --muted-foreground: var(--color-neutral-700);
+  --accent: var(--color-jorange);
+  --accent-foreground: var(--color-ink);
+  --destructive: var(--color-jred);
+  --border: var(--color-ink);
+  --input: var(--color-neutral-300);
+  --ring: var(--color-jgold);
+  --chart-1: var(--color-jyellow);
+  --chart-2: var(--color-jorange);
+  --chart-3: var(--color-jred);
+  --chart-4: var(--color-jgold);
+  --chart-5: var(--color-green);
+  --radius: var(--radius-md);
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. Remap Tailwind color utilities onto the semantic slots, so classes like
+ *    bg-background / text-foreground / bg-primary actually resolve. Without this
+ *    @theme inline block the utilities silently miss the brand override.
+ * ------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+/*
+ ---break---
+ */
+.dark {
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}

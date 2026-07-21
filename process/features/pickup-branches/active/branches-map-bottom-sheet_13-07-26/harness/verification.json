@@ -1,0 +1,44 @@
+{
+  "context": "EVL confirmation run (Step 3, orchestrator-owned post-DONE sweep)",
+  "plan": "process/features/pickup-branches/active/branches-map-bottom-sheet_13-07-26/branches-map-bottom-sheet_PLAN_13-07-26.md",
+  "date": "2026-07-13",
+  "runner": "vc-tester",
+  "prior_evidence_treatment": "unconfirmed — gates re-run unconditionally",
+  "gates": [
+    {
+      "id": "G1",
+      "command": "pnpm --filter @jojopotato/mobile typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "notes": "tsc --noEmit clean, no errors"
+    },
+    {
+      "id": "G2",
+      "command": "pnpm --filter @jojopotato/mobile lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "notes": "0 errors, 3 warnings — all pre-existing in scripts/dev-with-tunnel.mjs, unrelated to this change"
+    },
+    {
+      "id": "G3",
+      "command": "git diff --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "notes": "no merge-conflict or whitespace markers"
+    }
+  ],
+  "ac8_protected_files": {
+    "status": "PASS",
+    "checked": [
+      "apps/mobile/src/features/branches/api.ts",
+      "apps/mobile/src/features/branches/hooks/use-selected-branch.ts",
+      "apps/mobile/src/features/branches/hooks/use-user-location.ts",
+      "apps/mobile/src/app/(tabs)/branches/[branchId].tsx",
+      "apps/mobile/src/features/branches/components/branch-map.web.ts"
+    ],
+    "result": "none appear as modified in git status --porcelain"
+  },
+  "unit_test_runner": "none — no RN unit-test runner exists for apps/mobile; typecheck+lint+diff are the full automated gate set",
+  "verdict": "ALL GATES GREEN",
+  "classification": "CLEAN"
+}

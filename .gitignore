@@ -36,9 +36,12 @@ yarn-error.*
 pnpm-debug.log*
 
 # env
+# ignore every .env variant (.env, .env.local, .env.development, .env.production, .env.*.local, ...)
+# but keep the tracked .env.example templates. The negation MUST come after .env.* or the
+# templates would be ignored.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # editors / OS
 .DS_Store
@@ -48,3 +51,27 @@ pnpm-debug.log*
 .idea/
 .claude/settings.local.json
 .vibecode-backup*/
+design-system/
+
+# claude hooks
+.claude/hooks/.logs/
+
+# AI generated files
+PRODUCT.md
+DESIGN.md
+.impeccable/
+/graphify-out
+
+reports
+
+# Expo prebuild native output. NOTE: apps/mobile/android IS committed (tracked on
+# `development`, adopted here on merge); only ios stays generated/ignored.
+/apps/mobile/ios
+
+# browser automation artifacts (manual Agent-Probe / Playwright MCP QA walkthroughs, e.g. AC8)
+.playwright-mcp/
+ac8-admin-dashboard.png
+
+android/app/google-services.json
+google-services.json
+jojo-potato-firebase-adminsdk-fbsvc-c0cd13b31a.json

@@ -1,9 +1,9 @@
-import { JojoButton } from '@jojopotato/ui';
+import { Button } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { PRODUCT_TRIO_IMAGE } from '@/constants/images';
 import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
-import { PRODUCT_TRIO_IMAGE } from '../product-images';
 
 export interface PromoBannerProps {
   onPress?: () => void;
@@ -13,6 +13,12 @@ export interface PromoBannerProps {
  * Hero-style promotional banner mirroring the jojopotato.ph landing hero: bold
  * headline copy, a CTA button, and the real product-trio photography bleeding
  * off the right edge. Purely presentational — no mock-data dependency.
+ *
+ * Deliberately fixed-mode: the banner surface is a hardcoded brand yellow
+ * (`Palette.jyellow`) with fixed `Palette.ink` copy in BOTH themes, so it is a
+ * permanently-light surface. The CTA is therefore pinned to `mode="light"` to
+ * match the surface it sits on, per CLAUDE.md §Theming — threading the device
+ * scheme would render a dark-mode button on a permanently-yellow card.
  */
 export function PromoBanner({ onPress }: PromoBannerProps) {
   return (
@@ -21,11 +27,12 @@ export function PromoBanner({ onPress }: PromoBannerProps) {
         <Text style={styles.eyebrow}>Limited time</Text>
         <Text style={styles.headline}>Buy one,{'\n'}get fries free</Text>
         <Text style={styles.body}>Order ahead and skip the line at your favorite branch.</Text>
-        <JojoButton
+        <Button
           label="Order now"
           onPress={onPress ?? (() => {})}
           variant="accent"
           style={styles.cta}
+          mode="light"
         />
       </View>
       <Image

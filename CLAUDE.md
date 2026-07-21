@@ -231,11 +231,44 @@ not — use RIPER-5. Full routing detail: `orchestration.md` §QUICK FIX Lane.
 
 Engineering and coding standards: `process/development-protocols/implementation-standards.md`.
 
+---
+
+## Theming (Mobile App — Universal Convention)
+
+The `apps/mobile` UI is theme-aware and MUST follow one convention so screens stay
+consistent. Key rules:
+
+- **Single resolver.** Every screen/component derives its theme from
+  `useColorScheme()` (`apps/mobile/src/hooks/use-color-scheme.ts`) — either directly,
+  via `const mode = scheme === 'dark' ? 'dark' : 'light'`, or via `useTheme()`
+  (`Colors[mode]`). Never call React Native's `useColorScheme` directly in a screen,
+  and never hardcode light/dark colors — read `Colors`/`theme` tokens from
+  `@jojopotato/ui` (`packages/ui/src/theme.ts`: `light` = warm cream brand, `dark` = panel).
+- **Preference, not the raw OS scheme.** `useColorScheme()` resolves the persisted
+  **theme preference** (`apps/mobile/src/features/theme/theme-preference.ts`): a tiny
+  `expo-secure-store`-backed module store with values `'system' | 'light' | 'dark'`.
+  `'system'` (the default, incl. first launch) follows the device OS scheme;
+  `'light'`/`'dark'` are explicit user overrides. It is a module store (not a React
+  context) so the root layout — which renders above any provider — can resolve it too.
+- **Startup + toggle.** `_layout.tsx` calls `loadThemePreference()` once on mount and
+  sources `useColorScheme()` from the app hook (so the SystemUI window bg + nav
+  `ThemeProvider` follow the preference). The user-facing toggle lives in the Account
+  tab (`(tabs)/account/index.tsx` → `ThemeToggle`, a System/Light/Dark segmented control).
+- **When adding UI:** pass `mode` to `@jojopotato/ui` components and use `theme.*` tokens;
+  text that sits on a component whose surface is a fixed `mode` (e.g. `<Card mode="light">`)
+  must use that same mode's tokens (`Colors.light.*`), not the device-scheme `theme`,
+  or it can become unreadable in the opposite mode.
+
+---
+
 **Commit branch policy (overrides harness default):** `main` is this repo's working local branch.
 When the user asks for a commit, commit **directly on `main`** — do NOT create a feature branch
 first. This explicitly overrides the generic "if on the default branch, branch first" behavior.
 Only branch when the user explicitly asks for a feature branch or PR. Full rule:
 `process/development-protocols/implementation-standards.md` §Commit Hygiene.
+
+Before emitting a commit message or committing, run `pnpm format:check` and include any Prettier
+fixes — see §Commit Hygiene.
 
 ---
 

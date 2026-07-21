@@ -1,0 +1,4 @@
+loop	cycle	timestamp	gate	status	gaps_open	loop_status	note
+evl	baseline	2026-07-13	tsc+lint	captured	1	RUNNING	EXECUTE reported gates green; EVL confirmation queued
+evl	001	2026-07-13	tsc+lint	fail	1	RUNNING	tsc FAIL: (tabs)/index.tsx:56 route string '/(tabs)/deals/index' should be '/(tabs)/deals'; lint PASS; 5 reorder.* errors confirmed pre-existing/out-of-scope
+evl	002	2026-07-13	tsc+lint	pass	0	HALTED_SUCCESS	fix applied ('/(tabs)/deals'); deals blast radius tsc-clean + lint-clean; only 5 pre-existing reorder.* errors remain (out of scope)

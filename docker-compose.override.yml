@@ -1,0 +1,22 @@
+# Local-only override. Auto-loaded by `docker compose` on top of docker-compose.yml.
+# Gitignored — do not commit; it encodes one developer's machine, not the project.
+#
+# Why this exists: a Homebrew `postgresql@14` service binds 127.0.0.1:5432 on this
+# machine. Docker binds 0.0.0.0:5432, but the more specific bind wins, so anything
+# connecting to `localhost:5432` silently reaches Homebrew's Postgres instead of this
+# container. That produces confusing failures — migrations appear to apply against a
+# database you are not inspecting.
+#
+# Remapping the host port to 5433 removes the ambiguity: localhost:5433 is
+# unambiguously this container.
+#
+# Requires DATABASE_URL in packages/api/.env to use port 5433:
+#   DATABASE_URL=postgresql://jojo:jojo@localhost:5433/jojopotato
+#
+# To go back to the stock setup instead: `brew services stop postgresql@14`,
+# delete this file, and reset DATABASE_URL to port 5432.
+
+services:
+  jojopotato-db:
+    ports:
+      - '5433:5432'

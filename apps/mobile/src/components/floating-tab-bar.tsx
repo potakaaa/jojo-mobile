@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -7,11 +7,54 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+import { isNestedTabRoute } from './floating-tab-bar.helpers';
+
+// Cross-tree signal: lets a screen hide the floating tab bar while a full-screen
+// overlay (e.g. the checkout confirm drawer) is open, so the bar doesn't paint over
+// it. Reference-counted (a Set of request tokens), NOT a single shared boolean —
+// React Navigation keeps other tab-root screens (product/tracking/branch/history/
+// cart) mounted after they lose focus, and each one also calls
+// `useHideTabBarWhile(useIsFocused())`. With a single boolean, an unfocused
+// screen's own effect re-running (active flips to false) would unconditionally
+// force the flag back to "shown", racing with — and sometimes winning against —
+// the newly-focused screen's "hide" request, in tree-render order rather than
+// focus order. A losing screen never touches the request set at all, so it can
+// never clear someone else's still-active request.
+const hideRequests = new Set<object>();
+const tabBarListeners = new Set<() => void>();
+const getTabBarHidden = () => hideRequests.size > 0;
+
+function notifyTabBarListeners() {
+  tabBarListeners.forEach((listener) => listener());
+}
+
+function subscribeTabBar(listener: () => void) {
+  tabBarListeners.add(listener);
+  return () => {
+    tabBarListeners.delete(listener);
+  };
+}
+
+/** Hide the floating tab bar while `active` is true; auto-restores on unmount. */
+export function useHideTabBarWhile(active: boolean) {
+  useEffect(() => {
+    if (!active) return undefined;
+    const token = {};
+    hideRequests.add(token);
+    notifyTabBarListeners();
+    return () => {
+      hideRequests.delete(token);
+      notifyTabBarListeners();
+    };
+  }, [active]);
+}
 
 /**
  * Minimal, locally-declared shape of React Navigation's `BottomTabBarProps`,
@@ -24,6 +67,15 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 interface TabBarRoute {
   key: string;
   name: string;
+  /**
+   * OPTIONAL nested navigation state of this tab's Stack. React Navigation
+   * populates it once the tab's nested navigator has history; `index > 0`
+   * means a screen is pushed above the tab root. Consumed via `isNestedTabRoute`
+   * (Fix A) to hide the floating bar on nested screens. Undefined at root /
+   * before the nested navigator initializes; `index` is itself optional to stay
+   * assignable from React Navigation's `PartialState` (both treated as "at root").
+   */
+  state?: { index?: number };
 }
 
 interface TabBarDescriptor {
@@ -43,7 +95,10 @@ interface BottomTabBarProps {
     emit: (event: { type: 'tabPress'; target: string; canPreventDefault: true }) => {
       defaultPrevented: boolean;
     };
-    navigate: (name: string) => void;
+    // Optional 2nd param (`{ screen: 'index' }`) is additive, needed for Fix B's
+    // reset-to-root call. The real React Navigation `navigate` already accepts a
+    // nested-screen params object; this file-internal type just widens to match.
+    navigate: (name: string, params?: { screen: string }) => void;
   };
 }
 
@@ -84,35 +139,58 @@ const ICONS: Record<
   index: { active: 'home', inactive: 'home-outline' },
   order: { active: 'bag', inactive: 'bag-outline' },
   rewards: { active: 'star', inactive: 'star-outline' },
+  branches: { active: 'location', inactive: 'location-outline' },
   account: { active: 'person', inactive: 'person-outline' },
 };
 
 /** Ionicons wrapped for animated (interpolated) `color` via Reanimated style. */
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
+/** Diameter (dp) of the circular icon chip — shared by `BAR_CONTENT_HEIGHT` and `styles.iconChip`. */
+const ICON_CHIP_SIZE = 36;
+
 /**
  * On-screen vertical content height of the floating bar (dp), computed from the
  * real styles below so screens never guess a magic number:
- *   iconChip height (40) + tab gap (Spacing.half) + one caption text line
- *   (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
- *   (Spacing.two × 2).
- * Currently 40 + 2 + 15 + 16 = 73.
+ *   iconChip height (ICON_CHIP_SIZE) + tab gap (Spacing.half) + one caption text
+ *   line (~1.2 × TypeScale.caption ≈ 15) + bar paddingVertical top+bottom
+ *   (Spacing.one × 2).
+ * Currently 36 + 2 + 15 + 8 = 61.
  */
-const BAR_CONTENT_HEIGHT = 40 + Spacing.half + 15 + Spacing.two * 2;
+const BAR_CONTENT_HEIGHT = ICON_CHIP_SIZE + Spacing.half + 15 + Spacing.one * 2;
 
 /**
- * Total bottom clearance (dp) an iOS/Android tab screen's scrollable content
- * must reserve so its last row clears this floating bar. The bar is absolutely
- * positioned at `bottom: insets.bottom + Spacing.two`, so the footprint from the
- * screen's bottom edge is the bar content height PLUS that offset PLUS extra
- * breathing room (Spacing.four) so content isn't flush against the bar.
+ * The floating bar's OWN dead footprint (dp) from the screen's bottom edge —
+ * device-independent, so it can be a static export. The bar is absolutely
+ * positioned at `bottom: insets.bottom + Spacing.two`, so its footprint is the
+ * bar content height PLUS that offset PLUS extra breathing room (Spacing.four)
+ * so content isn't flush against the bar. Currently 61 + 8 + 16 = 85.
+ *
+ * This term is real ONLY where the bar actually renders (tab-root screens). On a
+ * pushed/nested screen the bar is hidden, so reserving it is dead space — see
+ * `resolveTabBarClearance` in `./floating-tab-bar.helpers`, which nested screens
+ * use to reserve the device safe-area inset WITHOUT this footprint.
+ */
+export const TAB_BAR_FOOTPRINT = BAR_CONTENT_HEIGHT + Spacing.two + Spacing.four;
+
+/**
+ * Total bottom clearance (dp) an iOS/Android TAB-ROOT screen's scrollable
+ * content must reserve so its last row clears this floating bar: the bar's own
+ * footprint PLUS the device safe-area inset.
+ *
+ * These are two DIFFERENT concerns fused into one number for the tab-root case,
+ * where both happen to apply. Do not reuse this on a nested screen to get the
+ * safe-area inset — that reserves ~85dp of dead bar height for a bar that isn't
+ * rendered there. Nested screens call
+ * `resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insetsBottom)` instead, which
+ * keeps the inset and drops the footprint.
  *
  * `insets.bottom` is device-dependent, so this must be a function (it cannot be
  * baked into a static export). Screens pass `useSafeAreaInsets().bottom`.
  * iOS/Android only: the web tab bar reserves its own space natively.
  */
 export const getFloatingTabBarClearance = (insetsBottom: number): number =>
-  BAR_CONTENT_HEIGHT + insetsBottom + Spacing.two + Spacing.four;
+  TAB_BAR_FOOTPRINT + insetsBottom;
 
 interface TabItemProps {
   isActive: boolean;
@@ -120,6 +198,7 @@ interface TabItemProps {
   iconActive?: keyof typeof Ionicons.glyphMap;
   iconInactive?: keyof typeof Ionicons.glyphMap;
   activeColor: string;
+  labelActiveColor: string;
   inactiveColor: string;
   accessibilityLabel?: string;
   onPress: () => void;
@@ -136,6 +215,7 @@ function TabItem({
   iconActive,
   iconInactive,
   activeColor,
+  labelActiveColor,
   inactiveColor,
   accessibilityLabel,
   onPress,
@@ -162,7 +242,7 @@ function TabItem({
   }));
 
   const labelColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(progress.value, [0, 1], [inactiveColor, activeColor]),
+    color: interpolateColor(progress.value, [0, 1], [inactiveColor, labelActiveColor]),
   }));
 
   // Glyph swap (outline ↔ filled) is discrete; color cross-fades over it.
@@ -182,7 +262,7 @@ function TabItem({
         {iconName ? (
           <AnimatedIonicons
             name={iconName}
-            size={22}
+            size={20}
             color={inactiveColor}
             style={iconColorStyle}
           />
@@ -200,9 +280,29 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const colors = Colors[mode];
+  const hidden = useSyncExternalStore(subscribeTabBar, getTabBarHidden);
+
+  // Fix A: hide the whole floating bar when the focused tab is showing a pushed
+  // (nested) screen, so the bar paints only on the 5 tab-root screens. Composed
+  // (OR) with the external-store `hidden` flag so the checkout overlay case
+  // (`useHideTabBarWhile`) still hides the bar even at a tab root.
+  const focusedTab = state.routes[state.index];
+  const isFocusedTabNested = focusedTab != null && isNestedTabRoute(focusedTab);
+  const isHidden = hidden || isFocusedTabNested;
+
+  // Fade the bar out/in when it should hide (overlay toggle or a nested screen)
+  // instead of popping. pointerEvents blocks taps while hidden.
+  const barOpacity = useSharedValue(1);
+  useEffect(() => {
+    barOpacity.value = withTiming(isHidden ? 0 : 1, { duration: 200 });
+  }, [isHidden, barOpacity]);
+  const barFadeStyle = useAnimatedStyle(() => ({ opacity: barOpacity.value }));
 
   return (
-    <View
+    <Animated.View
+      pointerEvents={isHidden ? 'none' : 'auto'}
+      accessibilityElementsHidden={isHidden}
+      importantForAccessibility={isHidden ? 'no-hide-descendants' : 'auto'}
       style={[
         styles.bar,
         {
@@ -211,9 +311,19 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
           borderColor: colors.border,
         },
         Shadows.offsetMd,
+        barFadeStyle,
       ]}
     >
+      {/*
+        Filter to the known 5-tab allowlist (`ICONS` keys) before rendering.
+        `<Tabs>` auto-appends every undeclared file-system child of `(tabs)/` to
+        `state.routes` (e.g. the non-tab `deals/` stack), and this custom tab bar
+        ignores `href:null`/`tabBarButton` — so without this filter, `deals`
+        would render as an unstyled 6th tab button. Reachability of `deals` is
+        via `router.push` only. See deals-screens plan Decision #1 / step 5b.
+      */}
       {state.routes.map((route, i) => {
+        if (!(route.name in ICONS)) return null;
         const isActive = state.index === i;
         const options = descriptors[route.key]?.options ?? {};
         const label = typeof options.title === 'string' ? options.title : route.name;
@@ -226,7 +336,16 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             canPreventDefault: true,
           });
 
-          if (!isActive && !event.defaultPrevented) {
+          if (event.defaultPrevented) return;
+
+          if (isActive) {
+            // Fix B: re-tapping the already-active tab resets that tab's stack
+            // to its root (`index`) screen. React Navigation's navigate-to-
+            // existing semantics pop back to `index` when it is already in the
+            // nested stack, freeing the user from a cross-tab push (e.g. the
+            // Home "Active Order" banner → order/tracking trap).
+            navigation.navigate(route.name, { screen: 'index' });
+          } else {
             navigation.navigate(route.name);
           }
         };
@@ -239,13 +358,14 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
             iconActive={iconPair?.active}
             iconInactive={iconPair?.inactive}
             activeColor={Palette.ink}
+            labelActiveColor={colors.text}
             inactiveColor={colors.textSecondary}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             onPress={onPress}
           />
         );
       })}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -257,7 +377,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.two,
     borderRadius: Radii.full,
     borderWidth: 2,
@@ -268,8 +388,8 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
   },
   iconChip: {
-    width: 40,
-    height: 40,
+    width: ICON_CHIP_SIZE,
+    height: ICON_CHIP_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radii.full,
