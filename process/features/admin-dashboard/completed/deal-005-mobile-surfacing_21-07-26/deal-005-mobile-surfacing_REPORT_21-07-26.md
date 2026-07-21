@@ -1,15 +1,23 @@
 ---
 phase: deal-005-mobile-surfacing
 date: 2026-07-21
-status: COMPLETE_WITH_GAPS
+status: COMPLETE
 feature: admin-dashboard
-plan: process/features/admin-dashboard/active/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md
+plan: process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md
 ---
 
 # DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules — UPDATE PROCESS Report
 
-Doc-reconciliation pass. Source and SPEC+PLAN were already committed by the user before this
-UPDATE PROCESS session began (`f0685f9` source, `83fc7f4` docs, branch `adm-deal-005-p2`).
+**Final closeout addendum (21-07-26, same day):** the AC5 nav-entry blocker was fixed (a "See all"
+entry added to the Home tab's "Deals & offers" header, commit `ab3d916`, linking to
+`/(tabs)/deals`), and the user performed and PASSED the full AC5-AC7 Agent-Probe walkthrough this
+session. Plan is now ✅ VERIFIED; task folder archived to `completed/`. The AC status table and
+closeout packet below are updated to reflect this; the "What Was Done" / "Test Gate Outcomes"
+sections below describe the original doc-reconciliation pass and remain accurate as historical
+record.
+
+Doc-reconciliation pass (original). Source and SPEC+PLAN were already committed by the user before
+this UPDATE PROCESS session began (`f0685f9` source, `83fc7f4` docs, branch `adm-deal-005-p2`).
 
 ## What Was Done
 
@@ -82,35 +90,33 @@ introduced by this phase.
 | AC2 | Absolute-only-window live deal shows "Available until …" | **met** — Fully-Automated |
 | AC3 | Zero-row deal shows no annotation; wire field ABSENT not falsy | **met** — Fully-Automated (utils + api wire-shape) |
 | AC4 | Manila wall-clock correctness across a UTC day-boundary crossing | **met** — Fully-Automated (boundary-crossing regression test) |
-| AC5 | Deals tab list shows the annotation, light+dark | **unmet** — Agent-Probe, not yet performed. **Additionally BLOCKED**: the Deals-tab list screen (`(tabs)/deals/index.tsx`) has no reachable navigation entry point in the current app (see Forward Preview / new backlog note below) — the walkthrough cannot be performed as written until an entry point exists. |
-| AC6 | Home strip shows the annotation, light+dark | **unmet** — Agent-Probe, not yet performed (reachable, not blocked) |
-| AC7 | Deal Details shows the annotation, light+dark | **unmet** — Agent-Probe, not yet performed (reachable via Home strip → Deal Details, not blocked) |
+| AC5 | Deals tab list shows the annotation, light+dark | **met** — Agent-Probe, PASSED by the user (21-07-26). Nav-entry blocker fixed by commit `ab3d916` ("See all" entry on the Home header). |
+| AC6 | Home strip shows the annotation, light+dark | **met** — Agent-Probe, PASSED by the user (21-07-26) |
+| AC7 | Deal Details shows the annotation, light+dark | **met** — Agent-Probe, PASSED by the user (21-07-26) |
 | AC8 | Multi-row union'd schedule produces sensible, non-throwing output | **met** — Fully-Automated |
 | AC9 | No regression to regular menu / always-live deals (byte-identical) | **met** — Fully-Automated, full `packages/api` suite green |
 
-Backlog NOTE for the unmet/blocked criteria: AC5-AC7 residual is already governed by the plan's own
-Phase Completion Rules (CODE DONE now, VERIFIED only after the walkthrough passes) — no separate
-backlog stub needed for the Agent-Probe tier itself. The NEW finding (AC5's list-screen entry point
-being missing) is filed as its own backlog note:
+**9/9 ACs met.** The NEW finding (AC5's list-screen entry point being missing) was fixed same-day
+and its backlog note is now RESOLVED:
 `process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md`.
 
 ## Closeout Packet
 
-1. **Selected plan path:** `process/features/admin-dashboard/active/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md`
-2. **Closeout classification:** Keep in active/testing — CODE DONE + EVL-confirmed green + committed, Agent-Probe walkthrough (AC5-AC7) still owed, and AC5 specifically is currently blocked by a missing nav entry point on the Deals-tab list screen.
-3. **What was finished:** see What Was Done above.
-4. **Verified vs unverified:** Verified — all 9 Fully-Automated gate rows, independently re-confirmed. Unverified — AC5/AC6/AC7 on-device rendering (light+dark, 3 screens).
+1. **Selected plan path:** `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md`
+2. **Closeout classification:** Ready for UPDATE PROCESS archival — ✅ VERIFIED. CODE DONE + EVL-confirmed green + committed, AND the AC5-AC7 Agent-Probe walkthrough was performed and passed by the user this session (nav-entry blocker fixed by commit `ab3d916`).
+3. **What was finished:** see What Was Done above, plus the "See all" nav-entry fix (`ab3d916`).
+4. **Verified vs unverified:** All 9 ACs verified — 6 Fully-Automated (independently re-confirmed) + 3 Agent-Probe (AC5-AC7, user-performed and passed this session).
 4b. **Validate-contract compliance:** Present, inline in the plan (`## Validate Contract`), Gate: PASS, `generated-by: outer-pvl`, dated 21-07-26.
-5. **Cleanup done vs still needed:** Done this pass — phase report written, plan status updated, `all-context.md` updated, backlog note filed for the orphaned list screen, `vc-audit-context` run. Still needed: the AC5-AC7 walkthrough (blocked for AC5 until the list-screen nav entry exists), and eventually a small follow-up task to add that entry point.
-6. **Single best next valid state:** Keep the plan active; the user should either (a) perform the AC6/AC7 walkthrough now (reachable today via the Home strip) and separately scope the list-screen nav-entry fix, or (b) scope+build the nav-entry fix first so all 3 ACs can be walked in one pass.
-7. **Commit checkpoint:** Process commit belongs after this UPDATE PROCESS pass — only plan/report/context/backlog doc changes were made this session; source is already committed (`f0685f9`, `83fc7f4`). Left uncommitted per the task instructions.
+5. **Cleanup done vs still needed:** Done this pass — phase report finalized, plan status stamped ✅ VERIFIED, `all-context.md` updated, backlog note marked RESOLVED, task folder archived to `completed/`, `vc-audit-context` run. Nothing outstanding for this plan.
+6. **Single best next valid state:** DEAL-005 / issue #127 is now fully delivered (Phases 1, 2, 3 all ✅ VERIFIED). No immediate next phase for this feature; future work (multi-row admin authoring, mobile expiry refetch) is already tracked in backlog notes.
+7. **Commit checkpoint:** Process commit belongs after this UPDATE PROCESS pass — plan/report/context/backlog doc changes plus the archival `git mv`; source (`f0685f9`) and the nav-entry fix (`ab3d916`) are already committed. Left uncommitted per the task instructions, for the user to commit.
 8. **Regression status:** N/A — not a phase-program inter-phase step; the full `packages/api` regression suite (604/604) already re-confirms no regression to Phase 1/2's `deal_schedules` behavior or the write path.
-9. **SPEC achievement:** see table above — 6/9 met (all Fully-Automated), 3/9 unmet (Agent-Probe, owed; 1 of those additionally blocked).
+9. **SPEC achievement:** see table above — 9/9 met.
 
-Drift score: LOW (0-1 signals — doc-only reconciliation pass touching 1 context file, 1 plan status
-line, 1 new backlog note; no `.claude/`/`.codex`/protocol files touched, no harness change).
-`"UPDATE PROCESS available if you want."` — already running it now; no further action beyond this
-session required.
+Drift score: LOW (0-1 signals — doc-only reconciliation + archival pass touching 1 context file, 1
+plan status line, 1 backlog note, 1 folder move; no `.claude/`/`.codex`/protocol files touched, no
+harness change). `"UPDATE PROCESS available if you want."` — already running it now; no further
+action beyond this session required.
 
 ## Forward Preview
 
@@ -138,7 +144,7 @@ pnpm typecheck && pnpm format:check
 
 None.
 
-### New Finding — Orphaned Deals-Tab List Screen (Not Introduced By This Phase)
+### New Finding — Orphaned Deals-Tab List Screen (Not Introduced By This Phase) — RESOLVED SAME DAY
 
 While scoping the AC5 walkthrough, confirmed by grep that `apps/mobile/src/app/(tabs)/deals/index.tsx`
 (the standalone Deals-tab list screen) has **no reachable navigation entry point** anywhere in the
@@ -146,6 +152,7 @@ app — `router.push('/(tabs)/deals')` appears only in code comments
 (`deals/index.tsx:19`, `deals/_layout.tsx:4`), never in an actual call site. The Home tab's
 "Deals & offers" strip (`(tabs)/index.tsx:191`) navigates directly to
 `/(tabs)/deals/deal/[dealId]` (Deal Details), bypassing the list screen entirely. This is a
-pre-existing navigation gap, not introduced by Phase 3 — filed as a new backlog note (see SPEC
-Achievement above) rather than fixed inline, since fixing it is out of this plan's declared scope
-and blast radius.
+pre-existing navigation gap, not introduced by Phase 3 — filed as a backlog note (see SPEC
+Achievement above). **Fixed same session** by commit `ab3d916` ("See all" entry added to the Home
+tab's "Deals & offers" header, linking to `/(tabs)/deals`), which unblocked AC5 and allowed the
+full walkthrough to be performed and passed. Backlog note marked RESOLVED.

@@ -7,6 +7,11 @@ feature: admin-dashboard
 
 # Deals-tab list screen has no navigation entry point
 
+**STATUS: RESOLVED (21-07-26, same day).** Fixed by commit `ab3d916` — a "See all" entry was added
+to the Home tab's "Deals & offers" header, linking to `/(tabs)/deals`. This unblocked DEAL-005
+Phase 3's AC5 walkthrough, which was subsequently performed and passed by the user. Kept for
+history; no further action needed.
+
 **Priority:** Low-Medium (pre-existing UX gap, surfaced while scoping DEAL-005 Phase 3's AC5
 Agent-Probe walkthrough — not a regression, not introduced by that phase).
 

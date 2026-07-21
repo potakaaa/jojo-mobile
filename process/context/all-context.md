@@ -1,9 +1,10 @@
 # Jojo Potato - All Context
 
-Last updated: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules — CODE DONE +
-EVL-confirmed green + committed, NOT VERIFIED, AC5-AC7 Agent-Probe walkthrough owed and AC5 is
-additionally BLOCKED by a new finding — the Deals-tab list screen has no reachable nav entry point
-— task folder stays in active/, see the admin-dashboard bullet below and §Scan Metadata; merged
+Last updated: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules — ✅ VERIFIED,
+EVL-confirmed green, committed, AND the AC5-AC7 Agent-Probe walkthrough was performed and passed by
+the user this session (the AC5 nav-entry blocker was fixed by a "See all" entry on the Home tab,
+commit `ab3d916`) — task folder archived to completed/; **issue #127 is now fully delivered, all 3
+phases ✅ VERIFIED**, see the admin-dashboard bullet below and §Scan Metadata; merged
 with DEAL-005 Phase 2 — Recurring Deal Schedules — ✅ VERIFIED, manual browser
 walkthrough passed (the one flagged issue was a user AM/PM data-entry error, not a defect), task
 folder archived to completed/, plus a small uncommitted verification-time admin recurring-state
@@ -215,8 +216,10 @@ top of it later without re-plumbing the project.
 
 - **DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules (`packages/api` + `packages/utils` +
   `packages/types` + `packages/ui` + `apps/mobile`, issue #127, delivered 21-07-26, branch
-  `adm-deal-005-p2`, commit `f0685f9` (source) + `83fc7f4` (SPEC+PLAN), CODE DONE + EVL-confirmed
-  green + COMMITTED — NOT VERIFIED, task folder stays in `active/`):** annotates a CURRENTLY-live
+  `adm-deal-005-p2`, commit `f0685f9` (source) + `83fc7f4` (SPEC+PLAN) + `ab3d916` (nav-entry fix),
+  ✅ VERIFIED — EVL-confirmed green, committed, AND the AC5-AC7 Agent-Probe walkthrough performed
+  and passed by the user, task folder archived to `completed/`. **This closes issue #127 —
+  Phases 1, 2, and 3 are now all ✅ VERIFIED.**):** annotates a CURRENTLY-live
   scheduled deal (Phase 1 absolute window and/or Phase 2 recurrence) with a read-only days/hours
   caption — "Available Mon–Fri, 8:00 AM – 8:25 PM" (recurring) or "Available until Jul 25, 6:00 PM"
   (absolute-only) — on the Deals tab list, the Home strip, and Deal Details. A deal with zero
@@ -242,19 +245,21 @@ top of it later without re-plumbing the project.
   "Valid until: Available Mon–Fri, …" string). Gates, independently EVL-confirmed: `packages/utils`
   12/12 new, `packages/ui` deal-card 4/4 new, `packages/api` full suite 604/604 (+3 new wire-shape
   assertions), 5 typechecks clean, `pnpm format:check` clean, zero regressions. All 6
-  Fully-Automated ACs (AC1-AC4, AC8, AC9) green; Known-Gap unused anywhere. **New finding, not a
-  regression:** while scoping the AC5 walkthrough, confirmed by direct grep that the standalone
-  Deals-tab list screen (`(tabs)/deals/index.tsx`) has **no reachable navigation entry point**
-  anywhere in the app — `router.push('/(tabs)/deals')` appears only in code comments, never in an
-  actual call site; the Home strip navigates straight to Deal Details, bypassing the list screen
-  entirely. This is a pre-existing gap (not introduced by this phase) that **blocks AC5** from being
-  walked as written; AC6 (Home strip) and AC7 (Deal Details) remain reachable and owed. Filed as
-  `process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md`.
-  Unlike Phase 1/2, **no manual walkthrough has been performed this session** — held at CODE DONE,
-  task folder stays in `active/`. Delivered by:
-  `process/features/admin-dashboard/active/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md`
-  (+ co-located SPEC + `deal-005-mobile-surfacing_REPORT_21-07-26.md` in the same task folder — stays
-  in `active/`, not archived).
+  Fully-Automated ACs (AC1-AC4, AC8, AC9) green; Known-Gap unused anywhere. **New finding, found
+  and fixed same session:** while scoping the AC5 walkthrough, confirmed by direct grep that the
+  standalone Deals-tab list screen (`(tabs)/deals/index.tsx`) had **no reachable navigation entry
+  point** anywhere in the app — `router.push('/(tabs)/deals')` appeared only in code comments,
+  never in an actual call site; the Home strip navigated straight to Deal Details, bypassing the
+  list screen entirely. This pre-existing gap (not introduced by this phase) blocked AC5 — fixed
+  by adding a "See all" entry to the Home tab's "Deals & offers" header (commit `ab3d916`, links to
+  `/(tabs)/deals`, uses `theme.tint`, no hardcoded color). Backlog note
+  `process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md` is now
+  marked RESOLVED. **The AC5-AC7 Agent-Probe walkthrough (Deals tab list, Home strip, Deal
+  Details — light + dark) was performed and PASSED by the user this session** — 9/9 ACs met, no
+  residual owed. Task folder archived to `completed/`. Delivered by:
+  `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/deal-005-mobile-surfacing_PLAN_21-07-26.md`
+  (+ co-located SPEC + `deal-005-mobile-surfacing_REPORT_21-07-26.md` in the same task folder, now
+  archived).
 
 - **Admin dashboard `(dashboard)` route SSR auth-guard fix (`apps/admin`, delivered 20-07-26,
   commit `4929b27` + 2 unplanned follow-on commits `75175b6`/`7b43d0e`, CODE DONE + EVL-green,
@@ -1489,7 +1494,7 @@ crossed — it will create the matching group automatically.
 | admin dashboard coupons follow-up (ADM-008 sub-program, held OPEN) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` and `adm-008-free-mechanics_16-07-26/` — both CODE-COMPLETE, held OPEN in `active/` per standing user decision for further follow-up exploration; independent of the now-complete 8-phase program above |
 | admin dashboard coupons work (ADM-008 follow-up) | `all-context.md` | `process/features/admin-dashboard/active/adm-008-coupons_16-07-26/` — read the umbrella plan's `## Current Execution State` (program CODE-COMPLETE, OPEN — held in `active/` for follow-up), then the relevant per-phase plan/report pair, then `backlog/adm-008-free-item-free-upgrade-redemption_NOTE_16-07-26.md` |
 | admin dashboard `(dashboard)` route / SSR / auth-guard work | `all-context.md` | `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — CODE DONE + EVL-green, NOT VERIFIED (Agent-Probe walkthrough owed); read the plan's Decision section before changing this route again — a server-side check is structurally impossible in the current topology (see `backlog/admin-api-same-origin-reverse-proxy_NOTE_20-07-26.md`) |
-| deal scheduling / `deal_schedules` / issue #127 mobile-surfacing follow-up work | `all-context.md` | Phase 1 (absolute window) and Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) are BOTH ✅ VERIFIED and archived — Phase 1 at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`, Phase 2 at `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`. **Phase 3 (mobile surfacing of live deal schedules) is CODE DONE + EVL-green + committed but NOT VERIFIED** — `process/features/admin-dashboard/active/deal-005-mobile-surfacing_21-07-26/` (stays in `active/`). Read Phase 3's plan + report for the additive wire field, the new `formatDealScheduleSummary` formatter, and the new finding that the Deals-tab list screen has no reachable nav entry point (blocks its AC5 walkthrough; backlog: `deals-list-screen-no-nav-entry_NOTE_21-07-26.md`). Read the Phase 2 plan + report for the recurrence semantics (D4-D6), the E3 single-row write-path scope limit, the TZ-pin test-infra fact, and the deferred mobile-expiry-refetch decision (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`, `deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`) before starting the deferred multi-row admin authoring flow. Note: a small uncommitted admin recurring-state badge addition (`apps/admin/src/lib/entity-status.ts` + 2 consumers) landed on top of Phase 2's committed source — check `git status` before assuming a clean tree. |
+| deal scheduling / `deal_schedules` / issue #127 follow-up work | `all-context.md` | **Issue #127 is fully delivered — all 3 phases ✅ VERIFIED and archived.** Phase 1 (absolute window) at `process/features/admin-dashboard/completed/deal-005-scheduled-deals_20-07-26/`, Phase 2 (day-of-week + time-of-day recurrence, `toManilaWallClock()`, both enforcement points) at `process/features/admin-dashboard/completed/deal-005-recurring-schedules_20-07-26/`, Phase 3 (mobile surfacing — days/hours annotation on Deals tab/Home strip/Deal Details, additive `schedule` wire field, `formatDealScheduleSummary`) at `process/features/admin-dashboard/completed/deal-005-mobile-surfacing_21-07-26/`. Read each plan + report for design detail. Remaining tracked follow-ups (not blocking, not part of #127's own scope): the deferred multi-row admin authoring flow (backlog: `deal-005-one-window-per-deal_NOTE_20-07-26.md`) and the mobile fetch-on-focus expiry-lingering behavior (backlog: `deal-005-mobile-expiry-refetch_NOTE_21-07-26.md`, deliberately accepted/deferred). Note: a small uncommitted admin recurring-state badge addition (`apps/admin/src/lib/entity-status.ts` + 2 consumers) landed on top of Phase 2's committed source — check `git status` before assuming a clean tree. |
 
 ## Context Group Lifecycle
 
@@ -1720,33 +1725,28 @@ Tracked here so future planning knows these are unresolved, not accidentally dec
 ## Scan Metadata
 
 - Generated: 2026-07-08 (full scan)
-- Last delta: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules, UPDATE
-  PROCESS — doc-only reconciliation, source + SPEC/PLAN already committed by the user before this
-  pass began (`f0685f9` source, `83fc7f4` SPEC+PLAN, branch `adm-deal-005-p2`). Phase 3 of issue
-  #127 adds a read-only days/hours annotation to a currently-live scheduled deal on the Deals tab
-  list, the Home strip, and Deal Details — purely additive (new optional `schedule` wire field, new
-  `formatDealScheduleSummary` formatter in `packages/utils`, new `DealCard.scheduleSummary` prop);
-  the server's live/visible filter and `orders.ts` write path are untouched by design. Manila
-  correctness for `endsAt` reuses Phase 2's fixed-`+08:00`-shift technique verbatim; the
-  recurrence fields need zero client-side timezone math since Phase 2 already stores them as
-  Manila wall-clock. All 6 Fully-Automated ACs (AC1-AC4, AC8, AC9) green, independently
-  EVL-confirmed: `packages/utils` 12/12 new, `packages/ui` deal-card 4/4 new, `packages/api` full
-  suite 604/604 (+3 new wire-shape assertions), 5 typechecks clean, format:check clean, zero
-  regressions. **New finding, not a regression:** while scoping the AC5 walkthrough, confirmed by
-  direct grep that the standalone Deals-tab list screen (`(tabs)/deals/index.tsx`) has no reachable
-  navigation entry point anywhere in the app — the Home strip bypasses it entirely, going straight
-  to Deal Details. This blocks AC5 specifically; AC6/AC7 remain reachable and owed. Filed a new
-  backlog note:
-  `process/features/admin-dashboard/backlog/deals-list-screen-no-nav-entry_NOTE_21-07-26.md`.
-  Wrote `deal-005-mobile-surfacing_REPORT_21-07-26.md`; stamped the plan Status line and Phase
-  Completion Rules CODE DONE (not VERIFIED — AC5-AC7 owed, AC5 additionally blocked); updated this
-  file's header, added a new DEAL-005 Phase 3 implementation-state bullet, and updated the
-  deal-scheduling routing-table row to point at the Phase 3 task folder and its new finding. Did
-  NOT archive the task folder — stays in `active/` pending the owed walkthrough (and, for AC5, the
-  nav-entry fix). No commit was made by this pass (doc-only; left for the user to commit). HEAD
-  this delta: `83fc7f4`, on top of `f0685f9` (Phase 3 source) and, before that, `c24e90d`/`5ae3b25`
-  (Phase 2's VERIFIED close-out + the recurring-state badge — see the Phase 2 delta below for that
-  history).)
+- Last delta: 2026-07-21 (DEAL-005 Phase 3 — Mobile Surfacing of Live Deal Schedules, FINAL
+  UPDATE PROCESS closeout — the AC5-AC7 Agent-Probe walkthrough was performed and PASSED by the
+  user this session. The AC5 nav-entry blocker (the standalone Deals-tab list screen had no
+  reachable navigation entry point anywhere in the app) was fixed by commit `ab3d916` — a "See
+  all" entry added to the Home tab's "Deals & offers" header, linking to `/(tabs)/deals`
+  (`theme.tint` token, no hardcoded color; mobile typecheck + prettier clean) — which unblocked the
+  full walkthrough. All 9 ACs (6 Fully-Automated + 3 Agent-Probe) are now met. **This closes issue
+  #127 — Phases 1, 2, and 3 are all ✅ VERIFIED.** Stamped the plan Status line and Phase
+  Completion Rules ✅ VERIFIED; updated the REPORT's AC status table (9/9 met) and closeout packet;
+  marked the `deals-list-screen-no-nav-entry_NOTE_21-07-26.md` backlog note RESOLVED; updated this
+  file's header, the DEAL-005 Phase 3 implementation-state bullet, and the deal-scheduling
+  routing-table row (now pointing at all 3 archived Phase folders). Archived the task folder
+  `active/deal-005-mobile-surfacing_21-07-26/` → `completed/`. Ran `vc-audit-context` (Tier-1 gate
+  for context-doc edits) — result recorded below. No commit was made by this pass (left for the
+  user to commit). HEAD this delta: `cdab2b6`, on top of `ab3d916` (nav-entry fix) and `f0685f9`/
+  `83fc7f4` (Phase 3 source/docs); before that, `c24e90d`/`5ae3b25` (Phase 2's VERIFIED close-out +
+  the recurring-state badge — see the Phase 2 delta below for that history).
+
+  **Prior delta (superseded detail, kept for history):** the same-day earlier UPDATE PROCESS pass
+  (HEAD `83fc7f4`/`cdab2b6` at that time) was a doc-only reconciliation that left Phase 3 at CODE
+  DONE, NOT VERIFIED, with AC5 blocked — see git history for that intermediate state; this final
+  delta supersedes it entirely.)
 - Previous delta: 2026-07-21 (DEAL-005 Phase 2 — Recurring Deal Schedules, VERIFICATION UPDATE PROCESS
   — the owed manual browser walkthrough was performed and PASSED this session (day-of-week
   picker, time inputs, recurring badge on both consumers, manage-page edit/clear). The one issue
