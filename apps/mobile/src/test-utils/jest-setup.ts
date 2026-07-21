@@ -21,6 +21,21 @@ import { jest } from '@jest/globals';
 jest.mock('react-native-reanimated', () => {
   const RN = require('react-native');
   const passthrough = (value: unknown) => value;
+
+  // Layout-animation builders (FadeIn/FadeInDown/…) are used as chainable
+  // configs on Animated.View `entering`/`exiting` props. The real objects expose
+  // fluent modifiers (`.duration()`, `.delay()`, `.springify()`); the mock only
+  // needs each to exist and return something chainable, since jsdom never runs
+  // the animation. A Proxy returns a self-referential chainable for ANY modifier,
+  // so a new modifier at a call site never needs a mock update.
+  const makeAnimationBuilder = (): unknown =>
+    new Proxy(
+      {},
+      {
+        get: () => () => makeAnimationBuilder(),
+      },
+    );
+
   return {
     __esModule: true,
     default: {
@@ -30,12 +45,27 @@ jest.mock('react-native-reanimated', () => {
       Image: RN.Image,
       createAnimatedComponent: (Component: unknown) => Component,
     },
+    View: RN.View,
+    Text: RN.Text,
+    ScrollView: RN.ScrollView,
+    Image: RN.Image,
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useSharedValue: (value: unknown) => ({ value }),
     withTiming: passthrough,
     withSpring: passthrough,
     interpolate: passthrough,
     interpolateColor: passthrough,
+    // Common entering/exiting animation builders as chainable no-op configs.
+    FadeIn: makeAnimationBuilder(),
+    FadeOut: makeAnimationBuilder(),
+    FadeInDown: makeAnimationBuilder(),
+    FadeInUp: makeAnimationBuilder(),
+    FadeOutDown: makeAnimationBuilder(),
+    FadeOutUp: makeAnimationBuilder(),
+    SlideInDown: makeAnimationBuilder(),
+    SlideOutDown: makeAnimationBuilder(),
+    SlideInUp: makeAnimationBuilder(),
+    SlideOutUp: makeAnimationBuilder(),
   };
 });
 
