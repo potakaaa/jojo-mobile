@@ -23,6 +23,7 @@ import type {
   promotions,
   rewards,
 } from '../../db/schema/index';
+import type { DealScheduleWindow } from './deal-schedule';
 // Type-only import (fully erased at compile time — no runtime cycle even though
 // cart-revalidation.ts transitively depends on this file via coupon-apply.ts).
 import type { CartLineValidity } from './cart-revalidation';
@@ -202,6 +203,23 @@ export interface ApiMenuOption {
   priceDeltaCents: number;
 }
 
+/**
+ * DEAL-005 Phase 3 — one live schedule window of a deal-product on the wire.
+ * Client-facing camelCase mirror of a `deal_schedules` row (`DealScheduleWindow`
+ * in `deal-schedule.ts`), with `Date` instants serialized to ISO strings. The
+ * `recur*` fields are Manila WALL-CLOCK values, NOT UTC (see `toManilaWallClock`).
+ * Structurally identical to `@jojopotato/types`' `DealScheduleWindow` (the client
+ * reads it as that type); declared locally here matching the no-cross-dependency
+ * boundary convention the rest of this file's `Api*` shapes use.
+ */
+export interface ApiDealScheduleWindow {
+  startsAt: string | null;
+  endsAt: string | null;
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
+}
+
 export interface ApiMenuProduct {
   id: string;
   name: string;
@@ -218,6 +236,12 @@ export interface ApiMenuProduct {
   // menu response body is byte-unchanged for non-deal products. Additive.
   isDeal?: boolean;
   components?: AdminDealComponent[];
+  // DEAL-005 Phase 3: the deal's live `deal_schedules` windows (for the customer
+  // "Available Mon–Fri, 8:00 AM – 8:25 PM" annotation). Present ONLY on a
+  // currently-live SCHEDULED deal; OMITTED entirely for a schedule-less
+  // (always-live) deal and for every regular product — same omit-when-absent
+  // convention as `isDeal`/`components`. Additive; read-only display data.
+  schedule?: ApiDealScheduleWindow[];
 }
 
 export interface ApiMenuCategory {
@@ -336,6 +360,7 @@ export function serializeMenuProduct(
   product: ProductRow,
   options: ProductOptionRow[],
   components?: AdminDealComponent[],
+  scheduleWindows?: DealScheduleWindow[],
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
     size: [],
@@ -360,10 +385,28 @@ export function serializeMenuProduct(
   // `isDeal`/`components` keys are OMITTED entirely — the regular response stays
   // byte-identical to pre-ADM-004 output (chosen over `isDeal: false` so the
   // existing menu contract is provably unchanged for non-deal products).
-  if (components !== undefined) {
-    return { ...base, isDeal: product.is_deal, components };
+  let result: ApiMenuProduct =
+    components !== undefined ? { ...base, isDeal: product.is_deal, components } : base;
+
+  // DEAL-005 Phase 3: attach the deal's live schedule windows ONLY when the deal
+  // actually has rows (non-empty). A schedule-less (always-live) deal and every
+  // regular product get NO `schedule` key at all — same omit-when-absent
+  // convention as `isDeal`/`components` above, so the wire stays byte-identical
+  // for those (AC3/AC9). `undefined`/`[]` both mean "omit".
+  if (scheduleWindows !== undefined && scheduleWindows.length > 0) {
+    result = {
+      ...result,
+      schedule: scheduleWindows.map((w) => ({
+        startsAt: w.starts_at ? w.starts_at.toISOString() : null,
+        endsAt: w.ends_at ? w.ends_at.toISOString() : null,
+        recurDays: w.recur_days ?? null,
+        recurStartTime: w.recur_start_time ?? null,
+        recurEndTime: w.recur_end_time ?? null,
+      })),
+    };
   }
-  return base;
+
+  return result;
 }
 
 export function serializeMenuCategory(
@@ -638,6 +681,45 @@ export interface AdminDealProduct extends AdminProduct {
   // response (the create hook re-fetches the list, which carries the counts).
   availableBranchCount?: number;
   activeBranchCount?: number;
+  /**
+   * DEAL-005 Phase 1 — the deal's scheduled live window, as ISO instants. BOTH are
+   * `null` when the deal has no `deal_schedules` row at all, which means "always
+   * live" (the no-backfill default every pre-DEAL-005 deal sits in). Either bound
+   * alone may be null for a deliberately open-ended window.
+   *
+   * ADMIN-ONLY and ADDITIVE. The PUBLIC customer wire shape is untouched (D2): an
+   * out-of-window deal is simply ABSENT from `GET /branches/:id/menu?isDeal=true`,
+   * never annotated with its window. Do not mirror these fields onto `ApiDeal`/
+   * `serializeDeal` or `AdminProduct` (regular products never have schedule rows).
+   */
+  startsAt: string | null;
+  endsAt: string | null;
+  /**
+   * DEAL-005 Phase 2 — optional weekly recurrence NARROWING the window above (D6).
+   * All three `null` = a non-recurring row, behaving exactly as Phase 1.
+   *
+   * `recurDays` uses the JS `Date#getDay()` convention (0=Sun..6=Sat) and the two
+   * times are Manila WALL-CLOCK `"HH:mm"` strings, half-open
+   * (`recurStartTime <= t < recurEndTime`). They are NOT UTC — see
+   * `toManilaWallClock()` in `routes/lib/deal-schedule.ts`, the one place that
+   * conversion is allowed to happen.
+   *
+   * ADMIN-ONLY and ADDITIVE, same as the bounds above: the public customer wire
+   * shape stays frozen (D2), an out-of-occurrence deal is simply ABSENT.
+   */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
+}
+
+/** A resolved `deal_schedules` window, as stored (real instants, not day buckets). */
+export interface AdminDealWindow {
+  startsAt: Date | null;
+  endsAt: Date | null;
+  /** DEAL-005 Phase 2 recurrence. All three null = a non-recurring (Phase 1) row. */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
 }
 
 /**
@@ -645,17 +727,24 @@ export interface AdminDealProduct extends AdminProduct {
  * `AdminDealProduct` shape. Reuses `serializeAdminProduct` for the base fields
  * and appends the resolved `components` list (fetched by the route handler; `[]`
  * on the list route to avoid per-row junction joins), plus optional
- * branch-availability counts (visibility indicators — omitted when not supplied).
+ * branch-availability counts (visibility indicators — omitted when not supplied)
+ * and the DEAL-005 schedule window (always present; `null`/`null` when unscheduled).
  */
 export function serializeAdminDealProduct(
   product: ProductRow,
   components: AdminDealComponent[] = [],
   availability?: { availableBranchCount: number; activeBranchCount: number },
+  window?: AdminDealWindow | null,
 ): AdminDealProduct {
   return {
     ...serializeAdminProduct(product),
     components,
     ...(availability === undefined ? {} : availability),
+    startsAt: window?.startsAt?.toISOString() ?? null,
+    endsAt: window?.endsAt?.toISOString() ?? null,
+    recurDays: window?.recurDays ?? null,
+    recurStartTime: window?.recurStartTime ?? null,
+    recurEndTime: window?.recurEndTime ?? null,
   };
 }
 

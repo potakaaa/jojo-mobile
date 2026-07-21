@@ -50,7 +50,22 @@ export function DealList({
       header: 'Status',
       cell: (d) => {
         const status = dealStatus(d);
-        return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>;
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            {/* DEAL-005 Phase 2 — an ADDITIONAL badge, never a replacement: a
+                recurring deal still reports its absolute-window phase. */}
+            {status.recurring ? <StatusBadge tone="neutral">Recurring</StatusBadge> : null}
+            {/* DEAL-005 Phase 2 — cosmetic "live in today's Manila hours?" hint,
+                only shown for a recurring deal that is otherwise Live right now. */}
+            {status.recurringActive === true ? (
+              <StatusBadge tone="success">Active now</StatusBadge>
+            ) : null}
+            {status.recurringActive === false ? (
+              <StatusBadge tone="muted">Not active now</StatusBadge>
+            ) : null}
+          </div>
+        );
       },
     },
     {

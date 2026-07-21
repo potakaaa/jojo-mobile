@@ -38,6 +38,23 @@ export interface AdminDealProduct {
    */
   availableBranchCount?: number;
   activeBranchCount?: number;
+  /**
+   * DEAL-005 scheduled live window, as ISO instants. BOTH null = no schedule row =
+   * always live (the default every pre-DEAL-005 deal sits in). Either bound alone
+   * may be null for an open-ended window. Admin-only — the customer menu carries no
+   * window fields; an out-of-window deal is simply absent from it.
+   */
+  startsAt: string | null;
+  endsAt: string | null;
+  /**
+   * DEAL-005 Phase 2 weekly recurrence NARROWING the window above. All three null =
+   * a non-recurring deal (the Phase 1 shape). `recurDays` uses the JS `Date#getDay()`
+   * convention (0=Sun..6=Sat); the two times are Manila WALL-CLOCK `"HH:mm"` strings,
+   * half-open (`recurStartTime <= t < recurEndTime`) — NOT UTC.
+   */
+  recurDays: number[] | null;
+  recurStartTime: string | null;
+  recurEndTime: string | null;
 }
 
 /** One seeded component on a create-with-components request (Enhancement E1). */
@@ -67,6 +84,22 @@ export interface DealCreateInput {
    * creates the deal available at no branch (invisible until toggled on).
    */
   branchIds?: string[];
+  /**
+   * Optional scheduled live window (DEAL-005), ISO instants. Omitting both leaves
+   * the deal always-live (no `deal_schedules` row is written). On update, omitting a
+   * key leaves that bound as stored; sending `null` clears it — sending both as null
+   * deletes the window entirely and restores always-live.
+   */
+  startsAt?: string | null;
+  endsAt?: string | null;
+  /**
+   * Optional weekly recurrence (DEAL-005 Phase 2). The three fields move as a UNIT —
+   * the server rejects a partial triple with 400. Same omit-leaves / null-clears
+   * semantics on update as the bounds above.
+   */
+  recurDays?: number[] | null;
+  recurStartTime?: string | null;
+  recurEndTime?: string | null;
 }
 
 export type DealUpdateInput = Partial<DealCreateInput> & { isActive?: boolean };

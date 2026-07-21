@@ -20,6 +20,7 @@ import {
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
+import { resolveLiveDealProductIds } from './lib/deal-schedule';
 import { orderNumberGenerator } from './lib/order-number';
 import {
   centsToNumeric,
@@ -261,6 +262,32 @@ ordersRouter.post('/', requireSession, async (req, res) => {
             throw new OrderError(
               400,
               `Deal "${product.name}" is no longer fully available at this branch`,
+            );
+          }
+        }
+
+        // DEAL-005 (AC6 — trust boundary): a deal's scheduled window is re-checked
+        // against NOW at placement, not against when the item was added to the
+        // cart. A window that closed while the cart sat open is rejected here.
+        //
+        // Calls the SAME `isDealScheduleLive()` helper (via `resolveLiveDealProductIds`)
+        // as the menu read path (Execute-Agent Instruction E1) — never a re-derived
+        // boundary comparison — so a deal is orderable for exactly the instants it
+        // is browsable. Deals with ZERO schedule rows are always live, so this is a
+        // guaranteed no-op for every pre-DEAL-005 deal (AC3 no-backfill guarantee).
+        //
+        // Runs on `tx` and BEFORE any discount math or insert, so the throw rolls
+        // the whole placement back through the existing transaction semantics.
+        const liveDealIds = await resolveLiveDealProductIds(
+          tx,
+          [...dealProductsById.keys()],
+          new Date(),
+        );
+        for (const [dealProductId, product] of dealProductsById) {
+          if (!liveDealIds.has(dealProductId)) {
+            throw new OrderError(
+              400,
+              `Deal "${product.name}" is not currently available (its scheduled window is closed)`,
             );
           }
         }

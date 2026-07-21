@@ -1053,3 +1053,350 @@ describe('AC-E5 — should reject a components entry whose product is itself is_
     expect(res.status).toBe(400);
   });
 });
+
+// ─── DEAL-005 Phase 1 — scheduled window CRUD ────────────────────────────────
+//
+// The admin authoring surface for `deal_schedules`. AC5 (startsAt >= endsAt → 400)
+// is the boundary gate; the rest lock the "at most one row, replace never append"
+// invariant and the null/null = no row = always-live default.
+describe('DEAL-005 — scheduled window on create/update', () => {
+  const ISO_START = '2026-09-01T10:00:00.000Z';
+  const ISO_END = '2026-09-30T18:00:00.000Z';
+
+  async function scheduleRows(dealId: string) {
+    return db
+      .select()
+      .from(schema.dealSchedules)
+      .where(eq(schema.dealSchedules.deal_product_id, dealId));
+  }
+
+  function patchDeal(dealId: string, body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send(body)
+      .set('Content-Type', 'application/json');
+  }
+
+  it('defaults to NO schedule row and serializes startsAt/endsAt as null (always live)', async () => {
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBeNull();
+    expect(res.body.deal.endsAt).toBeNull();
+    expect(await scheduleRows(res.body.deal.id)).toHaveLength(0);
+  });
+
+  it('persists a window supplied at create, as exactly ONE row', async () => {
+    const res = await createDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBe(ISO_END);
+
+    const rows = await scheduleRows(res.body.deal.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(ISO_START);
+    expect(rows[0]!.ends_at?.toISOString()).toBe(ISO_END);
+  });
+
+  it('accepts an open-ended window (one bound only)', async () => {
+    const res = await createDeal({ startsAt: ISO_START });
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBeNull();
+    expect(await scheduleRows(res.body.deal.id)).toHaveLength(1);
+  });
+
+  it('AC5: rejects startsAt >= endsAt at create with 400, writing no deal at all', async () => {
+    const equal = await createDeal({ startsAt: ISO_START, endsAt: ISO_START });
+    expect(equal.status).toBe(400);
+    expect(equal.body.error).toMatch(/endsAt must be after startsAt/);
+
+    const inverted = await createDeal({ startsAt: ISO_END, endsAt: ISO_START });
+    expect(inverted.status).toBe(400);
+  });
+
+  it('AC5: rejects startsAt >= endsAt on PATCH with 400', async () => {
+    const dealId = await seedDeal();
+    const res = await patchDeal(dealId, { startsAt: ISO_END, endsAt: ISO_START });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/endsAt must be after startsAt/);
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('AC5: validates the MERGED window — a partial PATCH cannot invert a stored window', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    // Sends only startsAt, pushed past the ALREADY-STORED endsAt.
+    const res = await patchDeal(dealId, { startsAt: '2026-10-15T00:00:00.000Z' });
+    expect(res.status).toBe(400);
+
+    // The stored window is untouched — the rejected write rolled back.
+    const rows = await scheduleRows(dealId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(ISO_START);
+  });
+
+  it('PATCH REPLACES the window rather than appending a second row', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    const newStart = '2026-11-01T00:00:00.000Z';
+    const newEnd = '2026-11-05T00:00:00.000Z';
+
+    const res = await patchDeal(dealId, { startsAt: newStart, endsAt: newEnd });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBe(newStart);
+    expect(res.body.deal.endsAt).toBe(newEnd);
+
+    // Still exactly one row — the Phase-1 single-row invariant.
+    const rows = await scheduleRows(dealId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.starts_at?.toISOString()).toBe(newStart);
+  });
+
+  it('PATCH with both bounds null DELETES the row, returning the deal to always-live', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+
+    const res = await patchDeal(dealId, { startsAt: null, endsAt: null });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBeNull();
+    expect(res.body.deal.endsAt).toBeNull();
+    // Always-live is ZERO rows, never an all-null row.
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('PATCH that omits both window keys leaves the stored window untouched', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+
+    const res = await patchDeal(dealId, { name: `Renamed ${unique()}` });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBe(ISO_END);
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+  });
+
+  it('surfaces the window on the detail and list read paths', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END });
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.deal.startsAt).toBe(ISO_START);
+    expect(detail.body.deal.endsAt).toBe(ISO_END);
+
+    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    expect(list.status).toBe(200);
+    const listed = list.body.deals.find((d: { id: string }) => d.id === dealId);
+    expect(listed.startsAt).toBe(ISO_START);
+    expect(listed.endsAt).toBe(ISO_END);
+  });
+});
+
+// ─── DEAL-005 Phase 2 — weekly recurrence CRUD ───────────────────────────────
+//
+// The admin authoring surface for the three recurrence columns. AC6 (overnight span
+// rejected) and AC7 (partial triple / empty day set rejected) are the boundary gates;
+// the rest lock that recurrence and the absolute bounds are INDEPENDENTLY settable
+// and clearable on the merged-state read-then-write, and that the row still serializes
+// through the admin shape.
+//
+// Deliberately SINGLE-ROW throughout (Execute-Agent Instruction E3): there is no
+// multi-row admin authoring path in this phase. AC5's overlapping-rows union is proven
+// at the pure-function level in `routes/lib/__tests__/deal-schedule.test.ts` instead.
+describe('DEAL-005 Phase 2 — weekly recurrence on create/update', () => {
+  const ISO_START = '2026-09-01T10:00:00.000Z';
+  const ISO_END = '2026-09-30T18:00:00.000Z';
+  const RECUR = { recurDays: [1, 2, 3, 4, 5], recurStartTime: '14:00', recurEndTime: '17:00' };
+
+  async function scheduleRows(dealId: string) {
+    return db
+      .select()
+      .from(schema.dealSchedules)
+      .where(eq(schema.dealSchedules.deal_product_id, dealId));
+  }
+
+  function patchDeal(dealId: string, body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '))
+      .send(body)
+      .set('Content-Type', 'application/json');
+  }
+
+  it('defaults to NULL recurrence and serializes all three fields as null', async () => {
+    const res = await createDeal();
+    expect(res.status).toBe(201);
+    expect(res.body.deal.recurDays).toBeNull();
+    expect(res.body.deal.recurStartTime).toBeNull();
+    expect(res.body.deal.recurEndTime).toBeNull();
+  });
+
+  it('persists a recurrence supplied at create, as exactly ONE row', async () => {
+    const res = await createDeal({ startsAt: ISO_START, endsAt: ISO_END, ...RECUR });
+    expect(res.status).toBe(201);
+    expect(res.body.deal.recurDays).toEqual(RECUR.recurDays);
+    expect(res.body.deal.recurStartTime).toBe('14:00');
+    expect(res.body.deal.recurEndTime).toBe('17:00');
+
+    const rows = await scheduleRows(res.body.deal.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.recur_days).toEqual(RECUR.recurDays);
+    expect(rows[0]!.recur_start_time).toBe('14:00');
+    expect(rows[0]!.recur_end_time).toBe('17:00');
+  });
+
+  it('persists recurrence with OPEN-ENDED absolute bounds ("every weekday, forever")', async () => {
+    // Regression guard for the widened emptiness test in `writeDealSchedule`: an
+    // absolute-bounds-only check would have deleted this perfectly legal row.
+    const res = await createDeal(RECUR);
+    expect(res.status).toBe(201);
+    expect(res.body.deal.startsAt).toBeNull();
+    expect(res.body.deal.recurDays).toEqual(RECUR.recurDays);
+    expect(await scheduleRows(res.body.deal.id)).toHaveLength(1);
+  });
+
+  it('AC6: rejects recurEndTime <= recurStartTime at create with 400 (no overnight span)', async () => {
+    const overnight = await createDeal({
+      ...RECUR,
+      recurStartTime: '22:00',
+      recurEndTime: '02:00',
+    });
+    expect(overnight.status).toBe(400);
+    expect(overnight.body.error).toMatch(/recurEndTime must be after recurStartTime/);
+
+    const equal = await createDeal({ ...RECUR, recurStartTime: '14:00', recurEndTime: '14:00' });
+    expect(equal.status).toBe(400);
+  });
+
+  it('AC6: rejects recurEndTime <= recurStartTime on PATCH with 400', async () => {
+    const dealId = await seedDeal();
+    const res = await patchDeal(dealId, {
+      ...RECUR,
+      recurStartTime: '17:00',
+      recurEndTime: '14:00',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/recurEndTime must be after recurStartTime/);
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('AC6: PATCH validates the MERGED recurrence, not the payload alone', async () => {
+    const dealId = await seedDeal(RECUR);
+    // Sends only recurStartTime, pushed past the ALREADY-STORED recurEndTime.
+    const res = await patchDeal(dealId, { recurStartTime: '19:00' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/recurEndTime must be after recurStartTime/);
+
+    // The stored row is untouched by the rejected PATCH.
+    const rows = await scheduleRows(dealId);
+    expect(rows[0]!.recur_start_time).toBe('14:00');
+    expect(rows[0]!.recur_end_time).toBe('17:00');
+  });
+
+  it('AC7: rejects a PARTIAL recurrence triple with 400', async () => {
+    const daysOnly = await createDeal({ recurDays: [1] });
+    expect(daysOnly.status).toBe(400);
+    expect(daysOnly.body.error).toMatch(/must be provided together/);
+
+    const timesOnly = await createDeal({ recurStartTime: '14:00', recurEndTime: '17:00' });
+    expect(timesOnly.status).toBe(400);
+
+    const oneTime = await createDeal({ recurDays: [1], recurStartTime: '14:00' });
+    expect(oneTime.status).toBe(400);
+  });
+
+  it('AC7: rejects an EMPTY recurDays array with 400', async () => {
+    const res = await createDeal({ ...RECUR, recurDays: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/recurDays must not be empty/);
+  });
+
+  it('AC7: rejects out-of-range day numbers with 400', async () => {
+    const res = await createDeal({ ...RECUR, recurDays: [7] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/between 0 \(Sunday\) and 6 \(Saturday\)/);
+  });
+
+  it('AC7: rejects a PATCH that would leave a half-specified triple behind', async () => {
+    const dealId = await seedDeal(RECUR);
+    // Clearing only the days, leaving both times stored, is not a legal end state.
+    const res = await patchDeal(dealId, { recurDays: null });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/must be provided together/);
+  });
+
+  it('updates recurrence INDEPENDENTLY of the absolute bounds', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END, ...RECUR });
+    const res = await patchDeal(dealId, {
+      recurDays: [0, 6],
+      recurStartTime: '09:00',
+      recurEndTime: '12:00',
+    });
+    expect(res.status).toBe(200);
+    // Recurrence replaced...
+    expect(res.body.deal.recurDays).toEqual([0, 6]);
+    expect(res.body.deal.recurStartTime).toBe('09:00');
+    // ...while the absolute bounds are left exactly as stored.
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+    expect(res.body.deal.endsAt).toBe(ISO_END);
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+  });
+
+  it('updates the absolute bounds INDEPENDENTLY of recurrence', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END, ...RECUR });
+    const newEnd = '2026-10-31T18:00:00.000Z';
+    const res = await patchDeal(dealId, { endsAt: newEnd });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.endsAt).toBe(newEnd);
+    expect(res.body.deal.recurDays).toEqual(RECUR.recurDays);
+    expect(res.body.deal.recurStartTime).toBe('14:00');
+  });
+
+  it('clears recurrence while KEEPING the absolute window (row survives)', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END, ...RECUR });
+    const res = await patchDeal(dealId, {
+      recurDays: null,
+      recurStartTime: null,
+      recurEndTime: null,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.recurDays).toBeNull();
+    expect(res.body.deal.startsAt).toBe(ISO_START);
+
+    // Back to a Phase 1-shaped row — still exactly one row, not deleted.
+    const rows = await scheduleRows(dealId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.recur_days).toBeNull();
+  });
+
+  it('clearing EVERY field deletes the row and returns the deal to always-live', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, endsAt: ISO_END, ...RECUR });
+    expect(await scheduleRows(dealId)).toHaveLength(1);
+
+    const res = await patchDeal(dealId, {
+      startsAt: null,
+      endsAt: null,
+      recurDays: null,
+      recurStartTime: null,
+      recurEndTime: null,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.deal.recurDays).toBeNull();
+    expect(await scheduleRows(dealId)).toHaveLength(0);
+  });
+
+  it('surfaces recurrence on the detail and list read paths', async () => {
+    const dealId = await seedDeal({ startsAt: ISO_START, ...RECUR });
+
+    const detail = await request(app)
+      .get(`/api/admin/deals/${dealId}`)
+      .set('Cookie', adminCookies.join('; '));
+    expect(detail.status).toBe(200);
+    expect(detail.body.deal.recurDays).toEqual(RECUR.recurDays);
+    expect(detail.body.deal.recurEndTime).toBe('17:00');
+
+    const list = await request(app).get('/api/admin/deals').set('Cookie', adminCookies.join('; '));
+    const listed = list.body.deals.find((d: { id: string }) => d.id === dealId);
+    expect(listed.recurDays).toEqual(RECUR.recurDays);
+    expect(listed.recurStartTime).toBe('14:00');
+  });
+});

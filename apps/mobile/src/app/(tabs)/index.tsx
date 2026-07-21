@@ -7,6 +7,8 @@ import {
   RewardProgressCard,
   StarProgressBar,
 } from '@jojopotato/ui';
+import { formatDealScheduleSummary } from '@jojopotato/utils';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -314,7 +316,9 @@ export default function HomeScreen() {
           {/* Deals strip */}
           <View style={styles.sectionTitleRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Deals & offers</Text>
-            <Badge label="Save" mode={mode} />
+            <Pressable onPress={() => router.push('/(tabs)/deals')} hitSlop={8}>
+              <Text style={[styles.seeAll, { color: theme.tint }]}>See all</Text>
+            </Pressable>
           </View>
           {dealsQuery.isPending ? (
             <SectionLoader />
@@ -346,6 +350,7 @@ export default function HomeScreen() {
                   deal={dealProductToCard(product)}
                   mode={mode}
                   style={styles.dealCard}
+                  scheduleSummary={formatDealScheduleSummary(product.schedule)}
                   onPress={() => openDeal(product.id)}
                 />
               ))}
@@ -455,6 +460,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
+  },
+  seeAll: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
   },
   dealsStrip: {
     gap: Spacing.three,
