@@ -88,6 +88,7 @@ No schema/migration changes. No changes to `users.ts` (role route untouched, per
 ```ts
 interface AdminStaffSummary {
   id: string;
+  name: string;
   email: string;
   role: 'staff' | 'admin' | 'super_admin';
   assignedBranchId: string | null;
@@ -115,10 +116,13 @@ plan's UI is its first consumer.
 - **Risk class:** none of auth/billing/schema/migration/public-customer-API/deploy — this is an
   ADMIN-only CRUD-shaped surface reusing an already-locked auth guard and an already-locked
   role-change route verbatim. Lowest risk tier seen across the admin-dashboard program.
-- **File count:** 10 touched/new files total (7 new, 3 edited) — mid-COMPLEX, below the
+- **File count:** 11 touched/new files total (8 new, 3 edited) — mid-COMPLEX, below the
   high-risk-evidence-pack threshold (no auth/billing/schema/migration/public-API/deploy/secrets
   surface is touched).
-- **No new dependency, no new runtime surface, no new auth mechanism.**
+- **No new dependency and no new auth mechanism** (the `requireAdmin` guard and the
+  `POST /users/:id/role` route are reused unchanged). This DOES introduce a new admin-only
+  runtime surface — `GET /api/admin/staff`, `PATCH /api/admin/staff/:id/branch`, and the `/staff`
+  admin screen — inheriting the existing auth boundary rather than adding a new one.
 
 ## Backend Implementation
 
@@ -238,8 +242,10 @@ Notes for EXECUTE:
   existing constant, do not hand-roll a new role list.
 - `branches.is_active` is the raw DB column name (snake_case) — the select alias above
   (`isActive: branches.is_active`) matches `AdminBranch`'s existing camelCase convention.
-- Malformed `:id` (non-uuid) falls through the `eq()` lookup and naturally 404s (same precedent as
-  `branches.ts`) — no separate uuid-format guard needed on the param itself.
+- Malformed `:id` (non-uuid) MUST be rejected by an explicit uuid-format guard (→ 404) BEFORE the
+  `eq()`-by-id lookup: `users.id` is a Postgres `uuid` column, so passing a non-uuid string to the
+  lookup throws `22P02` → 500 rather than a clean 404. The guard runs as part of the target-404
+  resolution step, preserving the locked guard order (Zod body → target 404 → …).
 
 ### 2. `packages/api/src/routes/admin/index.ts`
 
@@ -503,7 +509,7 @@ phase (e.g. Phase 5/6's Agent-Probe UI gate) — not new debt.
 
 ## Test Gate Commands
 
-```
+```sh
 pnpm --filter @jojopotato/api test
 pnpm --filter @jojopotato/admin test
 pnpm --filter @jojopotato/admin typecheck
@@ -563,7 +569,7 @@ Known-Gap is not used as a strategy anywhere in this plan.
 
 ### Failing stubs (Fully-Automated rows)
 
-```
+```ts
 test("should return every user with role ∈ {staff, admin, super_admin}, branch name joined, customers excluded", () => {
   throw new Error("NOT IMPLEMENTED — TDD stub for: AC1 list shape + branch join + customer exclusion")
 })
@@ -617,11 +623,11 @@ test("should leave POST /api/admin/users/:id/role behavior byte-for-byte unchang
      `handleAdminError` conventions used by every other admin route (`branches.ts`, `rewards.ts`,
      `offers.ts`, `promotions.ts`). 404-for-missing-target-by-path-param then 400-for-business-rule
      violations is the same ordering used elsewhere in this codebase.
-     "Malformed `:id` (non-uuid) naturally 404s" is not just asserted — it is **empirically
-     confirmed** against 3 live precedents: `admin-offers.integration.test.ts:505-508`,
-     `admin-promotions.integration.test.ts:182-184`, and `admin-rewards.integration.test.ts:671-676`
-     all pass a non-uuid string to an `eq()`-by-id lookup and assert a clean 404, not a 500. The
-     plan's claim is verified true, not a guess.
+     Malformed `:id` (non-uuid) requires an **explicit uuid-format guard** to reach a clean 404:
+     without it, a non-uuid string hits the `users.id` `uuid` column and throws Postgres `22P02`
+     → 500. (The earlier assumption that it "naturally 404s" like some other routes was corrected
+     during EXECUTE — the guard was added and a malformed-`:id`→404 test locks it. Do not remove
+     the guard on the belief that the 404 is automatic.)
   2. **Role-change client gate is cosmetic, server is authoritative**: confirmed — `users.ts` is
      listed as untouched in Touchpoints, is NOT in the Backend Implementation section, and the
      frontend's `postStaffRole` hits `/api/admin/users/:id/role` (the existing route's real path)
@@ -758,7 +764,7 @@ this class and severity.
 
 ## Autonomous Goal Block
 
-```
+```text
 SESSION GOAL: ADM-009 — Staff Management: Branch Assignment + Role Admin Surface (issue #124)
 Charter + umbrella plan: N/A — single standalone plan (not a phase program; explicitly does not
   resume the completed 8-phase admin-dashboard_14-07-26 umbrella)

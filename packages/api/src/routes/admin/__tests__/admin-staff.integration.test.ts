@@ -250,6 +250,16 @@ describe('PATCH /api/admin/staff/:id/branch — set/clear (AC2, AC3)', () => {
     expect(await readAssignedBranch(target.id)).toBe(activeBranchId);
   });
 
+  it('assigns a valid active branch to an admin-role target (role parity)', async () => {
+    // admin/super_admin are not branch-scoped, but the route intentionally accepts
+    // them as targets (only `customer` is rejected). Lock that parity behavior.
+    const target = await makeUser('admin');
+    const res = await patchBranch(adminCookies, target.id, activeBranchId);
+    expect(res.status).toBe(200);
+    expect(res.body.staff.assignedBranchId).toBe(activeBranchId);
+    expect(res.body.staff.id).toBe(target.id);
+  });
+
   it('clears a previously-assigned user when branchId:null is sent (AC3)', async () => {
     const target = await makeUser('staff');
     await db

@@ -34,9 +34,24 @@ function StaffPage() {
 
   const activeBranches = branchesQuery.data?.filter((b) => b.isActive);
 
+  // Surface a failed branch-assignment or role-change so the user sees why the row
+  // snapped back, instead of the mutation failing silently.
+  const mutationError = assignMutation.error ?? roleMutation.error;
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 bg-background p-8 text-foreground">
       <PageHeader title="Staff" onBack={() => void navigate({ to: '/' })} />
+
+      {mutationError != null && (
+        <p
+          role="alert"
+          className="rounded-md border-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {mutationError instanceof Error
+            ? mutationError.message
+            : 'Update failed. Please try again.'}
+        </p>
+      )}
 
       <StaffList
         staff={staffQuery.data}

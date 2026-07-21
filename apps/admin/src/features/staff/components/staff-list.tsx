@@ -91,21 +91,39 @@ export function StaffList({
     {
       key: 'branch',
       header: 'Assigned branch',
-      cell: (r) => (
-        <select
-          className={selectClass}
-          aria-label={`Branch for ${r.email}`}
-          value={r.assignedBranchId ?? ''}
-          onChange={(e) => onBranchChange(r, e.target.value || null)}
-        >
-          <option value="">No branch assigned</option>
-          {branches?.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      ),
+      cell: (r) => {
+        // Only `staff` are branch-scoped — `assertBranchScope` bypasses admin/super_admin,
+        // so a branch has no effect on them. Offer the editable control (and
+        // `onBranchChange`) for staff only; admin/super_admin get a read-only marker.
+        if (r.role !== 'staff') {
+          return <StatusBadge tone="neutral">Not branch-scoped</StatusBadge>;
+        }
+        // Keep a currently-assigned but now-inactive branch (absent from the active
+        // `branches` list) selectable, so the row's value always has a matching option
+        // instead of silently rendering as "No branch assigned".
+        const assignedMissing =
+          r.assignedBranchId != null && !branches?.some((b) => b.id === r.assignedBranchId);
+        return (
+          <select
+            className={selectClass}
+            aria-label={`Branch for ${r.email}`}
+            value={r.assignedBranchId ?? ''}
+            onChange={(e) => onBranchChange(r, e.target.value || null)}
+          >
+            <option value="">No branch assigned</option>
+            {assignedMissing && (
+              <option value={r.assignedBranchId as string}>
+                {r.branchName ?? 'Assigned branch'} (inactive)
+              </option>
+            )}
+            {branches?.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        );
+      },
     },
   ];
 
