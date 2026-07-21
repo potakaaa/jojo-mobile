@@ -22,14 +22,14 @@ notes so nothing already tracked is duplicated. Findings were then synthesized i
 
 ## TL;DR
 
-Code health is generally good — no major bugs, no schema redesigns needed, money/discount paths
-are unusually disciplined. The real story is **process drift**: `process/context/all-context.md`
-hasn't been updated since 21-07-26 despite 50+ commits/merges since, leaving roughly **20 plan
-folders sitting in `active/` that are already merged into `development`**, plus 3 backlog notes
-that can be closed outright. That's the single highest-value cleanup here — bigger than any one
-code fix below.
+Code health is generally good — no schema redesigns are needed, but four high-severity findings
+require follow-up. Money/discount paths are unusually disciplined. The real story is **process
+drift**: `process/context/all-context.md` hasn't been updated since 21-07-26 despite 50+
+commits/merges since, leaving roughly **20 plan folders sitting in `active/` that are already
+merged into `development`**, plus 3 backlog notes that can be closed outright. That's the single
+highest-value cleanup here — bigger than any one code fix below.
 
-**Counts:** 4 High-severity code findings · 9 Medium · 7 Low · ~20 stale plan folders · 3
+**Counts:** 4 High-severity code findings · 12 Medium · 7 Low · ~20 stale plan folders · 3
 closeable backlog notes · 1 self-contradiction inside `all-context.md` itself.
 
 ---
@@ -108,7 +108,7 @@ screens.
 |---|---|---|---|
 | M9 | `apps/admin/src/features/products/hooks/use-admin-products.ts:67-73` | `useDeactivateProduct` invalidates only `PRODUCTS_KEY` (`['admin','products']`). The individual product key is `['admin','product', id]` — not a prefix, so never invalidated. `useUpdateProduct` (lines 55-65) correctly invalidates both. Deactivating from the list leaves a cached detail view showing stale `isActive: true`. | Also invalidate `['admin','product', id]` in the deactivate `onSuccess`. |
 | M10 | 9 files under `apps/admin/src/features/*/lib/admin-*-api.ts` | `AdminApiError` + the `request<T>()` fetch-wrapper helper (`credentials:'include'`, JSON-or-status-message error parsing) is copy-pasted near-verbatim into all 9 feature API clients. Any shared fix (non-JSON 5xx body, session-expiry redirect, timeout) must be applied 9 times or silently misses some. | Extract one `apps/admin/src/lib/admin-api-client.ts`. Distinct from the already-tracked `adm-shared-ui-composite-extraction-deferred` note (that one is about UI composites, not this data-fetch layer). |
-| M11 | 9 files across `apps/admin/src` | `formatPeso` is redefined locally in 9 places (`orders.$orderId.tsx`, `offers.$offerId.tsx`, `offer-list.tsx`, `deals.$dealId.tsx`, `deal-create-wizard.tsx`, `deal-list.tsx`, `order-list.tsx`, `product-list.tsx`) even though a canonical export already exists in `features/analytics/lib/format.ts` that nothing imports. | Move to one shared `apps/admin/src/lib/format.ts`, import everywhere. |
+| M11 | 8 files across `apps/admin/src` | `formatPeso` is redefined locally in 8 places (`orders.$orderId.tsx`, `offers.$offerId.tsx`, `offer-list.tsx`, `deals.$dealId.tsx`, `deal-create-wizard.tsx`, `deal-list.tsx`, `order-list.tsx`, `product-list.tsx`) instead of importing the canonical export in `features/analytics/lib/format.ts` — which is already imported by 2 analytics components (`top-products-table.tsx`, `analytics-dashboard.tsx`), so it's not dead, just not reused outside that feature. | Point all 8 duplicate sites at the existing `features/analytics/lib/format.ts` export (or promote it to a shared `apps/admin/src/lib/format.ts` if analytics shouldn't own it). |
 | M12 | `apps/admin/src/features/orders/hooks/use-admin-orders.ts:18-26` | `useAdminOrders` combines `useInfiniteQuery` with a 15s `refetchInterval`. React Query re-requests every already-loaded page on each interval — as an admin clicks "Load more" repeatedly, per-poll request cost grows unbounded for the session (10 loaded pages → 10 requests every 15s). | Cap pages (`maxPages`) or poll only page 1 and merge/de-dupe manually. |
 
 ---
@@ -186,8 +186,12 @@ Confident, ready to archive to `completed/`:
 - `process/features/staff-dashboard/active/staff-002-active-orders_13-07-26/` (PR #71, oldest orphan)
 - `process/general-plans/active/db-schema_09-07-26/` (PR #55, 12 days stale)
 - `process/general-plans/active/jojopotato-design-system_08-07-26/` (13 days stale, foundational)
-- `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — the one genuinely
-  accurate case (doc claim not contradicted); archivable once the SSR walkthrough is confirmed.
+
+Conditional — archive only once the stated check passes (do NOT archive yet):
+
+- `process/features/admin-dashboard/active/adm-route-guard-ssr_20-07-26/` — code merged and the
+  doc's claim is not contradicted (the one genuinely accurate case found), but the 3-scenario
+  Agent-Probe SSR walkthrough is still owed. Archive after that walkthrough is confirmed, not before.
 
 Lower confidence — worth a manual spot-check before archiving (merged-ancestor commits match
 scope, but not traced line-by-line against acceptance criteria in this audit):
@@ -204,14 +208,20 @@ in progress).
 
 ### 4.3 Backlog notes safe to close
 
+Safe to close now (verified resolved against current source, no further check needed):
+
 - `process/features/staff-dashboard/backlog/staff-002-replace-active-orders-mock_NOTE_13-07-26.md`
   — resolved by STAFF-002 (PR #71, commit `ac6b750`). Verified against current source.
 - `process/features/staff-dashboard/backlog/staff-002-order-status-type-reconciliation_NOTE_13-07-26.md`
   — requested `OrderStatus` shape verified to match `packages/types/src/order.ts` exactly (plus
   `rejected`, added later by STAFF-003).
+
+Conditional — close only after the stated check passes (do NOT close yet):
+
 - `process/features/staff-dashboard/backlog/guard-theme-mode-branch-not-merged_NOTE_20-07-26.md`
-  — its precondition ("once mobile-dark-mode-audit merges into development") is now met (PR #119).
-  Re-run `guard:theme-mode` to confirm, then close.
+  — its precondition ("once mobile-dark-mode-audit merges into development") is now met (PR #119),
+  but `guard:theme-mode` itself has not been re-run in this audit. Re-run it first; close only if
+  it passes.
 
 ### 4.4 Duplicate/conflicting folders
 
@@ -222,8 +232,10 @@ runs, these resolve themselves.
 
 ### 4.5 Prioritized quick wins
 
-1. Archive the 4 oldest orphans (10-13 days stale): `jojopotato-design-system_08-07-26`,
-   `db-schema_09-07-26`, `shared-ui-component-library_09-07-26`, `brn-001/002/003_10-07-26`.
+1. Archive the 4 oldest orphan initiatives / 6 folders (10-13 days stale):
+   `jojopotato-design-system_08-07-26`, `db-schema_09-07-26`, `shared-ui-component-library_09-07-26`,
+   and all 3 branch-locator folders `brn-001-branch-locator_10-07-26`, `brn-002-branch-details_10-07-26`,
+   `brn-003-map-view_10-07-26`.
 2. Archive the 5 `nav-00X` plans (all merged via PR #110/#120/#122/#126).
 3. Archive the 14-07-26 batch: `staff-002-active-orders`, `staff-004-product-availability`,
    `push-notifications-api`, `push-notifications-ui`.
@@ -231,7 +243,9 @@ runs, these resolve themselves.
    `mobile-dark-mode-audit`, `push-marketing-triggers`, `font-tone-payment-overflow`,
    `fix-tab-bar-visibility-nav-trap`, `kid-friendly-ui-deals-unification`,
    `mobile-alert-toast-consistency`, `star-004-reward-redemption`.
-5. Close the 3 backlog notes in §4.3.
+5. Close the 2 verifiably-resolved backlog notes in §4.3 now; close the 3rd
+   (`guard-theme-mode-branch-not-merged`) only after re-running `guard:theme-mode`.
+6. Archive `adm-route-guard-ssr_20-07-26` separately, only after its owed SSR walkthrough is confirmed.
 6. Rewrite `all-context.md`'s delta history to cover everything since 21-07-26 (PR #129 through
    at least #140 — CART-003, order-tab-enhance, AUTH-003 terms/privacy split, DEAL-005 Phase 2/3,
    PUSH-005, and more).
