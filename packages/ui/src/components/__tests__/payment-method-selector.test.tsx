@@ -95,3 +95,21 @@ test('calls onChange with the method when an enabled row is tapped', async () =>
   fireEvent.press(getByText('GCash'));
   expect(onChange).toHaveBeenCalledWith('gcash');
 });
+
+test("long 'Credit/debit card' label carries numberOfLines=2 so it wraps instead of overlapping the badge", async () => {
+  // onlinePaymentEnabled=false → card is disabled → "Unavailable" badge is
+  // rendered next to the longest real label. The label Text must wrap to a
+  // second line (numberOfLines={2}) rather than overflow into the badge.
+  const { getByText, getAllByText } = await render(
+    <PaymentMethodSelector
+      mode="light"
+      value="pay_at_branch"
+      onChange={() => {}}
+      onlinePaymentEnabled={false}
+    />,
+  );
+  // The card row is disabled here, so its "Unavailable" badge renders alongside
+  // the (unique) longest label.
+  expect(getAllByText('Unavailable').length).toBeGreaterThan(0);
+  expect(getByText('Credit/debit card').props.numberOfLines).toBe(2);
+});

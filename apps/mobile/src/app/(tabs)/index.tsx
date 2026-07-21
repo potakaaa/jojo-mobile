@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -38,8 +39,8 @@ import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
 import { useMenu } from '@/features/menu/hooks/use-menu';
 import { useNavigateToProduct } from '@/features/menu/lib/navigate-to-product';
 import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
+import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
-import { fetchOrderHistory } from '@/features/orders/lib/api-client';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -127,13 +128,12 @@ export default function HomeScreen() {
   const dealsQuery = useDealProducts();
   const rewardsQuery = useRewardsSummary();
 
-  // Focus-refetch only (no polling) — global refetchOnWindowFocus:true re-syncs on return.
-  const { data: orders } = useQuery({
-    queryKey: ['orders'],
-    queryFn: fetchOrderHistory,
-  });
-  // Most-recent non-terminal order (list is newest-first from the API).
-  const activeOrder = orders?.find((o) => !isTerminalStatus(o.status)) ?? null;
+  // Shared order-history hook (page 1 only — Home never paginates). Focus-refetch
+  // via the global refetchOnWindowFocus:true; one gesture refetch below (D5).
+  const orderHistory = useOrderHistory();
+  // Most-recent non-terminal order (page 1 is newest-first from the API).
+  const activeOrder =
+    orderHistory.data?.pages[0]?.orders.find((o) => !isTerminalStatus(o.status)) ?? null;
   const navigateToOrderTracking = useNavigateToOrderTracking();
   const navigateToProduct = useNavigateToProduct();
   const navigateToBranch = useNavigateToBranch();
@@ -196,10 +196,30 @@ export default function HomeScreen() {
   const deals = dealsQuery.data ?? [];
   const menuLoading = branchLoading || (Boolean(branchId) && menuQuery.isPending);
 
+  // One pull-to-refresh gesture refetches every mounted Home query (D5 — the
+  // whole-screen gesture, not per-widget). try/finally always clears `refreshing`
+  // even on a partial rejection; each section already renders its own error state.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        menuQuery.refetch(),
+        dealsQuery.refetch(),
+        refetchBranch(),
+        rewardsQuery.refetch(),
+        orderHistory.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          testID="home-scroll"
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
@@ -211,6 +231,15 @@ export default function HomeScreen() {
             },
           ]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              testID="home-refresh"
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
         >
           <HomeHeader />
 

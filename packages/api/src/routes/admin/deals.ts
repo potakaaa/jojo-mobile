@@ -12,6 +12,7 @@ import {
   products,
 } from '../../db/schema/index';
 import { validateRecurrence, validateWindow } from '../lib/deal-schedule';
+import { notifyNewDeal } from '../../lib/marketing-triggers';
 import {
   centsToNumeric,
   serializeAdminDealProduct,
@@ -510,6 +511,9 @@ adminDealsRouter.post('/', async (req, res) => {
         return created!;
       });
       res.status(201).json({ deal: serializeAdminDealProduct(inserted, [], undefined, window) });
+      // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
+      // best-effort. Never blocks or breaks the admin create response.
+      void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
       return;
     }
 
@@ -574,6 +578,9 @@ adminDealsRouter.post('/', async (req, res) => {
     res
       .status(201)
       .json({ deal: serializeAdminDealProduct(inserted, resolvedComponents, undefined, window) });
+    // New-deal marketing push (PUSH-005, AC6) — post-commit, fire-and-forget,
+    // best-effort. Never blocks or breaks the admin create response.
+    void notifyNewDeal(inserted.id).catch((e) => console.error('[new-deal-notify] failed', e));
   } catch (err) {
     handleAdminError(err, res, 'creating deal');
   }

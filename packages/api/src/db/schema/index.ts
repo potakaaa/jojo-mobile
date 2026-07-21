@@ -58,3 +58,9 @@ export * from './notifications';
 
 // 14. Depends on users
 export * from './device_tokens';
+
+// 15. Depends on users / branches (CART-003 — one cart per user)
+export * from './carts';
+
+// 16. Depends on carts / products (CART-003)
+export * from './cart_items';

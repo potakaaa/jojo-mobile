@@ -114,11 +114,19 @@ function findCardSurface(node: StyledNode): Record<string, unknown> {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // useInfiniteQuery return shape (G0): the screen reads `data.pages.flatMap(...)`,
+  // so a page-wrapped order is required or the list renders empty and these
+  // dark-mode assertions go vacuous.
   mockUseOrderHistory.mockReturnValue({
-    data: [order()],
-    loading: false,
+    data: { pages: [{ orders: [order()], nextCursor: null }], pageParams: [null] },
+    isPending: false,
+    isError: false,
     error: null,
     refetch: jest.fn(),
+    isRefetching: false,
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
   } as unknown as ReturnType<typeof useOrderHistory>);
   mockUseBranch.mockReturnValue({
     branches: [branch()],

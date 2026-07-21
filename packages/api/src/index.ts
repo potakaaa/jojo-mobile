@@ -14,11 +14,13 @@ import { db } from './db/client';
 import { branches, offerBranches, offers } from './db/schema/index';
 import { ADMIN_WEB_ORIGIN, auth } from './lib/auth';
 import { DEV_AUTO_LOGIN_ENABLED, DEV_LOGIN_EMAIL, takeDevLoginToken } from './lib/dev-auto-login';
+import { bootMarketingScheduler } from './lib/marketing-triggers';
 import { requireAdmin } from './lib/require-admin';
 import { requireStaff } from './lib/require-staff';
 import { requireSession } from './middleware/require-session';
 import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
+import { cartRouter } from './routes/cart';
 import { couponsRouter } from './routes/coupons';
 import { dealsRouter } from './routes/deals';
 import { notificationsRouter } from './routes/notifications';
@@ -243,6 +245,11 @@ app.use('/rewards', requireSession, rewardsRouter);
 // (preview only); coupon consumption happens exclusively in POST /orders.
 app.use('/coupons', requireSession, couponsRouter);
 
+// Cart routes (CART-003) — the server-persisted per-user cart, session-gated ONCE
+// at mount (same posture as /coupons). Every handler assumes `req.user!.id`; there
+// is no `:cartId` param, so a cart is only ever addressed via the session user.
+app.use('/cart', requireSession, cartRouter);
+
 // Staff routes — guarded ONCE at mount by requireStaff; future STAFF-002/003/004
 // routes only add handlers to staffRouter and inherit the guard.
 app.use('/api/staff', requireStaff(auth), staffRouter);
@@ -311,4 +318,12 @@ if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
       );
     }
   });
+  // Marketing/retention push triggers (PUSH-005 / #82, AC0). Start the in-process
+  // scheduler ONCE at boot so the coupon-expiring + one-more-order poll triggers
+  // actually evaluate on a real interval (they never fired before — the substrate
+  // was built by PUSH-004 but never started). Guarded by the same non-test block
+  // as app.listen, so the vitest suite never spins up a live interval (AC0's proof
+  // is the direct bootMarketingScheduler registration test + the AC0b static
+  // assertion that this call is wired here).
+  bootMarketingScheduler();
 }

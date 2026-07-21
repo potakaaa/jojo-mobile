@@ -1,18 +1,22 @@
 import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from '@jojopotato/types';
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
-import { ConfirmDialog, ScreenHeader, Toast } from '@jojopotato/ui';
+import { Ionicons } from '@expo/vector-icons';
+import { Badge, ConfirmDialog, QuantityStepper, ScreenHeader, Toast } from '@jojopotato/ui';
 import { Image } from 'expo-image';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
-import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
+import { CartHeaderButton } from '@/features/cart/components/cart-header-button';
 import { AddToCartBar, getAddToCartBarHeight } from '@/features/menu/components/add-to-cart-bar';
+import { DealContents } from '@/features/menu/components/deal-contents';
 import { useToast } from '@/features/shared/hooks/use-toast';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
@@ -51,6 +55,7 @@ export default function ProductDetailsScreen() {
   const { toast, showToast, hideToast } = useToast();
 
   const [selection, setSelection] = useState<SelectionState>({});
+  const [quantity, setQuantity] = useState(1);
   const [pendingSwitch, setPendingSwitch] = useState<{
     menuItem: MenuItem;
     opts: CartItemOption[];
@@ -115,7 +120,7 @@ export default function ProductDetailsScreen() {
     });
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!product) return;
     if (!selectedBranch) {
       showToast('Please select a pickup branch before adding items.', 'error');
@@ -141,18 +146,26 @@ export default function ProductDetailsScreen() {
     if (cart.pickupBranchId !== selectedBranch.id) {
       setBranch(selectedBranch.id);
     }
-    addItem(menuItem, opts);
-    showToast('Added to cart', 'success');
+    // Await the real outcome — a success toast the server didn't actually
+    // confirm is worse than no toast at all (it hides a lost add).
+    const ok = await addItem(menuItem, opts, quantity);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+    );
   };
 
-  const confirmBranchSwitch = () => {
+  const confirmBranchSwitch = async () => {
     const pending = pendingSwitch;
     setPendingSwitch(null);
     if (!pending || !selectedBranch) return;
     clearCart();
     setBranch(selectedBranch.id);
-    addItem(pending.menuItem, pending.opts);
-    showToast('Added to cart', 'success');
+    const ok = await addItem(pending.menuItem, pending.opts, quantity);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+    );
   };
 
   /*
@@ -190,60 +203,114 @@ export default function ProductDetailsScreen() {
     );
   }
 
+  const isDeal = product.isDeal === true;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/*
-        TOP edge only. This screen's stack runs `headerShown:false`, so the top
-        inset is ours to supply — without it the ScreenHeader title would sit
-        under the status bar. Deliberately NO 'bottom' edge: `AddToCartBar` is a
-        SIBLING outside this SafeAreaView and computes the device bottom inset
-        itself (`insets.bottom + Spacing.four`), so it stays the single source —
-        adding 'bottom' here would count it twice.
-      */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScreenHeader title="Product Details" onBack={() => router.back()} mode={mode} />
+        <ScreenHeader
+          title="Product Details"
+          onBack={() => router.back()}
+          right={<CartHeaderButton />}
+          mode={mode}
+        />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.imageWrap, { backgroundColor: Palette.creamTint2 }]}>
-            {product.imageUrl ? (
-              <Image
-                source={{ uri: product.imageUrl }}
-                style={styles.image}
-                contentFit="cover"
-                accessibilityLabel={product.name}
+          {/*
+            Hero: the product image in the brand's signature comic frame (2px ink
+            outline + hard offset shadow), with a status pill overlaid on top. The
+            back + cart controls live in the top app bar above, not on the image.
+            FadeIn keeps the entrance gentle; it is a no-op under the jest-expo
+            reanimated mock, so tests are unaffected.
+          */}
+          <Animated.View entering={FadeIn.duration(220)} style={styles.heroWrap}>
+            <View
+              style={[
+                styles.imageWrap,
+                { backgroundColor: Palette.creamTint2, borderColor: theme.border },
+                Shadows.offsetMd,
+              ]}
+            >
+              {product.imageUrl ? (
+                <Image
+                  source={{ uri: product.imageUrl }}
+                  style={styles.image}
+                  contentFit="cover"
+                  transition={200}
+                  accessibilityLabel={product.name}
+                />
+              ) : (
+                <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]}>
+                  <Ionicons name="fast-food" size={64} color={Palette.ink} />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.heroBadge}>
+              <Badge
+                label={isDeal ? 'Deal' : 'Available'}
+                variant={isDeal ? 'warning' : 'success'}
+                mode={mode}
               />
-            ) : (
-              <View style={[styles.imagePlaceholder, { backgroundColor: theme.tint }]} />
-            )}
-          </View>
+            </View>
+          </Animated.View>
 
-          <Text style={[styles.name, { color: theme.text }]}>{product.name}</Text>
-          {product.description ? (
-            <Text style={[styles.description, { color: theme.textSecondary }]}>
-              {product.description}
-            </Text>
-          ) : null}
-          <Text style={[styles.basePrice, { color: theme.text }]}>
-            {formatCurrency(product.basePriceCents)}
-          </Text>
+          <Animated.View entering={FadeInDown.duration(260).delay(60)} style={styles.body}>
+            <View style={styles.titleBlock}>
+              <Text style={[styles.name, { color: theme.text }]}>{product.name}</Text>
+              {product.description ? (
+                <Text style={[styles.description, { color: theme.textSecondary }]}>
+                  {product.description}
+                </Text>
+              ) : null}
+            </View>
 
-          {groups.map((group) => (
-            <OptionGroupSelector
-              key={group.type}
-              group={group}
-              required={requiredTypes.includes(group.type)}
-              selectedIds={selection[group.type] ?? []}
-              onChange={(optionId) => handleChange(group.type, optionId)}
-            />
-          ))}
+            <View style={styles.priceRow}>
+              <Text style={[styles.basePrice, { color: theme.text }]}>
+                {formatCurrency(product.basePriceCents)}
+              </Text>
+              <Text style={[styles.priceCaption, { color: theme.textSecondary }]}>base price</Text>
+            </View>
+
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+            {/* Quantity — new control; the sticky bar Total tracks qty × unit price. */}
+            <View style={styles.quantityRow}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Quantity</Text>
+              <QuantityStepper
+                value={quantity}
+                onChange={setQuantity}
+                min={1}
+                max={99}
+                mode={mode}
+              />
+            </View>
+
+            {groups.length > 0 ? (
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            ) : null}
+
+            {groups.map((group) => (
+              <OptionGroupSelector
+                key={group.type}
+                group={group}
+                required={requiredTypes.includes(group.type)}
+                selectedIds={selection[group.type] ?? []}
+                onChange={(optionId) => handleChange(group.type, optionId)}
+              />
+            ))}
+
+            {isDeal && product.components ? <DealContents components={product.components} /> : null}
+          </Animated.View>
         </ScrollView>
       </SafeAreaView>
 
       <AddToCartBar
         unitPriceCents={unitPriceCents}
+        quantity={quantity}
         canAdd={canAdd}
         isAvailable={product.isAvailable}
         onAdd={handleAdd}
@@ -295,12 +362,22 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.four,
+    gap: Spacing.four,
+  },
+  heroWrap: {
+    position: 'relative',
+  },
+  body: {
     gap: Spacing.three,
+  },
+  titleBlock: {
+    gap: Spacing.two,
   },
   imageWrap: {
     width: '100%',
-    aspectRatio: 1.4,
-    borderRadius: Radii.md,
+    aspectRatio: 1.25,
+    borderRadius: Radii.xl,
+    borderWidth: 2,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -312,6 +389,13 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     width: '100%',
     height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBadge: {
+    position: 'absolute',
+    top: Spacing.three,
+    right: Spacing.three,
   },
   name: {
     fontFamily: FontFamily.display.bold,
@@ -320,8 +404,32 @@ const styles = StyleSheet.create({
   description: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.body,
+    lineHeight: TypeScale.body * 1.4,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.two,
   },
   basePrice: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h2,
+  },
+  priceCaption: {
+    fontFamily: FontFamily.body.medium,
+    fontSize: TypeScale.bodySmall,
+  },
+  divider: {
+    height: 2,
+    borderRadius: Radii.full,
+    opacity: 0.5,
+  },
+  quantityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
     fontFamily: FontFamily.display.bold,
     fontSize: TypeScale.h3,
   },

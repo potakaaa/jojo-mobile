@@ -669,6 +669,87 @@ describe('GET /orders/:orderId — access control', () => {
   });
 });
 
+// ─── AC13: GET /orders cursor pagination (limit / cursor / nextCursor / clamp) ──
+describe('GET /orders — cursor pagination', () => {
+  // A small gap between placements so each `placed_at` is distinct at the ms
+  // precision the ISO-string cursor uses (rapid inserts can otherwise collide).
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // A fresh user with exactly 3 orders placed sequentially (newest last placed).
+  async function seedThreeOrders(): Promise<{ user: string; ids: string[] }> {
+    const user = (
+      await db
+        .insert(schema.users)
+        .values({ name: 'Paginator', email: `pag-${uid()}@example.com` })
+        .returning()
+    )[0]!.id;
+
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await post('/orders', { user, body: singleItemBody(branch20Id) });
+      expect(res.status).toBe(201);
+      ids.push(res.json.order.id);
+      await sleep(15);
+    }
+    return { user, ids };
+  }
+
+  it('?limit=2 returns 2 orders + a non-null string nextCursor; next page returns the remainder with nextCursor null', async () => {
+    const { user, ids } = await seedThreeOrders();
+
+    const page1 = await get('/orders?limit=2', { user });
+    expect(page1.status).toBe(200);
+    expect(page1.json.orders).toHaveLength(2);
+    expect(typeof page1.json.nextCursor).toBe('string');
+
+    const cursor = encodeURIComponent(page1.json.nextCursor);
+    const page2 = await get(`/orders?cursor=${cursor}&limit=2`, { user });
+    expect(page2.status).toBe(200);
+    expect(page2.json.orders).toHaveLength(1);
+    expect(page2.json.nextCursor).toBeNull();
+
+    // Union of both pages' IDs == the 3 seeded orders, no dup, no missing.
+    const pageIds = [
+      ...page1.json.orders.map((o: any) => o.id),
+      ...page2.json.orders.map((o: any) => o.id),
+    ];
+    expect(new Set(pageIds).size).toBe(3);
+    expect(new Set(pageIds)).toEqual(new Set(ids));
+  });
+
+  it('clamps out-of-range ?limit without erroring (?limit=0 → still returns data; ?limit=999 → capped at 50)', async () => {
+    const { user } = await seedThreeOrders();
+
+    // limit=0 clamps up to the minimum bound (1) — returns data, no error.
+    const lowered = await get('/orders?limit=0', { user });
+    expect(lowered.status).toBe(200);
+    expect(lowered.json.orders).toHaveLength(1);
+
+    // limit=999 caps at MAX_HISTORY_LIMIT (50) — with 3 seeded, returns all 3, length ≤ 50.
+    const raised = await get('/orders?limit=999', { user });
+    expect(raised.status).toBe(200);
+    expect(raised.json.orders.length).toBeLessThanOrEqual(50);
+    expect(raised.json.orders).toHaveLength(3);
+  });
+
+  it('default (no ?limit) returns the caller orders newest-first', async () => {
+    const { user, ids } = await seedThreeOrders();
+
+    const res = await get('/orders', { user });
+    expect(res.status).toBe(200);
+    expect(res.json.orders).toHaveLength(3);
+
+    // Newest-first: the last-placed order id (ids[2]) is first in the response.
+    const returnedIds = res.json.orders.map((o: any) => o.id);
+    expect(returnedIds[0]).toBe(ids[2]);
+    expect(returnedIds[2]).toBe(ids[0]);
+
+    // Ordering is strictly descending by placedAt.
+    const placedTimes = res.json.orders.map((o: any) => new Date(o.placedAt).getTime());
+    expect(placedTimes).toEqual([...placedTimes].sort((a, b) => b - a));
+  });
+});
+
 // ─── STAR-004: coupon redemption at order placement ──────────────────────────
 describe('POST /orders — coupon redemption (STAR-004)', () => {
   let rewardId: string; // reward bound to `productId` (the shared fixture)

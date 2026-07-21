@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppNotification, NotificationType } from '@jojopotato/types';
 import { EmptyState, NotificationRow, ScreenHeader, Toast, Toggle } from '@jojopotato/ui';
 import { router, useIsFocused, type Href } from 'expo-router';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
@@ -72,7 +73,18 @@ export default function NotificationsScreen() {
   */
   useHideTabBarWhile(useIsFocused());
 
-  const { notifications, markRead, marketingOptIn, setMarketingOptIn } = useNotifications();
+  const { notifications, unreadCount, markRead, markAllRead, marketingOptIn, setMarketingOptIn } =
+    useNotifications();
+
+  // Optimistic local state for the marketing toggle — updates instantly on press
+  // and reverts only when the server rejects the change. Same pattern as the staff
+  // product-availability row (uses the "previous render" sync rather than useEffect).
+  const [localOptIn, setLocalOptIn] = useState(marketingOptIn);
+  const [prevMarketingOptIn, setPrevMarketingOptIn] = useState(marketingOptIn);
+  if (prevMarketingOptIn !== marketingOptIn) {
+    setPrevMarketingOptIn(marketingOptIn);
+    setLocalOptIn(marketingOptIn);
+  }
 
   const onPressItem = (n: AppNotification) => {
     markRead(n.id);
@@ -81,8 +93,10 @@ export default function NotificationsScreen() {
   };
 
   const onToggleMarketing = async (value: boolean) => {
+    setLocalOptIn(value);
     const result = await setMarketingOptIn(value);
     if (!result.ok) {
+      setLocalOptIn(!value);
       showToast(result.error ?? 'Please try again.', 'error');
     }
   };
@@ -121,7 +135,7 @@ export default function NotificationsScreen() {
           <View style={[styles.settingsCard, { borderColor: theme.border }]}>
             <Toggle
               label="Marketing notifications"
-              value={marketingOptIn}
+              value={localOptIn}
               onValueChange={onToggleMarketing}
               mode={mode}
             />
@@ -129,6 +143,19 @@ export default function NotificationsScreen() {
               Order updates are always on and can&apos;t be turned off.
             </Text>
           </View>
+
+          {notifications.length > 0 && unreadCount > 0 && (
+            <Pressable
+              onPress={markAllRead}
+              style={styles.markAllRow}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
+            >
+              <Text style={[styles.markAllText, { color: theme.textSecondary }]}>
+                Mark all as read
+              </Text>
+            </Pressable>
+          )}
 
           {notifications.length === 0 ? (
             <EmptyState
@@ -193,6 +220,13 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: Spacing.three,
+  },
+  markAllRow: {
+    alignSelf: 'flex-end',
+  },
+  markAllText: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.bodySmall,
   },
   settingsNote: {
     fontFamily: FontFamily.body.regular,
