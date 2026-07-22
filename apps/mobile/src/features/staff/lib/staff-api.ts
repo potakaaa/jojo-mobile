@@ -124,6 +124,37 @@ export async function patchStaffOrderStatus(
 }
 
 /**
+ * Reject an order WITH a required reason
+ * (`PATCH /api/staff/orders/:orderId/reject`, B2).
+ *
+ * A dedicated route rather than the generic status PATCH: the target is always
+ * `rejected`, so no `status` is sent. `note` is optional except when
+ * `reasonCode === 'other'`, where the SERVER requires it (422) — the dialog's
+ * client-side gate is a UX convenience, never the enforcement point.
+ *
+ * Throws an Error carrying the HTTP status so the calling hook can distinguish
+ * 409 (the order moved on) from other failures, matching `patchStaffOrderStatus`.
+ */
+export async function patchStaffOrderReject(
+  orderId: string,
+  reasonCode: string,
+  note?: string,
+): Promise<StaffOrderDetail> {
+  const res = await staffFetch(`/api/staff/orders/${orderId}/reject`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reasonCode, ...(note ? { note } : {}) }),
+  });
+  if (!res.ok) {
+    throw Object.assign(new Error(`Failed to reject order: ${res.status}`), {
+      status: res.status,
+    });
+  }
+  const data = (await res.json()) as { order: StaffOrderDetail };
+  return data.order;
+}
+
+/**
  * Fetch the branch-scoped completed/terminal orders list
  * (`GET /api/staff/orders/completed`, STAFF-003).
  *

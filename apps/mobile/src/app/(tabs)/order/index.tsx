@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Badge, EmptyState, ScreenHeader, Skeleton } from '@jojopotato/ui';
+import { EmptyState, ScreenHeader, Skeleton } from '@jojopotato/ui';
 import { router } from 'expo-router';
 import { useRef } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { getFloatingTabBarClearance, useRegisterScrollToTop } from '@/components/floating-tab-bar';
 import { MaxContentWidth, Radii, Spacing } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
-import { useCart } from '@/features/cart/hooks/use-cart';
+import { CartHeaderButton } from '@/features/cart/components/cart-header-button';
 import { BranchSwitcher } from '@/features/menu/components/branch-switcher';
 import { CategoryQuickNav } from '@/features/menu/components/category-quick-nav';
 import { CategorySection } from '@/features/menu/components/category-section';
@@ -36,7 +36,6 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const { data, isLoading, isError, refetch } = useMenu();
   const { isLoading: isBranchLoading } = useBranch();
-  const { itemCount } = useCart();
   const navigateToProduct = useNavigateToProduct();
 
   const scrollRef = useRef<ScrollView>(null);
@@ -45,6 +44,10 @@ export default function OrderScreen() {
   const openProduct = (productId: string) => navigateToProduct(productId);
 
   const scrollToTop = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
+
+  // A5 stage 2: re-tapping the Order tab icon while already at this root scrolls
+  // the menu back to the top.
+  useRegisterScrollToTop('order', scrollToTop);
 
   const scrollToCategory = (categoryId: string) => {
     const y = categoryOffsets.current[categoryId];
@@ -58,18 +61,7 @@ export default function OrderScreen() {
 
   const headerRight = (
     <View style={styles.headerActions}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="View cart"
-        hitSlop={8}
-        onPress={() => router.push('/(tabs)/cart')}
-        style={styles.cartButton}
-      >
-        <Ionicons name="cart-outline" size={24} color={theme.text} />
-        {itemCount > 0 ? (
-          <Badge label={String(itemCount)} mode={mode} style={styles.cartBadge} />
-        ) : null}
-      </Pressable>
+      <CartHeaderButton />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Order history"
@@ -186,16 +178,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.four,
-  },
-  cartButton: {
-    position: 'relative',
-  },
-  cartBadge: {
-    position: 'absolute',
-    top: -Spacing.two,
-    left: Spacing.three,
-    paddingVertical: 0,
-    paddingHorizontal: Spacing.one,
   },
   skeletonWrap: {
     gap: Spacing.three,

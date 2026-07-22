@@ -1,4 +1,5 @@
 import type { MenuItem, PickupBranch, PickupTime } from '@jojopotato/types';
+import { formatCurrency } from '@jojopotato/utils';
 import {
   Badge,
   BranchCard,
@@ -15,7 +16,7 @@ import {
 } from '@jojopotato/ui';
 import { router, useIsFocused } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
@@ -431,22 +432,46 @@ export default function CartScreen() {
               >
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Items</Text>
                 {cart.items.map((line) => (
-                  <CartItem
+                  /*
+                    B4 — tap the row to edit that line's options. The tap handle is a
+                    wrapping Pressable rather than a new `onPress` prop on
+                    `@jojopotato/ui`'s `CartItem`: that component is shared and out of
+                    this plan's blast radius, and its own +/-/trash controls already
+                    stop the press from reaching here, so nesting is safe.
+                  */
+                  <Pressable
                     key={line.lineId}
-                    item={line}
-                    product={productForLine(
-                      line.menuItemId,
-                      line.productNameSnapshot,
-                      line.unitPriceCents,
-                    )}
-                    flavor={line.selectedOptions.find((o) => o.optionType === 'flavor')?.name}
-                    size={line.selectedOptions.find((o) => o.optionType === 'size')?.name}
-                    onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
-                    onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
-                    onRemove={() => removeItem(line.lineId)}
-                    mode={mode}
-                    style={styles.cartItemFlat}
-                  />
+                    testID={`cart-line-${line.lineId}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${line.productNameSnapshot}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(tabs)/product',
+                        params: {
+                          productId: line.menuItemId,
+                          lineId: line.lineId,
+                          optionIds: line.selectedOptions.map((o) => o.id).join(','),
+                          quantity: String(line.quantity),
+                        },
+                      })
+                    }
+                  >
+                    <CartItem
+                      item={line}
+                      product={productForLine(
+                        line.menuItemId,
+                        line.productNameSnapshot,
+                        line.unitPriceCents,
+                      )}
+                      flavor={line.selectedOptions.find((o) => o.optionType === 'flavor')?.name}
+                      size={line.selectedOptions.find((o) => o.optionType === 'size')?.name}
+                      onIncrement={() => updateQuantity(line.lineId, line.quantity + 1)}
+                      onDecrement={() => updateQuantity(line.lineId, line.quantity - 1)}
+                      onRemove={() => removeItem(line.lineId)}
+                      mode={mode}
+                      style={styles.cartItemFlat}
+                    />
+                  </Pressable>
                 ))}
               </View>
 
@@ -462,10 +487,19 @@ export default function CartScreen() {
                     <CouponCard
                       coupon={{
                         id: cart.appliedDiscount.refId,
-                        code: appliedDeal?.code ?? cart.appliedDiscount.label,
-                        title: appliedDeal?.title ?? 'Applied discount',
+                        /*
+                          A3 — pass the code AS-IS, never falling back to
+                          `cart.appliedDiscount.label`. This call site is the only
+                          place that knows whether a real customer-facing code
+                          exists; the old fallback pushed a descriptive label into
+                          CouponCard's solid jyellow pill, which reads as a
+                          tappable button (and clipped to "Ap…"). `undefined` here
+                          tells the card to omit the pill entirely.
+                        */
+                        code: appliedDeal?.code,
+                        title: appliedDeal?.title ?? cart.appliedDiscount.label,
                         discountLabel:
-                          appliedDeal?.discountLabel ?? `-${(discountTotalCents / 100).toFixed(2)}`,
+                          appliedDeal?.discountLabel ?? `-${formatCurrency(discountTotalCents)}`,
                         isRedeemed: false,
                       }}
                       mode={mode}

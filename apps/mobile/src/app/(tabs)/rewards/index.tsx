@@ -10,17 +10,18 @@ import {
 } from '@jojopotato/ui';
 import { formatCurrency } from '@jojopotato/utils';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { getFloatingTabBarClearance, useRegisterScrollToTop } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { resolveAndApplyDeal } from '@/features/deals/lib/apply-deal';
 import { useMenu } from '@/features/menu/hooks/use-menu';
+import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
 import { deriveRewardTiers, type RewardTier } from '@/features/rewards/lib/derive-reward-tiers';
 import { findEligibleMenuItem } from '@/features/rewards/lib/find-eligible-menu-item';
 import { useAvailableRewards } from '@/features/rewards/hooks/use-available-rewards';
@@ -87,6 +88,15 @@ export default function RewardsScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
+
+  const scrollRef = useRef<ScrollView>(null);
+
+  // A5 stage 2: re-tapping the Rewards tab icon while already at this root
+  // scrolls the page back to the top.
+  useRegisterScrollToTop('rewards', () => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+
+  // A7: star-history rows that came from a real order link back to it.
+  const navigateToOrderTracking = useNavigateToOrderTracking();
 
   const summaryQuery = useRewardsSummary();
   const availableQuery = useAvailableRewards();
@@ -208,6 +218,7 @@ export default function RewardsScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          ref={scrollRef}
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
@@ -294,8 +305,18 @@ export default function RewardsScreen() {
           ) : (
             history.map((tx) => {
               const { heading, subtitle } = splitTxLabel(tx);
-              return (
-                <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+              // A7: capture in a local so TS narrows it inside the press handler.
+              const orderId = tx.orderId;
+
+              /*
+                `StarTransaction` carries only the raw `orderId` (a UUID) — no
+                order number — so the visible reference is a plain "View order"
+                affordance rather than an unreadable id. Rows with no source
+                order (manual adjustments / reversals) render neither this text
+                nor a press handler: no dead link, no empty placeholder.
+              */
+              const rowContent = (
+                <>
                   <View style={styles.historyRowText}>
                     <Text style={[styles.historyLabel, { color: theme.text }]}>{heading}</Text>
                     {subtitle ? (
@@ -306,6 +327,11 @@ export default function RewardsScreen() {
                     <Text style={[styles.historyDate, { color: theme.textSecondary }]}>
                       {formatTxDate(tx.createdAt)}
                     </Text>
+                    {orderId != null ? (
+                      <Text style={[styles.historyOrderLink, { color: theme.accent }]}>
+                        View order
+                      </Text>
+                    ) : null}
                   </View>
                   <Text
                     style={[
@@ -315,6 +341,22 @@ export default function RewardsScreen() {
                   >
                     {tx.stars > 0 ? `+${tx.stars}` : tx.stars} ★
                   </Text>
+                </>
+              );
+
+              return orderId != null ? (
+                <Pressable
+                  key={tx.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View order for ${heading}`}
+                  onPress={() => navigateToOrderTracking(orderId)}
+                  style={[styles.historyRow, { borderBottomColor: theme.border }]}
+                >
+                  {rowContent}
+                </Pressable>
+              ) : (
+                <View key={tx.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+                  {rowContent}
                 </View>
               );
             })
@@ -425,6 +467,11 @@ const styles = StyleSheet.create({
   historyLabel: {
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.body,
+  },
+  /** A7 — the "View order" affordance on order-linked star-history rows. */
+  historyOrderLink: {
+    fontFamily: FontFamily.body.semibold,
+    fontSize: TypeScale.caption,
   },
   historySubtitle: {
     fontFamily: FontFamily.body.regular,

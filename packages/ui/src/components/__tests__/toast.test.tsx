@@ -4,7 +4,12 @@ import type { ComponentProps } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { Colors, Palette, type ThemeMode } from '../../theme';
-import { Toast, TOAST_AUTO_DISMISS_MS, type ToastSeverity } from '../toast';
+import {
+  Toast,
+  TOAST_ACTION_AUTO_DISMISS_MS,
+  TOAST_AUTO_DISMISS_MS,
+  type ToastSeverity,
+} from '../toast';
 
 async function setup(over: Partial<ComponentProps<typeof Toast>> = {}) {
   const onDismiss = jest.fn();
@@ -66,6 +71,102 @@ test('tapping the toast calls onDismiss', async () => {
   const { getByTestId, onDismiss } = await setup({ severity: 'error' });
   await fireEvent.press(getByTestId('toast-card'));
   expect(onDismiss).toHaveBeenCalledTimes(1);
+});
+
+/* ------------------------------------------------------------------ *
+ * Optional trailing action — the "tap to view the cart" affordance
+ * ------------------------------------------------------------------ */
+
+/**
+ * Re-stated here rather than imported from the component, for the same reason
+ * EXPECTED_ACCENT is: importing the private map would assert it equals itself.
+ * The action label must be legible on the severity-coloured chip, so it follows
+ * the SAME per-severity mapping as the icon — cream on green/red, ink on orange.
+ */
+const EXPECTED_ACTION_LABEL_COLOR: Record<ToastSeverity, string> = {
+  success: Palette.cream,
+  warning: Palette.ink,
+  error: Palette.cream,
+};
+
+describe('trailing action', () => {
+  // Backward compatibility: every existing call site passes neither prop.
+  test('renders no action when neither actionLabel nor onAction is given', async () => {
+    const { queryByTestId } = await setup();
+    expect(queryByTestId('toast-action')).toBeNull();
+  });
+
+  // Half a pair is a caller mistake, not a reason to render a dead affordance.
+  test.each([
+    ['label only', { actionLabel: 'View cart' }],
+    ['handler only', { onAction: jest.fn() }],
+  ])('renders no action with %s', async (_name, over) => {
+    const { queryByTestId } = await setup(over);
+    expect(queryByTestId('toast-action')).toBeNull();
+  });
+
+  test('renders the action label when both are given', async () => {
+    const { getByTestId, getByText } = await setup({
+      actionLabel: 'View cart',
+      onAction: jest.fn(),
+    });
+    expect(getByTestId('toast-action')).toBeTruthy();
+    expect(getByText('View cart')).toBeTruthy();
+  });
+
+  test('the action is a button with its label as its accessible name', async () => {
+    const { getByTestId } = await setup({ actionLabel: 'View cart', onAction: jest.fn() });
+    const action = getByTestId('toast-action');
+    expect(action.props.accessibilityRole).toBe('button');
+    expect(action.props.accessibilityLabel).toBe('View cart');
+  });
+
+  // The whole point: the action must not be swallowed by the card's dismiss.
+  test('tapping the action fires onAction and NOT onDismiss', async () => {
+    const onAction = jest.fn();
+    const { getByTestId, onDismiss } = await setup({ actionLabel: 'View cart', onAction });
+    await fireEvent.press(getByTestId('toast-action'));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  // ...and the converse: the rest of the card still dismisses as it always did.
+  test('tapping the card still dismisses, and does not fire onAction', async () => {
+    const onAction = jest.fn();
+    const { getByTestId, onDismiss } = await setup({
+      severity: 'error',
+      actionLabel: 'View cart',
+      onAction,
+    });
+    await fireEvent.press(getByTestId('toast-card'));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  // A fixed label colour would be unreadable on at least one severity chip.
+  test.each(ALL_SEVERITIES)(
+    'severity=%s resolves a legible action label colour',
+    async (severity) => {
+      const { getByTestId } = await setup({
+        severity,
+        actionLabel: 'View cart',
+        onAction: jest.fn(),
+      });
+      expect(flattenStyle(getByTestId('toast-action')).backgroundColor).toBe(
+        EXPECTED_ACCENT[severity],
+      );
+      expect(flattenStyle(getByTestId('toast-action-label')).color).toBe(
+        EXPECTED_ACTION_LABEL_COLOR[severity],
+      );
+    },
+  );
+
+  // The action sits inside a compact toast, so its own padding is under the
+  // 44dp floor by design — hitSlop must make up the difference.
+  test('the action carries a hitSlop to reach a real touch target', async () => {
+    const { getByTestId } = await setup({ actionLabel: 'View cart', onAction: jest.fn() });
+    expect(getByTestId('toast-action').props.hitSlop).toBeTruthy();
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -207,6 +308,45 @@ describe('auto-dismiss timer', () => {
       const { onDismiss } = await setup({ severity });
       await act(async () => {
         jest.advanceTimersByTime(TOAST_AUTO_DISMISS_MS * 100);
+      });
+      expect(onDismiss).not.toHaveBeenCalled();
+    },
+  );
+
+  /*
+    The component runs its OWN timer alongside `useToast`'s. If it kept the
+    short delay while the hook used the long one, the component's would fire
+    first and silently defeat the longer window — so it must read the same
+    action-aware delay.
+  */
+  test('a success WITH an action is still up at TOAST_AUTO_DISMISS_MS', async () => {
+    const { onDismiss } = await setup({
+      severity: 'success',
+      actionLabel: 'View cart',
+      onAction: jest.fn(),
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(TOAST_AUTO_DISMISS_MS);
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(TOAST_ACTION_AUTO_DISMISS_MS - TOAST_AUTO_DISMISS_MS);
+    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  // ...and warning/error with an action still schedule nothing at all.
+  test.each(['warning', 'error'] as const)(
+    '%s with an action still never auto-dismisses',
+    async (severity) => {
+      const { onDismiss } = await setup({
+        severity,
+        actionLabel: 'View cart',
+        onAction: jest.fn(),
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(TOAST_ACTION_AUTO_DISMISS_MS * 100);
       });
       expect(onDismiss).not.toHaveBeenCalled();
     },

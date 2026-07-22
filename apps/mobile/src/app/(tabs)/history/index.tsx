@@ -310,12 +310,43 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.caption,
     marginBottom: Spacing.two,
   },
+  /*
+    A4 — the sticky date-group header.
+
+    `marginTop` is deliberately ABSENT. A margin sits OUTSIDE the view's
+    background box, so while the header was pinned the top `Spacing.one` strip of
+    its sticky region was genuinely transparent and order rows scrolled visibly
+    through it, right against the date text. The identical total top gap is now
+    `paddingTop` instead (Spacing.one margin + Spacing.one padding -> Spacing.two
+    padding), which the `backgroundColor` DOES cover — same geometry, no
+    see-through strip. Do not reintroduce a VERTICAL margin here (marginTop /
+    marginVertical / margin).
+
+    The NEGATIVE `marginHorizontal` below is a different case and is safe. The
+    list's `contentContainerStyle` (styles.content) applies `Spacing.four` of
+    horizontal padding, so the header — rendered inside it — stopped
+    `Spacing.four` short of each screen edge and the cards scrolling underneath
+    showed through those two side strips. Cancelling that padding with an equal
+    negative horizontal margin, then re-adding it as `paddingHorizontal`, makes
+    the background full-bleed while leaving the text in exactly its previous
+    position. Unlike a vertical margin, this GROWS the background box rather
+    than leaving an uncovered strip. Keep the two values equal and opposite.
+
+    `zIndex` keeps the pinned header above the rows it overlaps. `elevation` is
+    intentionally NOT set: on Android it would add a drop shadow this flat
+    header is not designed for, and the transparent-margin gap above was the
+    reproducible cause. Final on-screen compositing is AC12 (Agent-Probe) —
+    jest/jsdom runs no layout pass and cannot render a scroll position.
+  */
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.one,
-    marginTop: Spacing.one,
+    marginHorizontal: -Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.one,
+    zIndex: 1,
   },
   sectionTitle: {
     fontFamily: FontFamily.display.bold,

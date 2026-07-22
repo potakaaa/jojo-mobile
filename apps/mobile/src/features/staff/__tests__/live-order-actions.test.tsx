@@ -3,14 +3,21 @@ import type { StaffOrderDetail } from '@jojopotato/types';
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
 import OrderDetailScreen from '@/app/(staff)/order-detail/[orderId]';
+import { useRejectOrder } from '@/features/staff/hooks/use-reject-order';
 import { useStaffOrderDetail } from '@/features/staff/hooks/use-staff-order-detail';
 import { useUpdateOrderStatus } from '@/features/staff/hooks/use-update-order-status';
 import { renderWithProviders } from '@/test-utils/render';
 
 /**
- * AC5 — the staff destructive confirm uses the shared themed `ConfirmDialog`,
- * with two-choice semantics IDENTICAL to the raw system alert it replaced:
- * cancel does nothing, confirm runs the same unchanged `handleTransition`.
+ * AC5 — the staff destructive confirms are themed dialogs, not raw system alerts:
+ * cancelling does nothing, confirming runs the action.
+ *
+ * B2 UPDATE: the REJECT path no longer routes through the two-choice
+ * `ConfirmDialog` + `useUpdateOrderStatus`. A reject without a reason is now an
+ * invalid request (the server 422s it), so Reject opens the reason picker and
+ * submits through `useRejectOrder`. The `ready`-order Cancel path below is
+ * UNCHANGED and still uses `ConfirmDialog` + `useUpdateOrderStatus` — the two are
+ * asserted separately so a regression in either is attributable.
  */
 
 jest.mock('@/features/staff/hooks/use-staff-order-detail', () => ({
@@ -19,6 +26,9 @@ jest.mock('@/features/staff/hooks/use-staff-order-detail', () => ({
 jest.mock('@/features/staff/hooks/use-update-order-status', () => ({
   useUpdateOrderStatus: jest.fn(),
 }));
+jest.mock('@/features/staff/hooks/use-reject-order', () => ({
+  useRejectOrder: jest.fn(),
+}));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ orderId: 'o1' }),
   useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
@@ -26,6 +36,7 @@ jest.mock('expo-router', () => ({
 
 const mockUseStaffOrderDetail = jest.mocked(useStaffOrderDetail);
 const mockUseUpdateOrderStatus = jest.mocked(useUpdateOrderStatus);
+const mockUseRejectOrder = jest.mocked(useRejectOrder);
 
 function order(status: string): StaffOrderDetail {
   return {
@@ -41,6 +52,7 @@ function order(status: string): StaffOrderDetail {
 
 function setup(status: string) {
   const mutate = jest.fn();
+  const rejectMutate = jest.fn();
   mockUseStaffOrderDetail.mockReturnValue({
     data: order(status),
     isLoading: false,
@@ -52,7 +64,13 @@ function setup(status: string) {
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useUpdateOrderStatus>);
-  return { mutate };
+  mockUseRejectOrder.mockReturnValue({
+    mutate: rejectMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useRejectOrder>);
+  return { mutate, rejectMutate };
 }
 
 beforeEach(() => {
@@ -70,8 +88,8 @@ describe('LiveOrderActions — reject path (AC5)', () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  test('confirming Reject runs the unchanged handleTransition exactly once', async () => {
-    const { mutate } = setup('pending');
+  test('submitting a reason rejects through useRejectOrder, NOT the generic status PATCH', async () => {
+    const { mutate, rejectMutate } = setup('pending');
 
     const { getByRole, getByTestId, findByText, queryByText } = await renderWithProviders(
       <OrderDetailScreen />,
@@ -79,24 +97,48 @@ describe('LiveOrderActions — reject path (AC5)', () => {
     await fireEvent.press(getByRole('button', { name: 'Reject' }));
     await findByText('Reject order?');
 
-    // The dialog's confirm button carries the SAME label as the screen button
-    // behind it ("Reject"), so target it by testID rather than by role+name.
-    await fireEvent.press(getByTestId('confirm-dialog-confirm'));
+    // B2: a reason must be picked before the dialog will submit.
+    await fireEvent.press(getByTestId('reject-reason-out_of_stock'));
+    await fireEvent.press(getByTestId('reject-submit'));
 
-    expect(mutate).toHaveBeenCalledTimes(1);
-    expect(mutate).toHaveBeenCalledWith({ orderId: 'o1', status: 'rejected' });
+    expect(rejectMutate).toHaveBeenCalledTimes(1);
+    expect(rejectMutate).toHaveBeenCalledWith({
+      orderId: 'o1',
+      reasonCode: 'out_of_stock',
+      note: undefined,
+    });
+    // The generic status PATCH must NOT also fire — a reject that went through it
+    // would land with no reason at all, which is the bug B2 exists to close.
+    expect(mutate).not.toHaveBeenCalled();
     await waitFor(() => expect(queryByText('Reject order?')).toBeNull());
   });
 
-  test('cancelling Reject never transitions and closes the dialog', async () => {
-    const { mutate } = setup('pending');
+  test('submitting without picking a reason rejects nothing (B2.1 client gate)', async () => {
+    const { mutate, rejectMutate } = setup('pending');
 
-    const { getByRole, findByText, queryByText } = await renderWithProviders(<OrderDetailScreen />);
+    const { getByRole, getByTestId, findByText } = await renderWithProviders(<OrderDetailScreen />);
     await fireEvent.press(getByRole('button', { name: 'Reject' }));
     await findByText('Reject order?');
-    await fireEvent.press(getByRole('button', { name: 'Cancel' }));
+    await fireEvent.press(getByTestId('reject-submit'));
+
+    expect(rejectMutate).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  test('cancelling Reject never transitions and closes the dialog', async () => {
+    const { mutate, rejectMutate } = setup('pending');
+
+    const { getByRole, getByTestId, findByText, queryByText } = await renderWithProviders(
+      <OrderDetailScreen />,
+    );
+    await fireEvent.press(getByRole('button', { name: 'Reject' }));
+    await findByText('Reject order?');
+    // The dismiss button is "Keep order", not "Cancel": a bare "Cancel" would be
+    // ambiguous against the ready-order Cancel ACTION button on the same screen.
+    await fireEvent.press(getByTestId('reject-cancel'));
 
     expect(mutate).not.toHaveBeenCalled();
+    expect(rejectMutate).not.toHaveBeenCalled();
     await waitFor(() => expect(queryByText('Reject order?')).toBeNull());
   });
 });

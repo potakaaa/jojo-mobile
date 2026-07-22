@@ -9,6 +9,7 @@ import type {
   Product,
   Reward,
   RewardsSummary,
+  StarTransaction,
 } from '@jojopotato/types';
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
@@ -275,5 +276,93 @@ describe('RewardsScreen — auto-redeem (AC1, AC3–AC7)', () => {
     await waitFor(() =>
       expect(queryByRole('button', { name: 'Redeem', disabled: true })).toBeNull(),
     );
+  });
+});
+
+/**
+ * A7 (AC19/AC20) — star-history rows link back to the order that earned them.
+ *
+ * `StarTransaction` carries only a raw `orderId` UUID (no order number), so the
+ * visible reference is a "View order" affordance rather than the id itself.
+ * Rows with a null `orderId` (manual adjustments / reversals) must render
+ * neither the affordance nor a press handler — no dead link, no placeholder.
+ */
+function starTx(over: Partial<StarTransaction> = {}): StarTransaction {
+  return {
+    id: 'tx-1',
+    userId: 'u1',
+    orderId: 'order-abc',
+    type: 'earned',
+    stars: 5,
+    description: 'Order JP-260722-0001',
+    createdAt: '2026-07-22T10:00:00.000Z',
+    ...over,
+  };
+}
+
+describe('RewardsScreen — star-history order linkback (A7)', () => {
+  test('AC19: an order-linked row renders a reference, is tappable, and navigates with the right id', async () => {
+    setCart('b1');
+    mockUseRewardsHistory.mockReturnValue(asQuery({ transactions: [starTx()], nextCursor: null }));
+
+    const { getByText, getByLabelText } = await renderWithProviders(<RewardsScreen />);
+
+    // Visible reference to the source order.
+    expect(getByText('View order')).toBeTruthy();
+
+    // Tappable, and it routes to that exact order's tracking screen.
+    const row = getByLabelText('View order for Order JP-260722-0001');
+    await fireEvent.press(row);
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(tabs)/tracking',
+      params: { orderId: 'order-abc' },
+    });
+  });
+
+  test('AC20: a null-orderId row renders no reference and is not tappable', async () => {
+    setCart('b1');
+    mockUseRewardsHistory.mockReturnValue(
+      asQuery({
+        transactions: [
+          starTx({ id: 'tx-2', orderId: null, description: 'Manual adjustment', stars: -3 }),
+        ],
+        nextCursor: null,
+      }),
+    );
+
+    const { queryByText, queryByLabelText } = await renderWithProviders(<RewardsScreen />);
+
+    // The row itself still renders...
+    expect(queryByText('Manual adjustment')).not.toBeNull();
+    // ...but with no order affordance and no press target.
+    expect(queryByText('View order')).toBeNull();
+    expect(queryByLabelText(/^View order for/)).toBeNull();
+  });
+
+  test('AC19/AC20: a mixed list links only the rows that have a source order', async () => {
+    setCart('b1');
+    mockUseRewardsHistory.mockReturnValue(
+      asQuery({
+        transactions: [
+          starTx({ id: 'tx-1', orderId: 'order-abc', description: 'Order one' }),
+          starTx({ id: 'tx-2', orderId: null, description: 'Manual adjustment' }),
+          starTx({ id: 'tx-3', orderId: 'order-xyz', description: 'Order three' }),
+        ],
+        nextCursor: null,
+      }),
+    );
+
+    const { queryAllByText, getByLabelText } = await renderWithProviders(<RewardsScreen />);
+
+    // Exactly the two order-backed rows carry the affordance.
+    expect(queryAllByText('View order')).toHaveLength(2);
+
+    // And each links to its OWN order, not the first one's.
+    await fireEvent.press(getByLabelText('View order for Order three'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(tabs)/tracking',
+      params: { orderId: 'order-xyz' },
+    });
   });
 });

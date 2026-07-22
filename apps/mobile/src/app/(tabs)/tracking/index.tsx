@@ -1,3 +1,4 @@
+import { CUSTOMER_CANCEL_REASONS } from '@jojopotato/types';
 import { Button, ConfirmDialog, OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -13,8 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { useCancelOrder } from '@/features/orders/hooks/use-cancel-order';
 import { useCompleteOrder } from '@/features/orders/hooks/use-complete-order';
 import { isTerminalStatus, useOrderQuery } from '@/features/orders/hooks/use-order-query';
+import { ReasonDialog } from '@/features/shared/components/reason-dialog';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -62,6 +65,7 @@ export default function OrderTrackingScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error, refetch } = useOrderQuery(orderId);
   const completion = useCompleteOrder();
+  const cancellation = useCancelOrder();
 
   /*
     The customer's own "picked up" confirmation. Unlike the staff button
@@ -76,6 +80,13 @@ export default function OrderTrackingScreen() {
     has three return branches and hooks must run on every one (Rules of Hooks).
   */
   const [confirmVisible, setConfirmVisible] = useState(false);
+
+  /*
+    B3 — the customer's own cancel. Same "hooks run on every return branch"
+    constraint as `confirmVisible` above, so it is declared here rather than
+    beside the JSX that uses it.
+  */
+  const [cancelVisible, setCancelVisible] = useState(false);
 
   /*
     Hide the floating tab bar on this screen. Tracking is a leaf screen you enter
@@ -224,6 +235,58 @@ export default function OrderTrackingScreen() {
                   completion.mutate(orderId);
                 }}
                 onCancel={() => setConfirmVisible(false)}
+              />
+            </View>
+          )}
+
+          {/*
+            B3 — customer self-cancel. Shown ONLY for `pending`, an equality check
+            for the same reason as `ready` above: `pending` is the single status the
+            server route accepts, so offering it any later just earns a 409. The
+            reason is OPTIONAL here (unlike the staff reject), so the dialog can be
+            submitted with nothing selected.
+
+            SURFACE / THEMING: like the pickup block, this sits on the screen's own
+            themed background, so it takes the DEVICE-SCHEME `mode` — do not copy
+            the timeline's pinned `mode="light"` down here.
+          */}
+          {order.status === 'pending' && (
+            <View style={styles.pickupAction}>
+              <Button
+                testID="cancel-order-button"
+                label="Cancel order"
+                variant="outline"
+                mode={mode}
+                loading={cancellation.isPending}
+                onPress={() => setCancelVisible(true)}
+              />
+              {cancellation.error ? (
+                <Text style={[styles.pickupError, { color: theme.accent }]}>
+                  {cancellation.error.message}
+                </Text>
+              ) : null}
+              {/*
+                Inside the `pending` gate on purpose, sharing one lifecycle with the
+                button above — identical rationale to the pickup ConfirmDialog: if a
+                poll lands `accepted` while this is open, there is nothing left to
+                cancel and confirming would earn a guaranteed 409.
+              */}
+              <ReasonDialog
+                visible={cancelVisible}
+                submitting={cancellation.isPending}
+                mode={mode}
+                title="Cancel this order?"
+                message="You can cancel while the branch has not accepted it yet. Telling us why is optional."
+                reasons={CUSTOMER_CANCEL_REASONS}
+                submitLabel="Cancel order"
+                submittingLabel="Cancelling…"
+                cancelLabel="Keep order"
+                testIDPrefix="cancel-order"
+                onCancel={() => setCancelVisible(false)}
+                onSubmit={(reasonCode, note) => {
+                  setCancelVisible(false);
+                  cancellation.mutate({ orderId, reasonCode, note });
+                }}
               />
             </View>
           )}

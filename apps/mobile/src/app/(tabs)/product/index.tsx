@@ -1,4 +1,10 @@
-import type { CartItemOption, MenuItem, ProductOption, ProductOptionType } from '@jojopotato/types';
+import type {
+  CartItemOption,
+  MenuItem,
+  ProductDetail,
+  ProductOption,
+  ProductOptionType,
+} from '@jojopotato/types';
 import { formatCurrency, getRequiredOptionTypes } from '@jojopotato/utils';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge, ConfirmDialog, QuantityStepper, ScreenHeader, Toast } from '@jojopotato/ui';
@@ -17,7 +23,7 @@ import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { CartHeaderButton } from '@/features/cart/components/cart-header-button';
 import { AddToCartBar, getAddToCartBarHeight } from '@/features/menu/components/add-to-cart-bar';
 import { DealContents } from '@/features/menu/components/deal-contents';
-import { useToast } from '@/features/shared/hooks/use-toast';
+import { useToast, type ToastState, type UseToastResult } from '@/features/shared/hooks/use-toast';
 import { OptionGroupSelector } from '@/features/menu/components/option-group-selector';
 import { useProductDetails } from '@/features/menu/hooks/use-product-details';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -32,13 +38,19 @@ export default function ProductDetailsScreen() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
-  // Needed for the Toast's clearance: the add-to-cart bar's own paddingBottom is
-  // the floating-tab-bar clearance on iOS/Android, which is insets-dependent.
-  const insets = useSafeAreaInsets();
-  const { productId } = useLocalSearchParams<{ productId: string }>();
+  /*
+    B4 — cart line edit. When `lineId` is present the screen is EDITING an existing
+    cart line rather than adding a new one: `optionIds` (a comma-separated list) and
+    `quantity` prefill the selectors, and Save calls the edit path instead of add.
+    All three are optional, so the plain add flow is completely unchanged.
+  */
+  const { productId, lineId, optionIds, quantity } = useLocalSearchParams<{
+    productId: string;
+    lineId?: string;
+    optionIds?: string;
+    quantity?: string;
+  }>();
   const { data: product, isLoading, isError } = useProductDetails(productId);
-  const { cart, addItem, setBranch, clearCart } = useCart();
-  const { selectedBranch } = useBranch();
 
   /*
     Hide the floating tab bar on this screen — it is the ROOT of its own
@@ -53,120 +65,6 @@ export default function ProductDetailsScreen() {
   */
   useHideTabBarWhile(useIsFocused());
   const { toast, showToast, hideToast } = useToast();
-
-  const [selection, setSelection] = useState<SelectionState>({});
-  const [quantity, setQuantity] = useState(1);
-  const [pendingSwitch, setPendingSwitch] = useState<{
-    menuItem: MenuItem;
-    opts: CartItemOption[];
-  } | null>(null);
-
-  // The backend already returns options grouped by type (a `Record`), so build
-  // the display groups inline in fixed order — no client-side `groupOptions()`
-  // (plan Gap E). Server pre-sorts options within each group by `sort_order`.
-  const groups = useMemo(
-    () =>
-      product
-        ? GROUP_ORDER.filter((type) => (product.options[type]?.length ?? 0) > 0).map((type) => ({
-            type,
-            options: product.options[type],
-          }))
-        : [],
-    [product],
-  );
-
-  const requiredTypes = useMemo(
-    () => (product ? getRequiredOptionTypes(Object.values(product.options).flat()) : []),
-    [product],
-  );
-
-  // Flatten current selection to the option objects it represents.
-  const selectedOptions = useMemo<ProductOption[]>(() => {
-    if (!product) return [];
-    const selectedIds = new Set(Object.values(selection).flat());
-    return Object.values(product.options)
-      .flat()
-      .filter((option) => selectedIds.has(option.optionId));
-  }, [product, selection]);
-
-  // Unit price is a trivial cents sum: base + selected option deltas (all cents).
-  const unitPriceCents = useMemo(() => {
-    if (!product) return 0;
-    return (
-      product.basePriceCents +
-      selectedOptions.reduce((sum, option) => sum + option.priceDeltaCents, 0)
-    );
-  }, [product, selectedOptions]);
-
-  const canAdd = useMemo(() => {
-    if (!product) return false;
-    return requiredTypes.every((type) => {
-      const selected = selection[type]?.[0];
-      return selected !== undefined && selected !== '';
-    });
-  }, [product, requiredTypes, selection]);
-
-  const handleChange = (type: ProductOptionType, optionId: string) => {
-    setSelection((prev) => {
-      if (type === 'add_on') {
-        const current = prev.add_on ?? [];
-        const next = current.includes(optionId)
-          ? current.filter((id) => id !== optionId)
-          : [...current, optionId];
-        return { ...prev, add_on: next };
-      }
-      // Single-select groups (size / flavor).
-      return { ...prev, [type]: [optionId] };
-    });
-  };
-
-  const handleAdd = async () => {
-    if (!product) return;
-    if (!selectedBranch) {
-      showToast('Please select a pickup branch before adding items.', 'error');
-      return;
-    }
-
-    const opts: CartItemOption[] = selectedOptions.map((option) => ({
-      id: option.optionId,
-      optionType: option.optionType,
-      name: option.name,
-      priceDeltaCents: option.priceDeltaCents,
-    }));
-    const menuItem = productToMenuItem(product, product.isAvailable);
-
-    const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
-    if (isSwitchingBranch) {
-      // Friendly confirm instead of a raw system alert (AC-A4). The underlying
-      // clear-and-switch action is unchanged — it just runs on confirm.
-      setPendingSwitch({ menuItem, opts });
-      return;
-    }
-
-    if (cart.pickupBranchId !== selectedBranch.id) {
-      setBranch(selectedBranch.id);
-    }
-    // Await the real outcome — a success toast the server didn't actually
-    // confirm is worse than no toast at all (it hides a lost add).
-    const ok = await addItem(menuItem, opts, quantity);
-    showToast(
-      ok ? 'Added to cart' : 'Could not add item — please try again',
-      ok ? 'success' : 'error',
-    );
-  };
-
-  const confirmBranchSwitch = async () => {
-    const pending = pendingSwitch;
-    setPendingSwitch(null);
-    if (!pending || !selectedBranch) return;
-    clearCart();
-    setBranch(selectedBranch.id);
-    const ok = await addItem(pending.menuItem, pending.opts, quantity);
-    showToast(
-      ok ? 'Added to cart' : 'Could not add item — please try again',
-      ok ? 'success' : 'error',
-    );
-  };
 
   /*
     Loading / error early returns get the SAME header + top inset as the loaded
@@ -202,6 +100,261 @@ export default function ProductDetailsScreen() {
       </View>
     );
   }
+
+  /*
+    A2 — state reset on product change. `key={productId}` forces React to fully
+    unmount + remount `ProductDetailsBody` whenever the route's `productId`
+    param changes, which resets ALL of its `useState` (quantity, selection,
+    pendingSwitch) in one mechanism.
+
+    This is required because `product/_layout.tsx`'s static `index` anchor
+    deliberately makes expo-router downgrade PUSH -> NAVIGATE (NAV-006), so
+    navigating product A -> product B reuses this same mounted screen instance
+    and would otherwise carry A's quantity/selection over to B.
+
+    A `useEffect`-driven per-field reset is NOT an option here: this branch's
+    `react-hooks/set-state-in-effect` ESLint rule forbids it, and a manual reset
+    list silently rots as new state is added. The remount has neither problem.
+  */
+  return (
+    <ProductDetailsBody
+      key={productId}
+      product={product}
+      toast={toast}
+      showToast={showToast}
+      hideToast={hideToast}
+      editLineId={lineId}
+      prefillOptionIds={optionIds}
+      prefillQuantity={quantity}
+    />
+  );
+}
+
+interface ProductDetailsBodyProps {
+  product: ProductDetail;
+  /*
+    Toast state is owned by the OUTER screen (its `useToast()` timer must survive
+    a product switch), so the three fields are threaded in explicitly rather than
+    re-derived here. Never spread these into `<Toast>` — `check-theme-mode.mjs`
+    hard-fails on spread attributes at a themed component's call site.
+  */
+  toast: ToastState;
+  showToast: UseToastResult['showToast'];
+  hideToast: () => void;
+  /** B4: present ⇒ editing this cart line instead of adding a new one. */
+  editLineId?: string;
+  /** B4: comma-separated option ids to preselect (the edited line's current set). */
+  prefillOptionIds?: string;
+  /** B4: the edited line's current quantity, as a route-param string. */
+  prefillQuantity?: string;
+}
+
+/**
+ * The stateful half of Product Details. Remounted (via `key={productId}`) on
+ * every product change — see the note at the call site above.
+ *
+ * Theme, insets, cart, and branch are re-derived from their own hooks here
+ * rather than threaded as props: none of them are product-scoped, all are cheap
+ * context reads, and keeping them local holds the prop surface to the four
+ * values that genuinely must outlive the remount.
+ */
+function ProductDetailsBody({
+  product,
+  toast,
+  showToast,
+  hideToast,
+  editLineId,
+  prefillOptionIds,
+  prefillQuantity,
+}: ProductDetailsBodyProps) {
+  const theme = useTheme();
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
+  // Needed for the Toast's clearance: the add-to-cart bar's own paddingBottom is
+  // the floating-tab-bar clearance on iOS/Android, which is insets-dependent.
+  const insets = useSafeAreaInsets();
+  const { cart, addItem, editCartLine, setBranch, clearCart } = useCart();
+  const { selectedBranch } = useBranch();
+
+  const isEditing = editLineId !== undefined && editLineId !== '';
+
+  /*
+    B4 — seed the selectors from the edited line. Computed as the `useState`
+    INITIALIZER, not in a `useEffect`: this branch's `react-hooks/set-state-in-effect`
+    rule forbids the effect form, and the screen already remounts on `productId`
+    change (`key={productId}`), so a one-shot initializer is the right lifetime.
+    Unknown/stale option ids are dropped rather than trusted — the line's stored
+    options may reference an option that has since been deactivated.
+  */
+  const [selection, setSelection] = useState<SelectionState>(() => {
+    if (!prefillOptionIds) return {};
+    const ids = new Set(prefillOptionIds.split(',').filter(Boolean));
+    const seeded: SelectionState = {};
+    for (const option of Object.values(product.options).flat()) {
+      if (!ids.has(option.optionId)) continue;
+      if (option.optionType === 'add_on') {
+        seeded.add_on = [...(seeded.add_on ?? []), option.optionId];
+      } else {
+        seeded[option.optionType] = [option.optionId];
+      }
+    }
+    return seeded;
+  });
+  const [quantity, setQuantity] = useState(() => {
+    const parsed = Number.parseInt(prefillQuantity ?? '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  });
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    menuItem: MenuItem;
+    opts: CartItemOption[];
+  } | null>(null);
+
+  // The backend already returns options grouped by type (a `Record`), so build
+  // the display groups inline in fixed order — no client-side `groupOptions()`
+  // (plan Gap E). Server pre-sorts options within each group by `sort_order`.
+  const groups = useMemo(
+    () =>
+      GROUP_ORDER.filter((type) => (product.options[type]?.length ?? 0) > 0).map((type) => ({
+        type,
+        options: product.options[type],
+      })),
+    [product],
+  );
+
+  const requiredTypes = useMemo(
+    () => getRequiredOptionTypes(Object.values(product.options).flat()),
+    [product],
+  );
+
+  // Flatten current selection to the option objects it represents.
+  const selectedOptions = useMemo<ProductOption[]>(() => {
+    const selectedIds = new Set(Object.values(selection).flat());
+    return Object.values(product.options)
+      .flat()
+      .filter((option) => selectedIds.has(option.optionId));
+  }, [product, selection]);
+
+  // Unit price is a trivial cents sum: base + selected option deltas (all cents).
+  // A2 note: `selection` resets to `{}` on remount, so `selectedOptions` is empty
+  // and this collapses back to the bare base price for the newly-opened product.
+  const unitPriceCents = useMemo(
+    () =>
+      product.basePriceCents +
+      selectedOptions.reduce((sum, option) => sum + option.priceDeltaCents, 0),
+    [product, selectedOptions],
+  );
+
+  // AC7: derives purely from `selection` + `requiredTypes`, both of which the
+  // remount resets/recomputes — so eligibility can never be left evaluating the
+  // previous product's stale selection.
+  const canAdd = useMemo(
+    () =>
+      requiredTypes.every((type) => {
+        const selected = selection[type]?.[0];
+        return selected !== undefined && selected !== '';
+      }),
+    [requiredTypes, selection],
+  );
+
+  const handleChange = (type: ProductOptionType, optionId: string) => {
+    setSelection((prev) => {
+      if (type === 'add_on') {
+        const current = prev.add_on ?? [];
+        const next = current.includes(optionId)
+          ? current.filter((id) => id !== optionId)
+          : [...current, optionId];
+        return { ...prev, add_on: next };
+      }
+      // Single-select groups (size / flavor).
+      return { ...prev, [type]: [optionId] };
+    });
+  };
+
+  /** The current selection in the shape both the add and edit paths send. */
+  const buildOpts = (): CartItemOption[] =>
+    selectedOptions.map((option) => ({
+      id: option.optionId,
+      optionType: option.optionType,
+      name: option.name,
+      priceDeltaCents: option.priceDeltaCents,
+    }));
+
+  /*
+    B4 — the edit-save path. DELIBERATELY a separate handler from `handleAdd`, not
+    a branch inside it.
+
+    `handleAdd` contains branch-switch-confirm logic: when the cart holds items for
+    a DIFFERENT branch it opens the `pendingSwitch` dialog, and confirming that
+    dialog calls `clearCart()` before adding. An edited line is BY CONSTRUCTION
+    already in the cart's current branch, so that path is unreachable-by-intent
+    here — but reusing `handleAdd` would still expose it to a stale/mismatched
+    `selectedBranch`, and the failure mode is severe: the user believes they are
+    editing one line and the ENTIRE cart is wiped instead.
+
+    So this handler never reads `isSwitchingBranch`, never calls `setPendingSwitch`,
+    and never calls `clearCart` or `setBranch`. It only ever replaces one line's
+    options. That absence is asserted by a regression test.
+  */
+  const handleSaveEdit = async () => {
+    if (!isEditing) return;
+    const ok = await editCartLine(editLineId, buildOpts());
+    if (!ok) {
+      showToast('Could not update the item — please try again', 'error');
+      return;
+    }
+    showToast('Item updated', 'success');
+    router.back();
+  };
+
+  const handleAdd = async () => {
+    if (!selectedBranch) {
+      showToast('Please select a pickup branch before adding items.', 'error');
+      return;
+    }
+
+    const opts: CartItemOption[] = buildOpts();
+    const menuItem = productToMenuItem(product, product.isAvailable);
+
+    const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
+    if (isSwitchingBranch) {
+      // Friendly confirm instead of a raw system alert (AC-A4). The underlying
+      // clear-and-switch action is unchanged — it just runs on confirm.
+      setPendingSwitch({ menuItem, opts });
+      return;
+    }
+
+    if (cart.pickupBranchId !== selectedBranch.id) {
+      setBranch(selectedBranch.id);
+    }
+    // Await the real outcome — a success toast the server didn't actually
+    // confirm is worse than no toast at all (it hides a lost add).
+    const ok = await addItem(menuItem, opts, quantity);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+      // Success only: the confirmation was a dead end before this — nothing in
+      // it led anywhere. The failure toast gets no action; there is nothing to
+      // view.
+      ok ? { label: 'View cart', onPress: () => router.push('/(tabs)/cart') } : undefined,
+    );
+  };
+
+  const confirmBranchSwitch = async () => {
+    const pending = pendingSwitch;
+    setPendingSwitch(null);
+    if (!pending || !selectedBranch) return;
+    clearCart();
+    setBranch(selectedBranch.id);
+    const ok = await addItem(pending.menuItem, pending.opts, quantity);
+    showToast(
+      ok ? 'Added to cart' : 'Could not add item — please try again',
+      ok ? 'success' : 'error',
+      // Success only: the confirmation was a dead end before this — nothing in
+      // it led anywhere. The failure toast gets no action; there is nothing to
+      // view.
+      ok ? { label: 'View cart', onPress: () => router.push('/(tabs)/cart') } : undefined,
+    );
+  };
 
   const isDeal = product.isDeal === true;
 
@@ -330,7 +483,7 @@ export default function ProductDetailsScreen() {
         quantity={quantity}
         canAdd={canAdd}
         isAvailable={product.isAvailable}
-        onAdd={handleAdd}
+        onAdd={isEditing ? handleSaveEdit : handleAdd}
       />
 
       <ConfirmDialog
@@ -352,6 +505,8 @@ export default function ProductDetailsScreen() {
         mode={mode}
         bottomOffset={getAddToCartBarHeight(insets.bottom) + Spacing.two}
         onDismiss={hideToast}
+        actionLabel={toast.actionLabel}
+        onAction={toast.onAction}
       />
     </View>
   );

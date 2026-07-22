@@ -10,7 +10,7 @@ import {
 import { formatDealScheduleSummary } from '@jojopotato/utils';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { getFloatingTabBarClearance, useRegisterScrollToTop } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
@@ -110,6 +110,12 @@ export default function HomeScreen() {
   const scheme = useColorScheme();
   const mode = scheme === 'dark' ? 'dark' : 'light';
   const insets = useSafeAreaInsets();
+
+  const scrollRef = useRef<ScrollView>(null);
+
+  // A5 stage 2: re-tapping the Home tab icon while already at this root scrolls
+  // the page back to the top.
+  useRegisterScrollToTop('index', () => scrollRef.current?.scrollTo({ y: 0, animated: true }));
 
   /**
    * Active Home category filter, tagged with the branch it was chosen in.
@@ -223,6 +229,7 @@ export default function HomeScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          ref={scrollRef}
           testID="home-scroll"
           style={styles.scroll}
           contentContainerStyle={[

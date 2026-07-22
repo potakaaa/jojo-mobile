@@ -51,6 +51,37 @@ export async function completeOrder(orderId: string): Promise<Order> {
   return order;
 }
 
+/**
+ * `PATCH /orders/:orderId/cancel` — the customer cancels their own order while it
+ * is still `pending`, i.e. before staff have accepted it (session required).
+ *
+ * Unlike `completeOrder` this route DOES take a body — but only a reason, never a
+ * target status: the route always means `pending → cancelled`, so the customer
+ * still cannot steer the order into some other state. Both reason fields are
+ * optional; the server stores whatever is sent verbatim and 422s an unrecognised
+ * `reasonCode`.
+ *
+ * Rejects (via `apiRequest`) on 403 (not the caller's order), 409 (the order is no
+ * longer `pending`, e.g. staff accepted it first), 404, and 422.
+ */
+export async function cancelOrder(
+  orderId: string,
+  reasonCode?: string,
+  note?: string,
+): Promise<Order> {
+  const { order } = await apiRequest<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}/cancel`,
+    {
+      method: 'PATCH',
+      body: {
+        ...(reasonCode ? { reasonCode } : {}),
+        ...(note ? { note } : {}),
+      },
+    },
+  );
+  return order;
+}
+
 /** One page of order history: the orders plus the cursor for the next (older) page. */
 export interface OrderHistoryPage {
   orders: Order[];

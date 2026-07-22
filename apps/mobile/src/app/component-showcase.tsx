@@ -149,11 +149,14 @@ const SAMPLE_CART_ITEM: CartItemData = {
   selectedOptions: [],
 };
 
+// Mixed price-delta fixture so the showcase demonstrates all three states of the
+// A1 rule: zero/absent delta renders no price text, positive renders with a
+// leading "+", negative renders sign-and-colour-distinct from positive.
 const SAMPLE_FLAVORS: Flavor[] = [
   { id: 'flv-salt', name: 'Sea Salt' },
-  { id: 'flv-cheese', name: 'Cheese' },
-  { id: 'flv-sourcream', name: 'Sour Cream' },
-  { id: 'flv-bbq', name: 'Smoky BBQ' },
+  { id: 'flv-cheese', name: 'Cheese', priceDeltaCents: 1200 },
+  { id: 'flv-sourcream', name: 'Sour Cream', priceDeltaCents: 0 },
+  { id: 'flv-bbq', name: 'Smoky BBQ', priceDeltaCents: -500 },
 ];
 
 const SAMPLE_SIZES: Size[] = [

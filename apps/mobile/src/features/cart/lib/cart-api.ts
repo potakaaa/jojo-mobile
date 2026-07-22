@@ -74,6 +74,27 @@ export const updateCartItemQuantity = (lineId: string, quantity: number): Promis
     body: { quantity },
   }).then(unwrap);
 
+/**
+ * Replace a line's selected options (B4). `updateCartItemQuantity` above only ever
+ * sends `{quantity}`, so this is a separate function rather than a widened one —
+ * the two hit the same route but mean different things, and keeping them apart
+ * makes it impossible to accidentally blank a line's options on a quantity change.
+ *
+ * The body carries NO `productId`: the server re-validates and re-prices the new
+ * options against the line's OWN stored product, so an edit can never swap products.
+ * If the new option set collides with another line, the server merges them and the
+ * returned cart has one fewer line — the caller must render whatever comes back
+ * rather than assuming the edited `lineId` still exists.
+ */
+export const updateCartItemOptions = (
+  lineId: string,
+  selectedOptions: { optionId: string }[],
+): Promise<ApiCart> =>
+  apiRequest<CartEnvelope>(`/cart/items/${lineId}`, {
+    method: 'PATCH',
+    body: { selectedOptions },
+  }).then(unwrap);
+
 export const removeCartItem = (lineId: string): Promise<ApiCart> =>
   apiRequest<CartEnvelope>(`/cart/items/${lineId}`, { method: 'DELETE' }).then(unwrap);
 

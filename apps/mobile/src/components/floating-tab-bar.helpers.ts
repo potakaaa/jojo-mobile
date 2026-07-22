@@ -33,6 +33,29 @@ export function isNestedTabRoute(route: NestedRouteLike): boolean {
   return route.state != null && route.state.index != null && route.state.index > 0;
 }
 
+/** What a tab-icon tap should do, per SPEC A5's two-stage rule. */
+export type TabTapAction = 'pop-to-root' | 'scroll-to-top' | 'no-op';
+
+/**
+ * Decide what tapping a tab icon should do (SPEC A5 / AC16).
+ *
+ * Two-stage rule, and the stages are MUTUALLY EXCLUSIVE — one tap never both
+ * pops and scrolls:
+ * - tapping a DIFFERENT tab -> `no-op` here; the caller keeps its existing plain
+ *   `navigation.navigate(routeName)` behaviour, untouched.
+ * - re-tapping the ACTIVE tab while it shows a pushed screen -> `pop-to-root`.
+ *   The newly-revealed root keeps whatever scroll position it already had.
+ * - re-tapping the ACTIVE tab when it is ALREADY at its root -> `scroll-to-top`.
+ *
+ * SCOPE: this proves only the DECISION. Whether the resulting native pop or
+ * native animated scroll actually happens on screen is AC14/AC15 — Agent-Probe
+ * only, since this repo has no RN navigation/gesture E2E runner.
+ */
+export function decideTabTapAction(isSameTabReTap: boolean, isAtRoot: boolean): TabTapAction {
+  if (!isSameTabReTap) return 'no-op';
+  return isAtRoot ? 'scroll-to-top' : 'pop-to-root';
+}
+
 /**
  * Bottom clearance (dp) a screen must reserve, with the two terms it is made of
  * kept SEPARATE — this split is the whole point of the function:
