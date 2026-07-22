@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as StaffInviteAcceptRouteImport } from './routes/staff-invite-accept'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as dashboardRouteRouteImport } from './routes/(dashboard)/route'
 import { Route as dashboardIndexRouteImport } from './routes/(dashboard)/index'
@@ -35,6 +36,11 @@ import { Route as dashboardOrdersOrderIdRouteImport } from './routes/(dashboard)
 import { Route as dashboardOffersOfferIdRouteImport } from './routes/(dashboard)/offers.$offerId'
 import { Route as dashboardDealsDealIdRouteImport } from './routes/(dashboard)/deals.$dealId'
 
+const StaffInviteAcceptRoute = StaffInviteAcceptRouteImport.update({
+  id: '/staff-invite-accept',
+  path: '/staff-invite-accept',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -164,6 +170,7 @@ const dashboardDealsDealIdRoute = dashboardDealsDealIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
+  '/staff-invite-accept': typeof StaffInviteAcceptRoute
   '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/staff-invite-accept': typeof StaffInviteAcceptRoute
   '/analytics': typeof dashboardAnalyticsRoute
   '/branches': typeof dashboardBranchesRoute
   '/categories': typeof dashboardCategoriesRoute
@@ -211,6 +219,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(dashboard)': typeof dashboardRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/staff-invite-accept': typeof StaffInviteAcceptRoute
   '/(dashboard)/analytics': typeof dashboardAnalyticsRoute
   '/(dashboard)/branches': typeof dashboardBranchesRoute
   '/(dashboard)/categories': typeof dashboardCategoriesRoute
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/login'
+    | '/staff-invite-accept'
     | '/analytics'
     | '/branches'
     | '/categories'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/staff-invite-accept'
     | '/analytics'
     | '/branches'
     | '/categories'
@@ -285,6 +296,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/(dashboard)'
     | '/login'
+    | '/staff-invite-accept'
     | '/(dashboard)/analytics'
     | '/(dashboard)/branches'
     | '/(dashboard)/categories'
@@ -313,10 +325,18 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   dashboardRouteRoute: typeof dashboardRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  StaffInviteAcceptRoute: typeof StaffInviteAcceptRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/staff-invite-accept': {
+      id: '/staff-invite-accept'
+      path: '/staff-invite-accept'
+      fullPath: '/staff-invite-accept'
+      preLoaderRoute: typeof StaffInviteAcceptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -621,6 +641,7 @@ const dashboardRouteRouteWithChildren = dashboardRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   dashboardRouteRoute: dashboardRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  StaffInviteAcceptRoute: StaffInviteAcceptRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
