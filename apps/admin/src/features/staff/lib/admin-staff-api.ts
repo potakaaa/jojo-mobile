@@ -44,6 +44,22 @@ export interface StaffInviteSummary {
   expiresAt: string;
 }
 
+/**
+ * A pending (unconsumed+unrevoked+unexpired) staff invite (ADM-013, #149 — mirrors
+ * the server's `AdminPendingStaffInvite`). NEVER carries the raw token or its hash.
+ */
+export interface AdminPendingStaffInvite {
+  id: string;
+  email: string;
+  intendedRole: StaffRole;
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string;
+  invitedByEmail: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 /** Carries the HTTP status alongside the server's error message. */
 export class AdminApiError extends Error {
   constructor(
@@ -132,5 +148,29 @@ export function createStaffInvite(input: StaffInviteInput): Promise<StaffInviteS
   return request<{ invite: StaffInviteSummary }>(`${STAFF_API}/invite`, {
     method: 'POST',
     body: JSON.stringify(input),
+  }).then((r) => r.invite);
+}
+
+/** GET /api/admin/staff/invites (ADM-013) — the super_admin pending-invite list. */
+export function listPendingStaffInvites(): Promise<AdminPendingStaffInvite[]> {
+  return request<{ invites: AdminPendingStaffInvite[] }>(`${STAFF_API}/invites`).then(
+    (r) => r.invites,
+  );
+}
+
+/** POST /api/admin/staff/invites/:id/revoke (ADM-013) — cancel a pending invite. */
+export function revokeStaffInvite(id: string): Promise<void> {
+  return request<{ id: string }>(`${STAFF_API}/invites/${id}/revoke`, { method: 'POST' }).then(
+    () => undefined,
+  );
+}
+
+/**
+ * POST /api/admin/staff/invites/:id/resend (ADM-013) — rotate the token + refresh
+ * expiry, re-delivering the accept link. Preserves the stored email/role/branch.
+ */
+export function resendStaffInvite(id: string): Promise<StaffInviteSummary> {
+  return request<{ invite: StaffInviteSummary }>(`${STAFF_API}/invites/${id}/resend`, {
+    method: 'POST',
   }).then((r) => r.invite);
 }

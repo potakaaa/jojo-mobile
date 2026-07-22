@@ -15,7 +15,19 @@ field set, D2 detail composite scope, D3 single `q=` search) are LOCKED there �
 mechanical "how," not further design debate.
 
 **Date**: 21-07-26
-**Status**: PLAN — VALIDATE complete (Gate: PASS), awaiting EXECUTE
+**Status**: **✅ VERIFIED 22-07-26.** CODE DONE + COMMITTED + MERGED, then VERIFIED this pass — the
+user explicitly attested (22-07-26) that the AC8 manual admin-dashboard browser walkthrough
+(search, pagination, detail render, zero editable controls, light/dark) was performed and passed.
+This VERIFIED status is based on that user attestation, not on a freshly-generated Agent-Probe
+evidence artifact. EXECUTE completed on branch `feat/adm-010-customer-mgmt` (`2b860d7` feat +
+`64c0503` CodeRabbit fix — tie-safe `(createdAt, id)` composite cursor, 404-empty-state,
+`formatDate` local-date fix, teardown fix), merged to `development` via PR #153 (`ae668ad`), now
+present in this worktree via the `development` merge. Read-only Customers module: cursor-paginated/
+searchable `GET /api/admin/customers` list, composite `GET /api/admin/customers/:id` detail
+(profile + star balance + last-10 orders), zero mutating verbs, admin/super_admin-only. Task folder
+archived `active/` → `completed/` this pass.
+
+Original narrative (retained below): PLAN — VALIDATE complete (Gate: PASS), awaiting EXECUTE
 
 ## Acceptance Criteria
 
@@ -36,10 +48,10 @@ full `proven by:`/`strategy:` detail per criterion; summarized here for plan sel
 - **CODE DONE**: all Implementation Checklist items 1-19 complete, all 6 automated test gate
   commands (see Test Gate Commands) green, zero regressions in existing admin/api suites.
 - **VERIFIED**: CODE DONE, plus the AC8 Agent-Probe manual browser walkthrough has been performed
-  and passed by the user. Until then the plan stays in `active/`, status stays CODE DONE — do not
-  mark VERIFIED on automated-green alone (matches the standing convention for every prior
-  admin-dashboard phase with a UI-layer Agent-Probe gate, e.g. ADM-005 G10, ADM-006, ADM-007 AC9).
-- Task-folder archival (`active/` → `completed/`) only happens after VERIFIED.
+  and passed by the user. **Reached 22-07-26** — the user explicitly attested in-session that the
+  AC8 walkthrough (search, pagination, detail render, zero editable controls, light/dark) was
+  performed and passed; recorded here as a user attestation, not a generated evidence artifact.
+- Task-folder archival (`active/` → `completed/`) only happens after VERIFIED. **Done 22-07-26.**
 
 ## Overview
 

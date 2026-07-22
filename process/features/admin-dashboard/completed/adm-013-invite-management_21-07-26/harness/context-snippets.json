@@ -1,0 +1,34 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff-invite.ts",
+      "lines": "54-70",
+      "description": "POST /staff-invite/start's liveness guard — CURRENT shape (pre-ADM-013). The select projection (2 fields, plus email) and the 2-arm OR-guard ADM-013 must extend to a 3rd arm (revokedAt !== null). This is site #1 of the 4 liveness-check sites the SPEC's headline correctness invariant requires.",
+      "content": "const [invite] = await db\n  .select({\n    email: staffInvites.email,\n    consumedAt: staffInvites.consumedAt,\n    expiresAt: staffInvites.expiresAt,\n  })\n  .from(staffInvites)\n  .where(eq(staffInvites.tokenHash, tokenHash));\n\nif (!invite) {\n  res.status(404).json({ error: 'Invite not found' });\n  return;\n}\nif (invite.consumedAt !== null || invite.expiresAt <= new Date()) {\n  res.status(410).json({ error: 'This invite has expired or already been used' });\n  return;\n}"
+    },
+    {
+      "file": "packages/api/src/routes/staff-invite.ts",
+      "lines": "149-165",
+      "description": "POST /staff-invite/consume's atomic compare-and-swap claim — CURRENT shape (post-ADM-012 CodeRabbit fix, commit 188b9c8). CRITICAL: this already has 4 and()-ed conditions (not the 3 the plan's original prose assumed) — the 4th, eq(staffInvites.email, req.user!.email), was added by ADM-012 to prevent a session/invite email mismatch from claiming someone else's invite. ADM-013's isNull(revokedAt) must be added as a 5th condition, not a 4th (Execute-Agent Instruction E5). This is site #2 of the 4 liveness-check sites.",
+      "content": "const [claimed] = await db\n  .update(staffInvites)\n  .set({ consumedAt: now })\n  .where(\n    and(\n      eq(staffInvites.tokenHash, tokenHash),\n      isNull(staffInvites.consumedAt),\n      gt(staffInvites.expiresAt, now),\n      eq(staffInvites.email, req.user!.email),\n    ),\n  )\n  .returning({\n    intendedRole: staffInvites.intendedRole,\n    intendedBranchId: staffInvites.intendedBranchId,\n  });"
+    },
+    {
+      "file": "packages/api/src/routes/admin/staff.ts",
+      "lines": "209-263",
+      "description": "POST /invite's create-time supersede predicate (inside db.transaction) — CURRENT shape. This is site #3 of the 4 liveness-check sites: the supersede UPDATE currently matches on 3 conditions (email, isNull(consumedAt), gt(expiresAt, now)); ADM-013 must add isNull(revokedAt) as a 4th so a revoked invite for the same email is never re-marked consumed by a fresh create. Also shows the super_admin-only guard-first pattern (line 211) the 3 new ADM-013 routes must replicate, and confirms export default staffRouter is the file's final line (299) — the append point for the 3 new handlers.",
+      "content": "staffRouter.post('/invite', async (req, res) => {\n  try {\n    if (req.adminSession!.role !== 'super_admin') {\n      throw new AdminApiError(403, 'Forbidden');\n    }\n    // ... Zod validation, branch-validate-from-DB (ADM-012 addition), existing-account 409 check ...\n    const invite = await db.transaction(async (tx) => {\n      // Supersede any prior live invite for this email (single-live-invite-per-email,\n      // enforced app-level — mark consumed, never delete, for audit).\n      await tx\n        .update(staffInvites)\n        .set({ consumedAt: now })\n        .where(\n          and(\n            eq(staffInvites.email, email),\n            isNull(staffInvites.consumedAt),\n            gt(staffInvites.expiresAt, now),\n          ),\n        );\n      const [row] = await tx.insert(staffInvites).values({ ... }).returning({ ... });\n      return row!;\n    });\n    // ... post-commit sendStaffInvite ...\n  } catch (err) { handleAdminError(err, res, 'creating staff invite'); }\n});\n\nexport default staffRouter;"
+    },
+    {
+      "file": "packages/api/src/routes/admin/users.ts",
+      "lines": "19-21, 53-91",
+      "description": "roleUpdateSchema (already accepts 'customer') and POST /api/admin/users/:id/role's full guard order — the EXISTING route Part B reuses byte-identical, zero modification. Confirms Part B's core feasibility claim: the self-modification guard (line 63) runs before Zod parsing and checks only req.params.id === req.adminSession!.userId (target-role-agnostic), so self-demotion is already blocked with zero new code, and the super_admin-only check (line 57) already covers a demotion caller the same way it covers a promotion caller.",
+      "content": "const roleUpdateSchema = z.object({\n  role: z.enum(['customer', 'staff', 'admin', 'super_admin']),\n});\n\nusersRouter.post('/users/:id/role', async (req, res) => {\n  try {\n    // 5.1 — super_admin inline check\n    if (req.adminSession!.role !== 'super_admin') {\n      throw new AdminApiError(403, 'Forbidden');\n    }\n    // 5.2 — self-escalation guard, BEFORE any DB read/write.\n    if (req.params.id === req.adminSession!.userId) {\n      throw new AdminApiError(400, 'Cannot modify own role');\n    }\n    // 5.3 — validate the request body.\n    const parsed = roleUpdateSchema.safeParse(req.body);\n    if (!parsed.success) {\n      throw new AdminApiError(400, 'Invalid role');\n    }\n    // 5.4 — DB write, after all three guards pass.\n    const [updated] = await db\n      .update(users)\n      .set({ role: parsed.data.role })\n      .where(eq(users.id, req.params.id))\n      .returning({ id: users.id, email: users.email, role: users.role });\n    if (!updated) {\n      throw new AdminApiError(404, 'User not found');\n    }\n    res.status(200).json({ resource: updated });\n  } catch (err) { ... }\n});"
+    },
+    {
+      "file": "packages/api/src/db/schema/staff_invites.ts",
+      "lines": "1-39",
+      "description": "The staff_invites table ADM-013's migration 0021 adds revoked_at to. Confirms the additive-only nature of the change (no existing column touched) and the existing token-hash-at-rest / single-live-invite-per-email design ADM-013's revoke/resend routes must stay consistent with — no revokedAt column exists yet in this file, confirming migration 0021 is genuinely additive against the current schema.",
+      "content": "export const staffInvites = pgTable('staff_invites', {\n  id: uuid('id').primaryKey().defaultRandom(),\n  email: varchar('email').notNull(),\n  intendedRole: userRoleEnum('intended_role').notNull(),\n  intendedBranchId: uuid('intended_branch_id').references(() => branches.id),\n  tokenHash: varchar('token_hash').notNull(),\n  expiresAt: timestamp('expires_at').notNull(),\n  consumedAt: timestamp('consumed_at'),\n  createdBy: uuid('created_by')\n    .references(() => users.id)\n    .notNull(),\n  createdAt: timestamp('created_at').defaultNow().notNull(),\n});"
+    }
+  ]
+}

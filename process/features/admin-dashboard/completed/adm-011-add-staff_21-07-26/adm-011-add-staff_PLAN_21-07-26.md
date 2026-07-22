@@ -9,22 +9,26 @@ feature: admin-dashboard
 
 Date: 21-07-26
 
-Status: **CODE DONE + COMMITTED (`0bf8365`) — NOT VERIFIED. UPDATE PROCESS pass 21-07-26.**
-Sections A–G (backend + mobile accept flow) AND Section H (`apps/admin` web accept surface + CORS
-extension, scope reopened same-day) are both EXECUTED and independently EVL-confirmed green:
-`packages/api` 709/709, `apps/admin` 177/177 + typecheck + build clean, `apps/mobile` typecheck
-clean, root typecheck + format:check clean, zero regressions. Both the base Validate Contract
-(Sections A–G, Gate: PASS) and the Validate Contract Delta (Section H, Delta Gate: PASS) carry
-genuine, separate human APPROVE records (`harness/review-decision.json`,
-`harness/review-decision-delta.json`) — `mustStopBeforeFinalize` is satisfied for both. **This plan
-stays in `active/`, not `completed/` — VERIFIED requires 3 still-owed, user-run Agent-Probe
-walkthroughs (AC7 admin UI, mobile `invite-accept.tsx` on-device incl. the navigation-race
-observation, AC15 web accept page real-browser) that have NOT yet been performed.** See
+Status: **✅ VERIFIED 22-07-26.** CODE DONE + COMMITTED (`0bf8365`) — then VERIFIED this pass:
+the user explicitly attested (22-07-26) that all 3 previously-owed Agent-Probe walkthroughs (AC7
+admin UI lookup→promote→branch, mobile `invite-accept.tsx` on-device incl. the navigation-race
+observation, AC15 web accept page real-browser) were performed and passed. This VERIFIED status is
+recorded on that user attestation, not a freshly-generated Agent-Probe evidence artifact; the
+5-artifact high-risk-review record for this auth-adjacent surface is the existing
+`harness/review-decision.json` + `harness/review-decision-delta.json` + `harness/risk-gate*.json` +
+`harness/adversarial-validation*.json` set already on disk from VALIDATE (see below), combined with
+this session's walkthrough attestation. Sections A–G (backend + mobile accept flow) AND Section H
+(`apps/admin` web accept surface + CORS extension, scope reopened same-day) are both EXECUTED and
+independently EVL-confirmed green: `packages/api` 709/709, `apps/admin` 177/177 + typecheck + build
+clean, `apps/mobile` typecheck clean, root typecheck + format:check clean, zero regressions. Both
+the base Validate Contract (Sections A–G, Gate: PASS) and the Validate Contract Delta (Section H,
+Delta Gate: PASS) carry genuine, separate human APPROVE records (`harness/review-decision.json`,
+`harness/review-decision-delta.json`) — `mustStopBeforeFinalize` is satisfied for both. See
 `adm-011-add-staff_REPORT_21-07-26.md` (same task folder) for the full UPDATE PROCESS closeout. The
 admin/super_admin-invite-has-no-web-access gap is an accepted, documented Known-Gap deferred to
 issue #142 (`process/features/admin-dashboard/backlog/adm-011-admin-invite-no-web-access_NOTE_21-07-26.md`)
-— it does not block VERIFIED. Standalone COMPLEX plan (not a phase program). Independent of ADM-010
-(unexecuted).
+— it does not block VERIFIED. Standalone COMPLEX plan (not a phase program). Task folder archived
+`active/` → `completed/` this pass.
 
 Complexity: COMPLEX — new migration, 5 new/extended routes across an auth-adjacent trust
 boundary, 3 packages touched (packages/api, apps/admin, apps/mobile).
@@ -838,10 +842,12 @@ required before EXECUTE is authorized (manual-first, no implicit approval).
   Contract Known Gaps) is an explicit, accepted Known-Gap and does NOT block VERIFIED status.
 - Do not mark this plan `✅ VERIFIED` on green automated gates alone — the auth-adjacent risk
   class and the mandatory Agent-Probe walkthroughs are both required per SPEC Constraints.
-- **UPDATE PROCESS status (21-07-26): CODE DONE + committed + EVL-green + both human approvals
-  recorded (Sections A–G and Section H separately) — still NOT VERIFIED.** The 3 owed walkthroughs
-  (AC7, mobile on-device, AC15 real-browser) have not been performed. Task folder correctly stays
-  in `active/`, not archived.
+- **UPDATE PROCESS status (22-07-26): ✅ VERIFIED.** CODE DONE + committed + EVL-green + both human
+  approvals recorded (Sections A–G and Section H separately), and the 3 previously-owed
+  walkthroughs (AC7, mobile on-device, AC15 real-browser) are recorded as performed and passed per
+  the user's explicit in-session attestation (22-07-26). Task folder archived to `completed/`.
+  (Prior state, 21-07-26: CODE DONE + committed + EVL-green + both human approvals recorded — still
+  NOT VERIFIED, 3 walkthroughs owed, task folder in `active/`.)
 - If EXECUTE or EVL surfaces a gap in the `/staff-invite/start` token-capture mechanism (see
   "Innovate Note" above) that the VALIDATE-corrected `verification`-table read cannot cleanly
   resolve, document the fallback actually taken in the phase report before advancing past

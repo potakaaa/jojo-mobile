@@ -380,4 +380,50 @@ describe('POST /api/admin/users/:id/role still works unmodified (AC7 regression)
       .where(eq(schema.users.id, target.id));
     expect(row!.role).toBe('staff');
   });
+
+  // ADM-013 (#149) Part B — staff removal reuses this exact route with role:'customer'.
+  it('removes a staff member by demoting to customer; they drop off GET /api/admin/staff (AC10)', async () => {
+    const target = await makeUser('staff');
+
+    const res = await request(app)
+      .post(`/api/admin/users/${target.id}/role`)
+      .set('Cookie', superAdminCookies.join('; '))
+      .send({ role: 'customer' })
+      .set('Content-Type', 'application/json');
+    expect(res.status).toBe(200);
+    expect(res.body.resource).toMatchObject({ id: target.id, role: 'customer' });
+
+    // The demoted user structurally vanishes from the staff roster (role IN filter).
+    const list = await request(app)
+      .get('/api/admin/staff')
+      .set('Cookie', superAdminCookies.join('; '));
+    expect(list.status).toBe(200);
+    const found = (list.body.staff as { id: string }[]).find((s) => s.id === target.id);
+    expect(found).toBeUndefined();
+  });
+
+  // ADM-013 (#149) Fix 1 (AC14) — a demoted user's role change takes effect on their
+  // VERY NEXT request, because require-staff/require-admin re-read the role fresh from
+  // the DB via auth.api.getSession on every request (no cookieCache). No session
+  // revocation is required or performed.
+  it('rejects a demoted staff user on their next request using a pre-demotion session (AC14)', async () => {
+    const target = await makeUser('staff'); // establishes a real staff session (cookies)
+
+    // The staff session works against a requireStaff-gated route before demotion.
+    const before = await request(app).get('/api/staff/me').set('Cookie', target.cookies.join('; '));
+    expect(before.status).toBe(200);
+
+    // super_admin demotes the user to customer.
+    const demote = await request(app)
+      .post(`/api/admin/users/${target.id}/role`)
+      .set('Cookie', superAdminCookies.join('; '))
+      .send({ role: 'customer' })
+      .set('Content-Type', 'application/json');
+    expect(demote.status).toBe(200);
+
+    // WITHOUT re-authenticating: the SAME (still-valid-as-a-session) cookies are now
+    // rejected on the next requireStaff-gated request — role is re-resolved fresh.
+    const after = await request(app).get('/api/staff/me').set('Cookie', target.cookies.join('; '));
+    expect(after.status).toBe(403);
+  });
 });

@@ -56,6 +56,7 @@ staffInviteRouter.post('/start', rateLimit({ windowMs: 60_000, max: 10 }), async
       .select({
         email: staffInvites.email,
         consumedAt: staffInvites.consumedAt,
+        revokedAt: staffInvites.revokedAt,
         expiresAt: staffInvites.expiresAt,
       })
       .from(staffInvites)
@@ -65,7 +66,7 @@ staffInviteRouter.post('/start', rateLimit({ windowMs: 60_000, max: 10 }), async
       res.status(404).json({ error: 'Invite not found' });
       return;
     }
-    if (invite.consumedAt !== null || invite.expiresAt <= new Date()) {
+    if (invite.consumedAt !== null || invite.revokedAt !== null || invite.expiresAt <= new Date()) {
       // 410 Gone — this WAS a valid invite once (clearer UI message than a 404).
       res.status(410).json({ error: 'This invite has expired or already been used' });
       return;
@@ -154,6 +155,7 @@ staffInviteRouter.post('/consume', requireSession, async (req, res) => {
         and(
           eq(staffInvites.tokenHash, tokenHash),
           isNull(staffInvites.consumedAt),
+          isNull(staffInvites.revokedAt),
           gt(staffInvites.expiresAt, now),
           eq(staffInvites.email, req.user!.email),
         ),

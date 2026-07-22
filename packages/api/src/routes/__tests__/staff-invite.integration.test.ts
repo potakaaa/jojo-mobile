@@ -588,3 +588,55 @@ describe('staff-invite CORS for the admin web origin (Section H)', () => {
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 });
+
+/**
+ * ADM-013 (#149) — the liveness invariant (AC4, HARD gate, Known-Gap banned). A
+ * super_admin revoke must make the invite's exact original token dead at BOTH the
+ * unauthenticated `/staff-invite/start` guard AND the session-gated
+ * `/staff-invite/consume` atomic claim — proving `revoked_at IS NULL` is enforced at
+ * every liveness site, not just the list/revoke routes.
+ */
+describe('staff-invite revoked-token liveness invariant (ADM-013 AC4)', () => {
+  async function revokeInvite(inviteId: string) {
+    return request(app)
+      .post(`/api/admin/staff/invites/${inviteId}/revoke`)
+      .set('Cookie', superAdminCookies.join('; '))
+      .set('Content-Type', 'application/json');
+  }
+
+  it('rejects a revoked invite token at BOTH /start and /consume, with zero role mutation', async () => {
+    const email = `revoked-liveness-${unique()}@example.com`;
+    const rawToken = await createInvite(email, 'admin');
+
+    // Accept far enough to land a real session for this email (auto-provisions a
+    // plain `customer` account), so /consume can be exercised with a valid session.
+    const sessionCookies = await startAndVerify(rawToken);
+
+    // super_admin revokes the (still-pending) invite.
+    const [inviteRow] = await db
+      .select({ id: schema.staffInvites.id })
+      .from(schema.staffInvites)
+      .where(eq(schema.staffInvites.email, email));
+    const revoke = await revokeInvite(inviteRow!.id);
+    expect(revoke.status).toBe(200);
+
+    // /start with the exact original token now 410s (revoked → not live).
+    const start = await request(app).post('/staff-invite/start').send({ token: rawToken });
+    expect(start.status).toBe(410);
+
+    // /consume with the exact original token + the real session is also rejected
+    // (the atomic claim's revoked_at IS NULL condition fails; the fallback classifier
+    // reaches 410, since the row exists, is unconsumed, unexpired, and email-matched).
+    const consume = await request(app)
+      .post('/staff-invite/consume')
+      .set('Cookie', sessionCookies.join('; '))
+      .send({ token: rawToken })
+      .set('Content-Type', 'application/json');
+    expect(consume.status).toBe(410);
+
+    // Zero mutation: the auto-provisioned account stays a plain customer (the revoked
+    // invite never applied its stored `admin` role).
+    const user = await readUser(email);
+    expect(user!.role).toBe('customer');
+  });
+});

@@ -1,0 +1,46 @@
+{
+  "steps": [
+    {
+      "step": "Confirm this is a design-level (PRE-EXECUTE) pack — no ADM-013 code exists yet",
+      "command": "git status / git log --oneline -- packages/api/src/routes/admin/staff.ts packages/api/src/db/schema/staff_invites.ts",
+      "result": "PASS",
+      "notes": "No revoked_at column, no /invites, /invites/:id/revoke, or /invites/:id/resend routes exist in the current tree. This pack records what is provable about the DESIGN and the code it builds on, not gate-run results — no automated test suite exists for this surface yet."
+    },
+    {
+      "step": "Confirm the VALIDATE re-run's sequencing preconditions are genuinely resolved (both dependent plans landed as real commits)",
+      "command": "git log --oneline -- packages/api/src/routes/staff-invite.ts packages/api/src/index.ts",
+      "result": "PASS",
+      "notes": "ADM-011 (0bf8365), ADM-012 (81974a9), and a CodeRabbit review fix (188b9c8) are all present in this worktree's branch history, merged at 8102045 on feat/adm-011-add-staff. The plan's own re-scan against CURRENT file content (not stale line numbers) is independently re-confirmed by this pass — see context-snippets.json."
+    },
+    {
+      "step": "Confirm Part B requires zero new backend code (the plan's central feasibility claim for the removal surface)",
+      "command": "Read packages/api/src/routes/admin/users.ts:19-21 (roleUpdateSchema), :57-91 (guard order), packages/api/src/routes/admin/staff.ts (GET / role filter)",
+      "result": "PASS",
+      "notes": "roleUpdateSchema = z.enum(['customer','staff','admin','super_admin']) already accepts 'customer'. The self-modification guard (req.params.id === req.adminSession!.userId -> 400) runs BEFORE Zod parsing and is target-role-agnostic, so it already blocks self-demotion with zero code change. GET /api/admin/staff filters on STAFF_ROLES (staff/admin/super_admin), so a demoted user structurally disappears from the roster. Confirms the plan's Section H dimension finding is accurate against the CURRENT tree, not merely trusted from the plan's own prose."
+    },
+    {
+      "step": "Confirm the exact current shape of the two shared liveness-check sites Part A must extend (staff-invite.ts /start guard + /consume atomic WHERE), including the post-ADM-012 drift the plan's VALIDATE re-run flagged",
+      "command": "grep -n 'invite.consumedAt\\|and(\\|isNull(staffInvites.consumedAt\\|eq(staffInvites.email' packages/api/src/routes/staff-invite.ts",
+      "result": "PASS",
+      "notes": "Confirmed /start's guard is a single OR-condition at line 68 (consumedAt !== null || expiresAt <= now) with a 3-field select projection at lines 55-62. Confirmed /consume's atomic claim WHERE (lines 153-159) currently has FOUR and()-ed conditions, not three — eq(tokenHash), isNull(consumedAt), gt(expiresAt, now), AND eq(staffInvites.email, req.user!.email) (the last added by ADM-012's CodeRabbit fix to prevent a session/invite email mismatch from claiming someone else's invite). The plan's Execute-Agent Instruction E5 (add isNull(revokedAt) as a 5th condition, not a 4th) is verified accurate against the live file."
+    },
+    {
+      "step": "Confirm the create-time supersede predicate location in staff.ts (the third liveness-check site) and that no route-path collision exists for the 3 planned new routes",
+      "command": "grep -n 'staffRouter.get\\|staffRouter.patch\\|staffRouter.post\\|export default staffRouter' packages/api/src/routes/admin/staff.ts; sed -n '250,268p' packages/api/src/routes/admin/staff.ts",
+      "result": "PASS",
+      "notes": "Existing routes: GET / (line 100), PATCH /:id/branch (line 133), POST /invite (line 209). The supersede UPDATE (lines 252-263, inside db.transaction) matches eq(email), isNull(consumedAt), gt(expiresAt, now) — 3 conditions, confirming the plan needs to add isNull(revokedAt) as a 4th here too. The 3 new planned paths (/invites, /invites/:id/revoke, /invites/:id/resend) do not collide with any existing route on this router. export default staffRouter is the file's last line (299) — the plan's 'append before this line' instruction is valid."
+    },
+    {
+      "step": "Confirm AC4 (Known-Gap-banned liveness invariant) is testable as designed — i.e. that a revoked invite really would fall through to rejection at both endpoints under the plan's proposed WHERE-clause extension",
+      "command": "Trace the planned isNull(revokedAt) addition through /start's OR-guard and /consume's atomic AND-WHERE by hand against the read code",
+      "result": "PASS (design-level only — not yet gate-run)",
+      "notes": "Design is sound: /start would reject on invite.revokedAt !== null (added as a 3rd OR-arm); /consume's atomic UPDATE...WHERE would simply never match a revoked row (added as a 5th AND-arm), so the fallback classifier (lines ~168-186) correctly falls into the existing 410 bucket already proven to handle expired/consumed. No code exists yet to run AC4's actual non-vacuous mutation check (deliberately break the guard, confirm red) — that is an EXECUTE-time obligation, explicitly called out as unresolved by the plan's own 'What this coverage does NOT prove' section and repeated here."
+    },
+    {
+      "step": "Confirm no automated gate results exist yet for this plan (explicit negative finding, not an omission)",
+      "command": "pnpm --filter @jojopotato/api test / pnpm --filter @jojopotato/admin test — NOT run by this pass",
+      "result": "SKIP",
+      "notes": "Per the plan's own Validate Contract: 'This VALIDATE pass did NOT run the live packages/api/apps/admin test suites... to avoid disrupting other worktrees sharing the same DB.' This evidence pack likewise does not run them — there is no ADM-013 code to test. All PASS results above are direct-source-read/static-analysis confirmations of design feasibility against the CURRENT tree, not gate-run confirmations. EXECUTE must produce real Fully-Automated green results for AC1-AC8 and AC10-AC12, with AC4 proven non-vacuous, before this work can be considered CODE DONE."
+    }
+  ]
+}

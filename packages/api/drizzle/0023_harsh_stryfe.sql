@@ -1,6 +1,11 @@
 -- Terminal-transition reason columns (B2 staff reject / B3 customer cancel).
 -- Additive only: all three columns are nullable, no backfill, no data migration.
 --
+-- Originally generated as 0022; renumbered to 0023 when development landed its own
+-- 0022_nostalgic_lightspeed (staff_invites.revoked_at) first. No semantic overlap —
+-- different table — purely a numbering collision resolved by regenerating against
+-- the merged schema so the snapshot prevId chain stays correct.
+--
 -- reason_actor ∈ {'staff','customer'} enforced app-layer (not a DB CHECK — matches this
 -- repo's existing convention of app-layer enum enforcement for narrow lookup columns).
 -- NULL reason_actor means: this order reached a terminal cancelled/rejected state BEFORE
