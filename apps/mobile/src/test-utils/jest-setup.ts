@@ -84,6 +84,10 @@ jest.mock('react-native-reanimated', () => {
     withRepeat: passthrough,
     interpolate: passthrough,
     interpolateColor: passthrough,
+    runOnJS: (fn: unknown) => fn,
+    // Read by @jojopotato/ui's SwipeableRow (notif-delete-pagination) to skip the
+    // spring bounce for reduced-motion users.
+    useReducedMotion: () => false,
     Easing,
     // Common entering/exiting animation builders as chainable no-op configs.
     FadeIn: makeAnimationBuilder(),
@@ -111,6 +115,23 @@ jest.mock('@/features/auth/lib/auth-client', () => ({
     $fetch: jest.fn(),
   },
 }));
+
+// `react-native-gesture-handler` — a no-op passthrough so @jojopotato/ui's
+// SwipeableRow renders under jsdom (its fluent `Gesture.Pan()` builder + the
+// `GestureDetector` wrapper never run a real gesture here). Mirrors the mock in
+// `packages/ui/src/test-utils/jest-setup.ts`.
+jest.mock('react-native-gesture-handler', () => {
+  const RN = require('react-native');
+  const chainable: any = new Proxy(() => chainable, { get: () => () => chainable });
+  const Gesture = new Proxy({}, { get: () => () => chainable });
+  const Passthrough = ({ children }: { children?: unknown }) => children ?? null;
+  return {
+    __esModule: true,
+    Gesture,
+    GestureDetector: Passthrough,
+    GestureHandlerRootView: RN.View,
+  };
+});
 
 jest.mock('expo-router', () => {
   const router = {

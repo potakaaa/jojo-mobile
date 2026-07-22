@@ -15,9 +15,13 @@
 module.exports = {
   preset: 'jest-expo',
   // Only *.test.tsx files are suites; shared fixtures (e.g. __tests__/mocks.ts)
-  // live in __tests__ but must not be collected as test suites.
+  // and the setup file under src/test-utils/ live outside this glob and are
+  // never collected as test suites.
   testMatch: ['**/*.test.tsx'],
+  // Installs the reanimated + gesture-handler mocks SwipeableRow needs to render
+  // (this repo's reanimated 4.5.0 pin crashes at import under jest otherwise).
+  setupFiles: ['<rootDir>/src/test-utils/jest-setup.ts'],
   transformIgnorePatterns: [
-    'node_modules/.pnpm/(?!.*(react-native|expo|@react-navigation|react-navigation|@unimodules|unimodules|sentry-expo|native-base|react-native-svg|@jojopotato))',
+    'node_modules/.pnpm/(?!.*(react-native|expo|@react-navigation|react-navigation|@unimodules|unimodules|sentry-expo|native-base|react-native-svg|react-native-gesture-handler|react-native-reanimated|@jojopotato))',
   ],
 };

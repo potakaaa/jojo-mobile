@@ -1,0 +1,38 @@
+{
+  "evl_cycle": 2,
+  "date": "2026-07-21",
+  "context": "EVL re-confirmation after fix-cycle-1 (jest.setTimeout(15_000) + afterEach batchinator flush on notifications-delete.test.tsx)",
+  "gates": [
+    {
+      "gate": "pnpm --filter @jojopotato/mobile test",
+      "runs": [
+        { "run": 1, "result": "PASS", "tests": "118/118", "suites": "29/29", "time_s": 11.666 },
+        { "run": 2, "result": "PASS", "tests": "118/118", "suites": "29/29", "time_s": 12.283 },
+        { "run": 3, "result": "PASS", "tests": "118/118", "suites": "29/29", "time_s": 12.605 }
+      ],
+      "flaky": false,
+      "heavy_suite": {
+        "file": "notifications-delete.test.tsx",
+        "observed_time_s": 7.445,
+        "ceiling_s": 15,
+        "verdict": "well under ceiling; genuine cold-render cost, not a hang"
+      },
+      "status": "RELIABLY_GREEN"
+    },
+    {
+      "gate": "pnpm --filter @jojopotato/mobile typecheck",
+      "result": "PASS",
+      "status": "GREEN"
+    }
+  ],
+  "scope_check": {
+    "fix_cycle_target_file": "apps/mobile/src/features/notifications/__tests__/notifications-delete.test.tsx",
+    "timeout_fix_local": true,
+    "global_setTimeout_in_jest_setup": false,
+    "global_testTimeout_in_jest_config": false,
+    "skipped_or_noop_tests": false,
+    "active_test_count": 3,
+    "note": "All feature files are uncommitted (whole feature blast radius); the untracked test file cannot be diffed against a prior version, but no timeout hack leaked into shared jest-setup.ts or jest.config.js — fix is confined to the one file."
+  },
+  "verdict": "ALL_GATES_GREEN"
+}

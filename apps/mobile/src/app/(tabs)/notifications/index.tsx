@@ -1,15 +1,33 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { AppNotification, NotificationType } from '@jojopotato/types';
-import { EmptyState, NotificationRow, ScreenHeader, Toast, Toggle } from '@jojopotato/ui';
+import {
+  ConfirmDialog,
+  EmptyState,
+  NotificationRow,
+  ScreenHeader,
+  SwipeableRow,
+  Toast,
+  Toggle,
+} from '@jojopotato/ui';
 import { router, useIsFocused, type Href } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useNotifications } from '@/features/notifications/hooks/use-notifications';
 import { resolveRoute } from '@/features/notifications/lib/notification-factory';
+import { ScreenLoader } from '@/features/shared/components/screen-message';
 import { useToast } from '@/features/shared/hooks/use-toast';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -48,10 +66,11 @@ function formatRelativeTime(createdAt: string): string {
  * Notifications screen (push-notifications-ui) — the root of the top-level
  * `(tabs)/notifications` stack (NAV-002 moved it out of the Account tab so back
  * returns to the calling tab; see `./_layout.tsx`). Inline marketing toggle header +
- * an always-on note for order updates, then a newest-first list of mock
- * notifications. Tapping a row marks it read and navigates to its target screen.
- * Empty state when the list is empty. Mock/local state only — #75 swaps the data
- * source via `useNotifications()`.
+ * an always-on note for order updates, then a newest-first, cursor-paginated
+ * (`FlatList` + `onEndReached`) list of notifications. Tapping a row marks it read
+ * and navigates to its target screen; a full swipe on a row opens the shared
+ * `ConfirmDialog` to confirm before a permanent delete. Empty state
+ * when the list is empty. Data source: `useNotifications()` (notif-delete-pagination).
  */
 export default function NotificationsScreen() {
   const theme = useTheme();
@@ -73,8 +92,21 @@ export default function NotificationsScreen() {
   */
   useHideTabBarWhile(useIsFocused());
 
-  const { notifications, unreadCount, markRead, markAllRead, marketingOptIn, setMarketingOptIn } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markRead,
+    markAllRead,
+    marketingOptIn,
+    setMarketingOptIn,
+    deleteNotification,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    refetch,
+    isRefetching,
+    isPending,
+  } = useNotifications();
 
   // Optimistic local state for the marketing toggle — updates instantly on press
   // and reverts only when the server rejects the change. Same pattern as the staff
@@ -86,11 +118,18 @@ export default function NotificationsScreen() {
     setLocalOptIn(marketingOptIn);
   }
 
-  const onPressItem = (n: AppNotification) => {
-    markRead(n.id);
-    const r = resolveRoute(n);
-    router.push((r.params ? { pathname: r.pathname, params: r.params } : r.pathname) as Href);
-  };
+  // The row awaiting delete confirmation (null = dialog closed). A full swipe only
+  // SETS this — it never deletes directly (AC5).
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  const onPressItem = useCallback(
+    (n: AppNotification) => {
+      markRead(n.id);
+      const r = resolveRoute(n);
+      router.push((r.params ? { pathname: r.pathname, params: r.params } : r.pathname) as Href);
+    },
+    [markRead],
+  );
 
   const onToggleMarketing = async (value: boolean) => {
     setLocalOptIn(value);
@@ -101,6 +140,50 @@ export default function NotificationsScreen() {
     }
   };
 
+  const renderItem = useCallback(
+    ({ item }: { item: AppNotification }) => (
+      <SwipeableRow onFullSwipe={() => setPendingDeleteId(item.id)}>
+        <NotificationRow
+          title={item.title}
+          body={item.body}
+          timeLabel={formatRelativeTime(item.createdAt)}
+          unread={item.readAt == null}
+          iconName={TYPE_ICON[item.type]}
+          onPress={() => onPressItem(item)}
+          mode={mode}
+        />
+      </SwipeableRow>
+    ),
+    [mode, onPressItem],
+  );
+
+  const listHeader = (
+    <View style={styles.header}>
+      <View style={[styles.settingsCard, { borderColor: theme.border }]}>
+        <Toggle
+          label="Marketing notifications"
+          value={localOptIn}
+          onValueChange={onToggleMarketing}
+          mode={mode}
+        />
+        <Text style={[styles.settingsNote, { color: theme.textSecondary }]}>
+          Order updates are always on and can&apos;t be turned off.
+        </Text>
+      </View>
+
+      {notifications.length > 0 && unreadCount > 0 && (
+        <Pressable
+          onPress={markAllRead}
+          style={styles.markAllRow}
+          accessibilityRole="button"
+          accessibilityLabel="Mark all notifications as read"
+        >
+          <Text style={[styles.markAllText, { color: theme.textSecondary }]}>Mark all as read</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/*
@@ -108,79 +191,61 @@ export default function NotificationsScreen() {
         `headerShown: false` (see ./_layout.tsx), so no native header covers the
         status bar — without this edge the ScreenHeader title would sit under it.
         There is deliberately NO 'bottom' edge: the bottom device inset arrives
-        exactly ONCE via resolveTabBarClearance(…) below, and adding it here would
-        count it a second time.
+        exactly ONCE via resolveTabBarClearance(…) below.
       */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScreenHeader title="Notifications" onBack={() => router.back()} mode={mode} />
-        <ScrollView
-          style={styles.scroll}
+        <FlatList
+          data={notifications}
+          keyExtractor={(n) => n.id}
+          renderItem={renderItem}
+          ListHeaderComponent={listHeader}
+          ItemSeparatorComponent={ItemSeparator}
+          ListEmptyComponent={
+            isPending ? (
+              <ScreenLoader />
+            ) : (
+              <EmptyState
+                iconName="notifications-outline"
+                title="No notifications yet"
+                description="Order updates and deals will show up here."
+                mode={mode}
+              />
+            )
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <ActivityIndicator style={styles.footer} color={theme.textSecondary} />
+            ) : null
+          }
+          refreshControl={
+            <RefreshControl
+              testID="notifications-refresh"
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+          }}
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
             Platform.OS !== 'web' && {
               // `true` selects the no-footprint branch: the floating bar is HIDDEN on
               // this screen (via useHideTabBarWhile above), so reserving its ~85dp
               // footprint would be dead space. Only the device safe-area inset is kept,
-              // plus this screen's own Spacing.four breathing room. NOTE: the helper's
-              // param is named `isNested` and this screen is top-level, not nested —
-              // what the branch actually selects is "bar not rendered here", which is
-              // true either way. The name is not renamed on purpose: the helper is
-              // shared with other call sites and a unit test (NAV-001 owns it).
+              // plus this screen's own Spacing.four breathing room. (The helper's param
+              // is named `isNested`; this top-level screen selects the same
+              // "bar not rendered here" branch — see NAV-001, which owns the helper.)
               paddingBottom:
                 resolveTabBarClearance(true, TAB_BAR_FOOTPRINT, insets.bottom) + Spacing.four,
             },
           ]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.settingsCard, { borderColor: theme.border }]}>
-            <Toggle
-              label="Marketing notifications"
-              value={localOptIn}
-              onValueChange={onToggleMarketing}
-              mode={mode}
-            />
-            <Text style={[styles.settingsNote, { color: theme.textSecondary }]}>
-              Order updates are always on and can&apos;t be turned off.
-            </Text>
-          </View>
-
-          {notifications.length > 0 && unreadCount > 0 && (
-            <Pressable
-              onPress={markAllRead}
-              style={styles.markAllRow}
-              accessibilityRole="button"
-              accessibilityLabel="Mark all notifications as read"
-            >
-              <Text style={[styles.markAllText, { color: theme.textSecondary }]}>
-                Mark all as read
-              </Text>
-            </Pressable>
-          )}
-
-          {notifications.length === 0 ? (
-            <EmptyState
-              iconName="notifications-outline"
-              title="No notifications yet"
-              description="Order updates and deals will show up here."
-              mode={mode}
-            />
-          ) : (
-            <View style={styles.list}>
-              {notifications.map((n) => (
-                <NotificationRow
-                  key={n.id}
-                  title={n.title}
-                  body={n.body}
-                  timeLabel={formatRelativeTime(n.createdAt)}
-                  unread={n.readAt == null}
-                  iconName={TYPE_ICON[n.type]}
-                  onPress={() => onPressItem(n)}
-                  mode={mode}
-                />
-              ))}
-            </View>
-          )}
-        </ScrollView>
+        />
 
         <Toast
           visible={toast.visible}
@@ -190,9 +255,34 @@ export default function NotificationsScreen() {
           bottomOffset={insets.bottom + Spacing.four}
           onDismiss={hideToast}
         />
+
+        <ConfirmDialog
+          visible={pendingDeleteId != null}
+          title="Delete notification?"
+          message="This can't be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+          mode={mode}
+          onConfirm={() => {
+            if (pendingDeleteId) deleteNotification(pendingDeleteId);
+            setPendingDeleteId(null);
+          }}
+          onCancel={() => {
+            // The row is already back at rest by the time the dialog can be
+            // cancelled (a full swipe springs it back immediately), so there is
+            // nothing left to close here (AC7).
+            setPendingDeleteId(null);
+          }}
+        />
       </SafeAreaView>
     </View>
   );
+}
+
+/** Inter-row spacer — matches the old `gap: Spacing.three` between rows. */
+function ItemSeparator() {
+  return <View style={styles.separator} />;
 }
 
 const styles = StyleSheet.create({
@@ -205,21 +295,19 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
   },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
+    flexGrow: 1,
+  },
+  header: {
     gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
   settingsCard: {
     gap: Spacing.two,
     paddingVertical: Spacing.three,
     borderBottomWidth: 1,
-  },
-  list: {
-    gap: Spacing.three,
   },
   markAllRow: {
     alignSelf: 'flex-end',
@@ -231,5 +319,11 @@ const styles = StyleSheet.create({
   settingsNote: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.bodySmall,
+  },
+  separator: {
+    height: Spacing.three,
+  },
+  footer: {
+    paddingVertical: Spacing.four,
   },
 });

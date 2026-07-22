@@ -17,7 +17,7 @@ import { tryDevAutoLogin } from '@/features/auth/lib/dev-auto-login';
 import * as Linking from 'expo-linking';
 
 /** Deep-link the magic-link / OAuth flow redirects back into. */
-const APP_CALLBACK_URL = Linking.createURL('/');
+const APP_CALLBACK_URL = Linking.createURL('/', { scheme: 'jojopotato' });
 
 /**
  * How a caller asks `signIn` to authenticate. One dispatcher covers every
