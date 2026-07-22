@@ -4,6 +4,7 @@ import analyticsRouter from './analytics';
 import branchesRouter from './branches';
 import categoriesRouter from './categories';
 import couponsRouter from './coupons';
+import customersRouter from './customers';
 import dealsRouter from './deals';
 import notificationsRouter from './notifications';
 import offersRouter from './offers';
@@ -68,5 +69,11 @@ adminRouter.use('/notifications', notificationsRouter);
 // accounts). Same inherited guard; append-only, never restructure. 12th
 // consumer of the append-only aggregator pattern.
 adminRouter.use('/staff', staffRouter);
+
+// Customer management (ADM-010 — READ-ONLY customer directory: list/search/
+// detail for role=customer accounts). GET handlers only, no mutation. Same
+// inherited guard; append-only, never restructure. 13th consumer of the
+// append-only aggregator pattern.
+adminRouter.use('/customers', customersRouter);
 
 export default adminRouter;

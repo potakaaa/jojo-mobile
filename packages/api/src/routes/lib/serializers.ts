@@ -22,6 +22,8 @@ import type {
   products,
   promotions,
   rewards,
+  userStars,
+  users,
 } from '../../db/schema/index';
 import type { DealScheduleWindow } from './deal-schedule';
 // Type-only import (fully erased at compile time — no runtime cycle even though
@@ -43,6 +45,8 @@ type PromotionRow = InferSelectModel<typeof promotions>;
 type NotificationRow = InferSelectModel<typeof notifications>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
+type UserRow = InferSelectModel<typeof users>;
+type UserStarsRow = InferSelectModel<typeof userStars>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
 type DealType = DealRow['deal_type'];
@@ -1221,5 +1225,83 @@ export function serializeAdminStaffSummary(row: {
     role: row.role as AdminStaffSummary['role'],
     assignedBranchId: row.assignedBranchId,
     branchName: row.branchName,
+  };
+}
+
+// ─── Admin customer serializers (ADM-010 — customer management, #125) ─────────
+//
+// Admin-facing shapes for the READ-ONLY customer list + detail view. Declared
+// LOCALLY here matching the `AdminBranch`/`AdminOrderSummary`/`AdminStaffSummary`
+// convention (never in `packages/types` — the admin dashboard is the only
+// consumer). The list row carries the four columns shown in the table
+// (name/email/phone/joined). The detail shape adds the full locked D1 profile
+// field set + star balance + the customer's recent orders (composed from the
+// ADM-006 `serializeAdminOrderSummary` verbatim — never re-implemented).
+//
+// PII scope (SPEC D1): email + verification flags + birthday/address are LOCKED-IN
+// allowed fields for this dedicated Customers module (unlike ADM-006's narrower
+// orders surface). Auth-internal fields (password hash, session/verification
+// tokens) never appear — none live on the `users` row itself, and the AC4
+// field-shape test locks that non-exposure going forward.
+
+export interface AdminCustomerSummary {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string | null;
+  createdAt: string;
+}
+
+export interface AdminCustomerDetail extends AdminCustomerSummary {
+  birthday: string | null;
+  address: string | null;
+  marketingOptIn: boolean;
+  emailVerified: boolean;
+  phoneNumberVerified: boolean;
+  favoriteBranchName: string | null;
+  onboardedAt: string | null;
+  // `null` when the customer has no `user_stars` row (never earned/spent a star).
+  starsBalance: { current: number; lifetime: number } | null;
+  recentOrders: AdminOrderSummary[];
+}
+
+/** Serialize a `users` row into the admin customer list row (ADM-010). */
+export function serializeAdminCustomerSummary(user: UserRow): AdminCustomerSummary {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Serialize a `users` row + its (optional) `user_stars` row + resolved favorite
+ * branch name + the customer's recent orders into the admin detail shape (ADM-010).
+ * Spreads `serializeAdminCustomerSummary` then adds the extra D1 profile fields.
+ * `birthday` is a `date` column (already a `string | null` from the pg driver — no
+ * `.toISOString()`); `onboardedAt` is a `timestamp` (needs `.toISOString()`).
+ * `starsBalance` is `null` when no `user_stars` row exists.
+ */
+export function serializeAdminCustomerDetail(
+  user: UserRow,
+  starsRow: UserStarsRow | null,
+  branchName: string | null,
+  recentOrders: AdminOrderSummary[],
+): AdminCustomerDetail {
+  return {
+    ...serializeAdminCustomerSummary(user),
+    birthday: user.birthday,
+    address: user.address,
+    marketingOptIn: user.marketingOptIn,
+    emailVerified: user.emailVerified,
+    phoneNumberVerified: user.phoneNumberVerified,
+    favoriteBranchName: branchName,
+    onboardedAt: user.onboardedAt ? user.onboardedAt.toISOString() : null,
+    starsBalance: starsRow
+      ? { current: starsRow.current_stars, lifetime: starsRow.lifetime_stars }
+      : null,
+    recentOrders,
   };
 }
