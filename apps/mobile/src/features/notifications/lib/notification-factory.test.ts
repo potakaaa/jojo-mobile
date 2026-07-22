@@ -3,6 +3,7 @@ import {
   ORDER_NOTIFICATION_TYPES,
   type AppNotification,
   type Coupon,
+  type NotificationTargetScreen,
   type NotificationType,
   type OrderStatus,
 } from '@jojopotato/types';
@@ -93,6 +94,15 @@ test('should resolve a non-null targetScreen+params for every one of the 9 notif
   expect(resolveRoute(item('r', '2026-07-14T10:00:00.000Z', 'reward_unlocked'))).toEqual({
     pathname: '/(tabs)/rewards',
   });
+});
+
+// Regression — unknown/legacy targetScreen must degrade to home, never undefined.
+test('should resolve an unknown targetScreen to the home tab instead of undefined', () => {
+  const legacy = item('legacy', '2026-07-14T10:00:00.000Z');
+  legacy.targetScreen = '/(tabs)/rewards' as NotificationTargetScreen;
+  const route = resolveRoute(legacy);
+  expect(route).toBeDefined();
+  expect(route).toEqual({ pathname: '/(tabs)' });
 });
 
 // AC#3 — documented default + filter.
