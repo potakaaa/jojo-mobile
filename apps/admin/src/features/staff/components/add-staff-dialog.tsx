@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { FormDialog } from '@/components/form-dialog';
 import { Button } from '@/components/ui/button';
@@ -57,8 +57,12 @@ export function AddStaffDialog({
   const [error, setError] = useState<string | null>(null);
   const [invited, setInvited] = useState(false);
 
-  // Reset all state each time the dialog opens.
-  useEffect(() => {
+  // Reset all state each time the dialog opens. Render-phase reset (tracking the
+  // previous `open`) rather than a setState-in-effect — the React-recommended pattern,
+  // and it avoids the react-hooks/set-state-in-effect cascade-render lint error.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setStep('email');
       setEmail('');
@@ -69,7 +73,7 @@ export function AddStaffDialog({
       setError(null);
       setInvited(false);
     }
-  }, [open]);
+  }
 
   const branchRequired = role === 'staff';
   const branchMissing = branchRequired && !branchId;
