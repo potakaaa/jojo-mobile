@@ -21,6 +21,20 @@ const STATUS_META: Record<OrderStatus, { label: string; color: string }> = {
 };
 
 /**
+ * The brand color a given order status is drawn in (same source of truth the
+ * badge uses). Exposed so screens can accent surrounding UI — a card stripe, an
+ * icon tint — with the status color without re-declaring the map.
+ */
+export function getOrderStatusColor(status: OrderStatus): string {
+  return STATUS_META[status].color;
+}
+
+/** The human-readable label for an order status (matches the badge text). */
+export function getOrderStatusLabel(status: OrderStatus): string {
+  return STATUS_META[status].label;
+}
+
+/**
  * Pill badge conveying a single order's status via a color-coded label.
  */
 export function OrderStatusBadge({ status, mode, style }: OrderStatusBadgeProps) {

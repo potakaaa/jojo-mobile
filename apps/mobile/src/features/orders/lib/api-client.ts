@@ -32,6 +32,25 @@ export async function fetchOrder(orderId: string): Promise<Order> {
   return order;
 }
 
+/**
+ * `PATCH /orders/:orderId/complete` — the customer confirms they collected the
+ * order, moving it from `ready` to `completed` (session required).
+ *
+ * The route takes NO body on purpose: it can only ever express one target
+ * status, so a customer cannot steer an order into some other state. Keep it
+ * body-less — adding one would hand that choice back to the client.
+ *
+ * Rejects (via `apiRequest`) on 403 (not the caller's order), 409 (the order is
+ * no longer `ready`, e.g. staff completed it first), and 404.
+ */
+export async function completeOrder(orderId: string): Promise<Order> {
+  const { order } = await apiRequest<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}/complete`,
+    { method: 'PATCH' },
+  );
+  return order;
+}
+
 /** One page of order history: the orders plus the cursor for the next (older) page. */
 export interface OrderHistoryPage {
   orders: Order[];

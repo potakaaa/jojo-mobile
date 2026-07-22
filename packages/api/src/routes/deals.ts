@@ -8,6 +8,26 @@ import { serializeDeal } from './lib/serializers';
 
 const uuidSchema = z.string().uuid();
 
+// ─── DEAL-004 old-model status (AC7 / AC10) ──────────────────────────────────
+//
+// This router (`GET /deals`, `GET /deals/:id`) reads the OLD discount-object
+// `offers` model. As of DEAL-004 it is NO LONGER a customer BROWSE surface — the
+// mobile Deals tab/detail/Home strip read the bundle-product model via
+// `GET /deals/products`. This file is KEPT (not deleted) because `GET /deals/:id`
+// is still a LIVE dependency of the FROZEN STAR-004 coupon-display path
+// (`(tabs)/cart/index.tsx`'s `useDeal(appliedDiscount.refId)` for an OFFER-coupon
+// label). See the `/deals` mount comment in `index.ts` for the full rationale.
+//
+// AC10 — `offer_branches` (renamed from the legacy `deal_branches`, ADM-008
+// migration 0011) is DELIBERATELY RETAINED, NOT dropped by DEAL-004. It scopes
+// promotional OFFERS/coupons to branches (used by `GET /deals` branch filtering
+// above + the `GET /api/branches/:id` branch-detail deals UNION). It is unrelated
+// to the bundle-product deal model (`products.is_deal` + `deal_components`), which
+// is intentionally ALL-BRANCH (no per-branch offer FK). No `offer_branches`
+// migration lands in DEAL-004 (OD3-A). The offers/coupon authoring engine that
+// owns this table is ADM-008 (GitHub #86); any change to `offer_branches` belongs
+// there, not here.
+
 export const dealsRouter: Router = Router();
 
 // GET /deals?branchId=<uuid?> — public read of active, in-window promotional

@@ -188,6 +188,19 @@ describe('GET /rewards/summary', () => {
     expect(res.body.reward.isActive).toBe(true);
   });
 
+  // AC2 (reward-auto-redeem) — the summary's target reward carries eligibleProductId.
+  // runSeed() seeds free_item rewards with a non-null eligible_product_id (e.g. the
+  // 4-star "Free Lemonade" → lemonade product); the MIN active reward is a free_item.
+  it('includes a non-null eligibleProductId UUID on the summary target reward', async () => {
+    const res = await request(app).get('/rewards/summary').set('Cookie', userACookies.join('; '));
+    expect(res.status).toBe(200);
+    expect(res.body.reward).not.toBeNull();
+    expect(typeof res.body.reward.eligibleProductId).toBe('string');
+    expect(res.body.reward.eligibleProductId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+
   // AC2 — 5/5 unlocked.
   it('returns isUnlocked=true for a user at exactly the threshold (5/5)', async () => {
     const res = await request(app).get('/rewards/summary').set('Cookie', userDCookies.join('; '));
@@ -257,6 +270,24 @@ describe('GET /rewards/available', () => {
     const sorted = [...required].sort((x, y) => x - y);
     expect(required).toEqual(sorted);
     expect(res.body.rewards.every((r: any) => r.isActive === true)).toBe(true);
+  });
+
+  // AC2 (reward-auto-redeem) — every reward carries the eligibleProductId field,
+  // and the seeded free-item rewards (REWARD_ROADMAP → classic-fries etc.) carry a
+  // real UUID. The `null` branch of the `string | null` field is proven by the
+  // mobile helper/derive/AC6 tests, not by this seed (the live roadmap is all
+  // free-item rewards, each mapped to an eligible product).
+  it('carries a non-null eligibleProductId UUID on each available seeded reward', async () => {
+    const res = await request(app).get('/rewards/available').set('Cookie', userACookies.join('; '));
+    expect(res.status).toBe(200);
+    // The field is present (never undefined) on every row.
+    expect(res.body.rewards.every((r: any) => 'eligibleProductId' in r)).toBe(true);
+    // At least one seeded free-item reward resolves to a real product UUID.
+    const withProduct = res.body.rewards.filter((r: any) => r.eligibleProductId !== null);
+    expect(withProduct.length).toBeGreaterThanOrEqual(1);
+    expect(withProduct[0].eligibleProductId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
   });
 
   it('returns 401 when unauthenticated', async () => {

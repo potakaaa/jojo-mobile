@@ -175,6 +175,16 @@ beforeAll(async () => {
   userB = ub!.id;
   createdUserIds.push(userA, userB);
 
+  // Star Expendable: the shared resolver now rejects a reward-coupon preview (400
+  // insufficient_stars) unless the caller's balance covers `required_stars` (5 for
+  // these fixtures). Seed both preview users with a generous balance so the existing
+  // AC2 reward previews stay green; the AC5 insufficient-balance test uses its own
+  // throwaway user with a small balance.
+  await db.insert(schema.userStars).values([
+    { user_id: userA, current_stars: 100, lifetime_stars: 100 },
+    { user_id: userB, current_stars: 100, lifetime_stars: 100 },
+  ]);
+
   const [branch] = await db
     .insert(schema.branches)
     .values({
@@ -556,6 +566,9 @@ afterAll(async () => {
         rewardFuNoSizeId,
       ]),
     );
+  // Star Expendable: user_stars.user_id FKs users.id (no cascade) — drop the seeded
+  // balance rows before deleting the users, or the users delete FK-violates.
+  await db.delete(schema.userStars).where(inArray(schema.userStars.user_id, createdUserIds));
   await db.delete(schema.users).where(inArray(schema.users.id, createdUserIds));
   vi.restoreAllMocks();
   server?.close();
@@ -653,6 +666,44 @@ describe('POST /coupons/apply — AC2 (reward)', () => {
     });
     expect(res.status).toBe(400);
     expect(res.json.reason).toBe('not_found');
+  });
+
+  // Star Expendable AC5 (resolver symmetry, D5): a reward the caller can't afford
+  // previews as a 400 `insufficient_stars` — the SAME guard `POST /orders` enforces
+  // at placement, so preview and placement never disagree. Coupon left unburned.
+  it('rejects an unaffordable reward preview with 400 insufficient_stars (resolver symmetry)', async () => {
+    const suffix = uid();
+    const [poorUser] = await db
+      .insert(schema.users)
+      .values({ name: 'Coupon Poor', email: `cpn-poor-${suffix}@example.com` })
+      .returning();
+    // Balance 3 < the reward's required_stars (5).
+    await db
+      .insert(schema.userStars)
+      .values({ user_id: poorUser!.id, current_stars: 3, lifetime_stars: 3 });
+    const poorCode = `JP-RWD-P${suffix.slice(0, 3).toUpperCase()}`;
+    await db
+      .insert(schema.coupons)
+      .values({ user_id: poorUser!.id, reward_id: rewardWithProductId, code: poorCode });
+
+    const res = await post('/coupons/apply', {
+      user: poorUser!.id,
+      body: { ...cartWith(productId), code: poorCode },
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.reason).toBe('insufficient_stars');
+
+    // Preview is zero-mutation — the coupon is still available.
+    const [coupon] = await db
+      .select()
+      .from(schema.coupons)
+      .where(eq(schema.coupons.code, poorCode));
+    expect(coupon!.status).toBe('available');
+
+    // Local cleanup (FK order: coupon → user_stars → user).
+    await db.delete(schema.coupons).where(eq(schema.coupons.code, poorCode));
+    await db.delete(schema.userStars).where(eq(schema.userStars.user_id, poorUser!.id));
+    await db.delete(schema.users).where(eq(schema.users.id, poorUser!.id));
   });
 });
 

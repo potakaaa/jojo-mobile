@@ -36,6 +36,20 @@ describe('LEGAL_SECTIONS', () => {
     expect(headings).toContain('Eligibility');
     expect(headings).toContain('Limitation of Liability');
   });
+
+  it("filtering by group:'terms' returns >=1 entry and excludes every privacy entry (AC4')", () => {
+    const terms = LEGAL_SECTIONS.filter((section) => section.group === 'terms');
+    expect(terms.length).toBeGreaterThan(0);
+    expect(terms.every((section) => section.group === 'terms')).toBe(true);
+    expect(terms.some((section) => section.group === 'privacy')).toBe(false);
+  });
+
+  it("filtering by group:'privacy' returns >=1 entry and excludes every terms entry (AC4', mirror)", () => {
+    const privacy = LEGAL_SECTIONS.filter((section) => section.group === 'privacy');
+    expect(privacy.length).toBeGreaterThan(0);
+    expect(privacy.every((section) => section.group === 'privacy')).toBe(true);
+    expect(privacy.some((section) => section.group === 'terms')).toBe(false);
+  });
 });
 
 describe('LEGAL_LAST_UPDATED', () => {

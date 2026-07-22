@@ -9,7 +9,8 @@ import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
  * (DEAL-003's `orders.deal_id`) — mirrors the server's own usage-limit count
  * in `packages/api/src/routes/orders.ts` (counts all orders with a matching
  * deal_id + user_id, any status). Replaces the interim `usage: []` / mock
- * usage previously passed to `checkDealEligibility`/`applyDealById`.
+ * usage previously passed to `checkDealEligibility` (the coupon-path eligibility
+ * recheck; `applyDealById` was removed by DEAL-004).
  */
 export function useDealUsage(): DealUsageRecord[] {
   const { user } = useAuth();
