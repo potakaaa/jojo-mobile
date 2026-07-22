@@ -1280,3 +1280,45 @@ export function serializeAdminStaffInvite(row: {
     expiresAt: row.expiresAt.toISOString(),
   };
 }
+
+/**
+ * ADM-013 (#149) pending-invite list shape for the super_admin Staff screen's
+ * "Pending invites" section. Carries the inviter as FLAT `invitedByName`/
+ * `invitedByEmail` fields (joined from `users`). Like `serializeAdminStaffInvite`,
+ * it NEVER carries the raw token or its hash.
+ */
+export interface AdminPendingStaffInvite {
+  id: string;
+  email: string;
+  intendedRole: 'staff' | 'admin' | 'super_admin';
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string;
+  invitedByEmail: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export function serializeAdminPendingStaffInvite(row: {
+  id: string;
+  email: string;
+  intendedRole: string;
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string | null;
+  invitedByEmail: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}): AdminPendingStaffInvite {
+  return {
+    id: row.id,
+    email: row.email,
+    intendedRole: row.intendedRole as AdminPendingStaffInvite['intendedRole'],
+    intendedBranchId: row.intendedBranchId,
+    intendedBranchName: row.intendedBranchName,
+    invitedByName: row.invitedByName ?? '',
+    invitedByEmail: row.invitedByEmail ?? '',
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}

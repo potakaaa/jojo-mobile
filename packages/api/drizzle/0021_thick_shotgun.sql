@@ -1,0 +1,1 @@
+ALTER TABLE "staff_invites" ADD COLUMN "revoked_at" timestamp;

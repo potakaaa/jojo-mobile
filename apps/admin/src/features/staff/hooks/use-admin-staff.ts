@@ -2,10 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   createStaffInvite,
+  listPendingStaffInvites,
   listStaff,
   lookupUserByEmail,
   patchStaffBranch,
   postStaffRole,
+  resendStaffInvite,
+  revokeStaffInvite,
   type AdminStaffMember,
   type StaffInviteInput,
 } from '../lib/admin-staff-api';
@@ -60,5 +63,32 @@ export function useCreateStaffInvite() {
   return useMutation({
     mutationFn: (input: StaffInviteInput) => createStaffInvite(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: STAFF_KEY }),
+  });
+}
+
+/**
+ * ADM-013 (#149) pending-invite management. The query key is nested under the staff
+ * key so both mutations invalidate ONLY the pending-invites list (the roster is
+ * unaffected by an invite being revoked/resent — the invitee has no account yet).
+ */
+export const PENDING_INVITES_KEY = ['admin', 'staff', 'invites'] as const;
+
+export function usePendingStaffInvites() {
+  return useQuery({ queryKey: PENDING_INVITES_KEY, queryFn: listPendingStaffInvites });
+}
+
+export function useRevokeStaffInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => revokeStaffInvite(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PENDING_INVITES_KEY }),
+  });
+}
+
+export function useResendStaffInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => resendStaffInvite(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PENDING_INVITES_KEY }),
   });
 }

@@ -1,0 +1,11 @@
+{
+  "reviewer": "human approver (project owner) — genuine session decision, 2026-07-22, relayed by the orchestrator from a real user approval this session",
+  "decision": "APPROVE",
+  "scope": "ADM-013 (issue #149) — staff invite management (list/revoke/resend) + staff removal/demotion. Design-level (pre-EXECUTE) high-risk evidence pack.",
+  "rationale": "The 4-artifact evidence pack (risk-gate.json, verification.json, adversarial-validation.json, context-snippets.json) was reviewed. 7 of 9 adversarial scenarios were fully ruled out against the current post-ADM-011/012 code (super_admin guard-first on all 3 new routes; revoked_at liveness guard enumerated on all 4 sites including the post-ADM-012 4-condition /consume WHERE; resend send-before-commit ordering; body-injection structurally impossible on revoke/resend; self-demotion lockout blocked by the pre-existing target-role-agnostic self-modification guard; tokenHash never serialized; undifferentiated 404 = no enumeration oracle). Two low-severity residuals were surfaced and are ACCEPTED as documented residuals conditional on two required plan follow-ups being folded in via a plan-supplement BEFORE re-validate: (1) dangling authority after demotion — the plan must explicitly state and test that a demoted user's access reflects the fresh role on the next request (better-auth re-reads role per request), rather than leaving it unstated; (2) the double-resend race — the plan's Known-Gap rationale (\"one wins, the other 404s\") is overstated; two racing resends can each succeed in sequence, silently killing the first's just-delivered link. The rationale must be corrected and the resend WHERE keyed on the specific rotated token. Net gate: PASS conditional on the plan-supplement addressing (1) and (2) and a re-validate confirming them. Distinct from ADM-011's and ADM-012's own decision records.",
+  "residuals_accepted": [
+    "Dangling authority after demotion — accepted with required follow-up: plan must state + test demotion→fresh-role-on-next-request behavior.",
+    "Double-resend race — accepted with required follow-up: correct the Known-Gap rationale and key resend's WHERE on the rotated token."
+  ],
+  "timestamp": "2026-07-22T02:40:00+08:00"
+}
