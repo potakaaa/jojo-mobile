@@ -1,10 +1,21 @@
-import { Badge, BrandWordmark, Button, Card, type ThemeMode } from '@jojopotato/ui';
+import { Badge, BrandWordmark, Button, Card, Toast, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { useToast } from '@/features/shared/hooks/use-toast';
+import { useNewOrderToast } from '@/features/staff/hooks/use-new-order-toast';
 import { useStaffBranchSettings } from '@/features/staff/hooks/use-staff-branch-settings';
 import { useStaffMe } from '@/features/staff/hooks/use-staff-me';
 import { useStaffOrders } from '@/features/staff/hooks/use-staff-orders';
@@ -54,11 +65,32 @@ export default function StaffDashboard() {
   const theme = useTheme();
   const scheme = useColorScheme();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
-  const { data, isLoading, error } = useStaffMe();
-  const { data: orders } = useStaffOrders();
-  const { data: branchSettings } = useStaffBranchSettings();
+  const { data, isLoading, error, refetch: refetchStaffMe } = useStaffMe();
+  const { data: orders, refetch: refetchOrders } = useStaffOrders();
+  const { data: branchSettings, refetch: refetchBranchSettings } = useStaffBranchSettings();
   const router = useRouter();
+
+  // Raise a warning toast when a genuinely-new order arrives on a poll. `orders`
+  // is the raw query data (undefined while loading), so the first poll seeds the
+  // baseline without toasting; only later polls with a new id fire.
+  const { toast, showToast, hideToast } = useToast();
+  useNewOrderToast(orders, showToast);
+
+  // One pull-to-refresh gesture refetches every mounted dashboard query
+  // (mirrors the customer Home screen's whole-screen idiom). try/finally always
+  // clears `refreshing` even if one refetch rejects; each widget renders its own
+  // fallback so a partial failure never blanks the screen.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchStaffMe(), refetchOrders(), refetchBranchSettings()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const counts = deriveDashboardCounts(orders ?? []);
   const otherActive =
@@ -70,7 +102,18 @@ export default function StaffDashboard() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-dashboard-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           <View style={styles.header}>
             <BrandWordmark mode={mode} size={TypeScale.h1} />
             <Badge label="Staff" mode={mode} />
@@ -154,6 +197,17 @@ export default function StaffDashboard() {
           <Button label="Sign out" variant="outline" mode={mode} onPress={() => void signOut()} />
         </ScrollView>
       </SafeAreaView>
+
+      {/* Screen-root new-order toast (STAFF live freshness). Staff screens are
+          pushed (no floating tab bar), so the offset is just the safe-area inset. */}
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={insets.bottom + Spacing.four}
+        onDismiss={hideToast}
+      />
     </View>
   );
 }

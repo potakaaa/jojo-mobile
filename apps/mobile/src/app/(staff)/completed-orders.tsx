@@ -11,7 +11,15 @@ import { Card, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { StaffOrderSummary } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -68,14 +76,25 @@ export default function CompletedOrdersScreen() {
   const scheme = useColorScheme();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const router = useRouter();
-  const { data: completedOrders, isLoading, isError } = useCompletedOrders();
+  const { data: completedOrders, isLoading, isError, isRefetching, refetch } = useCompletedOrders();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Completed Orders" onBack={() => router.back()} mode={mode} />
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-completed-orders-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           {isLoading ? (
             <View style={styles.stateBlock}>
               <ActivityIndicator size="large" color={theme.text} />

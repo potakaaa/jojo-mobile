@@ -15,7 +15,7 @@ import { Button, Input, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { StaffOrderDetail } from '@jojopotato/types';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -62,6 +62,19 @@ export default function PickupLookupScreen() {
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Pull-to-refresh on this imperative lookup form (D1): there is no at-rest
+  // query to re-fetch, so the gesture only clears a stale error state (e.g. a
+  // lingering "not found") and shows a brief indicator. It deliberately does NOT
+  // clear the typed `code` — wiping a half-typed code mid-gesture would be hostile.
+  // The indicator releases on the next microtask (no lingering timer to leak),
+  // since there is nothing to await.
+  function onRefresh() {
+    setErrorMessage(null);
+    setRefreshing(true);
+    void Promise.resolve().then(() => setRefreshing(false));
+  }
 
   async function onSubmit() {
     const trimmed = code.trim();
@@ -93,7 +106,19 @@ export default function PickupLookupScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Enter Pickup Code" onBack={() => router.back()} mode={mode} />
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          testID="staff-pickup-lookup-scroll"
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           <Text style={[styles.hint, { color: theme.textSecondary }]}>
             Type the pickup code the customer gives you to find their order.
           </Text>
