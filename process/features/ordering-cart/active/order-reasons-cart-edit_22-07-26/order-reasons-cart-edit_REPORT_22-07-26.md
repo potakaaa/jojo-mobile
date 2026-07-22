@@ -19,7 +19,7 @@ regression I caused and fixed at the type level (zero fixtures touched), and a g
 
 | Step(s) | Deliverable |
 |---|---|
-| 1–2 | Migration `0022_outstanding_wendell_rand.sql` — 3 nullable columns, additive only, no backfill. NULL-semantics + forward-widening comment block added verbatim. |
+| 1–2 | Migration `0023_harsh_stryfe.sql` — 3 nullable columns, additive only, no backfill. NULL-semantics + forward-widening comment block added verbatim. |
 | 2b | `order-state-machine.ts` cross-reference comment. Comment-only; transition table byte-unchanged. |
 | 3 | `packages/types/src/order-reasons.ts` (new) + barrel export. Adds `resolveReasonLabel()` for the render path. |
 | 4, 5a | `StaffOrderSummary`/`StaffOrderDetail`/`Order` widened. |
@@ -171,3 +171,30 @@ compose. **Flagging for awareness: this file now carries two plans' changes and 
 - **Commands to stay green:** the 8 gates above; use per-file `prettier --check`, not repo-wide
   `format:check`.
 - **Dependency changes:** none. No new npm dependency in any package.
+
+---
+
+## Addendum — migration renumbered during the development merge (22-07-26)
+
+This plan's migration was authored as `0022_outstanding_wendell_rand`. While the PR was open,
+`development` landed its own `0022_nostalgic_lightspeed` (ADM-013, `staff_invites.revoked_at`),
+producing an `idx: 22` collision in `drizzle/meta/_journal.json`.
+
+**Resolution:** the migration was REGENERATED, not hand-renamed. Drizzle snapshots are cumulative
+full-schema state rather than deltas, so a hand-renamed `0023_snapshot.json` would have carried a
+`prevId` pointing at `0021` and a schema missing `staff_invites.revoked_at`. Instead: dev's journal
+entry and `0022_snapshot.json` were taken as-is, the local `0022` SQL + snapshot were deleted, and
+`drizzle-kit generate` was re-run against the merged schema source — emitting
+`0023_harsh_stryfe.sql` correctly chained off dev's `0022`. The hand-written comment block
+documenting the `reason_actor` NULL semantics was restored into the generated file.
+
+**No semantic overlap:** dev's migration alters `staff_invites`, this one alters `orders`. The
+collision was purely numeric.
+
+**Verified:** `packages/api` 874/874 on a from-scratch test DB (the vitest global-setup drops and
+recreates it, so the full 0000→0023 chain is exercised every run), `packages/api` typecheck clean.
+
+**Known local-dev caveat:** any developer whose local DB already applied the old
+`0022_outstanding_wendell_rand` will fail `db:migrate` — that row's hash no longer matches a file
+on disk, and the reason columns already exist. Same class of problem as the
+`deals_unification` renumber; see `docs/` for that runbook, or drop and re-migrate the local DB.
