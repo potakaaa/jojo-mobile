@@ -248,6 +248,10 @@ branchesRouter.get('/:branchId/menu', async (req, res) => {
       // sets `isDeal`/`components`. Regular menu → pass `undefined` so both keys
       // are omitted entirely (unchanged regular-menu response body).
       isDealMenu ? (componentsByProduct.get(product.id) ?? []) : undefined,
+      // `available` is not passed here — this route filters unavailable deals out
+      // entirely via `availableDealIds.has()` above (MENU-003 flag-not-hide was for
+      // GET /deals/products; branch menu just hides them). Pass `undefined`.
+      undefined,
       // DEAL-005 Phase 3 (Execute-Agent Instruction E2): pass the deal's schedule
       // windows ONLY on the deals menu. `undefined` on the regular menu and for a
       // schedule-less deal (map miss) → serializer omits the `schedule` key. The

@@ -151,6 +151,12 @@ export default function OrderConfirmationScreen() {
             mode={mode}
           />
           <Button
+            label="View your Jojo Stars ★"
+            onPress={() => router.replace('/(tabs)/rewards')}
+            variant="outline"
+            mode={mode}
+          />
+          <Button
             label="Back to menu"
             onPress={() => router.replace('/(tabs)/order')}
             variant="outline"

@@ -1,4 +1,4 @@
-import type { Cart, CartItem } from '@jojopotato/types';
+import type { Cart, CartItem, OrderStatus } from '@jojopotato/types';
 import { and, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -16,12 +16,15 @@ import {
   productOptions,
   products,
   starTransactions,
+  userStars,
 } from '../db/schema/index';
+import { creditStarForCompletedOrder } from '../lib/star-earning';
 import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
 import { resolveLiveDealProductIds } from './lib/deal-schedule';
 import { orderNumberGenerator } from './lib/order-number';
+import { canTransition } from './lib/order-state-machine';
 import {
   centsToNumeric,
   numericToCents,
@@ -405,6 +408,10 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       let couponDiscountCents = 0;
       let rewardCouponIdToConsume: string | null = null;
       let rewardLabel = '';
+      // Star Expendable: how many stars this reward costs (0 for offer coupons /
+      // no coupon). Captured from the resolver so the loyalty ledger + balance
+      // decrement below spend the exact amount.
+      let requiredStars = 0;
       // Distinguishes coupon family: only a reward coupon writes the "Redeemed
       // reward" loyalty-ledger row (the atomic burn stays shared by both families).
       let couponIsReward = false;
@@ -425,6 +432,7 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         rewardCouponIdToConsume = resolution.rewardCouponId;
         rewardLabel = resolution.discount.label;
         couponIsReward = resolution.discount.source === 'reward';
+        requiredStars = resolution.requiredStars ?? 0;
       }
 
       // Unified discount: deal + reward-coupon amounts, dual-clamped to [0, subtotal].
@@ -514,13 +522,30 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         // so it must not write a "Redeemed reward" star_transactions row (that would
         // pollute the customer's loyalty history). The burn above stays shared.
         if (couponIsReward) {
-          // Exactly one `redeemed` ledger row per redemption. `stars: 0` — a
-          // redemption spends reward VALUE, it does not change the star COUNT.
+          // Atomic star decrement: UPDATE with a balance guard so two concurrent
+          // orders can't both pass the resolver pre-check and both subtract stars.
+          // `lifetime_stars` stays monotonic (D6) — only `current_stars` decreases.
+          const updatedUserStars = await tx
+            .update(userStars)
+            .set({
+              current_stars: sql`${userStars.current_stars} - ${requiredStars}`,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(userStars.user_id, userId),
+                sql`${userStars.current_stars} >= ${requiredStars}`,
+              ),
+            )
+            .returning({ id: userStars.id });
+          if (updatedUserStars.length === 0 && requiredStars > 0) {
+            throw new OrderError(400, "You don't have enough stars to redeem this reward.");
+          }
           await tx.insert(starTransactions).values({
             user_id: userId,
             order_id: createdOrder.id,
             type: 'redeemed',
-            stars: 0,
+            stars: -requiredStars,
             description: `Redeemed reward: ${rewardLabel}`,
           });
         }
@@ -587,6 +612,105 @@ ordersRouter.get('/', requireSession, async (req, res) => {
   const nextCursor = hasMore ? page[page.length - 1]!.placed_at.toISOString() : null;
 
   res.json({ orders: serialized, nextCursor });
+});
+
+/**
+ * PATCH /orders/:orderId/complete — customer self-confirms pickup.
+ *
+ * Deliberately NARROW: the request body carries no `status` field and is ignored
+ * entirely, so this route can only ever express `ready → completed` for an order
+ * the caller owns. A generic customer `PATCH { status }` would put a target
+ * status in a client-writable body, making safety depend on a zod literal never
+ * regressing; here the bad state is unrepresentable by construction.
+ *
+ * Registered BEFORE `GET /:orderId` so the more specific path always wins, even
+ * though the methods differ today.
+ *
+ * Responses:
+ *   200 — `{ order: ApiOrder }` (the CUSTOMER serializer, not the staff one).
+ *   403 — the order is not the caller's.
+ *   404 — order id malformed or not found.
+ *   409 — current status is not `ready`, or a concurrent transition won the race.
+ */
+ordersRouter.patch('/:orderId/complete', requireSession, async (req, res) => {
+  const userId = req.user!.id;
+
+  // 1. Malformed id is NOT a 400 — it is indistinguishable from "no such order"
+  //    to the caller, matching `GET /:orderId` exactly (no existence oracle).
+  const orderId = String(req.params.orderId);
+  if (!z.string().uuid().safeParse(orderId).success) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  // 2. OWNERSHIP BEFORE STATUS — load-bearing ordering. If the status gate ran
+  //    first, a non-owner could distinguish "someone else's ready order" (409)
+  //    from "someone else's pending order" (403) and probe an order's state
+  //    across the trust boundary. Checking ownership first makes every
+  //    non-owned order look identical: 403, always.
+  if (order.user_id !== userId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // 3. Status gate, double-locked. `canTransition` is the shared pure table
+  //    (unmodified by this feature — `ready → completed` was already legal);
+  //    the explicit `!== 'ready'` check is belt-and-braces, since the table
+  //    alone would silently admit a future source status if it ever widened,
+  //    while the SPEC pins customer self-completion to `ready` only.
+  const currentStatus = order.status as OrderStatus;
+  if (!canTransition(currentStatus, 'completed') || currentStatus !== 'ready') {
+    res.status(409).json({ error: 'Invalid status transition' });
+    return;
+  }
+
+  const now = new Date();
+  const patch: Partial<typeof orders.$inferInsert> = {
+    status: 'completed',
+    completed_at: now,
+    updated_at: now,
+  };
+
+  // 4. Compare-and-swap on the status we read, inside a transaction (carried
+  //    over from the staff PATCH). A customer tap racing a staff transition
+  //    matches 0 rows and loses with a 409 — never a silent overwrite of the
+  //    winner's terminal state.
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, currentStatus)))
+      .returning({ id: orders.id });
+    return Boolean(updatedRow);
+  });
+
+  if (!committed) {
+    res.status(409).json({ error: 'Concurrent modification detected; please retry' });
+    return;
+  }
+
+  // 5. Star credit runs AFTER the transaction commits (staff precedent): the
+  //    service owns its own transaction and is DB-idempotent, and `completed`
+  //    is terminal — so a credit failure must never roll back a durable status
+  //    flip nor 500 a request whose write already landed. Log and move on.
+  //
+  //    No push notification here: `OrderNotificationEvent` has no `completed`
+  //    member, so the omission is deliberate, matching the staff path.
+  try {
+    await creditStarForCompletedOrder(orderId);
+  } catch (err) {
+    console.error(`[orders] failed to credit star for completed order ${orderId}`, err);
+  }
+
+  const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
+  const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
+  res.json({ order: serializeOrder(refreshedOrder!, items) });
 });
 
 // GET /orders/:orderId — full order; 404 if missing, 403 if not the caller's.

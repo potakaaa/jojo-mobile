@@ -33,6 +33,9 @@ export * from './rewards';
 // 7. Depends on branches
 export * from './users';
 
+// 7c. Depends on users / branches (ADM-011 — staff invitations)
+export * from './staff_invites';
+
 // 7b. better-auth tables — depend on users
 export * from './session';
 export * from './account';

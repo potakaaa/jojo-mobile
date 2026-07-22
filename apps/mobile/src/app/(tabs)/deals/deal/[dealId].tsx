@@ -73,10 +73,16 @@ export default function DealDetailsScreen() {
   // DEAL-005 Phase 3: the deal's availability annotation, if it's a scheduled deal.
   const scheduleSummary = formatDealScheduleSummary(deal.schedule);
 
+  // DEAL-004 flag-not-hide: when a branch is selected and cannot fulfil this
+  // deal's components, `deal.available === false`. Gate the CTA in that case —
+  // the deal is still viewable, but not orderable at this branch. A `true`/
+  // `undefined` (no branch) value leaves the CTA enabled.
+  const isUnavailable = deal.available === false;
+
   // Plain add-to-cart: a deal-product is priced at its own base price and enters
-  // the cart like any product. It is present in the branch's deals menu, so it is
-  // available (`true`); no options apply to a deal-product (`[]`).
+  // the cart like any product. No options apply to a deal-product (`[]`).
   const handleAddToCart = () => {
+    if (isUnavailable) return;
     addItem(productToMenuItem(deal, true), []);
     router.push('/(tabs)/cart');
   };
@@ -132,6 +138,9 @@ export default function DealDetailsScreen() {
           </View>
 
           <Text style={[styles.title, { color: theme.text }]}>{deal.name}</Text>
+          <Text style={[styles.bundleTag, { color: theme.textSecondary }]}>
+            Bundle deal · Save when you order together
+          </Text>
           {deal.description ? (
             <Text style={[styles.description, { color: theme.textSecondary }]}>
               {deal.description}
@@ -163,7 +172,17 @@ export default function DealDetailsScreen() {
             </View>
           ) : null}
 
-          <Button label="Add to cart" onPress={handleAddToCart} mode={mode} />
+          {isUnavailable ? (
+            <Text style={[styles.unavailableNote, { color: theme.textSecondary }]}>
+              This deal isn&apos;t available at your selected branch right now.
+            </Text>
+          ) : null}
+          <Button
+            label={isUnavailable ? 'Unavailable at this branch' : 'Add to cart'}
+            onPress={handleAddToCart}
+            disabled={isUnavailable}
+            mode={mode}
+          />
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -237,6 +256,14 @@ const styles = StyleSheet.create({
   },
   insideItem: {
     fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
+  },
+  unavailableNote: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
+  },
+  bundleTag: {
+    fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
   },
 });

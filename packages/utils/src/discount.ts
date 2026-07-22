@@ -194,6 +194,12 @@ export function computeDealDiscountCents(deal: Deal, cart: Cart): number {
 
 /** Minimal reward shape needed for reward-coupon eligibility. */
 export interface RewardForEligibility {
+  /**
+   * The reward type drives whether a null `eligibleProductId` is valid:
+   * - `free_item` / `free_upgrade` REQUIRE a non-null product → null = misconfigured → reject.
+   * - `fixed_discount` / `percentage_discount` are cart-wide → null is intentional → allow.
+   */
+  rewardType: string;
   eligibleProductId: string | null;
 }
 
@@ -237,20 +243,33 @@ export function checkRewardEligibility(
       return { eligible: false, reason: 'expired', message: 'This reward has expired.' };
     }
   }
-  if (!reward || reward.eligibleProductId === null) {
+  if (!reward) {
     return {
       eligible: false,
       reason: 'no_eligible_product',
-      message: 'This reward has no eligible product configured.',
+      message: "This reward isn't available right now.",
     };
   }
-  const inCart = cart.items.some((it) => it.menuItemId === reward.eligibleProductId);
-  if (!inCart) {
+  // Item-specific rewards (free_item / free_upgrade) REQUIRE a configured product.
+  // Cart-wide rewards (fixed_discount / percentage_discount) intentionally have
+  // eligibleProductId === null — don't reject them as misconfigured.
+  const requiresProduct = reward.rewardType === 'free_item' || reward.rewardType === 'free_upgrade';
+  if (requiresProduct && reward.eligibleProductId === null) {
     return {
       eligible: false,
-      reason: 'not_in_cart',
-      message: 'Add the eligible item to your cart to use this reward.',
+      reason: 'no_eligible_product',
+      message: "This reward isn't available right now.",
     };
+  }
+  if (reward.eligibleProductId !== null) {
+    const inCart = cart.items.some((it) => it.menuItemId === reward.eligibleProductId);
+    if (!inCart) {
+      return {
+        eligible: false,
+        reason: 'not_in_cart',
+        message: 'Add the eligible item to your cart to use this reward.',
+      };
+    }
   }
   return { eligible: true };
 }

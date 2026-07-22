@@ -89,6 +89,21 @@ async function get(
   return { status: res.status, json };
 }
 
+async function patch(
+  path: string,
+  opts: { user?: string; body?: unknown } = {},
+): Promise<{ status: number; json: any }> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (opts.user) headers['x-test-user'] = opts.user;
+  const res = await fetch(base + path, {
+    method: 'PATCH',
+    headers,
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  });
+  const json = await res.json().catch(() => null);
+  return { status: res.status, json };
+}
+
 function singleItemBody(branchId: string) {
   return {
     branchId,
@@ -756,11 +771,19 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
   let rewardNullId: string; // reward with no eligible_product_id
   let product2Id: string; // a product the reward is NOT bound to (LD5)
 
-  const freshUser = async (label: string): Promise<string> => {
+  // Star Expendable: reward redemption now DEDUCTS `user_stars.current_stars` and
+  // the resolver rejects (400) when the balance can't cover `required_stars` (5 for
+  // these fixtures). Every reward-coupon test user therefore needs a seeded balance;
+  // seed a generous 100 by default so a single redemption never underflows. Tests
+  // that specifically exercise the insufficient-balance path pass a smaller amount.
+  const freshUser = async (label: string, stars = 100): Promise<string> => {
     const [u] = await db
       .insert(schema.users)
       .values({ name: label, email: `${label}-${uid()}@example.com` })
       .returning();
+    await db
+      .insert(schema.userStars)
+      .values({ user_id: u!.id, current_stars: stars, lifetime_stars: stars });
     return u!.id;
   };
   const mintCoupon = (userId: string, rewardIdArg: string, code: string) =>
@@ -840,7 +863,64 @@ describe('POST /orders — coupon redemption (STAR-004)', () => {
       );
     expect(redeemed).toHaveLength(1);
     expect(redeemed[0]!.order_id).toBe(res.json.order.id);
-    expect(redeemed[0]!.stars).toBe(0);
+    // Star Expendable: redemption records the negative star cost (reward.required_stars = 5).
+    expect(redeemed[0]!.stars).toBe(-5);
+  });
+
+  // Star Expendable AC1 + AC3: redemption decrements current_stars by exactly
+  // required_stars and leaves lifetime_stars untouched (monotonic, D6).
+  it('decrements current_stars by required_stars and leaves lifetime_stars unchanged', async () => {
+    const u = await freshUser('rwBal', 30); // current=30, lifetime=30; reward costs 5
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(201);
+
+    const [stars] = await db.select().from(schema.userStars).where(eq(schema.userStars.user_id, u));
+    expect(stars!.current_stars).toBe(25); // 30 - 5
+    expect(stars!.lifetime_stars).toBe(30); // unchanged (monotonic)
+  });
+
+  // Star Expendable AC4: redemption is rejected (400) when current_stars <
+  // required_stars; the coupon stays available (unburned), the balance is
+  // unchanged, and no redeemed ledger row is written.
+  it('rejects redemption (400) when current_stars < required_stars; coupon unburned, balance + ledger untouched', async () => {
+    const u = await freshUser('rwPoor', 3); // current=3 < reward cost 5
+    const code = freshCode();
+    await mintCoupon(u, rewardId, code);
+
+    const res = await post('/orders', {
+      user: u,
+      body: { ...singleItemBody(branch20Id), couponCode: code },
+    });
+    expect(res.status).toBe(400);
+
+    // Coupon left available (never burned).
+    const [coupon] = await db.select().from(schema.coupons).where(eq(schema.coupons.code, code));
+    expect(coupon!.status).toBe('available');
+    expect(coupon!.used_at).toBeNull();
+
+    // Balance unchanged.
+    const [stars] = await db.select().from(schema.userStars).where(eq(schema.userStars.user_id, u));
+    expect(stars!.current_stars).toBe(3);
+    expect(stars!.lifetime_stars).toBe(3);
+
+    // No redeemed ledger row.
+    const redeemed = await db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(eq(schema.starTransactions.user_id, u), eq(schema.starTransactions.type, 'redeemed')),
+      );
+    expect(redeemed).toHaveLength(0);
+
+    // No order row persisted.
+    const orders = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
+    expect(orders).toHaveLength(0);
   });
 
   // AC6
@@ -2221,5 +2301,279 @@ describe('POST /orders — DEAL-005 Phase 2 recurrence', () => {
 
     const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
     expect(placed).toHaveLength(0);
+  });
+});
+
+// ─── Customer self-confirm pickup: PATCH /orders/:orderId/complete ────────────
+//
+// Trust-boundary + money-adjacent surface. AC2 (ownership), AC3 (status gate),
+// AC4 (single star credit) and AC5 (no double credit) are HARD gates — each is
+// proven here by a real assertion on persisted state (status / ledger row count /
+// balance), never by "the call did not throw".
+describe('PATCH /orders/:orderId/complete — customer self-confirm pickup', () => {
+  /**
+   * Every OrderStatus that must be REJECTED by the route. Kept as a literal so
+   * the AC3 parameterisation is visible, and locked against silent shrinkage by
+   * the completeness assertion below.
+   */
+  const NON_READY_STATUSES = [
+    'pending',
+    'accepted',
+    'preparing',
+    'flavoring',
+    'completed',
+    'cancelled',
+    'rejected',
+  ] as const;
+
+  const newUser = async (label: string): Promise<string> => {
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: label, email: `${label}-${uid()}@example.com` })
+      .returning();
+    return u!.id;
+  };
+
+  /**
+   * Place a real order for `user`, then force it into `status` directly in the
+   * DB. Direct because no staff route is mounted on this test app — the point of
+   * these cases is the CUSTOMER route's own gating, not how the order got there.
+   */
+  async function seedOrderInStatus(
+    user: string,
+    status: (typeof schema.orderStatusEnum.enumValues)[number],
+  ): Promise<string> {
+    const created = await post('/orders', { user, body: singleItemBody(branch20Id) });
+    expect(created.status).toBe(201);
+    const orderId = created.json.order.id as string;
+    if (status !== 'pending') {
+      await db.update(schema.orders).set({ status }).where(eq(schema.orders.id, orderId));
+    }
+    return orderId;
+  }
+
+  async function orderRow(orderId: string) {
+    const [row] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    return row!;
+  }
+
+  /** `earned` ledger rows for this order — the single-credit source of truth. */
+  async function earnedStarRows(orderId: string) {
+    return db
+      .select()
+      .from(schema.starTransactions)
+      .where(
+        and(
+          eq(schema.starTransactions.order_id, orderId),
+          eq(schema.starTransactions.type, 'earned'),
+        ),
+      );
+  }
+
+  /** ALL ledger rows for this order, any type — catches a stray second write. */
+  async function allStarRows(orderId: string) {
+    return db
+      .select()
+      .from(schema.starTransactions)
+      .where(eq(schema.starTransactions.order_id, orderId));
+  }
+
+  async function starBalance(userId: string): Promise<{ current: number; lifetime: number }> {
+    const [row] = await db
+      .select()
+      .from(schema.userStars)
+      .where(eq(schema.userStars.user_id, userId));
+    return { current: row?.current_stars ?? 0, lifetime: row?.lifetime_stars ?? 0 };
+  }
+
+  // ── AC1 ────────────────────────────────────────────────────────────────────
+  it('AC1: the owner completes a ready order → 200, status completed, completed_at set', async () => {
+    const user = await newUser('mpuac1');
+    const orderId = await seedOrderInStatus(user, 'ready');
+
+    const res = await patch(`/orders/${orderId}/complete`, { user });
+    expect(res.status).toBe(200);
+    expect(res.json.order.id).toBe(orderId);
+    expect(res.json.order.status).toBe('completed');
+
+    // `completed_at` is not on the customer wire shape — assert the persisted row.
+    const row = await orderRow(orderId);
+    expect(row.status).toBe('completed');
+    expect(row.completed_at).not.toBeNull();
+  });
+
+  // ── AC2 (HARD — Known-Gap banned) ──────────────────────────────────────────
+  it('AC2 (HARD): a non-owner cannot complete another user order → 403, order unchanged, no star', async () => {
+    const owner = await newUser('mpuac2own');
+    const intruder = await newUser('mpuac2int');
+    const orderId = await seedOrderInStatus(owner, 'ready');
+
+    const res = await patch(`/orders/${orderId}/complete`, { user: intruder });
+    expect(res.status).toBe(403);
+
+    const row = await orderRow(orderId);
+    expect(row.status).toBe('ready');
+    expect(row.completed_at).toBeNull();
+    expect(await earnedStarRows(orderId)).toHaveLength(0);
+    expect(await starBalance(owner)).toEqual({ current: 0, lifetime: 0 });
+    expect(await starBalance(intruder)).toEqual({ current: 0, lifetime: 0 });
+  });
+
+  it('AC2 (HARD): ownership is checked BEFORE status — a non-owner gets 403 for a pending order too, never a state-revealing 409', async () => {
+    const owner = await newUser('mpuac2bown');
+    const intruder = await newUser('mpuac2bint');
+    const pendingId = await seedOrderInStatus(owner, 'pending');
+    const readyId = await seedOrderInStatus(owner, 'ready');
+
+    // Both must look IDENTICAL to a non-owner. If the status gate ran first, the
+    // pending order would answer 409 and leak that it exists but is not ready.
+    const onPending = await patch(`/orders/${pendingId}/complete`, { user: intruder });
+    const onReady = await patch(`/orders/${readyId}/complete`, { user: intruder });
+    expect(onPending.status).toBe(403);
+    expect(onReady.status).toBe(403);
+    expect(onPending.json).toEqual(onReady.json);
+
+    expect((await orderRow(pendingId)).status).toBe('pending');
+    expect((await orderRow(readyId)).status).toBe('ready');
+  });
+
+  it('AC2: an unauthenticated caller cannot complete an order → 401, order unchanged', async () => {
+    const owner = await newUser('mpuac2anon');
+    const orderId = await seedOrderInStatus(owner, 'ready');
+
+    const res = await patch(`/orders/${orderId}/complete`);
+    expect(res.status).toBe(401);
+    expect((await orderRow(orderId)).status).toBe('ready');
+    expect(await earnedStarRows(orderId)).toHaveLength(0);
+  });
+
+  // ── AC3 (HARD — Known-Gap banned) ──────────────────────────────────────────
+  it('AC3 (HARD, completeness): the rejected-status list is exactly every OrderStatus except ready', () => {
+    // Locks the parameterisation below against silently shrinking: if a status is
+    // ever added to the enum, or dropped from this list, this fails.
+    expect([...NON_READY_STATUSES].sort()).toEqual(
+      schema.orderStatusEnum.enumValues.filter((s) => s !== 'ready').sort(),
+    );
+    expect(NON_READY_STATUSES).toHaveLength(7);
+  });
+
+  it.each(NON_READY_STATUSES)(
+    'AC3 (HARD): completing a %s order → 409, order unchanged, no star',
+    async (status) => {
+      const user = await newUser(`mpuac3${status}`);
+      const orderId = await seedOrderInStatus(user, status);
+
+      const res = await patch(`/orders/${orderId}/complete`, { user });
+      expect(res.status).toBe(409);
+
+      const row = await orderRow(orderId);
+      expect(row.status).toBe(status);
+      expect(row.completed_at).toBeNull();
+      expect(await earnedStarRows(orderId)).toHaveLength(0);
+      expect(await starBalance(user)).toEqual({ current: 0, lifetime: 0 });
+    },
+  );
+
+  // ── AC4 (HARD — Known-Gap banned) ──────────────────────────────────────────
+  it('AC4 (HARD): customer self-completion credits exactly one star', async () => {
+    const user = await newUser('mpuac4');
+    expect(await starBalance(user)).toEqual({ current: 0, lifetime: 0 });
+
+    const orderId = await seedOrderInStatus(user, 'ready');
+    expect((await patch(`/orders/${orderId}/complete`, { user })).status).toBe(200);
+
+    const earned = await earnedStarRows(orderId);
+    expect(earned).toHaveLength(1);
+    expect(earned[0]!.stars).toBe(1);
+    expect(earned[0]!.user_id).toBe(user);
+
+    // Exactly one ledger row of ANY type for this order.
+    expect(await allStarRows(orderId)).toHaveLength(1);
+    expect(await starBalance(user)).toEqual({ current: 1, lifetime: 1 });
+  });
+
+  // ── AC5 (HARD — Known-Gap banned; E4: concrete counts, never pass-by-absence) ─
+  it('AC5 (HARD): a repeat call and a subsequent staff-path credit never mint a second star', async () => {
+    const user = await newUser('mpuac5');
+    const orderId = await seedOrderInStatus(user, 'ready');
+    expect((await patch(`/orders/${orderId}/complete`, { user })).status).toBe(200);
+
+    // Baseline after the ONE legitimate credit.
+    expect(await earnedStarRows(orderId)).toHaveLength(1);
+    const afterFirst = await starBalance(user);
+    expect(afterFirst).toEqual({ current: 1, lifetime: 1 });
+
+    // (a) The customer taps again. 409 (terminal), and the ledger/balance are
+    //     asserted UNCHANGED by value — not merely "no error was thrown".
+    const repeat = await patch(`/orders/${orderId}/complete`, { user });
+    expect(repeat.status).toBe(409);
+    expect(await earnedStarRows(orderId)).toHaveLength(1);
+    expect(await allStarRows(orderId)).toHaveLength(1);
+    expect(await starBalance(user)).toEqual(afterFirst);
+
+    // (b) Staff then press "Mark Picked Up". The staff PATCH's completion side
+    //     effect is exactly this call, so firing it directly reproduces that path
+    //     without mounting the staff router. It must be a no-op.
+    const { creditStarForCompletedOrder } = await import('../../lib/star-earning');
+    const second = await creditStarForCompletedOrder(orderId);
+    expect(second.credited).toBe(false);
+    expect(second.reason).toBe('already-credited');
+
+    expect(await earnedStarRows(orderId)).toHaveLength(1);
+    expect(await allStarRows(orderId)).toHaveLength(1);
+    expect(await starBalance(user)).toEqual(afterFirst);
+  });
+
+  // ── AC6 ────────────────────────────────────────────────────────────────────
+  it('AC6: two concurrent completions of the same order → exactly one 200 and one 409, one star', async () => {
+    const user = await newUser('mpuac6');
+    const orderId = await seedOrderInStatus(user, 'ready');
+
+    // Real race against the compare-and-swap: whichever UPDATE loses matches 0
+    // rows and must 409, never silently overwrite the winner's terminal state.
+    const [a, b] = await Promise.all([
+      patch(`/orders/${orderId}/complete`, { user }),
+      patch(`/orders/${orderId}/complete`, { user }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+
+    expect((await orderRow(orderId)).status).toBe('completed');
+    expect(await earnedStarRows(orderId)).toHaveLength(1);
+    expect(await starBalance(user)).toEqual({ current: 1, lifetime: 1 });
+  });
+
+  // ── AC7 ────────────────────────────────────────────────────────────────────
+  it('AC7: a malformed order id and an unknown order id both → 404 (never 400)', async () => {
+    const user = await newUser('mpuac7');
+
+    const malformed = await patch('/orders/not-a-uuid/complete', { user });
+    expect(malformed.status).toBe(404);
+
+    const unknown = await patch('/orders/00000000-0000-0000-0000-000000000000/complete', {
+      user,
+    });
+    expect(unknown.status).toBe(404);
+
+    // Indistinguishable to the caller — no existence oracle.
+    expect(malformed.json).toEqual(unknown.json);
+  });
+
+  // ── AC8 ────────────────────────────────────────────────────────────────────
+  it('AC8: a status field in the request body is ignored — the order still becomes completed', async () => {
+    const user = await newUser('mpuac8');
+    const orderId = await seedOrderInStatus(user, 'ready');
+
+    const res = await patch(`/orders/${orderId}/complete`, {
+      user,
+      body: { status: 'cancelled' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.order.status).toBe('completed');
+
+    const row = await orderRow(orderId);
+    expect(row.status).toBe('completed');
+    expect(row.completed_at).not.toBeNull();
+    // The body's target status left no trace anywhere.
+    expect(row.cancelled_at).toBeNull();
   });
 });

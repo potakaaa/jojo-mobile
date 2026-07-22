@@ -22,11 +22,13 @@ import adminRouter from './routes/admin/index';
 import { branchesRouter } from './routes/branches';
 import { cartRouter } from './routes/cart';
 import { couponsRouter } from './routes/coupons';
+import { dealsProductsRouter } from './routes/deals-products';
 import { dealsRouter } from './routes/deals';
 import { notificationsRouter } from './routes/notifications';
 import { ordersRouter } from './routes/orders';
 import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
+import { staffInviteRouter } from './routes/staff-invite';
 
 // ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
 // below and the /api/admin router further down). Single definition so the origin
@@ -230,6 +232,32 @@ app.get('/api/branches/:id', async (req, res) => {
 // App order-flow routes (public branch reads + session-gated orders), mounted
 // after express.json() so they get parsed JSON bodies.
 app.use('/branches', branchesRouter);
+// DEAL-004 all-branch deal listing. E1 (HARD gate): MUST be mounted BEFORE
+// `/deals` — `dealsRouter` defines `GET /:id`, so `/deals/products` would be
+// captured as `/deals/:id` (id = "products", a non-uuid → 404) if `/deals` were
+// hit first. Mounting the more-specific `/deals/products` prefix first makes
+// Express match it before falling through to the `/deals` router. Locked by a
+// route-precedence regression test in deals-products.test.ts.
+app.use('/deals/products', dealsProductsRouter);
+// DEAL-004 old-model route retirement (Step 28 / OD2-A / AC7 / AC10):
+//
+// The customer deal-BROWSE surface has moved to the bundle-product model above
+// (`/deals/products` → `products.is_deal`). The mobile client's old browse hook
+// (`getDeals` → `GET /deals`) and its dead `applyDealById` (`GET /deals/:id`
+// apply CTA) were BOTH deleted in the mobile app. No customer-facing mobile
+// BROWSE code calls `/deals` or `/deals/:id` anymore.
+//
+// This mount is KEPT (not removed) — the E3 "keep route file + tests as
+// internal-evidence with a documented note" option, chosen deliberately over
+// removal because `GET /deals/:id` remains a LIVE dependency of the FROZEN
+// STAR-004 coupon-display path (E4): `(tabs)/cart/index.tsx`'s
+// `useDeal(appliedDiscount.refId)` calls `getDeal(offer.id)` → `GET /deals/:id`
+// to hydrate an applied OFFER-coupon's label (`resolveCouponDiscount` sets
+// `source:'deal', refId: offer.id`). Removing this mount would 404 that path and
+// break the coupon label — a frozen surface. `deals.test.ts` is retained as the
+// regression lock for this still-live `/deals/:id` offer-read. See
+// `deal-004-unification_PLAN_20-07-26.md` and ADM-008 (#86) for the offers/coupon
+// engine that keeps this route load-bearing.
 app.use('/deals', dealsRouter);
 app.use('/orders', ordersRouter);
 // Customer notifications (PUSH-004) — session-gated at mount, same posture as
@@ -260,6 +288,16 @@ app.use('/api/staff', requireStaff(auth), staffRouter);
 // Later admin phases add sub-routers to adminRouter and inherit both guards.
 app.use('/api/admin', adminCors, requireAdmin(auth), adminRouter);
 
+// Staff-invite ACCEPT flow (ADM-011) — mounted OUTSIDE /api/admin: the invitee has
+// no admin session. The router applies its OWN asymmetric guards per-route (/start
+// unauthenticated + rate-limited; /consume session-gated), so NO guard is applied
+// here at the mount. Mounted after express.json() so both handlers get parsed bodies.
+// `adminCors` (Section H, ADM-011): the SAME single-origin credentialed object already
+// on /api/auth + /api/admin, reused (not re-declared) so the apps/admin WEB accept page
+// can call /start + /consume cross-origin. No new/wider policy — the mobile no-Origin
+// path is untouched (cors() adds no ACAO when there is no Origin header).
+app.use('/staff-invite', adminCors, staffInviteRouter);
+
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An
 // https link is reliably tappable from any email client; this 302 bounces the
@@ -270,6 +308,16 @@ app.get('/magic-link/native', (req, res) => {
   const token = String(req.query.token ?? '');
   const scheme = process.env.APP_SCHEME ?? 'jojopotato';
   res.redirect(`${scheme}:///magic-link?token=${encodeURIComponent(token)}`);
+});
+
+// Staff-invite → app bridge (ADM-011). Sibling to /magic-link/native: this is the
+// deep link the invite EMAIL links to. Bounces the raw invite token into the app's
+// (auth)/invite-accept route via the app scheme; the app then calls
+// /staff-invite/start → magic-link verify → /staff-invite/consume itself.
+app.get('/staff-invite/native', (req, res) => {
+  const token = String(req.query.token ?? '');
+  const scheme = process.env.APP_SCHEME ?? 'jojopotato';
+  res.redirect(`${scheme}:///invite-accept?token=${encodeURIComponent(token)}`);
 });
 
 // DEV-ONLY auto-login. Registered ONLY when auto-login is enabled, so the route

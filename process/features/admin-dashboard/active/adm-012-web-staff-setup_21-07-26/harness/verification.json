@@ -1,0 +1,58 @@
+{
+  "steps": [
+    {
+      "step": "Confirm POST /staff-invite/set-password is session-gated and operates only on the caller's own session (no target-user-id input anywhere)",
+      "command": "Read packages/api/src/routes/staff-invite.ts:256-281 in full",
+      "result": "PASS",
+      "notes": "Route is mounted with requireSession middleware (401 if unauthenticated). The handler calls auth.api.setPassword({ body: { newPassword }, headers: fromNodeHeaders(req.headers) }) -- the ONLY body field accepted by setPasswordSchema is newPassword (z.object({ newPassword: z.string().min(8).max(128) })); there is no userId/email/targetId field in the schema or the handler. better-auth's setPassword resolves the target user from the session embedded in the forwarded headers, not from any request body value -- structurally cannot target another account."
+    },
+    {
+      "step": "Confirm the length-violation reject path mutates zero credential state",
+      "command": "Read packages/api/src/routes/staff-invite.ts:256-261",
+      "result": "PASS",
+      "notes": "setPasswordSchema.safeParse runs BEFORE any call to auth.api.setPassword; on failure the handler returns 400 immediately with no DB/auth-provider call made. Zero-mutation-on-reject confirmed by code structure, not just intent."
+    },
+    {
+      "step": "Confirm PASSWORD_ALREADY_SET is a true no-op (never overwrites an existing password, never logged as an error)",
+      "command": "Read packages/api/src/routes/staff-invite.ts:269-280",
+      "result": "PASS",
+      "notes": "The catch block checks e?.status === 'BAD_REQUEST' && e?.body?.code === 'PASSWORD_ALREADY_SET' and returns 200 {ok:true} directly -- no db.update / auth.api call follows this branch, so the existing credential is provably untouched (the code path that would set a new password already threw before this catch runs). No console.error call in this branch, matching the code comment's stated intent ('not an error')."
+    },
+    {
+      "step": "Confirm role is never a client-writable input on the Profile step's authClient.updateUser call, and is not reachable via a smuggled field",
+      "command": "Read apps/admin/src/features/auth/lib/auth-client.ts:18-41 and packages/api/src/lib/auth.ts:40-84",
+      "result": "PASS",
+      "notes": "auth-client.ts:36 registers role: { type: 'string', input: false } (read-only client mirror). auth.ts:40-41 comment + config: role is exposed input:false server-side, so even if a caller crafted a raw fetch to better-auth's updateUser endpoint with a role field in the body, better-auth's own additionalFields input:false enforcement strips/rejects non-input fields before they reach the DB write -- this is a framework-level guarantee, not app code, and the app's own call site (staff-invite-accept.tsx:196-201) does not include role in its updateUser payload."
+    },
+    {
+      "step": "Confirm the accept page's routing decision (admin/super_admin -> dashboard, staff -> terminal card) reads a value the client cannot influence",
+      "command": "Read apps/admin/src/routes/staff-invite-accept.tsx:155-173 (consume) and :226-233 (routing branch)",
+      "result": "PASS",
+      "notes": "consumedRole is set at line 168 from `body.role` returned by POST /staff-invite/consume -- a value ADM-011's server computed and returned BEFORE ADM-012's code runs at all (byte-frozen consume handler, see ADM-011 harness). The Password step's submit handler (line 229) branches on this captured value with a plain string comparison; there is no code path where the client sets or overrides consumedRole itself (no setConsumedRole call exists anywhere except line 168)."
+    },
+    {
+      "step": "Confirm zero byte-diff on POST /api/admin/users/:id/role and PATCH /api/admin/staff/:id/branch (both explicitly claimed byte-frozen by the plan)",
+      "command": "git diff ba489f3..81974a9 -- packages/api/src/routes/admin/users.ts packages/api/src/routes/admin/staff.ts (staff.ts diff scoped to sendStaffInvite only, per report)",
+      "result": "PASS",
+      "notes": "Independently EVL-confirmed per the plan's own report and re-confirmed by direct read: staff.ts's only diff is the ADMIN_WEB_ORIGIN import + acceptUrl construction + doc-comment inside sendStaffInvite (lines 11, 28-45 area); the role-management handler in users.ts and the branch-assignment handler in staff.ts are untouched."
+    },
+    {
+      "step": "Confirm the invite-accept email link repoint does not introduce an open-redirect or leak the token to a third-party origin",
+      "command": "Read packages/api/src/routes/admin/staff.ts:11,28-45 in full",
+      "result": "PASS",
+      "notes": "ADMIN_WEB_ORIGIN is imported from the same lib/auth.ts module that already defines the app's CORS trustedOrigins allowlist (single source of truth, ADM-001 precedent) -- not a caller-supplied or env-interpolated-per-request value. acceptUrl is a fixed-origin + fixed-path (`/staff-invite-accept`) + query-string token; no user input influences the origin or path, only the token itself which is already a single-use, hashed-at-rest, 256-bit value (ADM-011 property, unchanged)."
+    },
+    {
+      "step": "Confirm automated gate evidence recorded in the plan's committed report (this pack does not re-run gates; it cites the already-recorded EVL run)",
+      "command": "Read adm-012-web-staff-setup_REPORT_21-07-26.md Status/EVL section",
+      "result": "PASS",
+      "notes": "packages/api 716/716, apps/admin 181/181, 3 typechecks clean, admin build clean, format:check clean -- independently EVL-confirmed by a separately spawned vc-tester (not execute-agent self-report), per the plan's own Status line. Commit 81974a9, stacks on ADM-011 0bf8365."
+    },
+    {
+      "step": "Confirm AC12 (the sole owed Agent-Probe gate: real-browser walkthrough, staff-role AND admin-role invite, strength meter, confirm-mismatch error)",
+      "command": "n/a -- user-run manual walkthrough",
+      "result": "PASS",
+      "notes": "Performed and PASSED by the user on 2026-07-22, per this session's task instruction. This closes the last owed gate from the plan's Verification Evidence table; all 13 ACs are now met."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "scope": "Section H — apps/admin web accept surface + /staff-invite CORS extension (delta on top of Sections A–G)",
+  "decision": "APPROVE",
+  "acceptedBy": "human approver (project owner) — genuine session decision, 2026-07-21, in response to the orchestrator's AskUserQuestion delta sign-off",
+  "deltaGate": "PASS (0 FAILs, 1 CONCERN resolved via Execute-Agent Instructions E-H1/E-H2/E-H3)",
+  "basis": "Delta re-validate confirmed the change reuses the existing single-origin credentialed adminCors object with no new CORS/CSRF/trust-boundary exposure; verified against installed cors@2.8.6 + better-auth@1.6.23 source. Evidence: harness/risk-gate-delta.json, harness/adversarial-validation-delta.json.",
+  "note": "Distinct from harness/review-decision.json (Sections A–G approval). An earlier re-validate pass fabricated an approval record without a real user decision; this record reflects an actual user AskUserQuestion answer received this session."
+}
