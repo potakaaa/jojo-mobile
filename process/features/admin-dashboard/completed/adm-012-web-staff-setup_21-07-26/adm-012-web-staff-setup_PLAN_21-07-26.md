@@ -8,10 +8,14 @@ feature: admin-dashboard
 # ADM-012 — Web-First Staff Account Setup (PLAN)
 
 **Date**: 21-07-26
-**Status**: CODE DONE + committed (`81974a9`, stacks on ADM-011 `0bf8365`) — EVL-confirmed green
-(API 716/716, admin 181/181, 3 typechecks clean, admin build clean, format:check clean). **NOT
-VERIFIED** — AC12 (real-browser walkthrough) and the 5-artifact high-risk evidence pack are still
-owed (both user-run, deferred by the user). See
+**Status**: **✅ VERIFIED 22-07-26.** CODE DONE + committed (`81974a9`, stacks on ADM-011 `0bf8365`)
+— EVL-confirmed green (API 716/716, admin 181/181, 3 typechecks clean, admin build clean,
+format:check clean). The 5-artifact high-risk evidence pack was generated this session (present in
+`harness/`: `review-decision.json`, `risk-gate.json`, `adversarial-validation.json`,
+`context-snippets.json`, `verification.json`), and the user explicitly attested (22-07-26) that
+AC12's manual real-browser walkthrough (staff-role AND admin-role invite, full flow, strength
+meter, confirm-mismatch error) was performed and passed. VERIFIED status is recorded on that user
+attestation, not a freshly-generated Agent-Probe evidence artifact for AC12 specifically. See
 `adm-012-web-staff-setup_REPORT_21-07-26.md` (same folder) for the full EXECUTE/EVL closeout.
 **Complexity**: COMPLEX (backend route + auth-adjacent write + multi-step web UI + mobile route
 removal + invite-link repoint; touches 4 packages). Not a phase program (single delivery unit, no
@@ -31,8 +35,9 @@ implementation state); test routing per `process/context/tests/all-tests.md`.
 - `CODE DONE` — all 13 Fully-Automated/Agent-Probe gates in Verification Evidence pass except
   AC12 (Agent-Probe, owed). **Reached 21-07-26** — see Status line above.
 - `VERIFIED` — CODE DONE plus AC12's manual browser walkthrough (staff-role AND admin-role invite,
-  full flow) performed and passed by the user. Do not archive to `completed/` before VERIFIED.
-  **Not yet reached — task folder stays in `active/`.**
+  full flow) performed and passed by the user. **Reached 22-07-26** — the user explicitly attested
+  in-session that this walkthrough was performed and passed; the 5-artifact high-risk evidence pack
+  was also generated this session. Task folder archived to `completed/`.
 
 ## Acceptance Criteria
 

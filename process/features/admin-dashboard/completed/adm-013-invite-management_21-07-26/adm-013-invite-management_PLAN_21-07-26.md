@@ -9,20 +9,20 @@ feature: admin-dashboard
 
 Date: 21-07-26
 
-Status: **CODE DONE + COMMITTED + EVL-confirmed green — NOT VERIFIED.** UPDATE PROCESS pass
-22-07-26. EXECUTE completed and committed on this branch (`9f8374b` feat + `6d42992` CodeRabbit
-fix + `ed05f2c` prettier-format; migration renumbered on merge with `development` from
-`0021_thick_shotgun` to `0022_nostalgic_lightspeed`). PR #154 open → `development`, not yet
-merged. Independently EVL-confirmed: API 770/770, admin 190/190, both typechecks + admin build +
+Status: **✅ VERIFIED 22-07-26.** CODE DONE + COMMITTED + EVL-confirmed green, then VERIFIED this
+pass: the user explicitly attested (22-07-26) that both previously-owed Agent-Probe walkthroughs
+(AC9 Pending Invites UI, AC13 Remove-from-staff UI) were performed and passed. This VERIFIED status
+is recorded on that user attestation, not a freshly-generated Agent-Probe evidence artifact.
+EXECUTE completed and committed on this branch (`9f8374b` feat + `6d42992` CodeRabbit fix +
+`ed05f2c` prettier-format; migration renumbered on merge with `development` from
+`0021_thick_shotgun` to `0022_nostalgic_lightspeed`). PR #154 open → `development`, not yet merged.
+Independently EVL-confirmed: API 770/770, admin 190/190, both typechecks + admin build +
 format:check clean. AC4 (revoked-token-rejected liveness invariant, HARD/Known-Gap-banned), AC14
 (dangling-authority-after-demotion), and AC15 (double-resend-race compare-and-swap) all proven by
 real passing regression tests per the plan's own Verification Evidence table. High-risk evidence
 pack reviewed and APPROVED (`harness/review-decision.json`, decision `APPROVE`, conditional on
-Fix 1/Fix 2 — both folded in and re-confirmed by the third VALIDATE pass below). **Owed for
-VERIFIED (per this plan's own Phase Completion Rules):** AC9 (Pending Invites UI walkthrough) and
-AC13 (Remove-from-staff UI walkthrough) — both Agent-Probe, standing no-admin-E2E-runner gap. The
-user exercised the admin UI informally this session but neither walkthrough is formally confirmed
-complete — task folder correctly stays in `active/`, not archived.
+Fix 1/Fix 2 — both folded in and re-confirmed by the third VALIDATE pass below). Task folder
+archived to `completed/` this pass.
 
 Original VALIDATE narrative (unchanged, retained below): PLAN drafted; VALIDATE **RE-RUN 22-07-26
 (third pass, post-approval plan-supplement confirmation)** recorded **Gate: PASS**
@@ -743,7 +743,8 @@ reviewed/approved by a human before EXECUTE.
   deliberately-broken liveness guard should turn the AC4 test red — confirm this during EXECUTE,
   do not just trust a green run).
 - **VERIFIED**: CODE DONE, plus AC9's AND AC13's manual admin-dashboard walkthroughs both
-  performed and passed by the user. Until then this task folder stays in `active/`, not archived.
+  performed and passed by the user. **Reached 22-07-26** — the user explicitly attested in-session
+  that both walkthroughs were performed and passed. Task folder archived to `completed/`.
 
 ## Resume and Execution Handoff
 
