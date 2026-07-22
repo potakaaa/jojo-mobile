@@ -26,6 +26,12 @@ import { users, userRoleEnum } from './users';
  *
  * `intended_role`/`intended_branch_id` are the ONLY source of the provisioned
  * role/branch at consume time — the invitee never supplies either (AC10).
+ *
+ * `consumed_at` and `revoked_at` (ADM-013, #149) are both nullable and mutually
+ * exclusive by construction: `consumed_at` = the invite was accepted; `revoked_at`
+ * = a super_admin cancelled it before acceptance. The liveness invariant is that an
+ * invite is "live" only when BOTH are null AND it has not expired — every liveness
+ * check in the codebase must include `revoked_at IS NULL`.
  */
 export const staffInvites = pgTable('staff_invites', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -35,6 +41,7 @@ export const staffInvites = pgTable('staff_invites', {
   tokenHash: varchar('token_hash').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   consumedAt: timestamp('consumed_at'),
+  revokedAt: timestamp('revoked_at'),
   createdBy: uuid('created_by')
     .references(() => users.id)
     .notNull(),

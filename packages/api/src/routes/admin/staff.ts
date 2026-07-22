@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { STAFF_ROLES } from '@jojopotato/types';
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -9,7 +9,11 @@ import { z } from 'zod';
 import { db } from '../../db/client';
 import { branches, staffInvites, users } from '../../db/schema/index';
 import { ADMIN_WEB_ORIGIN } from '../../lib/auth';
-import { serializeAdminStaffInvite, serializeAdminStaffSummary } from '../lib/serializers';
+import {
+  serializeAdminPendingStaffInvite,
+  serializeAdminStaffInvite,
+  serializeAdminStaffSummary,
+} from '../lib/serializers';
 import { AdminApiError, handleAdminError } from './lib/errors';
 
 // Resend-or-log invite delivery — mirrors `auth.ts`'s `sendMagicLink` exactly:
@@ -259,6 +263,7 @@ staffRouter.post('/invite', async (req, res) => {
           and(
             eq(staffInvites.email, email),
             isNull(staffInvites.consumedAt),
+            isNull(staffInvites.revokedAt),
             gt(staffInvites.expiresAt, now),
           ),
         );
@@ -293,6 +298,188 @@ staffRouter.post('/invite', async (req, res) => {
     res.status(201).json({ invite: serializeAdminStaffInvite(invite) });
   } catch (err) {
     handleAdminError(err, res, 'creating staff invite');
+  }
+});
+
+/**
+ * GET /api/admin/staff/invites (ADM-013, #149) — super_admin-only. Lists
+ * PENDING-ONLY invites (unconsumed AND unrevoked AND unexpired), newest first,
+ * joined to `branches` (intended branch name) and `users` (inviter name/email).
+ * NEVER serializes `tokenHash`. Guard order: super_admin check → query → serialize.
+ */
+staffRouter.get('/invites', async (req, res) => {
+  try {
+    if (req.adminSession!.role !== 'super_admin') {
+      throw new AdminApiError(403, 'Forbidden');
+    }
+
+    const now = new Date();
+    // Single join to `users` (the inviter) — no alias needed, `users` is joined once (E2).
+    const rows = await db
+      .select({
+        id: staffInvites.id,
+        email: staffInvites.email,
+        intendedRole: staffInvites.intendedRole,
+        intendedBranchId: staffInvites.intendedBranchId,
+        intendedBranchName: branches.name,
+        invitedByName: users.name,
+        invitedByEmail: users.email,
+        createdAt: staffInvites.createdAt,
+        expiresAt: staffInvites.expiresAt,
+      })
+      .from(staffInvites)
+      .leftJoin(branches, eq(staffInvites.intendedBranchId, branches.id))
+      .leftJoin(users, eq(staffInvites.createdBy, users.id))
+      .where(
+        and(
+          isNull(staffInvites.consumedAt),
+          isNull(staffInvites.revokedAt),
+          gt(staffInvites.expiresAt, now),
+        ),
+      )
+      .orderBy(desc(staffInvites.createdAt));
+
+    res.status(200).json({ invites: rows.map(serializeAdminPendingStaffInvite) });
+  } catch (err) {
+    handleAdminError(err, res, 'listing pending staff invites');
+  }
+});
+
+/**
+ * POST /api/admin/staff/invites/:id/revoke (ADM-013, #149) — super_admin-only.
+ * Atomically marks a still-pending invite revoked (compare-and-swap: only an
+ * unconsumed+unrevoked+unexpired row is claimed, so a concurrent revoke or an
+ * already-not-pending invite loses the race safely → 404). Guard order:
+ * super_admin check → uuid-shape guard → atomic CAS UPDATE → 404 on no row.
+ */
+staffRouter.post('/invites/:id/revoke', async (req, res) => {
+  try {
+    if (req.adminSession!.role !== 'super_admin') {
+      throw new AdminApiError(403, 'Forbidden');
+    }
+    // A malformed (non-uuid) :id can never be a real target — clean 404 rather than
+    // letting the `eq()` hit Postgres's `uuid` column and throw a 22P02 → 500.
+    if (!uuidSchema.safeParse(req.params.id).success) {
+      throw new AdminApiError(404, 'Invite not found or not pending');
+    }
+
+    const now = new Date();
+    const [revoked] = await db
+      .update(staffInvites)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(staffInvites.id, req.params.id),
+          isNull(staffInvites.consumedAt),
+          isNull(staffInvites.revokedAt),
+          gt(staffInvites.expiresAt, now),
+        ),
+      )
+      .returning({ id: staffInvites.id });
+
+    if (!revoked) {
+      throw new AdminApiError(404, 'Invite not found or not pending');
+    }
+
+    res.status(200).json({ id: revoked.id });
+  } catch (err) {
+    handleAdminError(err, res, 'revoking staff invite');
+  }
+});
+
+/**
+ * POST /api/admin/staff/invites/:id/resend (ADM-013, #149) — super_admin-only.
+ * Rotates a still-pending invite's token (kills the old link, issues a fresh one
+ * with a refreshed expiry) and re-delivers it. The invitee's stored email/role/
+ * branch are preserved verbatim — the request BODY is ignored entirely (no Zod
+ * schema reads role/branch from it, closing the AC6 smuggling vector structurally).
+ *
+ * Guard/flow order:
+ *   1. super_admin check                              → 403
+ *   2. uuid-shape guard                               → 404 malformed
+ *   3. pending-read, CAPTURING the current tokenHash  → 404 if not pending (AC7)
+ *   4. generate fresh rawToken/tokenHash/expiry
+ *   5. send-before-commit: await sendStaffInvite FIRST — rotating the hash kills the
+ *      currently-valid link, so delivery must be confirmed before the row is mutated.
+ *      A send throw propagates to handleAdminError (non-200) with the old token intact.
+ *   6. exact-token compare-and-swap UPDATE keyed on BOTH pending-state AND the captured
+ *      tokenHash (Fix 2, AC15) — a racing second resend whose captured hash is now stale
+ *      (the first resend already rotated) fails the WHERE and 404s instead of clobbering
+ *      the first resend's just-delivered link.
+ *   7. no row returned → 404.
+ */
+staffRouter.post('/invites/:id/resend', async (req, res) => {
+  try {
+    if (req.adminSession!.role !== 'super_admin') {
+      throw new AdminApiError(403, 'Forbidden');
+    }
+    if (!uuidSchema.safeParse(req.params.id).success) {
+      throw new AdminApiError(404, 'Invite not found or not pending');
+    }
+
+    const readNow = new Date();
+    // Capture the row's CURRENT tokenHash in the SAME read that checks pending status —
+    // this is the compare-and-swap key for the rotating UPDATE below (Fix 2).
+    const [pending] = await db
+      .select({
+        email: staffInvites.email,
+        tokenHash: staffInvites.tokenHash,
+      })
+      .from(staffInvites)
+      .where(
+        and(
+          eq(staffInvites.id, req.params.id),
+          isNull(staffInvites.consumedAt),
+          isNull(staffInvites.revokedAt),
+          gt(staffInvites.expiresAt, readNow),
+        ),
+      );
+
+    if (!pending) {
+      // Not pending → 404, zero mutation, zero send attempt (AC7).
+      throw new AdminApiError(404, 'Invite not found or not pending');
+    }
+
+    // Fresh token + refreshed expiry, computed in memory (not yet committed).
+    const rawToken = randomBytes(32).toString('hex');
+    const newTokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
+
+    // Send-before-commit (D2 amendment): the rotation KILLS the live link, so delivery
+    // must be attempted+confirmed BEFORE the write. A send throw leaves the old token
+    // intact (still pending) and surfaces as a non-200 error via handleAdminError.
+    await sendStaffInvite(pending.email, rawToken);
+
+    // Exact-token compare-and-swap: keyed on the captured tokenHash (Fix 2, AC15).
+    const [rotated] = await db
+      .update(staffInvites)
+      .set({ tokenHash: newTokenHash, expiresAt })
+      .where(
+        and(
+          eq(staffInvites.id, req.params.id),
+          eq(staffInvites.tokenHash, pending.tokenHash),
+          isNull(staffInvites.consumedAt),
+          isNull(staffInvites.revokedAt),
+          gt(staffInvites.expiresAt, now),
+        ),
+      )
+      .returning({
+        email: staffInvites.email,
+        intendedRole: staffInvites.intendedRole,
+        intendedBranchId: staffInvites.intendedBranchId,
+        expiresAt: staffInvites.expiresAt,
+      });
+
+    if (!rotated) {
+      // The row stopped being pending, OR a different resend already rotated the
+      // tokenHash between this call's read and write (double-resend race, Fix 2).
+      throw new AdminApiError(404, 'Invite not found or not pending');
+    }
+
+    res.status(200).json({ invite: serializeAdminStaffInvite(rotated) });
+  } catch (err) {
+    handleAdminError(err, res, 'resending staff invite');
   }
 });
 

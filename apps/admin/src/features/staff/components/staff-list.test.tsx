@@ -36,6 +36,12 @@ function makeBranch(over: Partial<AdminBranch> = {}): AdminBranch {
   } as AdminBranch;
 }
 
+/** Defaults for the ADM-013 Part-B props so existing cases stay focused. */
+const partBDefaults = {
+  currentUserId: null as string | null,
+  onRemove: () => {},
+};
+
 test('renders name, email, and the branch select with the assigned value', () => {
   render(
     <StaffList
@@ -46,6 +52,7 @@ test('renders name, email, and the branch select with the assigned value', () =>
       isSuperAdmin={false}
       onBranchChange={() => {}}
       onRoleChange={() => {}}
+      {...partBDefaults}
     />,
   );
   expect(screen.getByText('Jamie Staff')).toBeDefined();
@@ -64,6 +71,7 @@ test('shows role as a read-only badge for a non-super_admin viewer', () => {
       isSuperAdmin={false}
       onBranchChange={() => {}}
       onRoleChange={() => {}}
+      {...partBDefaults}
     />,
   );
   expect(screen.getByText('Admin')).toBeDefined();
@@ -80,6 +88,7 @@ test('shows a role select (staff/admin/super_admin only, never customer) for a s
       isSuperAdmin={true}
       onBranchChange={() => {}}
       onRoleChange={() => {}}
+      {...partBDefaults}
     />,
   );
   const roleSelect = screen.getByLabelText('Role for jamie@example.com') as HTMLSelectElement;
@@ -100,6 +109,7 @@ test('fires onBranchChange with the selected id, and null for the empty option',
       isSuperAdmin={false}
       onBranchChange={onBranchChange}
       onRoleChange={() => {}}
+      {...partBDefaults}
     />,
   );
   const branchSelect = screen.getByLabelText('Branch for jamie@example.com');
@@ -119,6 +129,7 @@ test('fires onRoleChange with the selected role for a super_admin viewer', () =>
       isSuperAdmin={true}
       onBranchChange={() => {}}
       onRoleChange={onRoleChange}
+      {...partBDefaults}
     />,
   );
   const roleSelect = screen.getByLabelText('Role for jamie@example.com');
@@ -136,7 +147,73 @@ test('renders the empty state', () => {
       isSuperAdmin={false}
       onBranchChange={() => {}}
       onRoleChange={() => {}}
+      {...partBDefaults}
     />,
   );
   expect(screen.getByText('No staff members yet.')).toBeDefined();
+});
+
+// ADM-013 (#149) Part B — staff removal.
+test('renders "Remove from staff" for a non-self row, hides it on the signed-in user\'s own row (AC11)', () => {
+  render(
+    <StaffList
+      staff={[makeStaff({ id: 's1' }), makeStaff({ id: 's2', email: 'other@example.com' })]}
+      branches={[makeBranch()]}
+      isLoading={false}
+      error={null}
+      isSuperAdmin={true}
+      onBranchChange={() => {}}
+      onRoleChange={() => {}}
+      currentUserId="s1"
+      onRemove={() => {}}
+    />,
+  );
+  // Exactly one "Remove from staff" button — the self row (s1) hides it.
+  expect(screen.getAllByRole('button', { name: 'Remove from staff' })).toHaveLength(1);
+});
+
+test('clicking "Remove from staff" opens the confirm dialog and only calls onRemove after confirming (AC10)', () => {
+  const onRemove = vi.fn();
+  const member = makeStaff();
+  render(
+    <StaffList
+      staff={[member]}
+      branches={[makeBranch()]}
+      isLoading={false}
+      error={null}
+      isSuperAdmin={true}
+      onBranchChange={() => {}}
+      onRoleChange={() => {}}
+      currentUserId={null}
+      onRemove={onRemove}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Remove from staff' }));
+  // Dialog open; onRemove not yet called.
+  expect(screen.getByText(/Remove Jamie Staff from staff\?/)).toBeDefined();
+  expect(onRemove).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  expect(onRemove).toHaveBeenCalledTimes(1);
+  expect(onRemove).toHaveBeenCalledWith(member);
+});
+
+test('cancelling the remove dialog never calls onRemove', () => {
+  const onRemove = vi.fn();
+  render(
+    <StaffList
+      staff={[makeStaff()]}
+      branches={[makeBranch()]}
+      isLoading={false}
+      error={null}
+      isSuperAdmin={true}
+      onBranchChange={() => {}}
+      onRoleChange={() => {}}
+      currentUserId={null}
+      onRemove={onRemove}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Remove from staff' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(onRemove).not.toHaveBeenCalled();
 });

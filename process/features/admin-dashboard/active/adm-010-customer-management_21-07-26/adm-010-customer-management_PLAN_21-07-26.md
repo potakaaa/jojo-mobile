@@ -15,7 +15,18 @@ field set, D2 detail composite scope, D3 single `q=` search) are LOCKED there �
 mechanical "how," not further design debate.
 
 **Date**: 21-07-26
-**Status**: PLAN — VALIDATE complete (Gate: PASS), awaiting EXECUTE
+**Status**: **CODE DONE + COMMITTED + MERGED — NOT VERIFIED.** UPDATE PROCESS pass 22-07-26.
+EXECUTE completed on branch `feat/adm-010-customer-mgmt` (`2b860d7` feat + `64c0503` CodeRabbit
+fix — tie-safe `(createdAt, id)` composite cursor, 404-empty-state, `formatDate` local-date fix,
+teardown fix), merged to `development` via PR #153 (`ae668ad`), now present in this worktree
+via the `development` merge. Read-only Customers module: cursor-paginated/searchable
+`GET /api/admin/customers` list, composite `GET /api/admin/customers/:id` detail (profile + star
+balance + last-10 orders), zero mutating verbs, admin/super_admin-only. **Owed for VERIFIED (per
+this plan's own Phase Completion Rules):** AC8, the manual admin-dashboard browser walkthrough
+(search, pagination, detail render, zero editable controls, light/dark) — Agent-Probe, standing
+no-admin-E2E-runner gap. Task folder correctly stays in `active/`, not archived.
+
+Original narrative (retained below): PLAN — VALIDATE complete (Gate: PASS), awaiting EXECUTE
 
 ## Acceptance Criteria
 
