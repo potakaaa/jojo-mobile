@@ -27,6 +27,7 @@ import { TAB_BAR_FOOTPRINT, useHideTabBarWhile } from '@/components/floating-tab
 import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useNotifications } from '@/features/notifications/hooks/use-notifications';
 import { resolveRoute } from '@/features/notifications/lib/notification-factory';
+import { ScreenLoader } from '@/features/shared/components/screen-message';
 import { useToast } from '@/features/shared/hooks/use-toast';
 import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -104,6 +105,7 @@ export default function NotificationsScreen() {
     isFetchingNextPage,
     refetch,
     isRefetching,
+    isPending,
   } = useNotifications();
 
   // Optimistic local state for the marketing toggle — updates instantly on press
@@ -200,12 +202,16 @@ export default function NotificationsScreen() {
           ListHeaderComponent={listHeader}
           ItemSeparatorComponent={ItemSeparator}
           ListEmptyComponent={
-            <EmptyState
-              iconName="notifications-outline"
-              title="No notifications yet"
-              description="Order updates and deals will show up here."
-              mode={mode}
-            />
+            isPending ? (
+              <ScreenLoader />
+            ) : (
+              <EmptyState
+                iconName="notifications-outline"
+                title="No notifications yet"
+                description="Order updates and deals will show up here."
+                mode={mode}
+              />
+            )
           }
           ListFooterComponent={
             isFetchingNextPage ? (

@@ -212,8 +212,11 @@ None. The following product decisions were ambiguous coming out of RESEARCH and 
 here as defaults (not left open), per Auto Mode guidance to avoid blocking on decisions with a
 clear, low-risk default:
 
-- **Page size & pagination style:** cursor-based pagination on `created_at`, default page size
-  10, mirroring the existing `GET /orders` cursor pattern exactly. Locked.
+- **Page size & pagination style:** cursor-based pagination on a COMPOUND `(created_at, id)` key
+  (not `created_at` alone — a single-column cursor let rows tied at millisecond precision be
+  permanently skipped, found by CodeRabbit review on PR #151 and fixed with a real regression
+  test), default page size 10, otherwise mirroring the existing `GET /orders` cursor pattern.
+  Locked.
 - **Delete semantics:** hard delete (`DELETE FROM notifications WHERE id=:id AND
   user_id=:userId`), no soft-delete column added — mirrors the existing cart-line delete
   convention and nothing in the request implies an undo/audit requirement. Locked.
@@ -243,9 +246,15 @@ clear, low-risk default:
   `DELETE` route exists today.
 - DB table `notifications` (`packages/api/src/db/schema/notifications.ts`) has no soft-delete
   column; index exists on `(user_id, read_at)`.
-- Precedent for the new delete route: cart-line `DELETE /cart/items/:lineId` — scope to
-  `req.user!.id`, validate the id, return 404 (not 403) on wrong-owner/malformed id, invalidate
-  or optimistically update the client cache on success.
+- Precedent for the new delete route's general SHAPE (scope-to-caller, validate the id,
+  invalidate/optimistically update the client cache on success): cart-line
+  `DELETE /cart/items/:lineId`. **Correction (verified against `cart.ts:122`): cart does NOT use
+  404-not-403** — it returns 404 for a genuinely nonexistent line but 403 for a line that exists
+  but belongs to another user's cart (an intentional, different convention — see
+  `requireOwnedLine`'s own doc comment). The notification DELETE route's actual 404-for-both
+  (never leak existence) convention instead mirrors this codebase's existing
+  `PATCH /notifications/:id/read` route, not cart. (Found by CodeRabbit review, PR #151 — this
+  note previously mis-cited cart as the 404-not-403 precedent.)
 - Precedent for pagination: order-history's `useInfiniteQuery` + server `limit`/`cursor` (on
   `placed_at`) pattern, fetching `limit+1` to detect `hasMore`. Directly transferable to
   notifications using `created_at` as the cursor field.

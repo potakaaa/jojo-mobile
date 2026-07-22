@@ -141,6 +141,11 @@ export function SwipeableRow({
         <Animated.View
           testID="swipeable-row-content"
           style={rowStyle}
+          // View defaults to accessible=false — without it, accessibilityActions/
+          // onAccessibilityAction below are never exposed to VoiceOver/TalkBack,
+          // silently breaking the gesture-free fallback path this component exists
+          // to provide.
+          accessible
           accessibilityActions={[
             { name: accessibilityActionLabel, label: accessibilityActionLabel },
           ]}

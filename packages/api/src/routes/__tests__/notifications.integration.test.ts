@@ -383,3 +383,80 @@ describe('GET /notifications — pagination + unreadCount + DELETE', () => {
     expect(after.body.unreadCount).toBe(beforeCount);
   });
 });
+
+/**
+ * CodeRabbit finding (PR #151) — cursor pagination must not skip rows that
+ * share an identical `created_at` at the exact page boundary. `created_at` is
+ * microsecond-precision in Postgres, but the cursor round-trips through JS
+ * `Date.toISOString()` (millisecond precision), so two rows created in the
+ * same millisecond previously collided at the boundary and one was
+ * permanently dropped from every subsequent page (not just reordered).
+ *
+ * Hermetic: seeds its OWN user + 12 rows, isolated from the suites above.
+ */
+describe('GET /notifications — cursor tie-safety at the page boundary', () => {
+  const tsuffix = unique();
+  let tiedOwnerId: string;
+  let tiedOwnerCookies: string[];
+  const ROW_COUNT = 12;
+
+  beforeAll(async () => {
+    const email = `notif-tie-${tsuffix}@example.com`;
+    tiedOwnerCookies = await signUpAndGetCookie(email, 'sup3r-secret-pw');
+    tiedOwnerId = await userIdFor(email);
+
+    const now = Date.now();
+    // 12 rows, oldest (i=0) → newest (i=11), 1s apart — EXCEPT rows i=1 and i=2
+    // share the IDENTICAL created_at. Sorted newest-first, the default 10-row
+    // page 1 holds indices 11..2 (page 1's LAST row is i=2); page 2 holds i=1,0
+    // (page 2's FIRST row is i=1). i=1 and i=2 are therefore the exact tied
+    // pair straddling the page-1/page-2 boundary — precisely where the old
+    // `created_at`-only cursor would have permanently dropped one of them.
+    const tiedTimestamp = new Date(now + 2 * 1000);
+    for (let i = 0; i < ROW_COUNT; i++) {
+      const createdAt = i === 1 || i === 2 ? tiedTimestamp : new Date(now + i * 1000);
+      await insertNotification({
+        userId: tiedOwnerId,
+        type: 'order_ready',
+        title: `tie ${String(i).padStart(2, '0')}`,
+        createdAt,
+      });
+    }
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, tiedOwnerId));
+    await db.delete(schema.users).where(eq(schema.users.id, tiedOwnerId));
+  });
+
+  it('a tied pair at the page boundary is neither skipped nor duplicated across pages', async () => {
+    const page1 = await request(app)
+      .get('/notifications')
+      .set('Cookie', tiedOwnerCookies.join('; '));
+    const p1 = page1.body.notifications as any[];
+    expect(p1.length).toBe(10);
+    expect(page1.body.nextCursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(page1.body.nextCursor)}`)
+      .set('Cookie', tiedOwnerCookies.join('; '));
+    const p2 = page2.body.notifications as any[];
+
+    // All 12 seeded rows are accounted for exactly once — this is the assertion
+    // that would have failed under the old created_at-only cursor (the tied
+    // "tie 01" row would never appear on either page).
+    const allTitles = [...p1, ...p2].map((n) => n.title).sort();
+    const expectedTitles = Array.from(
+      { length: ROW_COUNT },
+      (_, i) => `tie ${String(i).padStart(2, '0')}`,
+    ).sort();
+    expect(allTitles).toEqual(expectedTitles);
+
+    // No duplicate ids between the two pages.
+    const p1Ids = new Set(p1.map((n) => n.id));
+    for (const n of p2) expect(p1Ids.has(n.id)).toBe(false);
+
+    // The terminal page has no further rows.
+    expect(page2.body.nextCursor).toBeNull();
+  });
+});

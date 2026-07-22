@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -36,23 +36,35 @@ notificationsRouter.get('/', async (req, res) => {
     ? Math.min(Math.max(Math.trunc(limitRaw), 1), MAX_NOTIFICATIONS_LIMIT)
     : DEFAULT_NOTIFICATIONS_LIMIT;
 
-  const cursor = typeof req.query.cursor === 'string' ? new Date(req.query.cursor) : null;
-  const hasCursor = cursor !== null && !Number.isNaN(cursor.getTime());
+  // Compound cursor `${isoTimestamp}_${id}` — a `created_at`-only cursor can
+  // silently and PERMANENTLY skip rows tied at millisecond precision (the DB
+  // column is microsecond-precision `timestamp`, but `toISOString()` truncates
+  // to milliseconds), since a tied row can never satisfy a strict `<` on either
+  // side of the boundary. The id tiebreaker gives a stable total order; ISO
+  // strings/UUIDs never contain `_`, so the split is unambiguous.
+  const [cursorTs, cursorId] =
+    typeof req.query.cursor === 'string' ? req.query.cursor.split('_') : [undefined, undefined];
+  const cursorDate = cursorTs ? new Date(cursorTs) : null;
+  const hasCursor = cursorDate !== null && !Number.isNaN(cursorDate.getTime()) && !!cursorId;
 
   const whereClause = hasCursor
-    ? and(eq(notifications.user_id, userId), lt(notifications.created_at, cursor))
+    ? and(
+        eq(notifications.user_id, userId),
+        sql`(${notifications.created_at}, ${notifications.id}) < (${cursorDate}, ${cursorId})`,
+      )
     : eq(notifications.user_id, userId);
 
   const rows = await db
     .select()
     .from(notifications)
     .where(whereClause)
-    .orderBy(desc(notifications.created_at))
+    .orderBy(desc(notifications.created_at), desc(notifications.id))
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor = hasMore ? page[page.length - 1]!.created_at.toISOString() : null;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? `${last.created_at.toISOString()}_${last.id}` : null;
 
   // Independent unread count — the true total for this user, never page-derived.
   const [countRow] = await db

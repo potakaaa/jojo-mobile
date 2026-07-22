@@ -25,6 +25,12 @@ const gh = jest.requireMock('react-native-gesture-handler') as {
   __panHandlers: PanHandlers[];
 };
 
+const reanimated = jest.requireMock('react-native-reanimated') as {
+  withTiming: jest.Mock;
+  withSpring: jest.Mock;
+  __setReducedMotion: (value: boolean) => void;
+};
+
 const ROW_WIDTH = 300;
 // 60% of ROW_WIDTH = 180. -200 crosses it; -50 does not.
 const PAST_THRESHOLD = -200;
@@ -38,6 +44,13 @@ function lastPan(): PanHandlers {
 
 beforeEach(() => {
   gh.__panHandlers.length = 0;
+  reanimated.withTiming.mockClear();
+  reanimated.withSpring.mockClear();
+});
+
+afterEach(() => {
+  // Never leak reduced-motion state into a later test.
+  reanimated.__setReducedMotion(false);
 });
 
 test('renders its child content', async () => {
@@ -109,6 +122,29 @@ test('a fast leftward fling triggers onFullSwipe even short of the distance thre
   expect(onFullSwipe).toHaveBeenCalledTimes(1);
 });
 
+test('reduced-motion users get a withTiming snap-back, not the withSpring bounce', async () => {
+  // Previously untestable — the mock's useReducedMotion was hardcoded false, so
+  // this branch was unreachable from any test in the suite (found by CodeRabbit
+  // review, PR #151).
+  reanimated.__setReducedMotion(true);
+  const { getByTestId } = await render(
+    <SwipeableRow onFullSwipe={() => {}}>
+      <Text>row</Text>
+    </SwipeableRow>,
+  );
+  fireEvent(getByTestId('swipeable-row'), 'layout', {
+    nativeEvent: { layout: { width: ROW_WIDTH, height: 64 } },
+  });
+
+  const pan = lastPan();
+  pan.onBegin?.();
+  pan.onUpdate?.({ translationX: SHORT_DRAG });
+  pan.onEnd?.({ velocityX: 0, translationX: SHORT_DRAG });
+
+  expect(reanimated.withTiming).toHaveBeenCalledWith(0, { duration: 160 });
+  expect(reanimated.withSpring).not.toHaveBeenCalled();
+});
+
 test('onAccessibilityAction fires onFullSwipe directly (gesture-free path)', async () => {
   const onFullSwipe = jest.fn();
   const { getByTestId } = await render(
@@ -120,6 +156,20 @@ test('onAccessibilityAction fires onFullSwipe directly (gesture-free path)', asy
     nativeEvent: { actionName: 'Delete' },
   });
   expect(onFullSwipe).toHaveBeenCalledTimes(1);
+});
+
+test('the row content is marked accessible so the accessibility action is discoverable', async () => {
+  // View defaults to accessible=false, which would silently hide
+  // accessibilityActions from VoiceOver/TalkBack even though onAccessibilityAction
+  // still fires when invoked directly (the test above can't catch that on its
+  // own — jsdom doesn't gate the synthetic event on the prop the way a real
+  // screen reader would).
+  const { getByTestId } = await render(
+    <SwipeableRow onFullSwipe={() => {}}>
+      <Text>row</Text>
+    </SwipeableRow>,
+  );
+  expect(getByTestId('swipeable-row-content').props.accessible).toBe(true);
 });
 
 test('renders no revealed action button behind the row', async () => {

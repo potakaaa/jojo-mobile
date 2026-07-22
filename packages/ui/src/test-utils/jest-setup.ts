@@ -24,6 +24,13 @@ jest.mock('react-native-reanimated', () => {
   const RN = require('react-native');
   const passthrough = (value: unknown) => value;
 
+  // Mutable module-level flag (not a fixed `() => false`) so a test can flip
+  // reduced-motion on and actually exercise SwipeableRow's `withTiming` branch —
+  // otherwise that branch is unreachable from any test in the suite (found by
+  // CodeRabbit review, PR #151). Reset in each test's own cleanup, not here,
+  // since this factory only runs once per module load.
+  let reducedMotion = false;
+
   return {
     __esModule: true,
     default: {
@@ -39,13 +46,20 @@ jest.mock('react-native-reanimated', () => {
     Image: RN.Image,
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useSharedValue: (value: unknown) => ({ value }),
-    withTiming: passthrough,
-    withSpring: passthrough,
+    // Separate jest.fn()s (not one shared `passthrough` reference) so a test can
+    // assert WHICH one was called — that's the whole point of making reduced
+    // motion configurable.
+    withTiming: jest.fn(passthrough),
+    withSpring: jest.fn(passthrough),
     interpolate: passthrough,
     interpolateColor: passthrough,
     runOnJS: (fn: unknown) => fn,
     // SwipeableRow reads this to skip the spring bounce; the apps/mobile mock lacks it.
-    useReducedMotion: () => false,
+    useReducedMotion: () => reducedMotion,
+    // Test-only escape hatch — flip reduced-motion for one test, then restore.
+    __setReducedMotion: (value: boolean) => {
+      reducedMotion = value;
+    },
   };
 });
 

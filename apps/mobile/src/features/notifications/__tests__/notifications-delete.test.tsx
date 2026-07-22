@@ -84,6 +84,9 @@ function setup() {
     hasNextPage: false,
     fetchNextPage: jest.fn(),
     isFetchingNextPage: false,
+    refetch: jest.fn(),
+    isRefetching: false,
+    isPending: false,
   } as unknown as ReturnType<typeof useNotifications>);
 }
 

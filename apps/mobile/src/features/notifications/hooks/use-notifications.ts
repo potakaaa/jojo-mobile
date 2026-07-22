@@ -86,6 +86,10 @@ export interface UseNotifications {
   isFetchingNextPage: boolean;
   refetch: () => void;
   isRefetching: boolean;
+  /** True only until the FIRST page resolves — mirrors `useOrderHistory()`'s
+   * `isPending`, so the screen can avoid flashing an empty state before any
+   * data has arrived. */
+  isPending: boolean;
   marketingOptIn: boolean;
   setMarketingOptIn: (value: boolean) => Promise<SignInResult>;
 }
@@ -97,7 +101,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user, marketingOptIn, setMarketingOptIn: persistMarketingOptIn } = useAuth();
   const userId = user?.id;
 
-  const { data, hasNextPage, fetchNextPage, isFetchingNextPage, refetch, isRefetching } =
+  const { data, hasNextPage, fetchNextPage, isFetchingNextPage, refetch, isRefetching, isPending } =
     useInfiniteQuery({
       queryKey: notificationsQueryKey(userId),
       queryFn: ({ pageParam }) => fetchNotificationsPage({ cursor: pageParam }),
@@ -216,6 +220,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       isFetchingNextPage,
       refetch,
       isRefetching,
+      isPending,
       marketingOptIn,
       setMarketingOptIn,
     }),
@@ -230,6 +235,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       isFetchingNextPage,
       refetch,
       isRefetching,
+      isPending,
       marketingOptIn,
       setMarketingOptIn,
     ],

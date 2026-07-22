@@ -152,11 +152,19 @@ Sequenced. Each section ends with its own test gate; do not batch gates to the e
 1. In `notifications.ts`, add `const DEFAULT_NOTIFICATIONS_LIMIT = 10;` and
    `const MAX_NOTIFICATIONS_LIMIT = 50;` (mirror `orders.ts`'s `DEFAULT_HISTORY_LIMIT`/`MAX_HISTORY_LIMIT`
    clamp style). Remove/replace the now-stale `NOTIFICATIONS_LIST_LIMIT = 100` and its comment.
-2. Rewrite `GET /` to mirror `orders.ts` lines ~575–612 exactly: parse+clamp `limit`; parse `cursor`
-   (`new Date(req.query.cursor)` guarded by `!Number.isNaN(getTime())`); build the where clause
-   (`and(eq(user_id), lt(created_at, cursor))` when cursor present, else `eq(user_id)`); order
-   `desc(created_at)`; `.limit(limit + 1)`; derive `hasMore`/`page`/`nextCursor = page[last].created_at.toISOString()`.
-   (Import `lt` from drizzle-orm alongside the existing `and, desc, eq, isNull`.)
+2. Rewrite `GET /` with a COMPOUND `(created_at, id)` cursor, not a `created_at`-only one — a
+   `created_at`-only cursor is UNSAFE here: `created_at` is microsecond-precision `timestamp` in
+   Postgres, but the cursor round-trips through `Date.toISOString()` (millisecond precision), so
+   two rows created in the same millisecond permanently skip one of them at the page boundary
+   (found by CodeRabbit review, PR #151; proven by a regression test — see Gate A). Parse `cursor`
+   as `${isoTimestamp}_${id}` (split on `_`, safe since neither ISO strings nor UUIDs contain one);
+   build the where clause with `sql\`(${created_at}, ${id}) < (${cursorDate}, ${cursorId})\`` when a
+   cursor is present, else `eq(user_id)`; order by `desc(created_at), desc(id)` (the tiebreaker
+   matters — without it, Postgres's tie order is unspecified per-execution); `.limit(limit + 1)`;
+   derive `hasMore`/`page`/`nextCursor = \`${last.created_at.toISOString()}_${last.id}\``.
+   (`lt` is NOT needed here — the compound comparison uses a raw `sql` template instead; import
+   `and, desc, eq, isNull, sql` from drizzle-orm. `sql` is also already used for the unread-count
+   query below.)
 3. Add the independent unread count in the same handler:
    `const [{ count }] = await db.select({ count: sql\`count(*)::int\` }).from(notifications).where(and(eq(user_id), isNull(read_at)));`
    (import `sql` from drizzle-orm; `isNull` is already imported).
@@ -192,7 +200,11 @@ Sequenced. Each section ends with its own test gate; do not batch gates to the e
    client-side `.filter(readAt==null).length` `useMemo`; delete that memo).
 10. Add `deleteNotification`: a mutationFn
     `apiRequest(\`/notifications/${encodeURIComponent(id)}\`, { method: 'DELETE' })` wrapped in an
-    **optimistic** `useMutation` mirroring the existing `markAllRead` recipe:
+    **optimistic** `useMutation` mirroring the existing `markAllRead` recipe. IMPORTANT — decrement
+    `unreadCount` on EVERY page's snapshot when the removed row was unread, not just the page it was
+    found on: the bell badge reads `pages[0].unreadCount`, and the server returns the SAME user-wide
+    total on every page, so a delete on page 2+ that only touched that page's local count would
+    leave `pages[0]` stale until the `onSettled` refetch (found by CodeRabbit review, PR #151).
     - `onMutate(id)`: `cancelQueries`; snapshot `previous = queryClient.getQueryData(key)`; `setQueryData`
       to map over `pages`, filtering the id out of each page's `notifications` AND decrementing that page's
       `unreadCount` by 1 only if the removed row's `readAt == null`. Return `{ previous }`.
