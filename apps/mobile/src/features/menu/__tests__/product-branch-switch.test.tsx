@@ -49,7 +49,22 @@ function setupCart(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseProductDetails.mockReturnValue({ data: product, isLoading: false, isError: false });
-  mockUseBranch.mockReturnValue({ selectedBranch } as unknown as ReturnType<typeof useBranch>);
+  /*
+    `branches` + `setSelectedBranch` were added to this fixture when the
+    clear-and-switch flow moved into the shared `useConfirmBranchSwitch` hook
+    (home-all-branches D4). The hook resolves the full target branch out of
+    `useBranch().branches` and also points `setSelectedBranch` at it, so a fixture
+    carrying only `selectedBranch` would now be incomplete.
+
+    This is a MOCK-COMPLETENESS change only — no assertion below was touched, and
+    the asserted dialog copy, button labels, and clearCart/setBranch/addItem
+    expectations are all unchanged.
+  */
+  mockUseBranch.mockReturnValue({
+    selectedBranch,
+    branches: [selectedBranch],
+    setSelectedBranch: jest.fn(),
+  } as unknown as ReturnType<typeof useBranch>);
 });
 
 describe('ProductDetailsScreen — switch-branch confirmation', () => {
@@ -77,7 +92,16 @@ describe('ProductDetailsScreen — switch-branch confirmation', () => {
 
     expect(clearCart).toHaveBeenCalledTimes(1);
     expect(setBranch).toHaveBeenCalledWith('b2');
-    expect(addItem).toHaveBeenCalledTimes(1);
+    /*
+      `waitFor` (was a bare synchronous expect) because the branch switch is now
+      resolved by the shared `useConfirmBranchSwitch` hook and the add is
+      deliberately sequenced AFTER it — `await confirm()` then `addItem(...)`.
+      That ordering is the whole point of the D4 contract: the line must land in a
+      cart that already belongs to the target branch. `clearCart`/`setBranch`
+      above still fire synchronously, and the assertion itself is unchanged —
+      exactly one `addItem` call.
+    */
+    await waitFor(() => expect(addItem).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(queryByText('Switch branch?')).toBeNull());
   });
 

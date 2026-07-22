@@ -21,6 +21,13 @@ export interface ProductCardProps {
   imageSource?: ImageSourcePropType;
   onPress?: () => void;
   mode: ThemeMode;
+  /**
+   * home-all-branches — a short, already-complete caption rendered as its own
+   * UNLABELED row under the description (e.g. a branch name, or "Available at 3
+   * branches"). Do NOT prefix it at render time; the caller supplies the exact
+   * sentence. Omitting it leaves existing call sites rendering byte-identically.
+   */
+  subtext?: string;
 }
 
 /**
@@ -30,7 +37,7 @@ export interface ProductCardProps {
  * card fires the caller's `onPress` (typically navigation to Product Details) —
  * the chevron is a visual "open" cue, not a separate add-to-cart control.
  */
-export function ProductCard({ product, imageSource, onPress, mode }: ProductCardProps) {
+export function ProductCard({ product, imageSource, onPress, mode, subtext }: ProductCardProps) {
   const theme = Colors[mode];
   const [pressed, setPressed] = useState(false);
 
@@ -75,6 +82,15 @@ export function ProductCard({ product, imageSource, onPress, mode }: ProductCard
         {product.description ? (
           <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
             {product.description}
+          </Text>
+        ) : null}
+        {subtext ? (
+          <Text
+            testID="product-card-subtext"
+            style={[styles.subtext, { color: theme.textSecondary }]}
+            numberOfLines={1}
+          >
+            {subtext}
           </Text>
         ) : null}
         <View style={styles.footer}>
@@ -137,6 +153,10 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.bodySmall,
   },
   description: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+  },
+  subtext: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },

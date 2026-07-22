@@ -1,11 +1,13 @@
-import type { Order, OrderStatus } from '@jojopotato/types';
+import type { Order, OrderStatus, ProductBranch } from '@jojopotato/types';
 import {
   Badge,
   BranchCard,
+  ConfirmDialog,
   DealCard,
   EmptyState,
   RewardProgressCard,
   StarProgressBar,
+  Toast,
 } from '@jojopotato/ui';
 import { formatDealScheduleSummary } from '@jojopotato/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -26,6 +28,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { FontFamily, MaxContentWidth, Palette, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useConfirmBranchSwitch } from '@/features/branch/hooks/use-confirm-branch-switch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useDealProducts } from '@/features/deals/hooks/use-deal-products';
 import { dealProductToCard } from '@/features/deals/lib/deal-product-to-card';
@@ -34,10 +37,12 @@ import { HomeHeader } from '@/features/home/components/home-header';
 import { ProductGrid } from '@/features/home/components/product-grid';
 import { PromoBanner } from '@/features/home/components/promo-banner';
 import { useNavigateToBranch } from '@/features/branches/lib/navigate-to-branch';
+import { flattenAllBranchProducts } from '@/features/home/lib/all-branch-products-to-home-view';
 import { filterProductsByCategory } from '@/features/home/lib/filter-products-by-category';
-import { flattenMenuForHome } from '@/features/home/lib/menu-to-home-view';
-import { useMenu } from '@/features/menu/hooks/use-menu';
+import { formatBranchSubtext } from '@/features/home/lib/format-branch-subtext';
+import { useAllBranchProducts } from '@/features/menu/hooks/use-all-branch-products';
 import { useNavigateToProduct } from '@/features/menu/lib/navigate-to-product';
+import { useToast } from '@/features/shared/hooks/use-toast';
 import { isTerminalStatus } from '@/features/orders/hooks/use-order-query';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useNavigateToOrderTracking } from '@/features/orders/lib/navigate-to-tracking';
@@ -97,13 +102,31 @@ function ActiveOrderBanner({ order, onPress }: { order: Order; onPress: () => vo
   );
 }
 
+/** A tap held back while the cross-branch switch confirmation is up. */
+type PendingNav = {
+  kind: 'product' | 'deal';
+  id: string;
+  /** The branch that actually carries the tapped item — the switch target. */
+  branch: ProductBranch;
+};
+
 /**
  * Home browse screen. Composes the `features/home` section components inside a
  * single `ScrollView`, backed by REAL data: `useBranch` (selected pickup branch),
- * `useMenu` (branch menu → flattened via `flattenMenuForHome`), `useDealProducts`
- * (live deals strip), and `useRewardsSummary` (star balance). Each data section renders
- * its own friendly loading / empty / error-with-retry state so a slow or failed
- * query never blanks the whole screen.
+ * `useAllBranchProducts` (the ALL-BRANCH catalog → flattened via
+ * `flattenAllBranchProducts`), `useDealProducts` (live deals strip), and
+ * `useRewardsSummary` (star balance). Each data section renders its own friendly
+ * loading / empty / error-with-retry state so a slow or failed query never blanks
+ * the whole screen.
+ *
+ * Home is BROWSE, so its grid is deliberately branch-agnostic (home-all-branches):
+ * it shows the whole catalog with a caption naming which branch(es) carry each
+ * item, instead of the selected branch's menu alone — which used to dead-end on
+ * "Menu coming soon" whenever that one branch was thin. Tapping something the
+ * selected branch does not carry asks to switch pickup branch first, and the
+ * switch fully resolves BEFORE navigating, so the destination screen can resolve
+ * the item. The Order tab stays single-branch, since that is where the customer
+ * commits to ordering.
  */
 export default function HomeScreen() {
   const theme = useTheme();
@@ -128,9 +151,12 @@ export default function HomeScreen() {
     refetch: refetchBranch,
   } = useBranch();
   const { setBranch } = useCart();
-  const menuQuery = useMenu();
+  const menuQuery = useAllBranchProducts();
   const dealsQuery = useDealProducts();
   const rewardsQuery = useRewardsSummary();
+  const branchSwitch = useConfirmBranchSwitch();
+  const { toast, showToast, hideToast } = useToast();
+  const [pendingNav, setPendingNav] = useState<PendingNav | null>(null);
 
   // Shared order-history hook (page 1 only — Home never paginates). Focus-refetch
   // via the global refetchOnWindowFocus:true; one gesture refetch below (D5).
@@ -171,7 +197,8 @@ export default function HomeScreen() {
   };
 
   const menuView = useMemo(
-    () => (menuQuery.data ? flattenMenuForHome(menuQuery.data) : { categories: [], products: [] }),
+    () =>
+      menuQuery.data ? flattenAllBranchProducts(menuQuery.data) : { categories: [], products: [] },
     [menuQuery.data],
   );
 
@@ -185,20 +212,75 @@ export default function HomeScreen() {
     navigateToBranch(branchId);
   };
 
-  const openProduct = (productId: string) => {
-    if (!branchId) return;
-    navigateToProduct(productId, branchId);
-  };
-
-  const openDeal = (dealId: string) => {
+  const pushDeal = (dealId: string) => {
     router.push({
       pathname: '/(tabs)/deals/deal/[dealId]',
       params: { dealId },
     });
   };
 
+  /**
+   * Is the tapped item carried by the currently-selected branch? Answered from
+   * the list already in memory — no extra fetch. `undefined` means "no switch
+   * needed" (either it IS carried here, or nothing tells us otherwise); a branch
+   * means "this is the one to switch to".
+   */
+  const crossBranchTarget = (branches: ProductBranch[] | undefined): ProductBranch | undefined => {
+    if (!branchId || branches === undefined || branches.length === 0) return undefined;
+    if (branches.some((branch) => branch.id === branchId)) return undefined;
+    return branches[0];
+  };
+
+  const requestCrossBranch = (nav: PendingNav) => {
+    setPendingNav(nav);
+    branchSwitch.requestSwitch(nav.branch.id);
+  };
+
+  const confirmCrossBranch = async () => {
+    const nav = pendingNav;
+    setPendingNav(null);
+    if (!nav) return;
+    // The switch must fully resolve BEFORE navigating — the destination screen
+    // resolves its item from the newly-selected branch's menu.
+    const switched = await branchSwitch.confirm();
+    if (!switched) {
+      showToast('That branch is no longer available — please try another item.', 'error');
+      return;
+    }
+    if (nav.kind === 'product') navigateToProduct(nav.id, nav.branch.id);
+    else pushDeal(nav.id);
+  };
+
+  const cancelCrossBranch = () => {
+    setPendingNav(null);
+    branchSwitch.cancel();
+  };
+
+  const openProduct = (productId: string) => {
+    if (!branchId) return;
+    const item = menuView.products.find((product) => product.id === productId);
+    const target = crossBranchTarget(item?.branches);
+    if (target) {
+      requestCrossBranch({ kind: 'product', id: productId, branch: target });
+      return;
+    }
+    navigateToProduct(productId, branchId);
+  };
+
+  const openDeal = (dealId: string) => {
+    const deal = dealsQuery.data?.find((product) => product.id === dealId);
+    const target = crossBranchTarget(deal?.branches);
+    if (target) {
+      requestCrossBranch({ kind: 'deal', id: dealId, branch: target });
+      return;
+    }
+    pushDeal(dealId);
+  };
+
   const deals = dealsQuery.data ?? [];
-  const menuLoading = branchLoading || (Boolean(branchId) && menuQuery.isPending);
+  // The all-branch catalog needs no branch selection, so its loading state no
+  // longer waits on one (home-all-branches AC4).
+  const menuLoading = menuQuery.isPending;
 
   // One pull-to-refresh gesture refetches every mounted Home query (D5 — the
   // whole-screen gesture, not per-widget). try/finally always clears `refreshing`
@@ -352,10 +434,21 @@ export default function HomeScreen() {
                 <DealCard
                   key={product.id}
                   deal={dealProductToCard(product)}
-                  available={product.available}
+                  /*
+                    `available` is deliberately NOT passed here (home-all-branches
+                    L3/AC8). It reports only whether the CURRENTLY-selected branch
+                    can fulfil the deal, so rendering it dimmed the card and
+                    stamped "Unavailable at this branch" for a pure branch
+                    mismatch — the exact dead end this screen now resolves by
+                    offering to switch branch instead. The real signal is
+                    `branches`: empty means no branch can fulfil it, which shows
+                    as simply no subtext. The prop itself stays on `DealCard` for
+                    branch-committed surfaces (e.g. Deal Details' CTA gate).
+                  */
                   mode={mode}
                   style={styles.dealCard}
                   scheduleSummary={formatDealScheduleSummary(product.schedule)}
+                  subtext={formatBranchSubtext(product.branches)}
                   onPress={() => openDeal(product.id)}
                 />
               ))}
@@ -365,12 +458,6 @@ export default function HomeScreen() {
           {/* Menu (categories + products) */}
           {menuLoading ? (
             <SectionLoader />
-          ) : !selectedBranch ? (
-            <EmptyState
-              iconName="restaurant-outline"
-              title="Select a branch to see the menu"
-              mode={mode}
-            />
           ) : menuQuery.isError ? (
             <EmptyState
               iconName="cloud-offline-outline"
@@ -381,10 +468,16 @@ export default function HomeScreen() {
               mode={mode}
             />
           ) : menuView.products.length === 0 ? (
+            /*
+              This now fires ONLY for a genuinely empty catalog — no active
+              products anywhere. It is no longer reachable just because the
+              selected branch happens to stock nothing, which was the dead end
+              home-all-branches removes (AC4).
+            */
             <EmptyState
               iconName="restaurant-outline"
               title="Menu coming soon"
-              description="This branch has no items available right now."
+              description="There are no items available right now."
               mode={mode}
             />
           ) : (
@@ -407,7 +500,7 @@ export default function HomeScreen() {
                 <EmptyState
                   iconName="restaurant-outline"
                   title="Nothing here yet"
-                  description="No items in this category at this branch."
+                  description="No items in this category right now."
                   mode={mode}
                 />
               ) : (
@@ -417,6 +510,38 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/*
+        Cross-branch tap confirmation (home-all-branches AC6/AC7). Never a silent
+        switch and never a dead tap: the customer is told which branch the item
+        comes from, and whether their cart will be cleared, before anything moves.
+      */}
+      <ConfirmDialog
+        visible={pendingNav !== null}
+        title="Switch branch?"
+        message={
+          pendingNav === null
+            ? undefined
+            : branchSwitch.willClearCart
+              ? `This is from ${pendingNav.branch.name}. Switch your pickup branch? Your current cart will be cleared.`
+              : `This is from ${pendingNav.branch.name}. Switch your pickup branch?`
+        }
+        confirmLabel={branchSwitch.willClearCart ? 'Clear and switch' : 'Switch branch'}
+        cancelLabel="Cancel"
+        variant={branchSwitch.willClearCart ? 'destructive' : 'default'}
+        mode={mode}
+        onConfirm={confirmCrossBranch}
+        onCancel={cancelCrossBranch}
+      />
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={getFloatingTabBarClearance(insets.bottom) + Spacing.two}
+        onDismiss={hideToast}
+      />
     </View>
   );
 }

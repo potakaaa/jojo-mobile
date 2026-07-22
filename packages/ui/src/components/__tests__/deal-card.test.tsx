@@ -38,3 +38,29 @@ test('renders scheduleSummary in dark mode too', async () => {
   );
   expect(queryByText(summary)).not.toBeNull();
 });
+
+// home-all-branches AC8/AC9 (render half) — the branch caption row.
+test('renders the subtext caption verbatim when provided', async () => {
+  const { getByTestId } = await render(
+    <DealCard mode="light" deal={MOCK_DEAL} subtext="Available at 2 branches" />,
+  );
+
+  expect(getByTestId('deal-card-subtext').props.children).toBe('Available at 2 branches');
+});
+
+test('omits the subtext row entirely when not provided', async () => {
+  const { queryByTestId } = await render(<DealCard mode="light" deal={MOCK_DEAL} />);
+
+  expect(queryByTestId('deal-card-subtext')).toBeNull();
+});
+
+// Passing `subtext` must not resurrect the branch-mismatch badge: the two are
+// independent, and Home/Deals now pass only the former.
+test('subtext alone never renders the unavailable badge', async () => {
+  const { getByTestId, queryByText } = await render(
+    <DealCard mode="light" deal={MOCK_DEAL} subtext="Downtown" />,
+  );
+
+  expect(getByTestId('deal-card-subtext')).toBeTruthy();
+  expect(queryByText('Unavailable at this branch')).toBeNull();
+});
