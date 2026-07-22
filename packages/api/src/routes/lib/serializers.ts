@@ -286,6 +286,12 @@ export interface ApiOrder {
   placedAt: string;
   dealId: string | null;
   couponId: string | null;
+  // Terminal-transition reason (B2 staff reject / B3 customer cancel). Mirrors the
+  // client-facing `Order` type in `@jojopotato/types` — deliberately declared here
+  // too, matching this file's local-wire-type convention (see `ApiBranch`).
+  reasonCode: string | null;
+  reasonNote: string | null;
+  reasonActor: 'staff' | 'customer' | null;
   items: ApiOrderItem[];
 }
 
@@ -463,6 +469,9 @@ export function serializeOrder(order: OrderRow, items: OrderItemRow[]): ApiOrder
     placedAt: order.placed_at.toISOString(),
     dealId: order.deal_id,
     couponId: order.coupon_id,
+    reasonCode: order.reason_code,
+    reasonNote: order.reason_note,
+    reasonActor: (order.reason_actor as ApiOrder['reasonActor']) ?? null,
     items: items.map(serializeOrderItem),
   };
 }
@@ -796,6 +805,9 @@ export function serializeStaffOrderSummary(
     placedAt: order.placed_at.toISOString(),
     totalCents: numericToCents(order.total),
     itemSummary: buildItemSummary(items),
+    reasonCode: order.reason_code,
+    reasonNote: order.reason_note,
+    reasonActor: (order.reason_actor as StaffOrderSummary['reasonActor']) ?? null,
   };
 }
 
@@ -827,6 +839,9 @@ export function serializeStaffOrderDetail(
     estimatedReadyAt: order.estimated_ready_at ? order.estimated_ready_at.toISOString() : null,
     totalCents: numericToCents(order.total),
     items: items.map(serializeStaffOrderItem),
+    reasonCode: order.reason_code,
+    reasonNote: order.reason_note,
+    reasonActor: (order.reason_actor as StaffOrderDetail['reasonActor']) ?? null,
   };
 }
 

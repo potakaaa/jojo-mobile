@@ -40,6 +40,42 @@ let server: ReturnType<express.Express['listen']>;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/**
+ * Opening hours that read as OPEN at every instant of every day.
+ *
+ * `POST /orders` gates placement on `getIsOpenNow(branch.opening_hours)`, which
+ * JSON-parses this column — the old bare `HH:MM`-range fixture string is not
+ * JSON, so it parsed as closed and would reject every order. Per its documented
+ * convention a `close` of `'00:00'` means end-of-day (24:00), so open 00:00 /
+ * close 00:00 is open the full day, on every weekday, whatever day CI lands on.
+ */
+const ALWAYS_OPEN_HOURS = JSON.stringify({
+  sun: { open: '00:00', close: '00:00' },
+  mon: { open: '00:00', close: '00:00' },
+  tue: { open: '00:00', close: '00:00' },
+  wed: { open: '00:00', close: '00:00' },
+  thu: { open: '00:00', close: '00:00' },
+  fri: { open: '00:00', close: '00:00' },
+  sat: { open: '00:00', close: '00:00' },
+});
+
+/**
+ * Opening hours that read as CLOSED at every instant of every day —
+ * `open === close` (and not the `'00:00'` end-of-day special case) makes
+ * `getIsOpenNow`'s half-open minute range empty. Deterministic without any
+ * time injection, which the route deliberately does not support (it evaluates
+ * live server-clock time).
+ */
+const ALWAYS_CLOSED_HOURS = JSON.stringify({
+  sun: { open: '23:59', close: '23:59' },
+  mon: { open: '23:59', close: '23:59' },
+  tue: { open: '23:59', close: '23:59' },
+  wed: { open: '23:59', close: '23:59' },
+  thu: { open: '23:59', close: '23:59' },
+  fri: { open: '23:59', close: '23:59' },
+  sat: { open: '23:59', close: '23:59' },
+});
+
 // Fixtures created in setup.
 let userA: string;
 let userB: string;
@@ -161,7 +197,7 @@ beforeAll(async () => {
       latitude: '14.5',
       longitude: '120.9',
       phone: '+639170000010',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 20,
     })
     .returning();
@@ -176,7 +212,7 @@ beforeAll(async () => {
       latitude: '14.6',
       longitude: '120.8',
       phone: '+639170000011',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 45,
     })
     .returning();
@@ -1781,7 +1817,7 @@ describe('POST /orders — MENU-003 deal component availability', () => {
         latitude: '14.5',
         longitude: '120.9',
         phone: '+639170000011',
-        opening_hours: '08:00-20:00',
+        opening_hours: ALWAYS_OPEN_HOURS,
         estimated_prep_minutes: 20,
       })
       .returning();
@@ -2013,7 +2049,7 @@ describe('POST /orders — DEAL-005 scheduled window', () => {
         latitude: '14.5',
         longitude: '120.9',
         phone: '+639170000031',
-        opening_hours: '08:00-20:00',
+        opening_hours: ALWAYS_OPEN_HOURS,
         estimated_prep_minutes: 20,
       })
       .returning();
@@ -2214,7 +2250,7 @@ describe('POST /orders — DEAL-005 Phase 2 recurrence', () => {
         latitude: '14.540000',
         longitude: '120.940000',
         phone: '+639170000023',
-        opening_hours: '08:00-20:00',
+        opening_hours: ALWAYS_OPEN_HOURS,
         estimated_prep_minutes: 15,
       })
       .returning();
@@ -2301,6 +2337,198 @@ describe('POST /orders — DEAL-005 Phase 2 recurrence', () => {
 
     const placed = await db.select().from(schema.orders).where(eq(schema.orders.user_id, u));
     expect(placed).toHaveLength(0);
+  });
+});
+
+// ─── Branch opening-hours gate (closed-branch-order-gate) ────────────────────
+//
+// Placement is rejected when the branch is closed by its `opening_hours`, with a
+// reason code and message distinct from the pre-existing not-accepting-pickup
+// rejection. Branch state — not injected time — decides the outcome: the route
+// evaluates live server-clock time by design (SPEC AC5, no grace window), so
+// these fixtures are constructed to be deterministically open/closed at every
+// instant rather than racing the clock.
+//
+// AC2 (an open, accepting branch still places successfully) is NOT re-asserted
+// here — it is already proven by `POST /orders — auth boundary` > "creates an
+// order and recomputes price server-side (cents)" and ~100 further 201
+// assertions across this file, all against branches seeded with the same
+// ALWAYS_OPEN_HOURS constant.
+//
+// AC5's closing-minute boundary ("no grace window") is proven at the exact
+// instant in packages/utils/src/__tests__/hours.test.ts, which a DB-level
+// integration test cannot do without racing the clock.
+describe('POST /orders — branch opening-hours gate', () => {
+  const NOT_ACCEPTING_MESSAGE = 'Branch is not accepting pickup orders right now';
+
+  let closedBranchId: string; // open-by-flag, closed by opening_hours
+  let openNotAcceptingBranchId: string; // open by opening_hours, not accepting
+  let closedNotAcceptingBranchId: string; // BOTH not-accepting AND closed
+  let gateProductId: string;
+  let gateUser: string;
+
+  async function makeBranch(
+    label: string,
+    suffix: string,
+    opts: { openingHours: string; isAcceptingPickup: boolean },
+  ): Promise<string> {
+    const [branch] = await db
+      .insert(schema.branches)
+      .values({
+        name: `HoursGate ${label} ${suffix}`,
+        slug: `hours-gate-${label.toLowerCase()}-${suffix}`,
+        address: `${label} Ave`,
+        latitude: '14.5',
+        longitude: '120.9',
+        phone: '+639170000012',
+        opening_hours: opts.openingHours,
+        is_accepting_pickup: opts.isAcceptingPickup,
+        estimated_prep_minutes: 20,
+      })
+      .returning();
+    return branch!.id;
+  }
+
+  async function setAvailability(branchId: string, productId: string) {
+    await db
+      .insert(schema.branchProductAvailability)
+      .values({ branch_id: branchId, product_id: productId, is_available: true });
+  }
+
+  const gateOrderBody = (branchId: string) => ({
+    branchId,
+    paymentMethod: 'pay_at_branch' as const,
+    items: [{ productId: gateProductId, quantity: 1, selectedOptions: [] }],
+  });
+
+  beforeAll(async () => {
+    const suffix = uid();
+
+    closedBranchId = await makeBranch('Closed', suffix, {
+      openingHours: ALWAYS_CLOSED_HOURS,
+      isAcceptingPickup: true,
+    });
+    openNotAcceptingBranchId = await makeBranch('OpenNotAccepting', suffix, {
+      openingHours: ALWAYS_OPEN_HOURS,
+      isAcceptingPickup: false,
+    });
+    closedNotAcceptingBranchId = await makeBranch('ClosedNotAccepting', suffix, {
+      openingHours: ALWAYS_CLOSED_HOURS,
+      isAcceptingPickup: false,
+    });
+
+    const [category] = await db
+      .insert(schema.categories)
+      .values({ name: `HoursGate ${suffix}`, slug: `hours-gate-cat-${suffix}`, sort_order: 11 })
+      .returning();
+
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        category_id: category!.id,
+        name: `HoursGate Item ${suffix}`,
+        slug: `hours-gate-item-${suffix}`,
+        base_price: '7.00',
+      })
+      .returning();
+    gateProductId = product!.id;
+
+    // Available at all three branches, so ONLY the branch gate can decide the
+    // outcome — an availability miss would otherwise mask the real rejection.
+    await setAvailability(closedBranchId, gateProductId);
+    await setAvailability(openNotAcceptingBranchId, gateProductId);
+    await setAvailability(closedNotAcceptingBranchId, gateProductId);
+
+    const [u] = await db
+      .insert(schema.users)
+      .values({ name: 'HoursGate User', email: `hours-gate-${suffix}@example.com` })
+      .returning();
+    gateUser = u!.id;
+  });
+
+  // AC1 — a closed branch is rejected with its own code and its own copy.
+  it('rejects an order at a branch closed by opening_hours with reason BRANCH_CLOSED', async () => {
+    const { status, json } = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(closedBranchId),
+    });
+
+    expect(status).toBe(400);
+    expect(json.reason).toBe('BRANCH_CLOSED');
+    expect(json.error).toMatch(/closed/i);
+    // Distinguishability at the copy level: the closed-branch message must not
+    // be the not-accepting-pickup message wearing a different code.
+    expect(json.error).not.toBe(NOT_ACCEPTING_MESSAGE);
+  });
+
+  it('persists no order when placement is rejected as closed', async () => {
+    const before = await db.select().from(schema.orders).where(eq(schema.orders.user_id, gateUser));
+
+    const { status } = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(closedBranchId),
+    });
+    expect(status).toBe(400);
+
+    const after = await db.select().from(schema.orders).where(eq(schema.orders.user_id, gateUser));
+    expect(after).toHaveLength(before.length);
+  });
+
+  // AC3 — the two rejections differ at BOTH the code and the message level.
+  it('distinguishes the closed-branch rejection from the not-accepting-pickup rejection', async () => {
+    const notAccepting = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(openNotAcceptingBranchId),
+    });
+    const closed = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(closedBranchId),
+    });
+
+    expect(notAccepting.status).toBe(400);
+    expect(closed.status).toBe(400);
+
+    expect(notAccepting.json.reason).toBe('NOT_ACCEPTING_PICKUP');
+    expect(closed.json.reason).toBe('BRANCH_CLOSED');
+    expect(notAccepting.json.reason).not.toBe(closed.json.reason);
+    expect(notAccepting.json.error).not.toBe(closed.json.error);
+  });
+
+  // AC4 sub-case 1 — the previously-missing is_accepting_pickup regression test.
+  it('rejects a not-accepting-pickup branch on its own, independent of opening hours', async () => {
+    const { status, json } = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(openNotAcceptingBranchId),
+    });
+
+    expect(status).toBe(400);
+    expect(json.reason).toBe('NOT_ACCEPTING_PICKUP');
+    expect(json.error).toBe(NOT_ACCEPTING_MESSAGE);
+  });
+
+  // AC4 sub-case 2 — check ordering is unchanged: not-accepting wins.
+  it('prefers the not-accepting-pickup rejection when the branch is ALSO closed', async () => {
+    const { status, json } = await post('/orders', {
+      user: gateUser,
+      body: gateOrderBody(closedNotAcceptingBranchId),
+    });
+
+    expect(status).toBe(400);
+    expect(json.reason).toBe('NOT_ACCEPTING_PICKUP');
+    expect(json.reason).not.toBe('BRANCH_CLOSED');
+  });
+
+  // The additive `reason` field must not appear where there is no code to send,
+  // so existing consumers reading a bare `{ error }` body see no shape change.
+  it('omits reason entirely for a rejection that carries no reason code', async () => {
+    const { status, json } = await post('/orders', {
+      user: gateUser,
+      body: { ...gateOrderBody(closedBranchId), branchId: '00000000-0000-4000-8000-000000000000' },
+    });
+
+    expect(status).toBe(400);
+    expect(json.error).toBe('Branch not found');
+    expect(json).not.toHaveProperty('reason');
   });
 });
 

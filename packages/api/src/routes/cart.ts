@@ -43,7 +43,20 @@ const addItemSchema = z.object({
 });
 
 // quantity <= 0 removes the line (matches the client hook's updateQuantity semantics).
-const updateQuantitySchema = z.object({ quantity: z.number().int() });
+//
+// B4 widens this from "quantity, required" to "quantity and/or selectedOptions, at
+// least one required". Quantity-only behaviour is UNCHANGED — every existing caller
+// sends `{quantity}` only and sees zero behaviour change. There is deliberately NO
+// `productId` field: an options edit always re-validates against the LINE's own
+// stored `product_id`, so a client can never swap a line's product through this route.
+const updateLineSchema = z
+  .object({
+    quantity: z.number().int().optional(),
+    selectedOptions: z.array(z.object({ optionId: z.string().uuid() })).optional(),
+  })
+  .refine((b) => b.quantity !== undefined || b.selectedOptions !== undefined, {
+    message: 'At least one of quantity or selectedOptions is required',
+  });
 
 const branchSchema = z.object({ branchId: z.string().uuid() });
 
@@ -91,6 +104,76 @@ function toValidationLine(item: CartItemRow): CartLineForValidation {
 /** Sorted option-id key — the app-level line identity (ported `lineIdFor`). */
 function optionKey(optionIds: string[]): string {
   return [...optionIds].sort().join('+');
+}
+
+/**
+ * Validate a selected-option set against a product and re-price the line from LIVE
+ * product + option rows. Shared by `POST /items` (add) and `PATCH /items/:lineId`
+ * (B4 options edit) so the two can never drift on pricing or on what counts as a
+ * valid option.
+ *
+ * The caller passes the PRODUCT, never a client-sent product id — on the edit path
+ * that product is loaded from the line's own `product_id`, which is what structurally
+ * prevents an options edit from swapping a line onto a different product.
+ *
+ * Throws `CartError(400)` when an option is inactive, unknown, or owned by another
+ * product — matching `POST /items`'s pre-existing error shape exactly.
+ */
+async function resolveOptionSelectionAndMerge(
+  q: Queryer,
+  product: typeof products.$inferSelect,
+  selectedOptions: { optionId: string }[],
+): Promise<{ unitPriceCents: number; selectedSnapshot: SelectedOption[] }> {
+  let unitPriceCents = Math.round(Number(product.base_price) * 100);
+  const selectedSnapshot: SelectedOption[] = [];
+  const optionIds = selectedOptions.map((s) => s.optionId);
+  const optionRows = optionIds.length
+    ? await q
+        .select()
+        .from(productOptions)
+        .where(and(inArray(productOptions.id, optionIds), eq(productOptions.is_active, true)))
+    : [];
+  const optionById = new Map(optionRows.map((o) => [o.id, o]));
+  for (const sel of selectedOptions) {
+    const option = optionById.get(sel.optionId);
+    if (!option || option.product_id !== product.id) {
+      throw new CartError(400, `Option ${sel.optionId} is not valid for this product`);
+    }
+    const deltaCents = Math.round(Number(option.price_delta) * 100);
+    unitPriceCents += deltaCents;
+    selectedSnapshot.push({
+      optionId: option.id,
+      optionType: option.option_type as SelectedOption['optionType'],
+      name: option.name,
+      priceDeltaCents: deltaCents,
+    });
+  }
+  return { unitPriceCents, selectedSnapshot };
+}
+
+/**
+ * Find the line in this cart that already holds `product + optionIds` — the
+ * collision target for the merge-by-identical-option-set rule. `excludeLineId` lets
+ * the edit path skip the line being edited, so re-saving a line with the option set
+ * it already has is a no-op rather than a self-merge that deletes it.
+ */
+async function findMergeTarget(
+  q: Queryer,
+  cartId: string,
+  productId: string,
+  optionIds: string[],
+  excludeLineId?: string,
+): Promise<CartItemRow | undefined> {
+  const key = optionKey(optionIds);
+  const existingLines = await q
+    .select()
+    .from(cartItems)
+    .where(and(eq(cartItems.cart_id, cartId), eq(cartItems.product_id, productId)));
+  return existingLines.find(
+    (l) =>
+      l.id !== excludeLineId &&
+      optionKey(((l.selected_options as SelectedOption[]) ?? []).map((o) => o.optionId)) === key,
+  );
 }
 
 /**
@@ -169,42 +252,15 @@ cartRouter.post('/items', async (req, res) => {
       }
 
       // Server-side price: live base price + each active, product-owned option delta.
-      let unitPriceCents = Math.round(Number(product.base_price) * 100);
-      const selectedSnapshot: SelectedOption[] = [];
+      const { unitPriceCents, selectedSnapshot } = await resolveOptionSelectionAndMerge(
+        tx,
+        product,
+        body.selectedOptions,
+      );
       const optionIds = body.selectedOptions.map((s) => s.optionId);
-      const optionRows = optionIds.length
-        ? await tx
-            .select()
-            .from(productOptions)
-            .where(and(inArray(productOptions.id, optionIds), eq(productOptions.is_active, true)))
-        : [];
-      const optionById = new Map(optionRows.map((o) => [o.id, o]));
-      for (const sel of body.selectedOptions) {
-        const option = optionById.get(sel.optionId);
-        if (!option || option.product_id !== product.id) {
-          throw new CartError(400, `Option ${sel.optionId} is not valid for this product`);
-        }
-        const deltaCents = Math.round(Number(option.price_delta) * 100);
-        unitPriceCents += deltaCents;
-        selectedSnapshot.push({
-          optionId: option.id,
-          optionType: option.option_type as SelectedOption['optionType'],
-          name: option.name,
-          priceDeltaCents: deltaCents,
-        });
-      }
 
       // Line-merge: same product + same option set → bump quantity, else new line.
-      const newKey = optionKey(optionIds);
-      const existingLines = await tx
-        .select()
-        .from(cartItems)
-        .where(and(eq(cartItems.cart_id, cart.id), eq(cartItems.product_id, product.id)));
-      const match = existingLines.find(
-        (l) =>
-          optionKey(((l.selected_options as SelectedOption[]) ?? []).map((o) => o.optionId)) ===
-          newKey,
-      );
+      const match = await findMergeTarget(tx, cart.id, product.id, optionIds);
 
       if (match) {
         await tx
@@ -237,34 +293,106 @@ cartRouter.post('/items', async (req, res) => {
   }
 });
 
-// PATCH /cart/items/:lineId — update quantity (qty <= 0 removes the line).
+// PATCH /cart/items/:lineId — update quantity (qty <= 0 removes the line) and/or
+// replace the line's selected options (B4).
+//
+// Options edit semantics:
+//   - The option set is replaced ATOMICALLY (it is a full replacement, not a patch).
+//   - Options are re-validated and re-priced against the line's OWN stored
+//     `product_id`, never a client-sent one — a product swap is unrepresentable.
+//   - If the new option set collides with a DIFFERENT existing line for the same
+//     product, the edited line is deleted and its quantity is added onto that line —
+//     reusing `POST /items`'s merge-by-identical-option-set rule verbatim.
+//   - Re-saving a line with the option set it already has is a no-op, not a
+//     self-merge (`findMergeTarget` excludes the edited line).
 cartRouter.patch('/items/:lineId', async (req, res) => {
   const lineId = String(req.params.lineId);
   if (!z.string().uuid().safeParse(lineId).success) {
     res.status(404).json({ error: 'Cart item not found' });
     return;
   }
-  const parsed = updateQuantitySchema.safeParse(req.body);
+  const parsed = updateLineSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid quantity payload', details: parsed.error.issues });
+    res.status(400).json({ error: 'Invalid cart item payload', details: parsed.error.issues });
     return;
   }
+  const { quantity, selectedOptions } = parsed.data;
   const userId = req.user!.id;
 
   try {
     await db.transaction(async (tx) => {
       const cart = await getOrCreateCart(tx, userId);
-      await requireOwnedLine(tx, cart.id, lineId);
+      const line = await requireOwnedLine(tx, cart.id, lineId);
+      const now = new Date();
 
-      if (parsed.data.quantity <= 0) {
+      // A quantity of <= 0 removes the line outright — that wins over any options
+      // edit in the same request (there is no line left to re-option).
+      if (quantity !== undefined && quantity <= 0) {
         await tx.delete(cartItems).where(eq(cartItems.id, lineId));
+        await tx.update(carts).set({ updated_at: now }).where(eq(carts.id, cart.id));
+        return;
+      }
+
+      // The quantity this line ends up carrying: the newly-requested one when the
+      // same PATCH also sends `quantity`, else the line's current quantity.
+      const effectiveQuantity = quantity ?? line.quantity;
+
+      if (selectedOptions !== undefined) {
+        // Re-price against the LINE's own product (never the client's).
+        const [product] = await tx
+          .select()
+          .from(products)
+          .where(and(eq(products.id, line.product_id), eq(products.is_active, true)));
+        if (!product) {
+          throw new CartError(400, 'Product is not available');
+        }
+
+        const { unitPriceCents, selectedSnapshot } = await resolveOptionSelectionAndMerge(
+          tx,
+          product,
+          selectedOptions,
+        );
+
+        const match = await findMergeTarget(
+          tx,
+          cart.id,
+          line.product_id,
+          selectedOptions.map((s) => s.optionId),
+          lineId, // never merge a line into itself
+        );
+
+        if (match) {
+          // Collision: fold this line's quantity into the match, drop this line.
+          await tx
+            .update(cartItems)
+            .set({
+              quantity: match.quantity + effectiveQuantity,
+              unit_price: centsToNumeric(unitPriceCents),
+              selected_options: selectedSnapshot,
+              updated_at: now,
+            })
+            .where(eq(cartItems.id, match.id));
+          await tx.delete(cartItems).where(eq(cartItems.id, lineId));
+        } else {
+          await tx
+            .update(cartItems)
+            .set({
+              quantity: effectiveQuantity,
+              unit_price: centsToNumeric(unitPriceCents),
+              selected_options: selectedSnapshot,
+              updated_at: now,
+            })
+            .where(eq(cartItems.id, lineId));
+        }
       } else {
+        // Quantity-only PATCH — pre-existing behaviour, byte-unchanged.
         await tx
           .update(cartItems)
-          .set({ quantity: parsed.data.quantity, updated_at: new Date() })
+          .set({ quantity: effectiveQuantity, updated_at: now })
           .where(eq(cartItems.id, lineId));
       }
-      await tx.update(carts).set({ updated_at: new Date() }).where(eq(carts.id, cart.id));
+
+      await tx.update(carts).set({ updated_at: now }).where(eq(carts.id, cart.id));
     });
 
     await loadAndRespond(res, userId);

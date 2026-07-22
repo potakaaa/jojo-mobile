@@ -7,6 +7,7 @@ export * from './flavors';
 export * from './menu';
 export * from './notifications';
 export * from './order';
+export * from './order-reasons';
 export * from './pickup';
 export * from './product-option';
 export * from './pickup-time';

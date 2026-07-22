@@ -39,6 +39,11 @@ export interface StaffOrderSummary {
   placedAt: string; // ISO 8601
   totalCents: number;
   itemSummary: string; // server-computed: "2× Loaded Fries, 1× Classic Soda"
+  // Terminal-transition reason (B2 staff reject / B3 customer cancel). Optional AND
+  // nullable — see the matching note on `Order` in `order.ts` for why both.
+  reasonCode?: string | null;
+  reasonNote?: string | null;
+  reasonActor?: 'staff' | 'customer' | null;
 }
 
 /** A single order item on the staff Order Detail screen. */
@@ -68,6 +73,11 @@ export interface StaffOrderDetail {
   estimatedReadyAt: string | null;
   totalCents: number;
   items: StaffOrderItem[];
+  // Terminal-transition reason (B2 staff reject / B3 customer cancel). Optional AND
+  // nullable — see the matching note on `Order` in `order.ts` for why both.
+  reasonCode?: string | null;
+  reasonNote?: string | null;
+  reasonActor?: 'staff' | 'customer' | null;
 }
 
 // ─── STAFF-004: Product availability + branch settings contracts ─────────────

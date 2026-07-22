@@ -108,6 +108,26 @@ function createProduct(categoryId: string, overrides: Record<string, unknown> = 
     .set('Content-Type', 'application/json');
 }
 
+/**
+ * Opening hours that read as OPEN at every instant of every day.
+ * `POST /orders` gates placement on `getIsOpenNow(branch.opening_hours)`, which
+ * JSON-parses this value; a bare `HH:MM`-range string is not JSON and reads as
+ * closed, which would reject every order placed below. A `close` of `'00:00'`
+ * means end-of-day (24:00) per `getIsOpenNow`'s documented convention, so this
+ * is open all day, every weekday, whatever day CI lands on.
+ * File-local by design — this file shares no test-helper module with the other
+ * suites carrying the same constant.
+ */
+const ALWAYS_OPEN_HOURS = JSON.stringify({
+  sun: { open: '00:00', close: '00:00' },
+  mon: { open: '00:00', close: '00:00' },
+  tue: { open: '00:00', close: '00:00' },
+  wed: { open: '00:00', close: '00:00' },
+  thu: { open: '00:00', close: '00:00' },
+  fri: { open: '00:00', close: '00:00' },
+  sat: { open: '00:00', close: '00:00' },
+});
+
 /** Create an active, pickup-accepting branch through the admin API, returning its id. */
 async function seedBranch(): Promise<string> {
   const suffix = unique();
@@ -121,7 +141,7 @@ async function seedBranch(): Promise<string> {
       latitude: 14.5,
       longitude: 120.9,
       phone: '+639170000000',
-      openingHours: '08:00-20:00',
+      openingHours: ALWAYS_OPEN_HOURS,
       isAcceptingPickup: true,
     })
     .set('Content-Type', 'application/json');

@@ -48,6 +48,27 @@ let server: ReturnType<express.Express['listen']>;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/**
+ * Opening hours that read as OPEN at every instant of every day.
+ * `POST /orders` gates placement on `getIsOpenNow(branch.opening_hours)`, which
+ * JSON-parses this column; a bare `HH:MM`-range string is not JSON and reads as
+ * closed, which would reject the AC8-snapshot and AC9 order placements below.
+ * A `close` of `'00:00'` means end-of-day (24:00) per `getIsOpenNow`'s
+ * documented convention, so this is open all day, every weekday, whatever day
+ * CI lands on.
+ * File-local by design — this file shares no test-helper module with the other
+ * suites carrying the same constant.
+ */
+const ALWAYS_OPEN_HOURS = JSON.stringify({
+  sun: { open: '00:00', close: '00:00' },
+  mon: { open: '00:00', close: '00:00' },
+  tue: { open: '00:00', close: '00:00' },
+  wed: { open: '00:00', close: '00:00' },
+  thu: { open: '00:00', close: '00:00' },
+  fri: { open: '00:00', close: '00:00' },
+  sat: { open: '00:00', close: '00:00' },
+});
+
 // Fixtures.
 let userA: string;
 let userB: string;
@@ -55,7 +76,9 @@ let branchId: string; // active, accepting pickup
 let otherBranchId: string; // a second active branch (branch-switch tests)
 let productId: string; // active, available at branchId, base 100.00
 let sizeOptionId: string; // +20.00 option on productId
+let flavorOptionId: string; // +5.00 option on productId (B4 — a 2nd distinct option set)
 let product2Id: string; // active, available at branchId, base 50.00
+let product2OptionId: string; // +7.00 option on product2Id (B4 — cross-product validation)
 
 async function req(
   method: string,
@@ -153,7 +176,7 @@ beforeAll(async () => {
       latitude: '14.5',
       longitude: '120.9',
       phone: '+639170000010',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 20,
     })
     .returning();
@@ -168,7 +191,7 @@ beforeAll(async () => {
       latitude: '14.6',
       longitude: '120.8',
       phone: '+639170000011',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 30,
     })
     .returning();
@@ -202,6 +225,17 @@ beforeAll(async () => {
     .returning();
   sizeOptionId = opt!.id;
 
+  const [flavorOpt] = await db
+    .insert(schema.productOptions)
+    .values({
+      product_id: productId,
+      option_type: 'flavor',
+      name: 'Cheese',
+      price_delta: '5.00',
+    })
+    .returning();
+  flavorOptionId = flavorOpt!.id;
+
   const [p2] = await db
     .insert(schema.products)
     .values({
@@ -212,6 +246,17 @@ beforeAll(async () => {
     })
     .returning();
   product2Id = p2!.id;
+
+  const [p2opt] = await db
+    .insert(schema.productOptions)
+    .values({
+      product_id: product2Id,
+      option_type: 'size',
+      name: 'Large Soda',
+      price_delta: '7.00',
+    })
+    .returning();
+  product2OptionId = p2opt!.id;
 
   await setAvailability(productId, branchId, true);
   await setAvailability(product2Id, branchId, true);
@@ -240,6 +285,285 @@ beforeEach(async () => {
 
 afterAll(async () => {
   server?.close();
+});
+
+// ─── B4 — PATCH /cart/items/:lineId gains optional `selectedOptions` ──────────
+//
+// Every test here seeds a cart with an EXTRA, unrelated line for a DIFFERENT
+// product and asserts it is byte-identical before/after. That is deliberate and
+// load-bearing: a cart holding only the 1-2 lines under test would still pass even
+// if the server scoped its UPDATE/DELETE to the whole cart instead of the single
+// `lineId`. The unrelated-line assertion is what makes these tests non-vacuous
+// against that class of over-broad-write regression.
+
+describe('B4 — PATCH /cart/items/:lineId with selectedOptions', () => {
+  /** Snapshot the DB row fields an over-broad write would disturb. */
+  async function lineRows(user: string) {
+    const [cart] = await db.select().from(schema.carts).where(eq(schema.carts.user_id, user));
+    const rows = await db
+      .select()
+      .from(schema.cartItems)
+      .where(eq(schema.cartItems.cart_id, cart!.id));
+    return rows
+      .map((r) => ({
+        id: r.id,
+        product_id: r.product_id,
+        quantity: r.quantity,
+        unit_price: r.unit_price,
+        selected_options: r.selected_options,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  const findLine = (cart: any, pid: string, optIds: string[]) =>
+    (cart.items as any[]).find(
+      (i) =>
+        i.productId === pid &&
+        [...(i.selectedOptions ?? []).map((o: any) => o.optionId)].sort().join('+') ===
+          [...optIds].sort().join('+'),
+    );
+
+  // ── B4.2 (HARD, Known-Gap BANNED) ──────────────────────────────────────────
+  it('B4.2: editing options with NO collision replaces the line in place — no duplicate, unrelated line untouched', async () => {
+    // 3-line cart: the line under edit, a same-product line that must NOT be the
+    // merge target (different options), and an unrelated different-product line.
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [] });
+    await addItem(userA, { productId: product2Id, quantity: 4, selectedOptions: [] });
+    await addItem(userA, { productId, quantity: 1, selectedOptions: [{ optionId: sizeOptionId }] });
+
+    const before = await getCart(userA);
+    expect(before.json.cart.items).toHaveLength(3);
+    const target = findLine(before.json.cart, productId, []);
+    const unrelatedBefore = (await lineRows(userA)).find((r) => r.product_id === product2Id);
+
+    // [] → [flavor]: a set no other line holds, so no collision.
+    const res = await req('PATCH', `/cart/items/${target.lineId}`, {
+      user: userA,
+      body: { selectedOptions: [{ optionId: flavorOptionId }] },
+    });
+    expect(res.status).toBe(200);
+
+    const items = res.json.cart.items as any[];
+    // Still 3 lines: replaced in place, never duplicated.
+    expect(items).toHaveLength(3);
+    const edited = items.find((i) => i.lineId === target.lineId);
+    expect(edited).toBeDefined();
+    expect(edited.selectedOptions.map((o: any) => o.optionId)).toEqual([flavorOptionId]);
+    // Quantity is untouched by an options-only edit, and the line is re-priced live.
+    expect(edited.quantity).toBe(2);
+    expect(edited.unitPriceCents).toBe(10500); // 100.00 base + 5.00 flavor
+
+    // The same-product sibling with different options is NOT the merge target.
+    expect(findLine(res.json.cart, productId, [sizeOptionId]).quantity).toBe(1);
+
+    // The unrelated different-product line is byte-identical.
+    const unrelatedAfter = (await lineRows(userA)).find((r) => r.product_id === product2Id);
+    expect(unrelatedAfter).toEqual(unrelatedBefore);
+  });
+
+  // ── B4.3 (HARD, Known-Gap BANNED) ──────────────────────────────────────────
+  it('B4.3: editing options INTO an existing line merges quantities, old line gone, exactly one line for that combination, unrelated line untouched', async () => {
+    // 4 lines: the edited line, the collision target, a same-product decoy that
+    // must survive, and an unrelated different-product line.
+    await addItem(userA, { productId, quantity: 3, selectedOptions: [] }); // edited
+    await addItem(userA, { productId, quantity: 5, selectedOptions: [{ optionId: sizeOptionId }] }); // target
+    await addItem(userA, {
+      productId,
+      quantity: 2,
+      selectedOptions: [{ optionId: flavorOptionId }],
+    }); // decoy
+    await addItem(userA, { productId: product2Id, quantity: 4, selectedOptions: [] }); // unrelated
+
+    const before = await getCart(userA);
+    expect(before.json.cart.items).toHaveLength(4);
+    const edited = findLine(before.json.cart, productId, []);
+    const target = findLine(before.json.cart, productId, [sizeOptionId]);
+    const unrelatedBefore = (await lineRows(userA)).find((r) => r.product_id === product2Id);
+
+    const res = await req('PATCH', `/cart/items/${edited.lineId}`, {
+      user: userA,
+      body: { selectedOptions: [{ optionId: sizeOptionId }] },
+    });
+    expect(res.status).toBe(200);
+
+    const items = res.json.cart.items as any[];
+    // 4 → 3: the edited line was absorbed into the target.
+    expect(items).toHaveLength(3);
+    // The edited line is GONE.
+    expect(items.find((i) => i.lineId === edited.lineId)).toBeUndefined();
+    // Exactly ONE line for product+[size], carrying the merged quantity 5 + 3.
+    const merged = items.filter(
+      (i) =>
+        i.productId === productId &&
+        i.selectedOptions.length === 1 &&
+        i.selectedOptions[0].optionId === sizeOptionId,
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].lineId).toBe(target.lineId);
+    expect(merged[0].quantity).toBe(8);
+
+    // The same-product decoy survived untouched.
+    expect(findLine(res.json.cart, productId, [flavorOptionId]).quantity).toBe(2);
+    // The unrelated different-product line is byte-identical.
+    const unrelatedAfter = (await lineRows(userA)).find((r) => r.product_id === product2Id);
+    expect(unrelatedAfter).toEqual(unrelatedBefore);
+  });
+
+  it('B4.3: a merge that also carries a new quantity uses the NEW quantity in the sum', async () => {
+    await addItem(userA, { productId, quantity: 3, selectedOptions: [] });
+    await addItem(userA, { productId, quantity: 5, selectedOptions: [{ optionId: sizeOptionId }] });
+
+    const before = await getCart(userA);
+    const edited = findLine(before.json.cart, productId, []);
+
+    const res = await req('PATCH', `/cart/items/${edited.lineId}`, {
+      user: userA,
+      body: { selectedOptions: [{ optionId: sizeOptionId }], quantity: 10 },
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items).toHaveLength(1);
+    expect(res.json.cart.items[0].quantity).toBe(15); // 5 existing + 10 requested
+  });
+
+  it('B4.3: editing a line to the option set it ALREADY has is a no-op self-merge, not a self-delete', async () => {
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [{ optionId: sizeOptionId }] });
+    await addItem(userA, { productId: product2Id, quantity: 1, selectedOptions: [] });
+    const before = await getCart(userA);
+    const line = findLine(before.json.cart, productId, [sizeOptionId]);
+
+    const res = await req('PATCH', `/cart/items/${line.lineId}`, {
+      user: userA,
+      body: { selectedOptions: [{ optionId: sizeOptionId }] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items).toHaveLength(2);
+    const same = res.json.cart.items.find((i: any) => i.lineId === line.lineId);
+    expect(same).toBeDefined();
+    expect(same.quantity).toBe(2); // NOT doubled, NOT deleted
+  });
+
+  // ── B4.4 (HARD, Known-Gap BANNED) ──────────────────────────────────────────
+  it("B4.4: editing a line in ANOTHER user's cart → 403, and that cart is byte-unchanged", async () => {
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [] });
+    await addItem(userA, { productId: product2Id, quantity: 1, selectedOptions: [] });
+    const aBefore = await lineRows(userA);
+    const victimLineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${victimLineId}`, {
+      user: userB,
+      body: { selectedOptions: [{ optionId: sizeOptionId }] },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await lineRows(userA)).toEqual(aBefore);
+  });
+
+  it('B4.4: an unknown lineId → 404; a malformed lineId → 404', async () => {
+    const unknown = await req('PATCH', `/cart/items/${crypto.randomUUID()}`, {
+      user: userA,
+      body: { selectedOptions: [] },
+    });
+    const malformed = await req('PATCH', '/cart/items/not-a-uuid', {
+      user: userA,
+      body: { selectedOptions: [] },
+    });
+    expect(unknown.status).toBe(404);
+    expect(malformed.status).toBe(404);
+  });
+
+  // ── Option validation is against the LINE's own product, never the client's ─
+  it('B4: an option belonging to a DIFFERENT product → 400, cart byte-unchanged (no product swap)', async () => {
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [] });
+    await addItem(userA, { productId: product2Id, quantity: 1, selectedOptions: [] });
+    const before = await lineRows(userA);
+    const lineId = findLine((await getCart(userA)).json.cart, productId, []).lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, {
+      user: userA,
+      body: { selectedOptions: [{ optionId: product2OptionId }] }, // option of product2
+    });
+
+    expect(res.status).toBe(400);
+    expect(await lineRows(userA)).toEqual(before);
+  });
+
+  it("B4: a body carrying a productId cannot swap the line's product (field is not in the schema)", async () => {
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [] });
+    const lineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, {
+      user: userA,
+      body: { productId: product2Id, selectedOptions: [] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items[0].productId).toBe(productId); // unchanged
+  });
+
+  it('B4: options are re-priced LIVE from the DB, never from a client-sent price', async () => {
+    await addItem(userA, { productId, quantity: 1, selectedOptions: [] });
+    const lineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, {
+      user: userA,
+      body: {
+        selectedOptions: [{ optionId: sizeOptionId }],
+        unitPriceCents: 1,
+        price: 1,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items[0].unitPriceCents).toBe(12000); // 100.00 + 20.00
+  });
+
+  it('B4: clearing all options ([]) is a valid edit and re-prices back to base', async () => {
+    await addItem(userA, { productId, quantity: 2, selectedOptions: [{ optionId: sizeOptionId }] });
+    const lineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, {
+      user: userA,
+      body: { selectedOptions: [] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items[0].selectedOptions).toEqual([]);
+    expect(res.json.cart.items[0].unitPriceCents).toBe(10000);
+  });
+
+  // ── Freeze list: quantity-only PATCH behaviour is UNCHANGED ────────────────
+  it('B4 freeze: a quantity-only PATCH still works exactly as before', async () => {
+    await addItem(userA, { productId, quantity: 1, selectedOptions: [] });
+    const lineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, { user: userA, body: { quantity: 7 } });
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items[0].quantity).toBe(7);
+    expect(res.json.cart.items[0].selectedOptions).toEqual([]);
+  });
+
+  it('B4 freeze: a quantity-only PATCH of <= 0 still removes the line, leaving others intact', async () => {
+    await addItem(userA, { productId, quantity: 1, selectedOptions: [] });
+    await addItem(userA, { productId: product2Id, quantity: 3, selectedOptions: [] });
+    const lineId = findLine((await getCart(userA)).json.cart, productId, []).lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, { user: userA, body: { quantity: 0 } });
+    expect(res.status).toBe(200);
+    expect(res.json.cart.items).toHaveLength(1);
+    expect(res.json.cart.items[0].productId).toBe(product2Id);
+  });
+
+  it('B4: an EMPTY body → 400 (at least one of quantity / selectedOptions is required)', async () => {
+    await addItem(userA, { productId, quantity: 1, selectedOptions: [] });
+    const before = await lineRows(userA);
+    const lineId = (await getCart(userA)).json.cart.items[0].lineId;
+
+    const res = await req('PATCH', `/cart/items/${lineId}`, { user: userA, body: {} });
+
+    expect(res.status).toBe(400);
+    expect(await lineRows(userA)).toEqual(before);
+  });
 });
 
 describe('CART-003 — persisted cart routes', () => {

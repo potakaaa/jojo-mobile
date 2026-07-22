@@ -1,4 +1,6 @@
 import type { Cart, CartItem, OrderStatus } from '@jojopotato/types';
+import { CUSTOMER_CANCEL_REASONS } from '@jojopotato/types';
+import { getIsOpenNow } from '@jojopotato/utils';
 import { and, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -23,6 +25,7 @@ import { requireSession } from '../middleware/require-session';
 import { resolveCouponDiscount } from './lib/coupon-apply';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
 import { resolveLiveDealProductIds } from './lib/deal-schedule';
+import { dispatchOrderNotification } from './lib/notification-dispatch';
 import { orderNumberGenerator } from './lib/order-number';
 import { canTransition } from './lib/order-state-machine';
 import {
@@ -59,11 +62,35 @@ const createOrderSchema = z.object({
   dealId: z.string().uuid().optional(),
 });
 
-/** Carries an HTTP status through a thrown-inside-transaction rollback path. */
+/**
+ * Body schema for `PATCH /orders/:orderId/cancel` (B3).
+ *
+ * BOTH fields optional — a customer may cancel with no reason at all. There is
+ * deliberately NO "other requires a note" refinement here (that gate belongs to the
+ * staff reject route only; SPEC B3.5 leaves the customer path un-gated). There is
+ * also no `status` field, so the target is always `cancelled` by construction.
+ */
+const CANCEL_REASON_CODES = CUSTOMER_CANCEL_REASONS.map((r) => r.code) as unknown as [
+  string,
+  ...string[],
+];
+const cancelOrderBodySchema = z.object({
+  reasonCode: z.enum(CANCEL_REASON_CODES).optional(),
+  note: z.string().optional(),
+});
+
+/**
+ * Carries an HTTP status through a thrown-inside-transaction rollback path.
+ *
+ * `reason` is an optional machine-readable code surfaced to the client as an
+ * additive `reason` field alongside the existing human-readable `error` string.
+ * Omitted for throws that have no distinct code to communicate.
+ */
 class OrderError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly reason?: string,
   ) {
     super(message);
     this.name = 'OrderError';
@@ -131,7 +158,19 @@ ordersRouter.post('/', requireSession, async (req, res) => {
         throw new OrderError(400, 'Branch not found');
       }
       if (!branch.is_accepting_pickup) {
-        throw new OrderError(400, 'Branch is not accepting pickup orders right now');
+        throw new OrderError(
+          400,
+          'Branch is not accepting pickup orders right now',
+          'NOT_ACCEPTING_PICKUP',
+        );
+      }
+      // Opening-hours gate: live server-clock evaluation, no grace window.
+      // Runs AFTER the is_accepting_pickup check so a branch that is both
+      // not-accepting AND closed reports NOT_ACCEPTING_PICKUP (existing
+      // behavior). The message never names a reopen time — no reopen-time
+      // derivation helper exists, and guessing one is worse than omitting it.
+      if (!getIsOpenNow(branch.opening_hours, new Date())) {
+        throw new OrderError(400, 'This branch is closed right now.', 'BRANCH_CLOSED');
       }
 
       const productIds = [...new Set(body.items.map((i) => i.productId))];
@@ -562,7 +601,9 @@ ordersRouter.post('/', requireSession, async (req, res) => {
     res.status(201).json({ order: result });
   } catch (err) {
     if (err instanceof OrderError) {
-      res.status(err.status).json({ error: err.message });
+      res
+        .status(err.status)
+        .json({ error: err.message, ...(err.reason ? { reason: err.reason } : {}) });
       return;
     }
     console.error('[orders] unexpected error creating order', err);
@@ -709,6 +750,115 @@ ordersRouter.patch('/:orderId/complete', requireSession, async (req, res) => {
   }
 
   const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
+  const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
+  res.json({ order: serializeOrder(refreshedOrder!, items) });
+});
+
+/**
+ * PATCH /orders/:orderId/cancel — customer cancels their own PENDING order (B3).
+ *
+ * Deliberately NARROW, mirroring `/complete` above: the request body carries no
+ * `status` field, so this route can only ever express `pending → cancelled` for an
+ * order the caller owns. Both reason fields are OPTIONAL — unlike the staff reject
+ * route, B3 has no "other requires a note" gate (SPEC B3.5, deliberately un-gated).
+ *
+ * The cancel window is PENDING-ONLY. That is a route-level narrowing, not a state
+ * machine change: `order-state-machine.ts` still legally permits staff to cancel an
+ * `accepted`/`preparing`/… order. See the cross-reference note in that file before
+ * ever widening this window.
+ *
+ * Registered BEFORE `GET /:orderId` so the more specific path always wins.
+ *
+ * Responses:
+ *   200 — `{ order: ApiOrder }` (the CUSTOMER serializer).
+ *   403 — the order is not the caller's.
+ *   404 — order id malformed or not found (indistinguishable — no existence oracle).
+ *   409 — current status is not `pending`, or a concurrent transition won the race.
+ *   422 — `reasonCode` present but not one of the locked customer codes.
+ */
+ordersRouter.patch('/:orderId/cancel', requireSession, async (req, res) => {
+  const userId = req.user!.id;
+
+  // 1. Malformed id is NOT a 400 — indistinguishable from "no such order",
+  //    matching `/complete` and `GET /:orderId` exactly.
+  const orderId = String(req.params.orderId);
+  if (!z.string().uuid().safeParse(orderId).success) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  // 2. Body validation. Both fields optional; an unrecognised code is a 422 rather
+  //    than being silently dropped, so a client typo can never persist a garbage
+  //    reason the UI cannot resolve back to a label.
+  const parsed = cancelOrderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: 'Invalid cancel reason' });
+    return;
+  }
+  const { reasonCode, note } = parsed.data;
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  // 3. OWNERSHIP BEFORE STATUS — load-bearing ordering, identical to `/complete`.
+  //    If the status gate ran first, a non-owner could distinguish "someone else's
+  //    pending order" (409 vs 403) and probe an order's state across the trust
+  //    boundary. Ownership first makes every non-owned order look identical: 403.
+  if (order.user_id !== userId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // 4. Status gate, double-locked. `canTransition` is the shared pure table
+  //    (unmodified — `pending → cancelled` was already legal); the explicit
+  //    `!== 'pending'` check pins CUSTOMER self-cancellation to `pending` only,
+  //    even though the table admits wider staff-side sources.
+  const currentStatus = order.status as OrderStatus;
+  if (!canTransition(currentStatus, 'cancelled') || currentStatus !== 'pending') {
+    res.status(409).json({ error: 'Invalid status transition' });
+    return;
+  }
+
+  const now = new Date();
+  const patch: Partial<typeof orders.$inferInsert> = {
+    status: 'cancelled',
+    cancelled_at: now,
+    reason_code: reasonCode ?? null,
+    reason_note: note?.trim() ? note.trim() : null,
+    reason_actor: 'customer',
+    updated_at: now,
+  };
+
+  // 5. Compare-and-swap on the status we read, inside a transaction. A customer tap
+  //    racing a staff `accepted` transition matches 0 rows and loses with a 409 —
+  //    never a silent overwrite, and never a half-written reason on the loser's row.
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, currentStatus)))
+      .returning({ id: orders.id });
+    return Boolean(updatedRow);
+  });
+
+  if (!committed) {
+    res.status(409).json({ error: 'Concurrent modification detected; please retry' });
+    return;
+  }
+
+  const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
+
+  // 6. Push notification runs AFTER the commit (staff precedent). We call the
+  //    EXPORTED `dispatchOrderNotification` directly — `notifyCustomer` is a bare,
+  //    module-private helper inside `staff.ts` and is not importable from here.
+  //    `OrderNotificationEvent` already includes 'cancelled', so no type widening.
+  //    `dispatchOrderNotification` never throws, so a push failure can never break
+  //    a durably-committed status flip.
+  await dispatchOrderNotification(refreshedOrder!, 'cancelled');
+
   const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
   res.json({ order: serializeOrder(refreshedOrder!, items) });
 });
