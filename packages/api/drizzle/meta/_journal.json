@@ -141,6 +141,13 @@
       "when": 1784533631419,
       "tag": "0019_rainy_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784694339985,
+      "tag": "0020_abnormal_impossible_man",
+      "breakpoints": true
     }
   ]
 }

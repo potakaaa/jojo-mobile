@@ -1,0 +1,26 @@
+{
+  "phase": "EVL",
+  "plan": "process/features/ordering-cart/active/order-completion-celebration_22-07-26/order-completion-celebration_PLAN_22-07-26.md",
+  "run_by": "vc-tester (EVL confirmation run)",
+  "date": "2026-07-22",
+  "unconditional_rerun": true,
+  "note": "Independent re-run of validate-contract gate commands; execute-agent self-report NOT trusted. Gates re-run from scratch.",
+  "gates": [
+    { "id": "AC5", "behavior": "ownership 403 before state; owned completed -> 200 row written; cross-user -> 403 no row", "strategy": "Fully-Automated", "known_gap_banned": true, "result": "PASS", "evidence": "reviews.integration.test.ts 14/14; route orders.ts:791 ownership 403 precedes :797 state 409" },
+    { "id": "AC6", "behavior": "non-completed (ready/pending) order -> 409, no row", "strategy": "Fully-Automated", "known_gap_banned": true, "result": "PASS" },
+    { "id": "AC7", "behavior": "second review same order -> 409, original unchanged (D8)", "strategy": "Fully-Automated", "known_gap_banned": true, "result": "PASS", "evidence": "DB UNIQUE(order_id) in 0020 migration + isUniqueViolation (err.cause.code 23505) backstop + pre-SELECT; test asserts exactly 1 row, id/rating/comment unchanged" },
+    { "id": "AC8", "behavior": "rating out of 1-5 / non-integer / missing -> 422, no row", "strategy": "Fully-Automated", "known_gap_banned": true, "result": "PASS", "evidence": "cases: rating 6, 0, 3.5, missing" },
+    { "id": "AC4", "behavior": "no new OrderNotificationEvent member (push frozen)", "strategy": "Fully-Automated", "result": "PASS" },
+    { "id": "AC9/AC2", "behavior": "shouldCelebrate predicate", "strategy": "Fully-Automated", "result": "PASS", "evidence": "celebration-trigger.test.ts 5/5 incl. undefined-prev=false, terminal-prev=false, ready->completed=true" },
+    { "id": "AC1/AC2/AC3", "behavior": "self-confirm onSuccess celebration; stale mount no celebration; dismissible prompt", "strategy": "Fully-Automated", "result": "PASS", "evidence": "tracking/__tests__/index.test.tsx 14/14" },
+    { "id": "AC10", "behavior": "tap star N -> value N, onChange(N)", "strategy": "Fully-Automated", "result": "PASS", "evidence": "star-rating-input.test.tsx 3/3" },
+    { "id": "build-typecheck", "behavior": "tsc --noEmit touched packages", "strategy": "Fully-Automated", "result": "PASS", "evidence": "api/types/ui/mobile all clean; no NAV-005 mobile errors on this branch" },
+    { "id": "build-lint", "behavior": "eslint touched packages", "strategy": "Fully-Automated", "result": "PASS", "evidence": "0 errors across api/types/ui/mobile; warnings only in other concurrent plans' files" },
+    { "id": "build-format", "behavior": "prettier --check plan files", "strategy": "Fully-Automated", "result": "PASS" },
+    { "id": "migration", "behavior": "additive-only, journal contiguous", "strategy": "Fully-Automated", "result": "PASS", "evidence": "0020_abnormal_impossible_man.sql: new reviews table + FKs on new table only, no ALTER of existing tables; journal idx 0..20 contiguous, no dup/skip; UNIQUE(order_id) + CHECK(rating BETWEEN 1 AND 5) present" },
+    { "id": "AC11", "behavior": "on-device celebration feel + light/dark + star-input polish (iOS+Android)", "strategy": "Agent-Probe", "result": "OWED", "evidence": "standing project-wide no-RN-E2E gap; out of EVL scope; owed by user before VERIFIED" }
+  ],
+  "api_suite": "747/747 (reviews.integration 14/14); no admin-branches flake this run",
+  "overall": "DONE",
+  "closeout_classification": "WITH_GAPS"
+}

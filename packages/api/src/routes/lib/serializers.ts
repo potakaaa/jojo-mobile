@@ -21,6 +21,7 @@ import type {
   productOptions,
   products,
   promotions,
+  reviews,
   rewards,
 } from '../../db/schema/index';
 import type { DealScheduleWindow } from './deal-schedule';
@@ -43,6 +44,7 @@ type PromotionRow = InferSelectModel<typeof promotions>;
 type NotificationRow = InferSelectModel<typeof notifications>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
+type ReviewRow = InferSelectModel<typeof reviews>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
 type DealType = DealRow['deal_type'];
@@ -220,6 +222,17 @@ export interface ApiDealScheduleWindow {
   recurEndTime: string | null;
 }
 
+/**
+ * One branch that currently carries a product, as it appears on the wire.
+ * Id + display name only — the all-branch surfaces (`GET /products`,
+ * `GET /deals/products`) need nothing else to render the customer-facing
+ * "Available at N branches" subtext or to resolve a branch-switch target.
+ */
+export interface ApiProductBranch {
+  id: string;
+  name: string;
+}
+
 export interface ApiMenuProduct {
   id: string;
   name: string;
@@ -249,6 +262,14 @@ export interface ApiMenuProduct {
   // (always-live) deal and for every regular product — same omit-when-absent
   // convention as `isDeal`/`components`. Additive; read-only display data.
   schedule?: ApiDealScheduleWindow[];
+  // home-all-branches: every active, accepting-pickup branch that currently
+  // carries this product. Present ONLY on the all-branch surfaces (`GET /products`
+  // and `GET /deals/products`), where it is ALWAYS emitted — including as an empty
+  // array when no branch carries the product (a product carried nowhere is still
+  // listed; the client renders no subtext for it). OMITTED entirely on
+  // `GET /branches/:id/menu` (regular and `?isDeal=true`), which passes no
+  // `branches` argument, so that response body stays byte-identical. Additive.
+  branches?: ApiProductBranch[];
 }
 
 export interface ApiMenuCategory {
@@ -369,6 +390,7 @@ export function serializeMenuProduct(
   components?: AdminDealComponent[],
   available?: boolean,
   scheduleWindows?: DealScheduleWindow[],
+  branches?: ApiProductBranch[],
 ): ApiMenuProduct {
   const grouped: Record<ProductOptionType, ApiMenuOption[]> = {
     size: [],
@@ -420,6 +442,15 @@ export function serializeMenuProduct(
         recurEndTime: w.recur_end_time ?? null,
       })),
     };
+  }
+
+  // home-all-branches: unlike `schedule` above, an EMPTY array is meaningful here
+  // ("this product is carried by no accepting-pickup branch right now") and is
+  // emitted as `branches: []`. Only `undefined` — i.e. a caller that does not deal
+  // in all-branch data, such as `GET /branches/:id/menu` — omits the key entirely,
+  // keeping that route's response body byte-identical.
+  if (branches !== undefined) {
+    result = { ...result, branches };
   }
 
   return result;
@@ -1237,5 +1268,35 @@ export function serializeAdminStaffSummary(row: {
     role: row.role as AdminStaffSummary['role'],
     assignedBranchId: row.assignedBranchId,
     branchName: row.branchName,
+  };
+}
+
+// ─── Review serializer (order-completion-celebration) ────────────────────────
+
+/**
+ * A customer order review at the HTTP boundary. Mirrors `@jojopotato/types`
+ * `Review` (declared locally to keep the no-cross-dependency boundary
+ * convention). `rating` is a plain integer (1–5) — NOT money, so no
+ * `numericToCents` conversion; `createdAt` is an ISO string. `comment` is null
+ * for a rating-only review.
+ */
+export interface ApiReview {
+  id: string;
+  orderId: string;
+  userId: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+/** Serialize a `reviews` row to `ApiReview` (integer rating, ISO createdAt). */
+export function serializeReview(review: ReviewRow): ApiReview {
+  return {
+    id: review.id,
+    orderId: review.order_id,
+    userId: review.user_id,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: review.created_at.toISOString(),
   };
 }

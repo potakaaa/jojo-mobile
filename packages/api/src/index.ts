@@ -26,6 +26,7 @@ import { dealsProductsRouter } from './routes/deals-products';
 import { dealsRouter } from './routes/deals';
 import { notificationsRouter } from './routes/notifications';
 import { ordersRouter } from './routes/orders';
+import { productsRouter } from './routes/products';
 import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
 
@@ -231,6 +232,12 @@ app.get('/api/branches/:id', async (req, res) => {
 // App order-flow routes (public branch reads + session-gated orders), mounted
 // after express.json() so they get parsed JSON bodies.
 app.use('/branches', branchesRouter);
+// home-all-branches: the ALL-BRANCH regular catalog (`GET /products`). Public
+// and unauthenticated, sibling to `/branches` and `/deals/products`. Deliberately
+// branch-agnostic — it takes no branchId — so the Home grid never dead-ends on a
+// thin branch. `GET /branches/:branchId/menu` is UNCHANGED and still owns the
+// single-branch, ordering-committed view the Order tab depends on.
+app.use('/products', productsRouter);
 // DEAL-004 all-branch deal listing. E1 (HARD gate): MUST be mounted BEFORE
 // `/deals` — `dealsRouter` defines `GET /:id`, so `/deals/products` would be
 // captured as `/deals/:id` (id = "products", a non-uuid → 404) if `/deals` were

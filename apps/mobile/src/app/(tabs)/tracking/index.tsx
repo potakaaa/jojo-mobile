@@ -13,8 +13,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
+import { OrderCelebrationOverlay } from '@/features/orders/components/order-celebration-overlay';
 import { useCompleteOrder } from '@/features/orders/hooks/use-complete-order';
+import { useCompletionCelebration } from '@/features/orders/hooks/use-completion-celebration';
 import { isTerminalStatus, useOrderQuery } from '@/features/orders/hooks/use-order-query';
+import { useSubmitReview } from '@/features/orders/hooks/use-submit-review';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -62,6 +65,17 @@ export default function OrderTrackingScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error, refetch } = useOrderQuery(orderId);
   const completion = useCompleteOrder();
+
+  /*
+    Completion celebration (order-completion-celebration). Owns the trigger for
+    BOTH paths: the self-confirm `onSuccess` below fires `showCelebration`
+    directly (deterministic), and the hook's internal effect fires it on a live
+    poll `…→completed` diff (staff-completed the order while this screen was
+    open). Seeded so a stale already-`completed` mount never celebrates (AC2).
+    Called ABOVE the loading/error early returns — hooks run on every path.
+  */
+  const celebration = useCompletionCelebration(orderId, order?.status);
+  const reviewMutation = useSubmitReview(orderId);
 
   /*
     The customer's own "picked up" confirmation. Unlike the staff button
@@ -221,13 +235,33 @@ export default function OrderTrackingScreen() {
                 mode={mode}
                 onConfirm={() => {
                   setConfirmVisible(false);
-                  completion.mutate(orderId);
+                  // Fire the celebration deterministically on the self-confirm
+                  // path (AC1). The hook's live-poll effect would also catch the
+                  // resulting ready→completed refetch, but its per-order-id guard
+                  // makes the two paths converge to exactly one celebration.
+                  completion.mutate(orderId, { onSuccess: celebration.showCelebration });
                 }}
                 onCancel={() => setConfirmVisible(false)}
               />
             </View>
           )}
         </ScrollView>
+
+        {/*
+          Completion celebration + review prompt. A Modal (renders in its own
+          window), so it sits here regardless of scroll position and is gated
+          solely on `celebrationVisible`. Skip/scrim dismiss never blocks leaving
+          the screen (AC3). Submitting flips to a thank-you (D8, no edit path).
+        */}
+        <OrderCelebrationOverlay
+          visible={celebration.celebrationVisible}
+          mode={mode}
+          submitting={reviewMutation.isPending}
+          submitted={reviewMutation.isSuccess}
+          errorMessage={reviewMutation.error?.message ?? null}
+          onSubmit={(body) => reviewMutation.mutate(body)}
+          onDismiss={celebration.dismissCelebration}
+        />
       </SafeAreaView>
     </View>
   );
