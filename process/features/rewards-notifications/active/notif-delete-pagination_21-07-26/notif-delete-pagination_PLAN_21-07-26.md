@@ -156,15 +156,28 @@ Sequenced. Each section ends with its own test gate; do not batch gates to the e
    `created_at`-only cursor is UNSAFE here: `created_at` is microsecond-precision `timestamp` in
    Postgres, but the cursor round-trips through `Date.toISOString()` (millisecond precision), so
    two rows created in the same millisecond permanently skip one of them at the page boundary
-   (found by CodeRabbit review, PR #151; proven by a regression test — see Gate A). Parse `cursor`
-   as `${isoTimestamp}_${id}` (split on `_`, safe since neither ISO strings nor UUIDs contain one);
-   build the where clause with `sql\`(${created_at}, ${id}) < (${cursorDate}, ${cursorId})\`` when a
-   cursor is present, else `eq(user_id)`; order by `desc(created_at), desc(id)` (the tiebreaker
-   matters — without it, Postgres's tie order is unspecified per-execution); `.limit(limit + 1)`;
-   derive `hasMore`/`page`/`nextCursor = \`${last.created_at.toISOString()}_${last.id}\``.
+   (found by CodeRabbit review, PR #151; proven by a regression test — see Gate A).
+   **Sub-millisecond correction (second CodeRabbit finding, PR #151): the compound `(created_at,
+   id)` cursor still isn't enough on its own if `created_at` is round-tripped through a JS `Date`**
+   — node-postgres TRUNCATES (not rounds) microseconds when parsing a `timestamp` column into a
+   `Date` (confirmed empirically: two DB values differing only in microseconds, e.g. `.123001` vs
+   `.123999`, produce the exact same `Date#getTime()`), so `created_at.toISOString()` can STILL
+   collide two genuinely-distinct rows and drop one at the boundary, same failure mode one
+   precision level deeper. The fix never round-trips `created_at` through a JS `Date` for cursor
+   purposes at all: `SELECT ...getTableColumns(notifications), createdAtRaw: sql<string>\`created_at::text\`` reads Postgres's own full-precision text output (e.g. `2026-07-22
+   01:36:21.734268`, space-separated, never containing `_`); the incoming cursor's timestamp half
+   is validated against `/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/` and bound straight into
+   the SQL tuple comparison as `${cursorTs}::timestamp` (a raw string cast, not a JS Date
+   parameter) — precision preserved on both the read and the write side. Parse `cursor` as
+   `${cursorTs}_${id}` (split on `_`, safe — neither Postgres's timestamp text output nor a UUID
+   ever contains one); build the where clause with
+   `sql\`(${created_at}, ${id}) < (${cursorTs}::timestamp, ${cursorId})\`` when a cursor is
+   present, else `eq(user_id)`; order by `desc(created_at), desc(id)` (the tiebreaker matters —
+   without it, Postgres's tie order is unspecified per-execution); `.limit(limit + 1)`; derive
+   `hasMore`/`page`/`nextCursor = \`${last.createdAtRaw}_${last.id}\``.
    (`lt` is NOT needed here — the compound comparison uses a raw `sql` template instead; import
-   `and, desc, eq, isNull, sql` from drizzle-orm. `sql` is also already used for the unread-count
-   query below.)
+   `and, desc, eq, getTableColumns, isNull, sql` from drizzle-orm. `sql` is also already used for
+   the unread-count query below.)
 3. Add the independent unread count in the same handler:
    `const [{ count }] = await db.select({ count: sql\`count(*)::int\` }).from(notifications).where(and(eq(user_id), isNull(read_at)));`
    (import `sql` from drizzle-orm; `isNull` is already imported).
@@ -206,8 +219,9 @@ Sequenced. Each section ends with its own test gate; do not batch gates to the e
     total on every page, so a delete on page 2+ that only touched that page's local count would
     leave `pages[0]` stale until the `onSettled` refetch (found by CodeRabbit review, PR #151).
     - `onMutate(id)`: `cancelQueries`; snapshot `previous = queryClient.getQueryData(key)`; `setQueryData`
-      to map over `pages`, filtering the id out of each page's `notifications` AND decrementing that page's
-      `unreadCount` by 1 only if the removed row's `readAt == null`. Return `{ previous }`.
+      to map over `pages`, filtering the id out of each page's `notifications` AND decrementing
+      EVERY page's `unreadCount` by 1 (not just the page the row was found on — see the IMPORTANT
+      note above) only if the removed row's `readAt == null`. Return `{ previous }`.
     - `onError(_e,_id,ctx)`: `setQueryData(key, ctx.previous)` (rollback).
     - `onSettled()`: `invalidateQueries({ queryKey: key })` (safety-net resync).
 11. Update `markAllRead`/`markRead` optimistic writers so they operate on the `InfiniteData`

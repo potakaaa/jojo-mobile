@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -36,26 +36,36 @@ notificationsRouter.get('/', async (req, res) => {
     ? Math.min(Math.max(Math.trunc(limitRaw), 1), MAX_NOTIFICATIONS_LIMIT)
     : DEFAULT_NOTIFICATIONS_LIMIT;
 
-  // Compound cursor `${isoTimestamp}_${id}` — a `created_at`-only cursor can
-  // silently and PERMANENTLY skip rows tied at millisecond precision (the DB
-  // column is microsecond-precision `timestamp`, but `toISOString()` truncates
-  // to milliseconds), since a tied row can never satisfy a strict `<` on either
-  // side of the boundary. The id tiebreaker gives a stable total order; ISO
-  // strings/UUIDs never contain `_`, so the split is unambiguous.
+  // Compound cursor `${rawTimestampText}_${id}` — a `created_at`-only cursor can
+  // silently and PERMANENTLY skip rows tied at millisecond precision. The DB
+  // column is microsecond-precision `timestamp`, but node-postgres TRUNCATES
+  // (not rounds) to milliseconds when parsing into a JS `Date` — confirmed
+  // empirically: two distinct DB values `.123001` and `.123999` both produce
+  // the exact same `Date#getTime()`. So encoding the cursor via
+  // `created_at.toISOString()` (as the first fix attempt did) still loses the
+  // microsecond digits that distinguish real, close-together rows — the very
+  // ones a compound `(created_at, id)` cursor is supposed to make safe (found
+  // by CodeRabbit review, PR #151, as a residual gap in that first fix).
+  // The fix: never round-trip `created_at` through a JS `Date` for the cursor
+  // at all. `${notifications.created_at}::text` below reads Postgres's own
+  // full-precision text representation (e.g. `2026-07-22 01:36:21.734268`,
+  // never containing `_`) and the incoming cursor is bound back into SQL as a
+  // raw string cast (`::timestamp`), so precision is preserved end-to-end.
+  const CURSOR_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
   const [cursorTs, cursorId] =
     typeof req.query.cursor === 'string' ? req.query.cursor.split('_') : [undefined, undefined];
-  const cursorDate = cursorTs ? new Date(cursorTs) : null;
-  const hasCursor = cursorDate !== null && !Number.isNaN(cursorDate.getTime()) && !!cursorId;
+  const hasCursor =
+    typeof cursorTs === 'string' && CURSOR_TIMESTAMP_RE.test(cursorTs) && !!cursorId;
 
   const whereClause = hasCursor
     ? and(
         eq(notifications.user_id, userId),
-        sql`(${notifications.created_at}, ${notifications.id}) < (${cursorDate}, ${cursorId})`,
+        sql`(${notifications.created_at}, ${notifications.id}) < (${cursorTs}::timestamp, ${cursorId})`,
       )
     : eq(notifications.user_id, userId);
 
   const rows = await db
-    .select()
+    .select({ ...getTableColumns(notifications), createdAtRaw: sql<string>`created_at::text` })
     .from(notifications)
     .where(whereClause)
     .orderBy(desc(notifications.created_at), desc(notifications.id))
@@ -64,7 +74,7 @@ notificationsRouter.get('/', async (req, res) => {
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
-  const nextCursor = hasMore && last ? `${last.created_at.toISOString()}_${last.id}` : null;
+  const nextCursor = hasMore && last ? `${last.createdAtRaw}_${last.id}` : null;
 
   // Independent unread count — the true total for this user, never page-derived.
   const [countRow] = await db

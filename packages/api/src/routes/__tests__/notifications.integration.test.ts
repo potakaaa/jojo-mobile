@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fetch/supertest JSON
    bodies are loosely typed at the test boundary; assertions narrow them. */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -458,5 +458,98 @@ describe('GET /notifications — cursor tie-safety at the page boundary', () => 
 
     // The terminal page has no further rows.
     expect(page2.body.nextCursor).toBeNull();
+  });
+});
+
+/**
+ * CodeRabbit follow-up finding (PR #151) — a residual gap in the tie-safety fix
+ * above. The first fix made the cursor a compound `(created_at, id)` pair, but
+ * still encoded `created_at` via `.toISOString()` (millisecond precision).
+ * node-postgres TRUNCATES (not rounds) microseconds when parsing a `timestamp`
+ * column into a JS `Date` — confirmed empirically: two genuinely distinct DB
+ * values differing only in their microsecond digits produce the EXACT SAME
+ * `Date#getTime()`. So two rows in the same millisecond but different
+ * microseconds (only reachable via a raw insert / `now()` under real load —
+ * a JS `Date`-based insert literally cannot represent sub-millisecond values)
+ * could still be permanently dropped at the page boundary, same failure mode
+ * as the first bug, just one precision level deeper. Fixed by never round-
+ * tripping `created_at` through a JS `Date` for the cursor at all — the route
+ * now reads/writes the DB's own full-precision text representation.
+ *
+ * Hermetic: seeds its OWN user, isolated from the suites above. Inserts the
+ * microsecond-tied pair via raw SQL — `insertNotification`'s `Date`-typed param
+ * cannot express sub-millisecond precision, so this is the only way to
+ * reproduce the bug at all.
+ */
+describe('GET /notifications — cursor tie-safety across microsecond-distinct rows in the same millisecond', () => {
+  const msuffix = unique();
+  let microOwnerId: string;
+  let microOwnerCookies: string[];
+
+  beforeAll(async () => {
+    const email = `notif-micro-${msuffix}@example.com`;
+    microOwnerCookies = await signUpAndGetCookie(email, 'sup3r-secret-pw');
+    microOwnerId = await userIdFor(email);
+
+    const now = Date.now();
+    // 9 rows with ordinary millisecond-spaced timestamps (indices 2..10, oldest
+    // to newest), so the microsecond-tied pair below lands exactly at the
+    // default 10-row page boundary (page 1's 10th row / page 2's 1st row).
+    for (let i = 2; i <= 10; i++) {
+      await insertNotification({
+        userId: microOwnerId,
+        type: 'order_ready',
+        title: `micro ${String(i).padStart(2, '0')}`,
+        createdAt: new Date(now + i * 1000),
+      });
+    }
+    // The tied pair: SAME millisecond (now + 1000ms), DIFFERENT microseconds —
+    // 'micro 01' is genuinely OLDER (smaller microsecond component) than
+    // 'micro 00', so 'micro 00' is page 1's 10th row and 'micro 01' MUST be
+    // page 2's 1st row. Raw SQL is required since a JS Date can't hold this.
+    const baseIso = new Date(now + 1 * 1000).toISOString().replace('Z', '');
+    await db.execute(sql`
+      INSERT INTO notifications (user_id, title, body, type, target_screen, created_at)
+      VALUES (
+        ${microOwnerId}, ${'micro 00'}, ${'micro 00 body'}, ${'order_ready'}, ${'order_tracking'},
+        ${`${baseIso}999`}::timestamp
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO notifications (user_id, title, body, type, target_screen, created_at)
+      VALUES (
+        ${microOwnerId}, ${'micro 01'}, ${'micro 01 body'}, ${'order_ready'}, ${'order_tracking'},
+        ${`${baseIso}001`}::timestamp
+      )
+    `);
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, microOwnerId));
+    await db.delete(schema.users).where(eq(schema.users.id, microOwnerId));
+  });
+
+  it('a pair tied at the millisecond but distinct at the microsecond is neither skipped nor duplicated', async () => {
+    const page1 = await request(app)
+      .get('/notifications')
+      .set('Cookie', microOwnerCookies.join('; '));
+    const p1 = page1.body.notifications as any[];
+    expect(p1.length).toBe(10);
+    expect(p1[9].title).toBe('micro 00'); // the higher-microsecond row sorts first (newer)
+    expect(page1.body.nextCursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(page1.body.nextCursor)}`)
+      .set('Cookie', microOwnerCookies.join('; '));
+    const p2 = page2.body.notifications as any[];
+
+    // This is the assertion that fails under a millisecond-only cursor: 'micro 01'
+    // (older by microseconds alone) would never satisfy `< cursor` and would be
+    // silently dropped from every page forever.
+    expect(p2.map((n) => n.title)).toContain('micro 01');
+    expect(p2[0].title).toBe('micro 01');
+
+    const p1Ids = new Set(p1.map((n) => n.id));
+    for (const n of p2) expect(p1Ids.has(n.id)).toBe(false);
   });
 });
