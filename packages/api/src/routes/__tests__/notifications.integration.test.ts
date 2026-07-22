@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fetch/supertest JSON
    bodies are loosely typed at the test boundary; assertions narrow them. */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -184,5 +184,372 @@ describe('GET /notifications — AC-4 session scoping', () => {
       .patch(`/notifications/${aRowId}/read`)
       .set('Cookie', userBCookies.join('; '));
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * notif-delete-pagination — cursor pagination + independent unreadCount + DELETE.
+ *
+ * Hermetic: seeds its OWN two users + notification rows, isolated from the AC-4
+ * suite above (its own `beforeAll`/`afterAll`). Timestamps are spaced by index so
+ * newest-first ordering is deterministic.
+ */
+describe('GET /notifications — pagination + unreadCount + DELETE', () => {
+  const psuffix = unique();
+  let ownerId: string;
+  let strangerId: string;
+  let ownerCookies: string[];
+
+  // 15 owner rows (> one 10-row page), oldest→newest by index; the last 3 are read.
+  const OWNER_ROW_COUNT = 15;
+  const READ_ROW_COUNT = 3; // the 3 newest owner rows are pre-read
+  const now = Date.now();
+
+  beforeAll(async () => {
+    const ownerEmail = `notif-pg-owner-${psuffix}@example.com`;
+    const strangerEmail = `notif-pg-stranger-${psuffix}@example.com`;
+    ownerCookies = await signUpAndGetCookie(ownerEmail, 'sup3r-secret-pw');
+    // The stranger only needs to EXIST (owner tries to delete its row); no session used.
+    await signUpAndGetCookie(strangerEmail, 'sup3r-secret-pw');
+    ownerId = await userIdFor(ownerEmail);
+    strangerId = await userIdFor(strangerEmail);
+
+    // Seed 15 owner rows with strictly increasing timestamps. Rows 0..11 unread,
+    // rows 12..14 (the 3 newest) read — so 12 remain unread across >1 page.
+    for (let i = 0; i < OWNER_ROW_COUNT; i++) {
+      const isRead = i >= OWNER_ROW_COUNT - READ_ROW_COUNT;
+      await db.insert(schema.notifications).values({
+        user_id: ownerId,
+        type: 'order_ready',
+        title: `owner ${String(i).padStart(2, '0')}`,
+        body: `owner ${i} body`,
+        target_screen: 'order_tracking',
+        target_params: null,
+        created_at: new Date(now + i * 1000),
+        read_at: isRead ? new Date(now + i * 1000) : null,
+      });
+    }
+    // A single stranger row that must never be reachable by the owner's DELETE.
+    await db.insert(schema.notifications).values({
+      user_id: strangerId,
+      type: 'order_ready',
+      title: 'stranger private',
+      body: 'stranger body',
+      target_screen: 'order_tracking',
+      target_params: null,
+      created_at: new Date(now + 999_000),
+      read_at: null,
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, ownerId));
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, strangerId));
+    await db.delete(schema.users).where(eq(schema.users.id, ownerId));
+    await db.delete(schema.users).where(eq(schema.users.id, strangerId));
+  });
+
+  it('AC1 — default page returns at most 10 rows, newest-first', async () => {
+    const res = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    expect(res.status).toBe(200);
+    const list = res.body.notifications as any[];
+    expect(list.length).toBe(10);
+    // Newest-first: owner 14 is the newest of the 15 seeded rows.
+    expect(list[0].title).toBe('owner 14');
+    const times = list.map((n) => Date.parse(n.createdAt));
+    const sortedDesc = [...times].sort((a, b) => b - a);
+    expect(times).toEqual(sortedDesc);
+    expect(res.body.nextCursor).toBeTruthy();
+  });
+
+  it('AC2 — cursor returns the correct next page with stable order and no overlap', async () => {
+    const page1 = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const p1 = page1.body.notifications as any[];
+    const cursor = page1.body.nextCursor as string;
+
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(cursor)}`)
+      .set('Cookie', ownerCookies.join('; '));
+    const p2 = page2.body.notifications as any[];
+
+    // 15 total → page 2 holds the remaining 5.
+    expect(p2.length).toBe(5);
+    // No overlap between the two pages.
+    const p1Ids = new Set(p1.map((n) => n.id));
+    for (const n of p2) expect(p1Ids.has(n.id)).toBe(false);
+    // Page 2 is strictly older than page 1's last row (stable descending order).
+    const p1LastTime = Date.parse(p1[p1.length - 1].createdAt);
+    for (const n of p2) expect(Date.parse(n.createdAt)).toBeLessThan(p1LastTime);
+    expect(p2[0].title).toBe('owner 04');
+  });
+
+  it('AC3 — nextCursor is null / no further rows on the last page', async () => {
+    const page1 = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(page1.body.nextCursor)}`)
+      .set('Cookie', ownerCookies.join('; '));
+    // Page 2 is the terminal page (5 ≤ 10), so nextCursor must be null.
+    expect(page2.body.nextCursor).toBeNull();
+  });
+
+  it('AC10 — unreadCount reflects the true total when unread rows exceed one page', async () => {
+    const res = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    // 15 seeded, 3 newest pre-read → 12 unread, which is > one 10-row page.
+    expect(res.body.unreadCount).toBe(OWNER_ROW_COUNT - READ_ROW_COUNT);
+    // And it is NOT derived from the 10 loaded rows.
+    expect(res.body.notifications.length).toBe(10);
+  });
+
+  it('AC6 — DELETE hard-removes the row and a subsequent GET no longer returns it', async () => {
+    const before = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const victim = (before.body.notifications as any[])[0];
+
+    const del = await request(app)
+      .delete(`/notifications/${victim.id}`)
+      .set('Cookie', ownerCookies.join('; '));
+    expect(del.status).toBe(200);
+    expect(del.body).toEqual({ ok: true });
+
+    // Absent from the DB entirely (hard delete, no soft-delete column).
+    const [dbRow] = await db
+      .select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.id, victim.id));
+    expect(dbRow).toBeUndefined();
+
+    // Absent from a subsequent GET across all pages.
+    const p1 = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const p2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(p1.body.nextCursor)}`)
+      .set('Cookie', ownerCookies.join('; '));
+    const allIds = [...p1.body.notifications, ...p2.body.notifications].map((n: any) => n.id);
+    expect(allIds).not.toContain(victim.id);
+  });
+
+  it("AC8 — DELETE of another user's row returns 404 and the row persists", async () => {
+    // Owner looks up the stranger's row id directly from the DB (never exposed via API).
+    const [strangerRow] = await db
+      .select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.user_id, strangerId));
+
+    const del = await request(app)
+      .delete(`/notifications/${strangerRow!.id}`)
+      .set('Cookie', ownerCookies.join('; '));
+    expect(del.status).toBe(404);
+
+    // The stranger's row still exists — nothing was deleted.
+    const [stillThere] = await db
+      .select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.id, strangerRow!.id));
+    expect(stillThere).toBeTruthy();
+  });
+
+  it('AC8 — DELETE of a malformed (non-UUID) id returns 404', async () => {
+    const del = await request(app)
+      .delete('/notifications/not-a-uuid')
+      .set('Cookie', ownerCookies.join('; '));
+    expect(del.status).toBe(404);
+  });
+
+  it('AC9 — unreadCount decreases by 1 when an unread row is deleted', async () => {
+    const before = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const beforeCount = before.body.unreadCount as number;
+    // The newest row is unread (rows 0..11 unread; newest loaded is an unread one).
+    const unreadVictim = (before.body.notifications as any[]).find((n) => n.readAt == null);
+    expect(unreadVictim).toBeTruthy();
+
+    await request(app)
+      .delete(`/notifications/${unreadVictim.id}`)
+      .set('Cookie', ownerCookies.join('; '));
+
+    const after = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    expect(after.body.unreadCount).toBe(beforeCount - 1);
+  });
+
+  it('AC9 — unreadCount is unchanged when a read row is deleted', async () => {
+    const before = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    const beforeCount = before.body.unreadCount as number;
+    // A read row exists among the newest 3; page 1 (newest-first) includes them.
+    const readVictim = (before.body.notifications as any[]).find((n) => n.readAt != null);
+    expect(readVictim).toBeTruthy();
+
+    await request(app)
+      .delete(`/notifications/${readVictim.id}`)
+      .set('Cookie', ownerCookies.join('; '));
+
+    const after = await request(app).get('/notifications').set('Cookie', ownerCookies.join('; '));
+    expect(after.body.unreadCount).toBe(beforeCount);
+  });
+});
+
+/**
+ * CodeRabbit finding (PR #151) — cursor pagination must not skip rows that
+ * share an identical `created_at` at the exact page boundary. `created_at` is
+ * microsecond-precision in Postgres, but the cursor round-trips through JS
+ * `Date.toISOString()` (millisecond precision), so two rows created in the
+ * same millisecond previously collided at the boundary and one was
+ * permanently dropped from every subsequent page (not just reordered).
+ *
+ * Hermetic: seeds its OWN user + 12 rows, isolated from the suites above.
+ */
+describe('GET /notifications — cursor tie-safety at the page boundary', () => {
+  const tsuffix = unique();
+  let tiedOwnerId: string;
+  let tiedOwnerCookies: string[];
+  const ROW_COUNT = 12;
+
+  beforeAll(async () => {
+    const email = `notif-tie-${tsuffix}@example.com`;
+    tiedOwnerCookies = await signUpAndGetCookie(email, 'sup3r-secret-pw');
+    tiedOwnerId = await userIdFor(email);
+
+    const now = Date.now();
+    // 12 rows, oldest (i=0) → newest (i=11), 1s apart — EXCEPT rows i=1 and i=2
+    // share the IDENTICAL created_at. Sorted newest-first, the default 10-row
+    // page 1 holds indices 11..2 (page 1's LAST row is i=2); page 2 holds i=1,0
+    // (page 2's FIRST row is i=1). i=1 and i=2 are therefore the exact tied
+    // pair straddling the page-1/page-2 boundary — precisely where the old
+    // `created_at`-only cursor would have permanently dropped one of them.
+    const tiedTimestamp = new Date(now + 2 * 1000);
+    for (let i = 0; i < ROW_COUNT; i++) {
+      const createdAt = i === 1 || i === 2 ? tiedTimestamp : new Date(now + i * 1000);
+      await insertNotification({
+        userId: tiedOwnerId,
+        type: 'order_ready',
+        title: `tie ${String(i).padStart(2, '0')}`,
+        createdAt,
+      });
+    }
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, tiedOwnerId));
+    await db.delete(schema.users).where(eq(schema.users.id, tiedOwnerId));
+  });
+
+  it('a tied pair at the page boundary is neither skipped nor duplicated across pages', async () => {
+    const page1 = await request(app)
+      .get('/notifications')
+      .set('Cookie', tiedOwnerCookies.join('; '));
+    const p1 = page1.body.notifications as any[];
+    expect(p1.length).toBe(10);
+    expect(page1.body.nextCursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(page1.body.nextCursor)}`)
+      .set('Cookie', tiedOwnerCookies.join('; '));
+    const p2 = page2.body.notifications as any[];
+
+    // All 12 seeded rows are accounted for exactly once — this is the assertion
+    // that would have failed under the old created_at-only cursor (the tied
+    // "tie 01" row would never appear on either page).
+    const allTitles = [...p1, ...p2].map((n) => n.title).sort();
+    const expectedTitles = Array.from(
+      { length: ROW_COUNT },
+      (_, i) => `tie ${String(i).padStart(2, '0')}`,
+    ).sort();
+    expect(allTitles).toEqual(expectedTitles);
+
+    // No duplicate ids between the two pages.
+    const p1Ids = new Set(p1.map((n) => n.id));
+    for (const n of p2) expect(p1Ids.has(n.id)).toBe(false);
+
+    // The terminal page has no further rows.
+    expect(page2.body.nextCursor).toBeNull();
+  });
+});
+
+/**
+ * CodeRabbit follow-up finding (PR #151) — a residual gap in the tie-safety fix
+ * above. The first fix made the cursor a compound `(created_at, id)` pair, but
+ * still encoded `created_at` via `.toISOString()` (millisecond precision).
+ * node-postgres TRUNCATES (not rounds) microseconds when parsing a `timestamp`
+ * column into a JS `Date` — confirmed empirically: two genuinely distinct DB
+ * values differing only in their microsecond digits produce the EXACT SAME
+ * `Date#getTime()`. So two rows in the same millisecond but different
+ * microseconds (only reachable via a raw insert / `now()` under real load —
+ * a JS `Date`-based insert literally cannot represent sub-millisecond values)
+ * could still be permanently dropped at the page boundary, same failure mode
+ * as the first bug, just one precision level deeper. Fixed by never round-
+ * tripping `created_at` through a JS `Date` for the cursor at all — the route
+ * now reads/writes the DB's own full-precision text representation.
+ *
+ * Hermetic: seeds its OWN user, isolated from the suites above. Inserts the
+ * microsecond-tied pair via raw SQL — `insertNotification`'s `Date`-typed param
+ * cannot express sub-millisecond precision, so this is the only way to
+ * reproduce the bug at all.
+ */
+describe('GET /notifications — cursor tie-safety across microsecond-distinct rows in the same millisecond', () => {
+  const msuffix = unique();
+  let microOwnerId: string;
+  let microOwnerCookies: string[];
+
+  beforeAll(async () => {
+    const email = `notif-micro-${msuffix}@example.com`;
+    microOwnerCookies = await signUpAndGetCookie(email, 'sup3r-secret-pw');
+    microOwnerId = await userIdFor(email);
+
+    const now = Date.now();
+    // 9 rows with ordinary millisecond-spaced timestamps (indices 2..10, oldest
+    // to newest), so the microsecond-tied pair below lands exactly at the
+    // default 10-row page boundary (page 1's 10th row / page 2's 1st row).
+    for (let i = 2; i <= 10; i++) {
+      await insertNotification({
+        userId: microOwnerId,
+        type: 'order_ready',
+        title: `micro ${String(i).padStart(2, '0')}`,
+        createdAt: new Date(now + i * 1000),
+      });
+    }
+    // The tied pair: SAME millisecond (now + 1000ms), DIFFERENT microseconds —
+    // 'micro 01' is genuinely OLDER (smaller microsecond component) than
+    // 'micro 00', so 'micro 00' is page 1's 10th row and 'micro 01' MUST be
+    // page 2's 1st row. Raw SQL is required since a JS Date can't hold this.
+    const baseIso = new Date(now + 1 * 1000).toISOString().replace('Z', '');
+    await db.execute(sql`
+      INSERT INTO notifications (user_id, title, body, type, target_screen, created_at)
+      VALUES (
+        ${microOwnerId}, ${'micro 00'}, ${'micro 00 body'}, ${'order_ready'}, ${'order_tracking'},
+        ${`${baseIso}999`}::timestamp
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO notifications (user_id, title, body, type, target_screen, created_at)
+      VALUES (
+        ${microOwnerId}, ${'micro 01'}, ${'micro 01 body'}, ${'order_ready'}, ${'order_tracking'},
+        ${`${baseIso}001`}::timestamp
+      )
+    `);
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, microOwnerId));
+    await db.delete(schema.users).where(eq(schema.users.id, microOwnerId));
+  });
+
+  it('a pair tied at the millisecond but distinct at the microsecond is neither skipped nor duplicated', async () => {
+    const page1 = await request(app)
+      .get('/notifications')
+      .set('Cookie', microOwnerCookies.join('; '));
+    const p1 = page1.body.notifications as any[];
+    expect(p1.length).toBe(10);
+    expect(p1[9].title).toBe('micro 00'); // the higher-microsecond row sorts first (newer)
+    expect(page1.body.nextCursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(`/notifications?cursor=${encodeURIComponent(page1.body.nextCursor)}`)
+      .set('Cookie', microOwnerCookies.join('; '));
+    const p2 = page2.body.notifications as any[];
+
+    // This is the assertion that fails under a millisecond-only cursor: 'micro 01'
+    // (older by microseconds alone) would never satisfy `< cursor` and would be
+    // silently dropped from every page forever.
+    expect(p2.map((n) => n.title)).toContain('micro 01');
+    expect(p2[0].title).toBe('micro 01');
+
+    const p1Ids = new Set(p1.map((n) => n.id));
+    for (const n of p2) expect(p1Ids.has(n.id)).toBe(false);
   });
 });

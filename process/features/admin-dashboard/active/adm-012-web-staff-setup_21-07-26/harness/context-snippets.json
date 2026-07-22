@@ -1,0 +1,58 @@
+{
+  "snippets": [
+    {
+      "file": "packages/api/src/routes/staff-invite.ts",
+      "lines": "256-281",
+      "description": "POST /staff-invite/set-password — session-gated via requireSession; only field accepted is newPassword; forwards to better-auth's own setPassword using the caller's session headers (no target-id input possible); PASSWORD_ALREADY_SET is a true no-op (returns before any mutating call would run) and is not logged as an error.",
+      "content": "staffInviteRouter.post('/set-password', requireSession, async (req, res) => { const parsed = setPasswordSchema.safeParse(req.body); if (!parsed.success) { res.status(400).json({ error: 'Password must be 8-128 characters' }); return; } try { await auth.api.setPassword({ body: { newPassword: parsed.data.newPassword }, headers: fromNodeHeaders(req.headers) }); res.status(200).json({ ok: true }); } catch (err) { const e = err as { status?: string; body?: { code?: string } }; if (e?.status === 'BAD_REQUEST' && e?.body?.code === 'PASSWORD_ALREADY_SET') { res.status(200).json({ ok: true }); return; } console.error('[staff-invite] unexpected error setting password', err); res.status(500).json({ error: 'Failed to set password' }); } });"
+    },
+    {
+      "file": "packages/api/src/routes/staff-invite.ts",
+      "lines": "26-30",
+      "description": "Client-boundary Zod schema for set-password — the ONLY body field accepted is newPassword; a smuggled userId/role/email field is silently dropped by Zod's default parse behavior before it ever reaches the handler body.",
+      "content": "const setPasswordSchema = z.object({ newPassword: z.string().min(8).max(128) });"
+    },
+    {
+      "file": "apps/admin/src/routes/staff-invite-accept.tsx",
+      "lines": "192-208",
+      "description": "Profile step submit — authClient.updateUser call shape, role structurally excluded (never in the payload).",
+      "content": "async function handleProfileSubmit() { if (!canSubmitProfile || profilePending) return; setProfilePending(true); setError(undefined); const { error: updateError } = await authClient.updateUser({ name: name.trim(), birthday, address: address.trim(), onboardedAt: new Date() }); setProfilePending(false); if (updateError) { setError(updateError.message ?? 'Could not save your details. Please try again.'); return; } setPhase('password'); }"
+    },
+    {
+      "file": "apps/admin/src/routes/staff-invite-accept.tsx",
+      "lines": "162-177",
+      "description": "Consume step — this is the ONLY place consumedRole is ever set; it is a value the server computed and returned, never a client-supplied or client-derivable value. The Profile/Password steps are only reachable after this returns 200.",
+      "content": "const res = await fetch(`${env.apiUrl}/staff-invite/consume`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); if (!res.ok) { setError('We signed you in, but could not finish setting up your staff access.'); setPhase('error'); return; } const body = (await res.json()) as { role?: string }; setConsumedRole(body.role); ... void refetchSession(); setPhase('profile');"
+    },
+    {
+      "file": "apps/admin/src/routes/staff-invite-accept.tsx",
+      "lines": "210-238",
+      "description": "Password step submit + post-setup role-based routing branch — reads consumedRole (server-set, see snippet above), never re-derived or client-writable.",
+      "content": "async function handlePasswordSubmit() { if (!canSubmitPassword || pwPending) return; setPwPending(true); setError(undefined); try { const res = await fetch(`${env.apiUrl}/staff-invite/set-password`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: password }) }); setPwPending(false); if (!res.ok) { setError('Your password must be 8–128 characters. Please try again.'); return; } if (consumedRole === 'admin' || consumedRole === 'super_admin') { onSignedIn(); } else { setPhase('staff-done'); } } catch { setPwPending(false); setError('Could not save your password. Check your connection and try again.'); } }"
+    },
+    {
+      "file": "apps/admin/src/features/auth/lib/auth-client.ts",
+      "lines": "18-41",
+      "description": "role registered read-only (input:false) on the apps/admin auth client — mirrors the server config; birthday/address/onboardedAt registered input:true (the ADM-012 VALIDATE-caught fix, E1) so updateUser type-checks without exposing role as a writable field.",
+      "content": "/* inferAdditionalFields mirrors the server's read-only `role` field so session.user.role is typed WITHOUT importing any server code into the bundle. */ role: { type: 'string', input: false }, // birthday/address/onboardedAt registered input: true, same shape as the mobile client. `role` is deliberately NOT among these."
+    },
+    {
+      "file": "packages/api/src/lib/auth.ts",
+      "lines": "40-84",
+      "description": "Server-side additionalFields config — role is exposed input:false so no client (mobile or admin) can self-assign a privileged role; this is the framework-level guarantee both auth-client.ts files rely on.",
+      "content": "/* `role` is exposed read-only (`input: false`) so no client can self-assign a privileged role; the DB column default ('customer') is the source of truth. */ role: { type: 'string', input: false, defaultValue: 'customer' /* ...additionalFields config incl. birthday/address/onboardedAt, input: true, no cross-user or privilege impact... */ }"
+    },
+    {
+      "file": "packages/api/src/routes/admin/staff.ts",
+      "lines": "11, 28-45",
+      "description": "sendStaffInvite acceptUrl repoint — the ONLY diff in this file for ADM-012; ADMIN_WEB_ORIGIN is imported from the same lib/auth.ts module that defines the CORS trustedOrigins allowlist (single source of truth), not a per-request or caller-influenced value. POST /api/admin/users/:id/role and PATCH /api/admin/staff/:id/branch in this and the sibling users.ts file remain byte-frozen (confirmed by diff scope).",
+      "content": "import { ADMIN_WEB_ORIGIN } from '../../lib/auth'; ... /* (${ADMIN_WEB_ORIGIN}/staff-invite-accept, ADM-012 #142), where the invitee completes profile+password onboarding — replaces the old mobile deep-link bounce (/staff-invite/native) used before ADM-012. Send failure NEVER ... */ const acceptUrl = `${ADMIN_WEB_ORIGIN}/staff-invite-accept?token=${encodeURIComponent(rawToken)}`;"
+    },
+    {
+      "file": "packages/api/src/routes/staff-invite.ts",
+      "lines": "135-224",
+      "description": "POST /staff-invite/consume — byte-frozen from ADM-011, cited here (not modified by ADM-012) as the mechanism that ACTUALLY grants role/branch. ADM-012's set-password and profile steps run strictly AFTER this succeeds, on an already-privileged session — confirming ADM-012 introduces no new privilege-grant path, only credential/profile completion on top of an existing grant.",
+      "content": "staffInviteRouter.post('/consume', requireSession, async (req, res) => { ... const [claimed] = await db.update(staffInvites).set({ consumedAt: now }).where(and(eq(staffInvites.tokenHash, tokenHash), isNull(staffInvites.consumedAt), gt(staffInvites.expiresAt, now), eq(staffInvites.email, req.user!.email))).returning({ intendedRole: staffInvites.intendedRole, intendedBranchId: staffInvites.intendedBranchId }); ... await db.update(users).set({ role: claimed.intendedRole }).where(eq(users.id, req.user!.id)); ... res.status(200).json({ role: after!.role, assignedBranchId: after!.assignedBranchId, alreadyStaffLevel: false }); });"
+    }
+  ]
+}

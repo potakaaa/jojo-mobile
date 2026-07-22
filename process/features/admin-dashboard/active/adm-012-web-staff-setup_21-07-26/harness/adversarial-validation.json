@@ -1,0 +1,44 @@
+{
+  "scenarios": [
+    {
+      "scenario": "A caller submits POST /staff-invite/set-password with a body containing a userId/targetId field, attempting to set a password on an account other than their own session's.",
+      "ruled_out": true,
+      "rationale": "setPasswordSchema (staff-invite.ts:30) is z.object({ newPassword: z.string().min(8).max(128) }) -- Zod's default parsing strips/ignores unrecognized body fields for the purposes of `parsed.data`, and the handler only ever forwards `parsed.data.newPassword` plus `fromNodeHeaders(req.headers)` to auth.api.setPassword (staff-invite.ts:264-267). better-auth's setPassword resolves the target account exclusively from the session embedded in those headers -- there is no code path, in this handler or in setPassword itself, that reads a target identifier from the request body. A smuggled userId field is silently dropped and has zero effect."
+    },
+    {
+      "scenario": "An unauthenticated caller hits POST /staff-invite/set-password directly (bypassing the accept-page flow) to set a password on an arbitrary account.",
+      "ruled_out": true,
+      "rationale": "The route is mounted with `requireSession` (staff-invite.ts:256), the same middleware used by every other session-gated route in the codebase (require-session.ts) -- a request with no valid session cookie is rejected 401 before the handler body runs. This is unconditional; there is no unauthenticated branch on this route (unlike /start, which is deliberately unauthenticated by token-possession design)."
+    },
+    {
+      "scenario": "The Profile step's authClient.updateUser call is used to smuggle a role/branch escalation by including extra fields in the request payload.",
+      "ruled_out": true,
+      "rationale": "The app's own call site (staff-invite-accept.tsx:196-201) sends exactly { name, birthday, address, onboardedAt } -- no role or branch field. Even if an attacker bypassed the UI and called better-auth's underlying updateUser endpoint directly with a role field added, auth.ts registers role as input:false server-side (auth.ts:40-41,77-84) and auth-client.ts mirrors it read-only (auth-client.ts:36) -- better-auth's additionalFields input:false enforcement is a framework-level guarantee that non-input fields are rejected/ignored on write, independent of what the client sends. This is the same guarantee ADM-011's harness already relied on for the mobile onboarding call shape this code is copied from."
+    },
+    {
+      "scenario": "A staff-role invitee manipulates client-side state (e.g. via devtools) to force the post-password-step routing branch to treat them as admin/super_admin and reach the dashboard.",
+      "ruled_out": false,
+      "rationale": "PARTIALLY ruled out, not fully: the client-side routing branch (staff-invite-accept.tsx:229-233, `if (consumedRole === 'admin' || consumedRole === 'super_admin') onSignedIn()`) is pure UI navigation -- a devtools-modified `consumedRole` would indeed call `onSignedIn()` and navigate to `/`. However, `/` is inside the `(dashboard)` route group, which is independently guarded by its own `beforeLoad` server-verified check (ADM-001's requireAdmin-backed guard, calling GET /api/admin/me against the real session) -- a devtools-forced navigation for a genuine staff-role session would be bounced by THAT guard, not by this screen's own routing logic. This screen's routing is UX-only, matching the existing, already-documented architectural fact that `(dashboard)` has no other way to be protected in this topology (see the ADM-route-guard-ssr entry in all-context.md: 'a real server-side auth check is structurally impossible... requireAdmin on /api/admin/* remains the real security boundary; this route guard is UX/correctness only'). No new trust-boundary defect is introduced by ADM-012 here -- the real boundary (requireAdmin on every /api/admin/* call) is unchanged and independently enforces role on every subsequent API call the dashboard makes, not just at initial route entry."
+    },
+    {
+      "scenario": "A caller replays or races POST /staff-invite/set-password multiple times to attempt some form of credential confusion or double-write race.",
+      "ruled_out": true,
+      "rationale": "Each call independently re-validates the session (requireSession) and re-invokes better-auth's setPassword, which is idempotent by design at the framework level: a first call sets the password; every subsequent call for the same session hits the PASSWORD_ALREADY_SET branch and no-ops (200, no mutation). There is no window where two concurrent calls could interleave to produce an inconsistent credential state distinguishable from a single successful set -- the framework's own account-table write for a fresh password-set is a single upsert-shaped operation, not a read-then-write the app code could race."
+    },
+    {
+      "scenario": "The email/link repoint (acceptUrl now pointing to a browser-rendered origin) increases token-leak risk via browser history, Referer headers, or a shared/public browser.",
+      "ruled_out": false,
+      "rationale": "PARTIALLY new risk surface versus the prior mobile deep-link scheme, not fully ruled out: a browser URL bar (vs. a deep-link handled entirely inside the native app) is inherently more exposed to browser history persistence and could appear in a Referer header if the accept page ever linked out to a third-party resource before the token is consumed. Mitigations already in place, confirmed by direct read: (a) the invite token is single-use and is consumed (invalidated) at Step 3 of the very first page load in the normal flow, so a history entry replayed later returns 410 Gone, not a live accept; (b) the accept page itself makes no outbound third-party requests before consume (only same-origin/API calls to env.apiUrl), so no Referer leak vector exists in the current code. Residual, accepted, not blocking: this is the same class of exposure any password-reset-style emailed link carries in any web app, and is unchanged in kind by this specific plan versus the general risk of putting any capability behind an emailed URL -- not a defect introduced by ADM-012's design choices specifically."
+    },
+    {
+      "scenario": "The Profile step's updateUser call or the Password step's set-password call is issued for a session that was never actually granted staff/admin/super_admin (e.g. a plain customer navigates to /staff-invite-accept directly without a valid invite token).",
+      "ruled_out": true,
+      "rationale": "Profile/Password steps are only reachable via the `phase` state machine, which only transitions to 'profile' after Step 3 (POST /staff-invite/consume) returns 200 (staff-invite-accept.tsx:162-177) -- consume itself is the ADM-011 byte-frozen atomic single-use compare-and-swap that requires a valid, unconsumed, unexpired invite token matched to the session email (staff-invite.ts:150-164). A caller with no valid invite cannot reach the Profile/Password UI at all; they land on `phase: 'error'` at Step 1 (invalid token) instead. A pre-existing authenticated customer visiting the URL with no `?token=` also hits the immediate 'missing token' error branch (staff-invite-accept.tsx:110-114) before any profile/password UI renders."
+    },
+    {
+      "scenario": "Mobile's invite-accept.tsx route removal from (auth)/_layout.tsx creates a dangling/broken deep link that could be abused (e.g. an old invite email's mobile-scheme link now silently fails in a way that leaks information or creates confusion an attacker could exploit).",
+      "ruled_out": true,
+      "rationale": "The mobile screen file itself is byte-unmodified (confirmed by report's 0-diff claim) -- only its Stack.Screen registration was removed, so navigating to it now simply fails to resolve as a route (standard Expo Router 404-equivalent), not a code path that executes with partial/broken state. `GET /staff-invite/native` (the server-side redirect endpoint the OLD mobile flow used) was deliberately left intact per the plan (Section B step 7) specifically to avoid a dead-link risk for any already-sent, unconsumed invite emails from before this deploy -- so no invite becomes silently unusable or misleadingly broken; old links still resolve server-side, they just now redirect into a mobile screen that (post this change) is unregistered client-side, which is a UX regression for any stale pre-deploy invite, not a security defect."
+    }
+  ]
+}
