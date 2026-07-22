@@ -53,6 +53,7 @@ const SUITE_TOKEN = `csuite${SFX}`; // in every content customer NAME (list/pagi
 const NAME_TOKEN = `nm${SFX}`; // name-only search target
 const EMAIL_TOKEN = `em${SFX}`; // email-only search target
 const PHONE_TOKEN = `99${digits()}`; // phone-only search target (digits only)
+const TIE_TOKEN = `tie${SFX}`; // tie-safe pagination customers (all share one createdAt)
 
 let adminCookies: string[];
 let superAdminCookies: string[];
@@ -74,6 +75,9 @@ let sPhoneId: string;
 
 // Pagination customers p1..p5 (distinct createdAt, all match SUITE_TOKEN).
 const pageIds: string[] = [];
+
+// Tie-safe cursor customers — all share ONE identical createdAt (match TIE_TOKEN).
+const tieIds: string[] = [];
 
 // Fixtures for cFull's orders.
 let branchId: string;
@@ -284,6 +288,18 @@ beforeAll(async () => {
     });
     pageIds.push(id); // pageIds[0]=p1 (oldest) .. pageIds[4]=p5 (newest)
   }
+
+  // Tie-safe cursor customers — ALL share one identical createdAt; they must still
+  // paginate gap-free via the (createdAt, id) composite cursor.
+  const tieCreatedAt = new Date('2024-06-15T12:00:00Z');
+  for (let i = 1; i <= 4; i += 1) {
+    const id = await makeCustomer({
+      name: `TieCust ${i} ${TIE_TOKEN}`,
+      email: `tiecust-${i}-${SFX}@example.com`,
+      createdAt: tieCreatedAt,
+    });
+    tieIds.push(id);
+  }
 });
 
 afterAll(async () => {
@@ -305,6 +321,11 @@ afterAll(async () => {
   await db.delete(schema.products).where(eq(schema.products.id, productId));
   await db.delete(schema.categories).where(eq(schema.categories.id, categoryId));
   if (branchId) await db.delete(schema.branches).where(eq(schema.branches.id, branchId));
+  // Delete every user this suite created (account/session cascade; orders/userStars
+  // already removed above). Keeps the shared test DB clean for other suites in the run.
+  if (createdUserIds.length > 0) {
+    await db.delete(schema.users).where(inArray(schema.users.id, createdUserIds));
+  }
   logSpy?.mockRestore();
   vi.restoreAllMocks();
 });
@@ -364,6 +385,24 @@ describe('AC2/AC3 — cursor pagination round-trip (scoped by search token)', ()
     const expectedNewestFirst = [...pageIds].reverse();
     expect(collected).toEqual(expectedNewestFirst);
     expect(new Set(collected).size).toBe(collected.length);
+  });
+
+  it('paginates customers sharing an identical createdAt with no dupes/gaps (tie-safe cursor)', async () => {
+    const collected: string[] = [];
+    let cursor: string | null = null;
+    let guard = 0;
+    do {
+      const query: string = `?q=${TIE_TOKEN}&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const res: request.Response = await listCustomers(query, adminCookies);
+      expect(res.status).toBe(200);
+      for (const c of res.body.customers) collected.push(c.id);
+      cursor = res.body.nextCursor;
+      guard += 1;
+    } while (cursor !== null && guard < 10);
+
+    // All 4 tied customers returned exactly once despite the identical createdAt.
+    expect(collected.length).toBe(tieIds.length);
+    expect(new Set(collected)).toEqual(new Set(tieIds));
   });
 
   it('the final page returns a null cursor', async () => {

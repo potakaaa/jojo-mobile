@@ -49,9 +49,23 @@ adminCustomersRouter.get('/', async (req, res) => {
       ? Math.min(Math.max(Math.trunc(limitRaw), 1), MAX_LIST_LIMIT)
       : DEFAULT_LIST_LIMIT;
 
-    // cursor — ISO createdAt; an unparseable value is ignored (no cursor).
-    const cursor = typeof req.query.cursor === 'string' ? new Date(req.query.cursor) : null;
-    const hasCursor = cursor !== null && !Number.isNaN(cursor.getTime());
+    // cursor — opaque "<ISO createdAt>_<id>" composite (tie-safe: rows sharing a
+    // createdAt are ordered by id, so none are skipped/duplicated across pages).
+    // An unparseable value is ignored (no cursor), matching ADM-006's lenient parse.
+    let cursorCreatedAt: Date | null = null;
+    let cursorId: string | null = null;
+    if (typeof req.query.cursor === 'string') {
+      const sep = req.query.cursor.indexOf('_');
+      if (sep > 0) {
+        const parsedDate = new Date(req.query.cursor.slice(0, sep));
+        const parsedId = req.query.cursor.slice(sep + 1);
+        if (!Number.isNaN(parsedDate.getTime()) && uuidSchema.safeParse(parsedId).success) {
+          cursorCreatedAt = parsedDate;
+          cursorId = parsedId;
+        }
+      }
+    }
+    const hasCursor = cursorCreatedAt !== null && cursorId !== null;
 
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
 
@@ -67,18 +81,27 @@ adminCustomersRouter.get('/', async (req, res) => {
         )!,
       );
     }
-    if (hasCursor) conditions.push(lt(users.createdAt, cursor));
+    if (hasCursor) {
+      // (createdAt, id) < (cursorCreatedAt, cursorId), lexicographically.
+      conditions.push(
+        or(
+          lt(users.createdAt, cursorCreatedAt!),
+          and(eq(users.createdAt, cursorCreatedAt!), lt(users.id, cursorId!)),
+        )!,
+      );
+    }
 
     const rows = await db
       .select()
       .from(users)
       .where(and(...conditions))
-      .orderBy(desc(users.createdAt))
+      .orderBy(desc(users.createdAt), desc(users.id))
       .limit(limit + 1);
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? page[page.length - 1]!.createdAt.toISOString() : null;
+    const last = page[page.length - 1];
+    const nextCursor = hasMore && last ? `${last.createdAt.toISOString()}_${last.id}` : null;
 
     res.json({ customers: page.map(serializeAdminCustomerSummary), nextCursor });
   } catch (err) {

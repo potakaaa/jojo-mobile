@@ -15,7 +15,16 @@ interface CustomerDetailProps {
 }
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString() : 'Not set';
+  if (!iso) return 'Not set';
+  // A date-only value (YYYY-MM-DD, e.g. birthday) must be parsed as a LOCAL
+  // calendar date: `new Date('1996-04-12')` is parsed as UTC midnight and can
+  // render the previous day in timezones behind UTC. Full timestamps fall through
+  // to normal parsing.
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(iso);
+  return date.toLocaleDateString();
 }
 
 function formatDateTime(iso: string | null): string {
