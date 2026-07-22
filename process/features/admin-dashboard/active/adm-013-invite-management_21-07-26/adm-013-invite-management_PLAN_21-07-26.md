@@ -9,7 +9,12 @@ feature: admin-dashboard
 
 Date: 21-07-26
 
-Status: PLAN drafted, not yet validated. INNOVATE was skipped — the SPEC
+Status: PLAN drafted; VALIDATE run 21-07-26 recorded **Gate: CONDITIONAL** (`generated-by:
+outer-pvl`, `Accepted by: PENDING` — one open item awaiting a genuine user decision). **VALIDATE
+MUST RE-RUN before EXECUTE:** ADM-012 (#142) landed first on the shared `staff-invite.ts` +
+`staff-invite.integration.test.ts`, and this session widened scope to also cover staff removal
+(demote-to-customer) — both require a re-scan-before-edit and a fresh VALIDATE pass. INNOVATE was
+skipped — the SPEC
 (`adm-013-invite-management_SPEC_21-07-26.md`, same task folder) already locked D1 (revoke
 storage), D2 (resend mechanism), and D3 (list scope); the remaining work is mechanical
 implementation of a locked design, not an approach comparison.
@@ -198,7 +203,7 @@ liveness-guard edits shared with ADM-011 Section H)
 | `packages/api/drizzle/meta/_journal.json` | Auto-updated by `db:generate` (append idx 21 entry). |
 | `packages/api/src/routes/staff-invite.ts` | Extend `/start`'s liveness check and `/consume`'s atomic WHERE clause to also reject `revokedAt !== null` / require `isNull(revokedAt)`. **Shared-file edit — see Sequencing above.** |
 | `packages/api/src/routes/admin/staff.ts` | Extend the create-time supersede predicate's WHERE to also require `isNull(staffInvites.revokedAt)`. Add 3 new route handlers: `GET /invites`, `POST /invites/:id/revoke`, `POST /invites/:id/resend`. |
-| `packages/api/src/routes/lib/serializers.ts` | Add `AdminPendingStaffInvite` interface + `serializeAdminPendingStaffInvite()` (new shape: `id`, `email`, `intendedRole`, `intendedBranchId`, `intendedBranchName`, `invitedBy` (name + email), `createdAt`, `expiresAt`; never `tokenHash`). |
+| `packages/api/src/routes/lib/serializers.ts` | Add `AdminPendingStaffInvite` interface + `serializeAdminPendingStaffInvite()` (new shape: `id`, `email`, `intendedRole`, `intendedBranchId`, `intendedBranchName`, `invitedByName`, `invitedByEmail`, `createdAt`, `expiresAt`; never `tokenHash`). Inviter is FLAT (`invitedByName`/`invitedByEmail`), matching Sections D + F — not a nested `invitedBy` object. |
 | `packages/api/src/routes/__tests__/staff-invite.integration.test.ts` | New test cases proving AC4 (the core cross-file liveness invariant) — revoke, then assert both `/start` and `/consume` reject the exact same token. **Shared-file edit — append after Section H's cases, see Sequencing above.** |
 | `packages/api/src/routes/admin/__tests__/admin-staff-invites-list.integration.test.ts` | NEW — AC1, AC2 (list shape + role matrix). |
 | `packages/api/src/routes/admin/__tests__/admin-staff-invite-revoke.integration.test.ts` | NEW — AC3, AC8 (revoke behavior + role matrix). |
@@ -222,8 +227,9 @@ super_admin-gated inline)
 
 - Guard order: 1) `req.adminSession.role !== 'super_admin'` → 403. 2) query + serialize.
 - Query: `staffInvites` left-joined to `branches` (for `intendedBranchName`) and `users` (for
-  `invitedBy` name/email, aliased to avoid colliding with the target-side `users` reference if
-  any exists — there is none here since invites have no `userId`), filtered
+  `invitedByName`/`invitedByEmail` — flat fields, matching the Section D/F interface; a plain
+  single `leftJoin(users, eq(staffInvites.createdBy, users.id))`, no `alias()` needed since `users`
+  is joined only once), filtered
   `isNull(consumedAt) AND isNull(revokedAt) AND gt(expiresAt, now)`, ordered `desc(createdAt)`.
 - **200**: `{ invites: AdminPendingStaffInvite[] }`. Never includes `tokenHash`.
 - **401/403**: unauthenticated / non-super_admin.
@@ -256,8 +262,15 @@ super_admin-gated inline)
   expiresAt` (same atomic compare-and-swap shape as revoke — re-checks pending status at the
   exact moment of write, closing a TOCTOU race between step 3's read and this write). 6) no row
   returned → 404 (handles a race where the invite stopped being pending between steps 3 and 5).
-  7) post-commit: `sendStaffInvite(email, rawToken)` (same fire-and-forget, non-blocking
-  delivery pattern as invite-create — failure logs but does not fail the request).
+  7) **send-before-commit ordering (D2 amendment, CodeRabbit):** resend differs from
+  invite-create here — because rotating the hash KILLS the currently-valid link, the send must be
+  attempted and confirmed BEFORE the rotation is committed. Sequence: compute the fresh
+  `rawToken`/`tokenHash`/`expiresAt` in memory → `await sendStaffInvite(email, rawToken)` → only on
+  send success run the `UPDATE` (step 5). If the send throws, do NOT rotate: the row keeps its
+  existing still-pending token (resend's guard already requires the invite be live), so the old
+  link survives and nothing is stranded; return a delivery-failure error (not 200) so the admin can
+  retry. This replaces invite-create's fire-and-forget pattern for the resend route specifically —
+  create can fire-and-forget because the invite is brand-new with no prior working link to lose.
 - **200**: `{ invite: AdminStaffInviteSummary }` (reuse the EXISTING create-response shape —
   email/role/branch/expiry, no token) — the resend response deliberately mirrors the create
   response's shape/serializer (`serializeAdminStaffInvite`) since it describes the same kind of

@@ -117,7 +117,9 @@ from this plan.
 ### `GET /api/admin/customers`
 
 Query params: `q?: string` (free-text, ILIKE across name/email/phoneNumber, OR-combined),
-`cursor?: string` (ISO `createdAt` of last row), `limit?: number` (default 20, clamp 1-50, lenient
+`cursor?: string` (opaque `<ISO createdAt>_<id>` of the last row — a tie-safe composite
+`(createdAt, id)`, so customers sharing a `createdAt` are never skipped or duplicated across page
+boundaries), `limit?: number` (default 20, clamp 1-50, lenient
 — out-of-range clamped not rejected, matching ADM-006 D3).
 
 Response `200`:
@@ -199,10 +201,13 @@ No mutating verb (`POST`/`PATCH`/`PUT`/`DELETE`) exists anywhere under `/api/adm
        `or(ilike(users.name, `%${q}%`), ilike(users.email, `%${q}%`), ilike(users.phoneNumber, `%${q}%`))`.
        **Add a one-line comment:** `phoneNumber` is nullable — `ILIKE` against `NULL` evaluates to
        `NULL` (not a match), which is the correct, desired behavior, not a bug to guard against.
-     - If cursor present, push `lt(users.createdAt, cursor)`.
-     - `db.select().from(users).where(and(...conditions)).orderBy(desc(users.createdAt)).limit(limit + 1)`.
-     - `hasMore` / `page` / `nextCursor` exactly as ADM-006's pattern (ISO string of last row's
-       `createdAt`, `null` on the final page).
+     - If cursor present, parse `<ISO createdAt>_<id>` and push the tie-safe composite predicate
+       `or(lt(users.createdAt, c.createdAt), and(eq(users.createdAt, c.createdAt), lt(users.id, c.id)))`.
+     - `db.select().from(users).where(and(...conditions)).orderBy(desc(users.createdAt), desc(users.id)).limit(limit + 1)`
+       — the secondary `id` sort key makes the order total, so the composite cursor is gap-free.
+     - `hasMore` / `page` / `nextCursor` follow ADM-006's shape but with a composite cursor:
+       `nextCursor` = `<last row createdAt ISO>_<last row id>`, `null` on the final page. (This is a
+       deliberate tie-safe improvement over ADM-006's `createdAt`-only cursor.)
      - Map `page` through `serializeAdminCustomerSummary`. Respond
        `{ customers: [...], nextCursor }`.
    - `GET /:id`:

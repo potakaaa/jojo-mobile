@@ -328,9 +328,18 @@ high-risk class check explicitly in V2 given the trust-boundary surface.
 
 ## Resume and Execution Handoff
 
+> **Post-EXECUTE reconciliation (21-07-26):** This work is COMPLETE and committed (`81974a9`, stacks
+> on ADM-011 `0bf8365`), EVL-confirmed green (API 716, admin 181, 3 typechecks + admin build +
+> format:check clean). The Gate: CONDITIONAL was explicitly accepted by the user in-session
+> (E1/E2/E3 + the step-13 interpretation all accepted), so the pre-EXECUTE "Accepted by: PENDING"
+> and "EXECUTE must NOT start" directives below are historical. **Still owed before `✅ VERIFIED` /
+> PR-finalize (both user-deferred, NOT complete):** the AC12 real-browser walkthrough (staff-role
+> AND admin-role invite) and the 5-artifact high-risk evidence pack (`mustStopBeforeFinalize`).
+
 1. **Selected plan file path:** `process/features/admin-dashboard/active/adm-012-web-staff-setup_21-07-26/adm-012-web-staff-setup_PLAN_21-07-26.md`
-2. **Last completed phase or step:** VALIDATE run 21-07-26 — Gate: CONDITIONAL, `Accepted by:
-   PENDING` (real user confirmation required before EXECUTE — see `## Validate Contract`).
+2. **Last completed phase or step:** EXECUTE complete + committed (`81974a9`), EVL green. VALIDATE
+   ran 21-07-26 — Gate: CONDITIONAL, accepted by the user in-session (superseding the earlier
+   `Accepted by: PENDING`).
 3. **Validate-contract status:** written this pass (21-07-26), Gate: CONDITIONAL.
 4. **Supporting context files loaded:** SPEC (this folder), `packages/api/src/routes/staff-invite.ts`,
    `packages/api/src/lib/auth.ts`, `packages/api/src/middleware/require-session.ts`,

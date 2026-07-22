@@ -39,9 +39,20 @@ export function __resetRateLimitStoreForTests(): void {
 }
 
 export function rateLimit({ windowMs, max }: { windowMs: number; max: number }) {
+  // Bound the map: sweep fully-elapsed entries at most once per window so idle IP keys
+  // don't accumulate forever. O(n) but amortized to one pass per windowMs.
+  let lastSweep = 0;
   return (req: Request, res: Response, next: NextFunction): void => {
     const key = req.ip ?? 'unknown';
     const now = Date.now();
+
+    if (now - lastSweep >= windowMs) {
+      lastSweep = now;
+      for (const [k, e] of store) {
+        if (now - e.windowStart >= windowMs) store.delete(k);
+      }
+    }
+
     const entry = store.get(key);
 
     // No live window, or the window has fully elapsed → start a fresh one.

@@ -110,9 +110,7 @@ staffInviteRouter.post('/start', rateLimit({ windowMs: 60_000, max: 10 }), async
       // Structurally impossible immediately after a successful signInMagicLink for
       // this exact email — treat as an invariant violation (matches /consume's
       // impossible-mismatch handling).
-      console.error('[staff-invite] minted magic link but could not recapture the token', {
-        email: invite.email,
-      });
+      console.error('[staff-invite] minted magic link but could not recapture the token');
       res.status(500).json({ error: 'Failed to start invite acceptance' });
       return;
     }
@@ -145,7 +143,10 @@ staffInviteRouter.post('/consume', requireSession, async (req, res) => {
     const tokenHash = hashToken(parsed.data.token);
     const now = new Date();
 
-    // Atomic single-use consume: only an unconsumed, unexpired invite is claimed.
+    // Atomic single-use consume: only an unconsumed, unexpired invite whose email
+    // matches the authenticated session is claimed. Folding the session-email match
+    // INTO the predicate means an email mismatch can never set `consumedAt` (it just
+    // fails to claim), so a mismatched session cannot burn someone else's invite.
     const [claimed] = await db
       .update(staffInvites)
       .set({ consumedAt: now })
@@ -154,38 +155,43 @@ staffInviteRouter.post('/consume', requireSession, async (req, res) => {
           eq(staffInvites.tokenHash, tokenHash),
           isNull(staffInvites.consumedAt),
           gt(staffInvites.expiresAt, now),
+          eq(staffInvites.email, req.user!.email),
         ),
       )
       .returning({
-        email: staffInvites.email,
         intendedRole: staffInvites.intendedRole,
         intendedBranchId: staffInvites.intendedBranchId,
       });
 
     if (!claimed) {
-      // Distinguish "never issued" (404) from "expired/consumed" (410), mirroring
-      // /start. No mutation to `users` in either case.
+      // Not claimed: classify why. Read the row by token to distinguish never-issued
+      // (404), a live invite whose email differs from the session (500 invariant —
+      // NOT consumed, since email was in the predicate), and expired/consumed (410).
       const [exists] = await db
-        .select({ id: staffInvites.id })
+        .select({
+          id: staffInvites.id,
+          email: staffInvites.email,
+          consumedAt: staffInvites.consumedAt,
+          expiresAt: staffInvites.expiresAt,
+        })
         .from(staffInvites)
         .where(eq(staffInvites.tokenHash, tokenHash));
       if (!exists) {
         res.status(404).json({ error: 'Invite not found' });
+      } else if (
+        exists.consumedAt === null &&
+        exists.expiresAt > now &&
+        exists.email !== req.user!.email
+      ) {
+        // The session was minted FOR the invite's email by /start, so a live-invite
+        // email mismatch is structurally impossible → invariant violation, no PII logged.
+        console.error('[staff-invite] consume email mismatch (invariant violation)', {
+          inviteId: exists.id,
+        });
+        res.status(500).json({ error: 'Failed to accept invite' });
       } else {
         res.status(410).json({ error: 'This invite has expired or already been used' });
       }
-      return;
-    }
-
-    // Defense-in-depth: the session was minted FOR this exact email by /start, so a
-    // mismatch is structurally impossible → treat as an invariant violation (500),
-    // do NOT apply role/branch.
-    if (claimed.email !== req.user!.email) {
-      console.error('[staff-invite] consume email mismatch (invariant violation)', {
-        inviteEmail: claimed.email,
-        sessionEmail: req.user!.email,
-      });
-      res.status(500).json({ error: 'Failed to accept invite' });
       return;
     }
 

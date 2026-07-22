@@ -220,6 +220,19 @@ staffRouter.post('/invite', async (req, res) => {
     const intendedBranchId =
       intendedRole === 'staff' ? (parsed.data.intendedBranchId ?? null) : null;
 
+    // Validate the branch fresh from the DB — never trust a client-supplied branch id
+    // (mirrors the PATCH /:id/branch handler). A staff invite's stored branch is applied
+    // verbatim at consume time, so an unknown/inactive branch must be rejected at source.
+    if (intendedBranchId !== null) {
+      const [branch] = await db
+        .select({ id: branches.id, isActive: branches.is_active })
+        .from(branches)
+        .where(eq(branches.id, intendedBranchId));
+      if (!branch || !branch.isActive) {
+        throw new AdminApiError(400, 'Unknown or inactive branch');
+      }
+    }
+
     // An email that already has an account must use the promote flow, not an invite.
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
     if (existing) {

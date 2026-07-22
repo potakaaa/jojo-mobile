@@ -39,7 +39,7 @@
     {
       "file": "apps/admin/src/routes/login.tsx",
       "lines": "1-25",
-      "description": "CRITICAL FINDING: apps/admin's ONLY sign-in surface is email/password (authClient.signIn.email). Confirmed via repo-wide grep: zero signup screen, zero password-reset/forgot-password screen exist anywhere in apps/admin. A magic-link-provisioned account (which is what ADM-011's invite-accept flow always produces) has no password credential row and therefore cannot ever sign into apps/admin through any built UI. See backlog note adm-011-admin-invite-no-web-access_NOTE_21-07-26.md.",
+      "description": "HISTORICAL (pre-ADM-012) FINDING — superseded: at ADM-011 VALIDATE time, apps/admin's only sign-in surface was email/password (authClient.signIn.email), so a magic-link-provisioned invitee had no password credential and could not sign in. ADM-012 (#142) closed this for the invite path: the web accept page now runs a password-setup step (POST /staff-invite/set-password) BEFORE role-based routing, so an admin/super_admin invitee sets a durable password and can sign in. Remaining gap: apps/admin still has no standalone signup or password-reset/forgot-password screen for other recovery cases. See backlog note adm-011-admin-invite-no-web-access_NOTE_21-07-26.md.",
       "content": "async function handleSubmit(e) { ... const result = await signIn(email, password); ... } // signIn() -> authClient.signIn.email({email, password}) in use-admin-auth.ts:52"
     },
     {

@@ -109,11 +109,13 @@ Admin opens dashboard → clicks "Customers" (new nav entry)
    presence, and correct sort order.
    `strategy:` Fully-Automated.
 
-2. **Pagination round-trips correctly.** Requesting a small page size, following the returned
-   cursor, and requesting again returns the next page with no duplicates and no gaps; the final
-   page returns a null/absent cursor.
-   `proven by:` integration test seeding N customers, paginating in pages smaller than N, and
-   asserting the concatenated pages equal the full expected set with no overlap.
+2. **Pagination round-trips correctly, tie-safe.** Requesting a small page size, following the
+   returned cursor, and requesting again returns the next page with no duplicates and no gaps; the
+   final page returns a null/absent cursor. The cursor is a tie-safe composite `(createdAt, id)`, so
+   rows sharing an identical `createdAt` still paginate gap-free.
+   `proven by:` integration test seeding N customers — INCLUDING at least two with an identical
+   `createdAt` straddling a page boundary — paginating in pages smaller than N, and asserting the
+   concatenated pages equal the full expected set with no overlap and no gap.
    `strategy:` Fully-Automated.
 
 3. **The `q=` search parameter filters by name, email, OR phone (partial, case-insensitive
@@ -226,9 +228,10 @@ Admin opens dashboard → clicks "Customers" (new nav entry)
   phase).
 - Must reuse the existing `requireAdmin` guard and the append-only `adminRouter` aggregator
   pattern (`routes/admin/index.ts`) — no new auth mechanism.
-- Must follow the existing cursor-pagination convention (cursor on `createdAt`, `limit`+1 fetch,
-  `{ items, nextCursor }` envelope) established by ADM-006's orders list, not invent a new
-  pagination shape.
+- Must follow the existing cursor-pagination convention (`limit`+1 fetch, `{ items, nextCursor }`
+  envelope) established by ADM-006's orders list — but with a tie-safe composite `(createdAt, id)`
+  cursor rather than ADM-006's `createdAt`-only cursor (a deliberate correctness improvement to
+  guarantee gap-free pagination when `createdAt` values tie), not a wholly new pagination shape.
 - Must NOT modify `users` table schema, `packages/types/src/admin.ts` conventions, or any existing
   route (`GET /api/admin/me`, `POST /api/admin/users/:id/role`, ADM-009's staff routes) — purely
   additive.

@@ -889,15 +889,13 @@ required before EXECUTE is authorized (manual-first, no implicit approval).
    `node_modules/.pnpm/better-auth@1.6.23.../dist/plugins/magic-link/index.mjs` (BOTH the verify-side
    handler, read during PLAN, AND the mint-side `signInMagicLink` handler, read during VALIDATE —
    the latter is what surfaced the Innovate Note correction).
-5. **Next step for a fresh agent picking up mid-execution:** Sections A–G are CODE DONE, human
-   review complete, Gate: PASS, and (per `packages/api/src/index.ts` / `routes/staff-invite.ts` /
-   `apps/mobile/src/app/(auth)/invite-accept.tsx` being present on disk) already EXECUTED. **This
-   supplement (21-07-26) adds Section H (`apps/admin` web accept surface + CORS extension) and
-   REQUIRES A FRESH VALIDATE PASS before Section H can be executed** — see `## Validate Contract
-   Delta — RE-VALIDATION REQUIRED (21-07-26)` at the end of this file. Do NOT run `ENTER EXECUTE
-   MODE` for Section H until that delta validate pass records Gate: PASS/CONDITIONAL and (given the
-   auth-adjacent/CORS-widening nature of H3) a human APPROVE decision, matching how Sections A–G
-   themselves were gated.
+5. **Next step for a fresh agent picking up mid-execution:** COMPLETE — Sections A–H are all CODE
+   DONE and committed (`0bf8365`), EVL-confirmed green (API 709, admin 177). The Section H delta
+   validate pass ran and recorded Gate: PASS, and its human APPROVE decision is on record at
+   `harness/review-decision-delta.json` (distinct from the Sections A–G approval,
+   `harness/review-decision.json`). Remaining follow-up before `✅ VERIFIED`: the 3 Agent-Probe
+   walkthroughs (AC7 admin UI, mobile `invite-accept.tsx` on-device incl. the navigation-race, AC15
+   web accept real-browser) — code is done, these are manual verification only.
 
 ## Validate Contract
 
@@ -1180,11 +1178,9 @@ security or trust-boundary defect found in the CORS or plugin change; reusing th
 `adminCors` object introduces no capability beyond what `/api/admin` and `/api/auth` already grant
 to the same origin.
 
-**Human approval status for this delta: PENDING.** No approval is recorded by this pass. Do NOT
-treat `harness/review-decision.json` (Sections A–G only) as covering Section H. Per
-`mustStopBeforeFinalize: true` (independently declared for this delta in
-`harness/risk-gate-delta.json`), **EXECUTE must not begin on Section H until a human explicitly
-records APPROVE for this delta** (e.g. a new `harness/review-decision-delta.json`, or an equivalent
-explicit approval relayed by the orchestrator from a real user message). This agent has not
-recorded, fabricated, or implied any such approval, and did not modify
-`harness/review-decision.json` or any `Accepted by` field.
+**Human approval status for this delta: APPROVED (21-07-26).** The real user APPROVE decision for
+Section H is recorded at `harness/review-decision-delta.json` (a genuine session decision, distinct
+from `harness/review-decision.json` which covers Sections A–G only). With that approval and Gate:
+PASS, Section H was executed and committed (`0bf8365`). The `mustStopBeforeFinalize` gate for this
+delta is satisfied. Remaining follow-up is manual verification only (the 3 Agent-Probe walkthroughs
+above), not a further approval or re-validation.

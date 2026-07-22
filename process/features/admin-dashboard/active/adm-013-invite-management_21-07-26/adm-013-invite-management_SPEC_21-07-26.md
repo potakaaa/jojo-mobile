@@ -135,7 +135,7 @@ Super_admin opens Staff screen → "Pending invites" section (super_admin only �
         └───────────┬───────────┘
                      ▼
         Invitee's OLD accept link:
-        GET/POST /staff-invite/start
+        POST /staff-invite/start
         and /consume both now reject
         (revoked_at set, or token
          hash no longer matches
@@ -147,7 +147,7 @@ link, is unchanged — this phase only adds ways to see, kill, or refresh an alr
 pending invite:
 ```
 POST /api/admin/staff/invite        (existing, ADM-011, unmodified creation shape)
-GET  /staff-invite/start            (existing, ADM-011 — liveness guard EXTENDED, see below)
+POST /staff-invite/start            (existing, ADM-011 — liveness guard EXTENDED, see below)
 POST /staff-invite/consume          (existing, ADM-011 — liveness guard EXTENDED, see below)
 ```
 
@@ -295,8 +295,12 @@ POST /staff-invite/consume          (existing, ADM-011 — liveness guard EXTEND
   row's stored email/role/branch, generates a fresh token, hashes it, sets a fresh expiry on
   THAT SAME row (the old token dies because the stored hash is overwritten — there is no second
   row, no history table of past tokens), and re-sends via the existing `sendStaffInvite`
-  mechanism from ADM-011 (real send or log-fallback, unchanged). The client never supplies role
-  or branch to this route — only an invite id.
+  mechanism from ADM-011 (real send or log-fallback, unchanged). **Delivery ordering (amendment):**
+  because overwriting the hash kills the current working link, the resend must confirm delivery
+  BEFORE committing the rotation (send-before-commit) — if `sendStaffInvite` fails, the row is left
+  untouched (its existing still-pending link survives) and the route returns a delivery-failure
+  error so the admin can retry, never leaving the invite stranded with a dead token and no
+  delivered replacement. The client never supplies role or branch to this route — only an invite id.
 - **D3 (locked — list scope):** the MVP list (`GET /api/admin/staff/invites`) returns
   PENDING-ONLY invites: `consumedAt IS NULL AND revokedAt IS NULL AND expiresAt > now`. A
   broader, status-filterable list (showing consumed/revoked/expired history too) is explicitly

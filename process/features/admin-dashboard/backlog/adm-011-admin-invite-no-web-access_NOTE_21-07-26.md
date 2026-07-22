@@ -2,9 +2,12 @@
 
 Date: 21-07-26
 Source: ADM-011 (add-staff promote + email-invite, issue #141) — VALIDATE Layer 1/2 finding
-Status: OPEN — accepted as a known, documented gap for ADM-011's own scope; not new debt
-introduced by this plan's code (the underlying limitation is pre-existing architecture from
-ADM-001), but ADM-011 is the first phase to actively widen exposure to it by default.
+Status: INVITE PATH RESOLVED by ADM-012 (#142) via resolution option (A) — the `apps/admin` web
+accept page now runs a password-setup step (`POST /staff-invite/set-password`) before role-based
+routing, so an `admin`/`super_admin` invitee sets a durable password and can sign into the web
+dashboard. Remaining OPEN residual: Path 1 (promote) of an existing *passwordless* customer account
+(magic-link/phone-OTP/Google-only signup, never given a password) still lands in the same
+web-inaccessible state — pre-existing since ADM-001, not worsened by ADM-011/012.
 
 ### Gap
 
@@ -15,14 +18,13 @@ anywhere in `apps/admin`. The only way an account gets a usable password today i
 memory note `admin-dashboard-no-seeded-admin.md` on how the first super_admin was bootstrapped.
 
 ADM-011's Path 1 (promote) and Path 2 (email invite) both let a super_admin grant `admin` or
-`super_admin` role (SPEC D2, locked). For Path 2 specifically, the ENTIRE accept mechanism is
-mobile-only (`apps/mobile/src/app/(auth)/invite-accept.tsx`, via `authClient.magicLink.verify`) —
-there is no `apps/admin` web accept counterpart in this plan. A magic-link-provisioned account
-never has an `account` row with a password credential. The result: an invitee who accepts as
-`admin` or `super_admin` lands correctly in the mobile `(staff)` shell (their role is genuinely
-granted, server-side), but has **no way to sign into `apps/admin`'s web dashboard** — the actual
-tool an `admin`/`super_admin`'s job requires (branches/products/deals/orders/analytics/rewards/
-coupons CRUD all live there, not in the mobile `(staff)` shell).
+`super_admin` role (SPEC D2, locked). At ADM-011 time, Path 2's accept mechanism was mobile-only
+(`apps/mobile/src/app/(auth)/invite-accept.tsx`, via `authClient.magicLink.verify`) with no
+`apps/admin` web accept counterpart, so a magic-link-provisioned invitee never had a password
+credential and could not sign into the web dashboard. **ADM-012 (#142) fixed this**: the invite
+email now points at the `apps/admin` web accept page (`staff-invite-accept.tsx`), which sets a
+durable password before routing an admin/super_admin invitee into the dashboard. The paragraph
+below describes the RESOLVED (pre-ADM-012) invite-path gap; the still-open residual is Path 1 only.
 
 Path 1 (promote) has the same latent exposure for any existing customer account that was never
 given a password (magic-link/phone-OTP/Google-OAuth-only signups) — this part is not new, it
@@ -40,9 +42,10 @@ D1-D3.
 
 ### Resolution options (for the next planning pass)
 
-A) Add a "set password" step to the `apps/admin` web accept/first-login flow (new `apps/admin`
-   screen + a `POST /api/auth/set-password`-style call, or better-auth's own password-reset token
-   flow repurposed) — closes the gap for both promote and invite paths.
+A) ✅ SHIPPED in ADM-012 (#142) for the invite path — a "set password" step
+   (`POST /staff-invite/set-password`) on the `apps/admin` web accept flow. Extending the same
+   set-password affordance to Path 1 (promoting an existing passwordless customer) is the remaining
+   open slice.
 B) Add magic-link support to `apps/admin`'s login screen (mirrors the mobile pattern, reusing the
    existing `magicLink` plugin + a new `/magic-link/native`-equivalent-for-web redirect) — avoids
    ever needing a password for admin/super_admin accounts.
