@@ -1,4 +1,4 @@
-import { inferAdditionalFields } from 'better-auth/client/plugins';
+import { inferAdditionalFields, magicLinkClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
 import { env } from '@/config/env';
@@ -17,6 +17,11 @@ import { env } from '@/config/env';
  *
  * `inferAdditionalFields` mirrors the server's read-only `role` field so
  * `session.user.role` is typed WITHOUT importing any server code into the bundle.
+ *
+ * `magicLinkClient` (Section H, ADM-011) adds ONLY the namespaced
+ * `authClient.magicLink.*` methods (e.g. `.verify`) the web staff-invite accept page
+ * needs. better-auth client plugins are additive and namespaced by construction, so
+ * this does NOT alter the existing `authClient.signIn.email` flow used by `login.tsx`.
  */
 export const authClient = createAuthClient({
   baseURL: env.apiUrl,
@@ -29,7 +34,16 @@ export const authClient = createAuthClient({
         // Read-only on the client (mirrors the server's `input: false`) — `role`
         // is server-owned and never a settable signup/update input.
         role: { type: 'string', input: false },
+        // Self-owned profile fields the client may write via `updateUser` on its
+        // OWN record (mirrors the server's `input: true`) — the ADM-012 (#142) web
+        // staff-invite accept page's profile step calls
+        // `updateUser({ name, birthday, address, onboardedAt })`. Same registration
+        // as the mobile client. `role` is deliberately NOT among these.
+        birthday: { type: 'string', input: true },
+        address: { type: 'string', input: true },
+        onboardedAt: { type: 'date', input: true },
       },
     }),
+    magicLinkClient(),
   ],
 });
