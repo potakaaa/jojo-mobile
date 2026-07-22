@@ -42,6 +42,9 @@ interface StaffListProps {
   onRoleChange: (member: AdminStaffMember, role: AdminStaffMember['role']) => void;
   /** Demote a staff member to `customer` (Part B — reuses the role route). */
   onRemove: (member: AdminStaffMember) => void;
+  /** Live state of the remove (role→customer) mutation, surfaced in the confirm dialog. */
+  removePending?: boolean;
+  removeError?: string | null;
 }
 
 const selectClass =
@@ -68,6 +71,8 @@ export function StaffList({
   onBranchChange,
   onRoleChange,
   onRemove,
+  removePending = false,
+  removeError = null,
 }: StaffListProps) {
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   // Derived (not effect-held): once the removed member is demoted they drop off the
@@ -183,8 +188,8 @@ export function StaffList({
         }
         confirmLabel="Remove"
         pendingLabel="Removing…"
-        pending={false}
-        error={null}
+        pending={removePending}
+        error={removeError}
         onOpenChange={(open) => {
           if (!open) setConfirmingRemoveId(null);
         }}

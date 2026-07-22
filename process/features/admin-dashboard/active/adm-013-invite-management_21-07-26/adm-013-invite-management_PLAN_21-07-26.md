@@ -308,42 +308,39 @@ super_admin-gated inline)
 
 ### `POST /api/admin/staff/invites/:id/resend` (NEW, `staff.ts`, super_admin-gated inline)
 
-- Guard order: 1) super_admin check → 403. 2) uuid-shape guard on `:id` → 404 on malformed.
-  3) fetch the target row, requiring `isNull(consumedAt) AND isNull(revokedAt) AND
-  gt(expiresAt, now)` → 404 if not found under that predicate (covers not-pending AC7).
-  **CAPTURE the row's CURRENT `tokenHash` from this same read** — this is the value the
-  step-5 `UPDATE`'s `WHERE` will key on (Fix 2, 22-07-26 plan-supplement). 4)
-  **ignore the request body entirely** — no Zod schema parses role/branch from it; only `:id` is
-  read from params (closes AC6's smuggling vector structurally, not just by validation). 5)
-  generate a fresh `rawToken`/`tokenHash` + fresh `expiresAt = now + INVITE_TTL_MS`, `UPDATE
-  staff_invites SET tokenHash = ..., expiresAt = ... WHERE id = :id AND tokenHash =
-  :capturedTokenHash AND isNull(consumedAt) AND isNull(revokedAt) AND gt(expiresAt, now)
-  RETURNING email, intendedRole, intendedBranchId, expiresAt` — **the `tokenHash =
-  :capturedTokenHash` condition is the load-bearing addition (Fix 2): it turns this from a
-  pending-state-only compare-and-swap into a full compare-and-swap on the EXACT token being
-  rotated**, closing a TOCTOU race between step 3's read and this write, AND closing the
-  double-resend race (see below). 6) no row returned → 404. This now covers TWO distinct race
-  outcomes under one clause, not one: (a) the invite stopped being pending between steps 3 and 5
-  (revoked/consumed/expired mid-flight — the original TOCTOU this step already handled), AND (b)
-  a DIFFERENT resend call already rotated `tokenHash` between this call's step-3 read and its own
-  step-5 write (the double-resend race, Fix 2) — because this call's captured `tokenHash` no
-  longer matches the row's current value, its `WHERE` fails to match and it safely 404s instead
-  of re-rotating a second time and silently invalidating the first resend's just-delivered link.
-  7) **send-before-commit ordering (D2 amendment, CodeRabbit):** resend differs from
-  invite-create here — because rotating the hash KILLS the currently-valid link, the send must be
-  attempted and confirmed BEFORE the rotation is committed. Sequence: compute the fresh
-  `rawToken`/`tokenHash`/`expiresAt` in memory → `await sendStaffInvite(email, rawToken)` → only on
-  send success run the `UPDATE` (step 5). If the send throws, do NOT rotate: the row keeps its
-  existing still-pending token (resend's guard already requires the invite be live), so the old
-  link survives and nothing is stranded; return a delivery-failure error (not 200) so the admin can
-  retry. This replaces invite-create's fire-and-forget pattern for the resend route specifically —
-  create can fire-and-forget because the invite is brand-new with no prior working link to lose.
-  **VALIDATE note (this pass):** because both a racing pair's read (step 3) happens before either's
-  send (step 7) and write (step 5), a genuine simultaneous double-resend can result in BOTH calls
-  successfully sending an email (one of which points at a token that will never validate, since
-  only the WHERE-winning `UPDATE` actually rotates) — this is a UX rough edge (duplicate email, one
-  dead link), not a security or data-integrity defect, and does not change AC15's pass/fail
-  criteria (which is about the DB-level compare-and-swap, not send-count).
+- Guard/flow order (listed in EXECUTION order):
+  1. super_admin check → 403.
+  2. uuid-shape guard on `:id` → 404 on malformed.
+  3. Pending-read: fetch the target row requiring `isNull(consumedAt) AND isNull(revokedAt) AND
+     gt(expiresAt, now)` → 404 if not found (covers not-pending AC7). **CAPTURE the row's CURRENT
+     `tokenHash` from this same read** — the value the step-7 `UPDATE`'s `WHERE` keys on (Fix 2).
+  4. **Ignore the request body entirely** — no Zod schema parses role/branch from it; only `:id` is
+     read from params (closes AC6's smuggling vector structurally, not just by validation).
+  5. Generate a fresh `rawToken`/`tokenHash` + fresh `expiresAt = now + INVITE_TTL_MS` **in memory
+     (not yet committed).**
+  6. **Send-before-commit (D2 amendment, CodeRabbit):** `await sendStaffInvite(email, rawToken)`
+     BEFORE any write — rotating the hash KILLS the currently-valid link, so delivery must be
+     attempted and confirmed FIRST. If the send throws, do NOT rotate: the row keeps its existing
+     still-pending token (the old link survives, nothing is stranded); return a delivery-failure
+     error (not 200) so the admin can retry. (Create can fire-and-forget because a brand-new invite
+     has no prior link to lose; resend cannot.)
+  7. **Exact-token compare-and-swap UPDATE** (only after send success): `UPDATE staff_invites SET
+     tokenHash = <new>, expiresAt = <new> WHERE id = :id AND tokenHash = :capturedTokenHash AND
+     isNull(consumedAt) AND isNull(revokedAt) AND gt(expiresAt, now) RETURNING email, intendedRole,
+     intendedBranchId, expiresAt`. The `tokenHash = :capturedTokenHash` condition is the load-bearing
+     addition (Fix 2): a full compare-and-swap on the EXACT token being rotated, not merely
+     pending-state.
+  8. No row returned → 404. This covers TWO race outcomes: (a) the invite stopped being pending
+     between steps 3 and 7 (revoked/consumed/expired mid-flight — the original TOCTOU), AND (b) a
+     DIFFERENT resend already rotated `tokenHash` between this call's step-3 read and its step-7
+     write (the double-resend race, Fix 2) — this call's captured hash no longer matches, so its
+     `WHERE` fails and it safely 404s instead of re-rotating and killing the first resend's link.
+  **VALIDATE note (this pass):** a racing pair both read (step 3) before either sends (step 6), so a
+  genuine simultaneous double-resend can have BOTH send an email (one pointing at a token that will
+  never validate, since only the WHERE-winning `UPDATE` rotates) — a UX rough edge (duplicate email,
+  one dead link), not a security or data-integrity defect. It does not change AC15's pass/fail
+  criteria, which is the DB-level compare-and-swap (404 + zero mutation for the stale-token loser),
+  not send-count.
 - **200**: `{ invite: AdminStaffInviteSummary }` (reuse the EXISTING create-response shape —
   email/role/branch/expiry, no token) — the resend response deliberately mirrors the create
   response's shape/serializer (`serializeAdminStaffInvite`) since it describes the same kind of
@@ -630,7 +627,7 @@ this plan's Verification Evidence section proves:
 | `admin-staff.integration.test.ts` (existing `POST /api/admin/users/:id/role still works unmodified` block, extended) — one new targeted assertion: POST role=customer against a seeded staff user, confirm 200 + user drops off `GET /api/admin/staff` | Fully-Automated | AC10 (server half), AC11 (server half — self-guard already generic), AC12 (server half — pre-existing 403) |
 | Manual admin-dashboard walkthrough: Remove-from-staff confirm dialog, row disappearance, action hidden for non-super_admin and for the signed-in user's own row | Agent-Probe | AC13 |
 | `admin-staff.integration.test.ts` (same block, extended) — demote a staff user mid-test, reuse their already-established session for one more staff-gated request, assert 403 (proves fresh per-request role resolution, no session revocation needed) | Fully-Automated | AC14 |
-| `admin-staff-invite-resend.integration.test.ts` — deterministic stale-`tokenHash` simulation: capture pre-resend `tokenHash`, resend once, then attempt a second `UPDATE` keyed on the stale captured hash, assert zero rows affected | Fully-Automated | AC15 |
+| `admin-staff-invite-resend.integration.test.ts` — deterministic stale-`tokenHash` simulation: capture pre-resend `tokenHash`, resend once, then a second resend keyed on the stale captured hash must yield **404 with zero DB mutation** (assert zero rows affected). Duplicate send attempts under the send-before-CAS design are explicitly accepted (one delivered link is invalidated) and are NOT asserted against. | Fully-Automated | AC15 |
 
 ### Failing stubs (TDD-first, for the Fully-Automated rows above)
 
@@ -678,7 +675,7 @@ test("second resend racing a stale captured tokenHash affects zero rows", () => 
 | Area | Why untestable in this plan | Resolution chosen |
 |---|---|---|
 | Real browser render of Pending Invites list/actions | No `apps/admin` E2E/browser runner exists (project-wide gap) | Agent-Probe walkthrough (AC9), same standing residual as every prior admin-dashboard phase |
-| Concurrent double-resend race — **the original rationale here ("one wins, the other 404s", implying the compare-and-swap alone made this safe) was overstated.** Before the Fix 2 amendment, the resend `UPDATE`'s `WHERE` keyed on pending-status ONLY, not on the specific token being rotated — so two racing resends could BOTH succeed in sequence: the second's `WHERE` still matched (the row was still pending), silently overwriting/killing the first resend's just-delivered link (no data corruption, but a dead link handed to the invitee). This is now FIXED, not merely accepted — see the D2 amendment and the Public Contracts resend steps above: the `UPDATE`'s `WHERE` is now keyed on the row's CURRENT `tokenHash`, captured at the same read that checks pending status, making it a true compare-and-swap on the exact token being replaced. | The exact-token CAS is now proven by AC15's targeted regression test (see `## Acceptance Criteria` / `## Verification Evidence`), which simulates the race deterministically without needing true concurrent request orchestration. **Residual, still a genuine known-gap:** a real TWO-simultaneous-in-flight-request harness (true wall-clock concurrency against a live DB) is still not built — outside this plan's blast radius — but the WHERE-clause safety property itself (the mechanism the original Known-Gap rationale leaned on) is now correctly described AND proven, not merely asserted. A related, newly-noted (this VALIDATE pass) UX-only residual: because both a racing pair's pending-check reads happen before either's send/write, a genuine simultaneous double-resend can result in TWO delivered emails (one pointing at a token that will never validate) — not a security/data-integrity issue, not scored as a gap, informational only. |
+| Concurrent double-resend race (true two-simultaneous-in-flight requests, wall-clock) | No true concurrent-request harness against a live DB exists (outside this plan's blast radius). NOTE: the ORIGINAL rationale ("one wins, the other 404s", implying pending-state alone made this safe) was overstated — before Fix 2 the resend `UPDATE`'s `WHERE` keyed on pending-status ONLY, so two racing resends could BOTH succeed in sequence, the second silently killing the first's just-delivered link (no data corruption, but a dead link). | FIXED, not merely accepted: the resend `UPDATE`'s `WHERE` is now keyed on the row's CURRENT `tokenHash` (captured at the pending-read) — a true exact-token compare-and-swap — proven by AC15's deterministic regression, which asserts the stale-token loser gets **404 with zero DB mutation**. Residual known-gap: a real wall-clock two-in-flight harness is not built (outside blast radius). **Accepted residual (send-before-CAS design):** a genuine simultaneous double-resend can deliver TWO emails, one pointing at a token that never validates — a UX rough edge, not a security/data-integrity issue, not scored as a gap. |
 
 ## Test Gate Commands
 
@@ -715,8 +712,8 @@ see the Inner Loop Refresh Note (2) below). Both follow-ups have now been applie
 VALIDATE pass has independently re-verified them against the current source tree — see the
 Security surface dimension finding in `## Validate Contract` below.
 
-**Observed precedent on this branch family (informational, not a decision):** ADM-011 (issue
-#141, the invite CREATE + accept path) produced a full 5-artifact `harness/` evidence pack before
+**Observed precedent on this branch family (informational, not a decision):** ADM-011 (issue #141,
+the invite CREATE + accept path) produced a full 5-artifact `harness/` evidence pack before
 finalize. ADM-012 (issue #142, the web password/profile setup surface — a comparably-scoped
 auth-adjacent surface) shipped and merged WITHOUT a `harness/` pack on disk, its CONDITIONAL gate
 instead accepted directly by the user in-session. ADM-013 falls between the two: a 4-artifact
@@ -857,7 +854,8 @@ Dimension findings:
   append-only `/api/admin/staff` aggregator with zero aggregator edit needed (re-confirmed:
   `packages/api/src/routes/admin/index.ts:70` — `adminRouter.use('/staff', staffRouter)` —
   unchanged; the full path is `/api/admin/staff/*`). No container/infra/worker surfaces touched.
-- Test coverage: PASS — all 10 numbered Part A ACs (AC1-8, AC15) are Fully-Automated; AC4 is
+- Test coverage: PASS — nine of the ten numbered Part A ACs — AC1-8 plus AC15 — are Fully-Automated
+  (AC9 is the tenth and is Agent-Probe, see below); AC4 is
   explicitly Known-Gap-banned with a required non-vacuous mutation check (deliberately-broken
   guard must fail). AC9 is Agent-Probe (standing project-wide `apps/admin` no-E2E-runner gap,
   consistent with every prior admin-dashboard phase). Part B's ACs (10-12, 14) are

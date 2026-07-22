@@ -92,6 +92,8 @@ function StaffPage() {
         onBranchChange={(member, branchId) => assignMutation.mutate({ id: member.id, branchId })}
         onRoleChange={(member, newRole) => roleMutation.mutate({ id: member.id, role: newRole })}
         onRemove={(member) => roleMutation.mutate({ id: member.id, role: 'customer' })}
+        removePending={roleMutation.isPending}
+        removeError={roleMutation.error instanceof Error ? roleMutation.error.message : null}
       />
 
       {isSuperAdmin ? (
