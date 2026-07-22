@@ -316,11 +316,16 @@ const styles = StyleSheet.create({
     `marginTop` is deliberately ABSENT. A margin sits OUTSIDE the view's
     background box, so while the header was pinned the top `Spacing.one` strip of
     its sticky region was genuinely transparent and order rows scrolled visibly
-    through it, right against the date text. The identical total top gap is now
-    `paddingTop` instead (Spacing.one margin + Spacing.one padding -> Spacing.two
-    padding), which the `backgroundColor` DOES cover — same geometry, no
-    see-through strip. Do not reintroduce a VERTICAL margin here (marginTop /
-    marginVertical / margin).
+    through it, right against the date text. The top gap is now `paddingTop`
+    instead, which the `backgroundColor` DOES cover — no see-through strip. Do
+    not reintroduce a VERTICAL margin here (marginTop / marginVertical / margin).
+
+    On the CURRENT value: that margin-to-padding conversion originally totalled
+    `Spacing.two`. The top gap was later halved to `Spacing.one` on user request
+    ("lessen the gap on the top"), so the block is now a deliberate symmetric
+    `Spacing.one` / `Spacing.one`. Do not "restore" it to `Spacing.two` on the
+    strength of the conversion arithmetic above — the smaller value is the
+    intended one, and the dark-mode test asserts it exactly.
 
     The NEGATIVE `marginHorizontal` below is a different case and is safe. The
     list's `contentContainerStyle` (styles.content) applies `Spacing.four` of

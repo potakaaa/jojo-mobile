@@ -260,15 +260,34 @@ All 8 commands VALIDATE-confirmed to exist exactly as written (`apps/mobile/pack
 UNVERIFIED — RNGH-vs-native-`expo-maps` touch arbitration cannot be determined from source, and no
 container/probe can settle it. The single checklist item (#31) is a staged fix, not a proven one.
 The AC18 device walkthrough must record BOTH possible outcomes explicitly:
-- **Outcome 1 (DONE):** sheet collapses to peek AND panning the visible map pans the map → A6 is
-  fully done.
-- **Outcome 2 (NOT a failure of this plan):** sheet collapses but panning the visible map drags/
-  expands the sheet instead → file a scoped gesture-tuning follow-up with the real observed symptom;
-  do not treat as this plan's defect.
+- **Outcome 1 — AC18 MET:** sheet collapses to peek AND panning the visible map pans the map → A6
+  is fully done.
+- **Outcome 2 — AC18 NOT MET, blocks VERIFIED:** sheet collapses but panning the visible map
+  drags/expands the sheet instead → **the plan may NOT be stamped `VERIFIED`.** Record AC18 as
+  failed, file a scoped gesture-tuning follow-up citing the real observed symptom, and keep this
+  plan in `active/` until that follow-up lands and AC18 is re-walked to Outcome 1.
+
+  Attribution note, which is NOT an acceptance clause: Outcome 2 is not a regression introduced by
+  this plan — the cause would be a deeper RNGH/native-map interaction that predates it. That
+  affects who fixes it and where, not whether the criterion is satisfied.
+
+> **CORRECTION (CodeRabbit, PR #156).** Outcome 2 previously read "NOT a failure of this plan …
+> do not treat as this plan's defect", with no statement about VERIFIED. That conflated two
+> different questions and let one answer both: *whose fault is it* (not this plan's — true) and
+> *is AC18 met* (no — the map does not pan). The original wording was written to stop the opposite
+> error, over-claiming that pannability was fixed, and it did prevent that. But as written it also
+> permitted a walkthrough to hit Outcome 2, file a follow-up, and still stamp the plan VERIFIED
+> with a required acceptance criterion failing — the same vacuous-green pattern this PR's review
+> cycles exist to catch. AC18 now blocks VERIFIED on Outcome 2 regardless of attribution.
+>
+> Status at time of correction: the sheet-collapse half IS genuinely fixed — removing the sheet
+> list's `onRefresh` cleared gorhom's `refreshable && isSheetAtHighestSnapPoint` gesture bail-out
+> (`useGestureEventsHandlersDefault`), which was why content drags could not collapse the sheet
+> from its top snap. Map pannability at peek remains **unverified**; no device run has happened.
 
 VALIDATE confirms this wording is precise enough to act on: it names exactly two outcomes, states
-which one counts as "done" for this plan, and explicitly tells the walkthrough-performer that
-Outcome 2 is not a defect of this plan's work — no over-claiming that pannability is fixed.
+which one counts as "done", states plainly that the other blocks VERIFIED, and separates
+attribution from acceptance so neither can be mistaken for the other.
 
 ---
 

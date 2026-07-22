@@ -54,9 +54,30 @@ describe('getIsOpenNow — day-key resolution', () => {
     expect(getIsOpenNow(MON_9_TO_15, t('2026-07-21T04:00:00Z'))).toBe(false);
   });
 
+  /*
+    THE discriminating local-day assertion (CodeRabbit PR #156).
+
+    A UTC-day regression is only detectable at an instant where the two calendars
+    disagree AND the expected results differ. `EARLY_MON`'s window opens at local
+    midnight, so Sun 16:30 UTC — which is Mon 00:30 branch-local — falls inside it
+    under a correct local-day lookup, but resolves to `sun` (no entry, closed)
+    under a UTC-day lookup. Swapping the day source flips this from true to false.
+
+    The `MON_9_TO_15` cases below were written for this purpose and do NOT serve
+    it: both return false under either calendar, so they pass equally against a
+    broken implementation. They still lock real closed-day behaviour, so they are
+    kept — but they are supporting cases, not the guard.
+  */
+  const EARLY_MON = JSON.stringify({ mon: { open: '00:00', close: '01:00' } });
+
   it('resolves the day in BRANCH-LOCAL time, not UTC', () => {
-    // Sun 23:00 UTC is already Mon 07:00 local — still before the 09:00 open,
-    // but the day key must have advanced to `mon` for that to be the reason.
+    // Sun 16:30 UTC is Mon 00:30 local — inside the local-Monday window.
+    // Under a UTC-day lookup this reads as Sunday, which has no entry → false.
+    expect(getIsOpenNow(EARLY_MON, t('2026-07-19T16:30:00Z'))).toBe(true);
+  });
+
+  it('is closed at local instants outside the window (supporting, not discriminating)', () => {
+    // Sun 23:00 UTC is already Mon 07:00 local — before the 09:00 open.
     expect(getIsOpenNow(MON_9_TO_15, t('2026-07-19T23:00:00Z'))).toBe(false);
     // Mon 16:30 UTC is Tue 00:30 local — past the local Monday entirely.
     expect(getIsOpenNow(MON_9_TO_15, t('2026-07-20T16:30:00Z'))).toBe(false);

@@ -400,14 +400,34 @@ never touches server validation or vice versa.
    existing STAFF-003 doc comment). Comment-only — no transition-table change.
 3. Create `packages/types/src/order-reasons.ts` with `STAFF_REJECT_REASONS`/
    `CUSTOMER_CANCEL_REASONS` exactly as specified above; export from `packages/types/src/index.ts`.
-4. Add `reasonCode: string | null`, `reasonNote: string | null`,
-   `reasonActor: 'staff' | 'customer' | null` to `StaffOrderSummary` (staff.ts:35) and
+   > **AS-BUILT CORRECTION (EXECUTE, confirmed by CodeRabbit on PR #156).** Steps 4 and 5a below
+   > originally specified `reasonCode: string | null` — REQUIRED and nullable — on the shared
+   > `packages/types` interfaces. That shape was implemented, then changed during EXECUTE, because
+   > required fields turned an additive feature into a BREAKING change: six existing consumers
+   > across unrelated suites failed to typecheck for want of reason fields on orders that never had
+   > a reason. The shared client-facing types are therefore **optional AND nullable**
+   > (`reasonCode?: string | null`). Do not "restore" the required form from the step text below.
+   >
+   > The distinction is deliberate and asymmetric:
+   > - **Shared/client types** (`Order`, `StaffOrderSummary`, `StaffOrderDetail`) — OPTIONAL +
+   >   nullable. They are consumed by arbitrary call sites and test fixtures that legitimately
+   >   construct orders with no reason.
+   > - **Server-local `ApiOrder`** (step 5b) — REQUIRED + nullable. It is the producer side: exactly
+   >   one function builds it, and requiring the field is what guarantees the serializer can never
+   >   silently omit it. Unconditional emission is additionally locked by a runtime assertion
+   >   (`toHaveProperty('reasonCode', null)`), which is stronger than the type.
+
+4. Add `reasonCode?: string | null`, `reasonNote?: string | null`,
+   `reasonActor?: 'staff' | 'customer' | null` to `StaffOrderSummary` (staff.ts:35) and
    `StaffOrderDetail` (staff.ts:63) in `packages/types/src/staff.ts`.
+   *(As-built: optional + nullable — see the correction note above.)*
 5. **Two separate types, two separate files — do both:**
-   5a. Add the same 3 fields (`reasonCode: string | null`, `reasonNote: string | null`,
-       `reasonActor: 'staff' | 'customer' | null`) to the client-facing `Order` interface in
+   5a. Add the same 3 fields (`reasonCode?: string | null`, `reasonNote?: string | null`,
+       `reasonActor?: 'staff' | 'customer' | null`) to the client-facing `Order` interface in
        `packages/types/src/order.ts` (confirmed at line 30 — this plan's original text incorrectly
        called this `ApiOrder`; the correct name in this file is `Order`).
+       *(As-built: optional + nullable — see the correction note above. Contrast 5b, which is
+       required + nullable on purpose.)*
    5b. SEPARATELY, add the same 3 fields to the server-side `ApiOrder` interface declared locally
        inside `packages/api/src/routes/lib/serializers.ts` (confirmed at line 275 — this is a
        DIFFERENT interface in a DIFFERENT package, matching this repo's existing convention of
@@ -511,11 +531,25 @@ never touches server validation or vice versa.
 16. **(renumbered from original step 15) B3 mobile — cancel action + dialog.** Add a "Cancel
     order" `Button` to `tracking/index.tsx`, rendered only when `order.status === 'pending'`
     (derive from the existing `useOrderQuery` result already on that screen). Tapping opens a
-    confirm dialog with an optional preset-or-freetext reason field (may render
-    `CUSTOMER_CANCEL_REASONS` as a picker plus a free-text fallback, or a single optional text
-    input if the picker is deferred — confirm exact UI shape against `@jojopotato/ui` primitives
-    available; SPEC only requires "pick a reason from a short preset list, or type their own", not
-    a specific component).
+    confirm dialog rendering **`CUSTOMER_CANCEL_REASONS` as a selectable preset list PLUS a
+    free-text note field**. Both halves are REQUIRED to exist; the reason itself remains optional
+    for the customer to supply.
+
+    > **AS-BUILT + CORRECTION (CodeRabbit, PR #156).** This step originally offered an escape
+    > hatch — "or a single optional text input if the picker is deferred". **That option is
+    > withdrawn.** SPEC B3.5 requires "pick a reason from a short preset list, or type their own";
+    > a bare text input satisfies only the second half, so the deferred path would have shipped a
+    > SPEC violation while appearing to follow this plan. Since these plans are written to be
+    > resumable and this one stays in `active/`, the hatch was a live hazard for a future agent
+    > even though EXECUTE did not take it.
+    >
+    > As built: `tracking/index.tsx:280` passes `reasons={CUSTOMER_CANCEL_REASONS}` to the shared
+    > `ReasonDialog` (`features/shared/components/reason-dialog.tsx`), which renders the presets as
+    > selectable rows plus a note input. The same component serves staff reject with
+    > `reasonRequired`/`requireNoteWhenOther` flipped on — one dialog, two flows. Locked by
+    > `tracking/__tests__/cancel-order.test.tsx`, which presses a preset and asserts
+    > `reasonCode: 'changed_my_mind'` reaches the mutation, alongside a no-reason case proving the
+    > reason stays optional.
 17. **(renumbered from original step 16) B3 mobile — API client + hook.** Add
     `cancelOrder(orderId, reasonCode?, note?)` to
     `apps/mobile/src/features/orders/lib/api-client.ts` mirroring `completeOrder()` at lines
@@ -667,11 +701,37 @@ for their own sake):**
 
 1. **Selected plan file path:**
    `process/features/ordering-cart/active/order-reasons-cart-edit_22-07-26/order-reasons-cart-edit_PLAN_22-07-26.md`
-2. **Last completed phase or step:** VALIDATE — PVL cycle 3, `Gate: PASS`. All 3 cycle-2 CONCERNs
-   (Gaps 7-9) independently re-confirmed correctly closed against live source; 4 NEW findings this
-   cycle (Gaps 10-13, all cheap/mechanical) were found AND fixed directly in this plan's text in the
-   same pass — see `## Validate Contract`. No implementation has started.
-3. **Validate-contract status:** written this pass — `Gate: PASS`. EXECUTE is authorized.
+2. **Last completed phase or step:** **EXECUTE — COMPLETE. All 25 checklist steps are implemented,
+   committed, and merged into PR #156.** Do NOT re-run the checklist.
+
+   > **STALE-STATE CORRECTION (CodeRabbit, PR #156).** This field previously read "No
+   > implementation has started", left over from the PVL cycle-3 pass. That was true when written
+   > and false by the time anyone would read it — precisely the trap that causes a resuming agent
+   > to repeat or overwrite finished work.
+
+   Prior VALIDATE history, for provenance: PVL cycle 3 reached `Gate: PASS`. All 3 cycle-2
+   CONCERNs (Gaps 7-9) were independently re-confirmed closed against live source, and 4 further
+   findings (Gaps 10-13) were found AND fixed in the plan text in the same pass — see
+   `## Validate Contract`.
+
+   **Post-EXECUTE state:** see `order-reasons-cart-edit_REPORT_22-07-26.md` (same folder) for the
+   as-built record, including the migration renumber from `0022` to `0023_harsh_stryfe` forced by a
+   collision with `development`'s own `0022`.
+
+   **What remains outstanding — this is the work a resuming agent should pick up:**
+   - 3 Agent-Probe walkthroughs on a real device: B2.7 (staff reject updates the screen), B3.9
+     (customer cancel + reason visible to staff), B4.6 (cart line edit). No RN E2E runner exists
+     repo-wide, so these cannot be automated.
+   - The 5-artifact high-risk evidence pack for the order-state routes, owed before finalize/PR
+     merge (`mustStopBeforeFinalize`).
+   - Duplicate single-select option guard — raised by CodeRabbit on PR #156 and deliberately
+     deferred: the server never rejects two `size` ids in one request, at `cart.ts:137` AND
+     `orders.ts:219`. Not a revenue leak (deltas only add), partly pre-existing, but it needs a
+     decision on where single-select-ness lives, since nothing in the schema expresses it today.
+
+   The plan therefore stays in `active/` — CODE DONE, **not** VERIFIED.
+3. **Validate-contract status:** written — `Gate: PASS`. EXECUTE was authorized and has since run
+   to completion.
 4. **Supporting context files loaded:** `process/context/all-context.md`,
    `process/context/tests/all-tests.md`, `process/context/planning/all-planning.md`, the locked
    SPEC at
@@ -689,11 +749,25 @@ for their own sake):**
    `cart/index.tsx`, plus test-file scans of `orders.test.ts` (AC6 concurrent-race precedent),
    `cart.integration.test.ts`, `staff-order-status.integration.test.ts` (see `## Verification Log`
    for exact line numbers confirmed).
-5. **Next step for a fresh agent picking up mid-execution:** say `ENTER EXECUTE MODE` against this
-   plan. Steps 1-10 (migration + B2 + B3) must land together per `## Sequencing`; step 11 onward
-   (B4) may run independently. Before editing `orders.ts`, re-read the refreshed `## Cross-Plan
-   Coordination Note` — the `closed-branch-order-gate_22-07-26` sibling plan is now Gate: PASS and
-   EXECUTE-ready, so re-grep before editing is an ACTIVE precaution, not a hypothetical one.
+5. **Next step for a fresh agent picking up:** **NOT `ENTER EXECUTE MODE`.** The checklist is fully
+   implemented and merged — re-running it would duplicate or clobber shipped work. Pick up from the
+   outstanding items listed in field 2 instead: the 3 device walkthroughs, the high-risk evidence
+   pack, and the deferred duplicate-single-select guard.
+
+   > The original text here read "say `ENTER EXECUTE MODE` against this plan", with sequencing
+   > guidance for steps 1-10 vs 11+. That instruction is now actively harmful and has been
+   > replaced. The sequencing note is preserved below purely as historical record of how the work
+   > was ordered, not as an instruction to follow:
+   >
+   > *"Steps 1-10 (migration + B2 + B3) must land together per `## Sequencing`; step 11 onward (B4)
+   > may run independently. Before editing `orders.ts`, re-read the `## Cross-Plan Coordination
+   > Note` — the `closed-branch-order-gate_22-07-26` sibling plan is Gate: PASS and EXECUTE-ready,
+   > so re-grep before editing is an ACTIVE precaution."*
+   >
+   > For the record, that coordination precaution proved justified: both plans did edit `orders.ts`,
+   > and the sibling's insertions shifted every line number below ~570, so this plan's cited
+   > `L635-701` range for the `/complete` precedent had moved to `L657-736` by the time EXECUTE
+   > ran. Targets were re-located by symbol rather than by line.
 
 ## Phase Completion Rules
 

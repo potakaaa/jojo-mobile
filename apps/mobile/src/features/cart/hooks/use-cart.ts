@@ -69,7 +69,12 @@ export interface CartSessionState {
    * edited `lineId` may no longer exist in the cart afterwards. Callers must not
    * assume it survives.
    */
-  editCartLine: (lineId: string, opts: CartItemOption[]) => Promise<boolean>;
+  /**
+   * Replace a line's options, and optionally its quantity in the same request.
+   * Omitting `quantity` leaves the line's current quantity untouched, matching
+   * the route's own `quantity ?? line.quantity` resolution.
+   */
+  editCartLine: (lineId: string, opts: CartItemOption[], quantity?: number) => Promise<boolean>;
   removeItem: (lineId: string) => void;
   applyDiscount: (d: AppliedDiscount) => void;
   clearDiscount: () => void;
@@ -148,7 +153,12 @@ function optimisticAdd(
  * one round trip. This is UX smoothing, not a correctness dependency — do not add
  * merge simulation here and start depending on it.
  */
-function optimisticEditLine(cart: ApiCart, lineId: string, opts: CartItemOption[]): ApiCart {
+function optimisticEditLine(
+  cart: ApiCart,
+  lineId: string,
+  opts: CartItemOption[],
+  quantity?: number,
+): ApiCart {
   const apiOpts: ApiCartItemOption[] = opts.map((o) => ({
     optionId: o.id,
     optionType: o.optionType,
@@ -164,7 +174,15 @@ function optimisticEditLine(cart: ApiCart, lineId: string, opts: CartItemOption[
       // the new ones — the line row carries no separate base-price field.
       const currentDeltaSum = it.selectedOptions.reduce((s, o) => s + o.priceDeltaCents, 0);
       const baseCents = it.unitPriceCents - currentDeltaSum;
-      return { ...it, selectedOptions: apiOpts, unitPriceCents: baseCents + deltaSum };
+      return {
+        ...it,
+        selectedOptions: apiOpts,
+        unitPriceCents: baseCents + deltaSum,
+        // Mirror the server's `quantity ?? line.quantity`: an options-only edit
+        // must leave quantity alone, or the optimistic cart would disagree with
+        // what comes back and the totals would flicker.
+        quantity: quantity ?? it.quantity,
+      };
     }),
   });
 }
@@ -281,12 +299,13 @@ export function CartSessionProvider({
 
   const { mutateAsync: editLineMutateAsync } = useCartMutation(
     cartKey,
-    (v: { lineId: string; opts: CartItemOption[] }) =>
+    (v: { lineId: string; opts: CartItemOption[]; quantity?: number }) =>
       updateCartItemOptions(
         v.lineId,
         v.opts.map((o) => ({ optionId: o.id })),
+        v.quantity,
       ),
-    (c, v) => optimisticEditLine(c, v.lineId, v.opts),
+    (c, v) => optimisticEditLine(c, v.lineId, v.opts, v.quantity),
   );
 
   const { mutate: removeMutate } = useCartMutation(
@@ -359,9 +378,9 @@ export function CartSessionProvider({
   );
 
   const editCartLine = useCallback(
-    async (lineId: string, opts: CartItemOption[]) => {
+    async (lineId: string, opts: CartItemOption[], quantity?: number) => {
       try {
-        await editLineMutateAsync({ lineId, opts });
+        await editLineMutateAsync({ lineId, opts, quantity });
         return true;
       } catch {
         // Rollback + refetch already happened inside useCartMutation's onError/

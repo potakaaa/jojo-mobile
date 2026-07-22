@@ -17,6 +17,17 @@ All four prior Open Questions are now locked — see Constraints and Out of Scop
 ## Summary
 
 Today, when staff reject an order, the customer never learns why — the app just shows "rejected."
+
+> **AS-BUILT NOTE (CodeRabbit, PR #156).** This promise was initially only half-kept. The reason was
+> captured, stored, serialized and rendered on the STAFF order-detail screen, but the customer's own
+> tracking screen never read `reasonCode` — so at first merge the customer still just saw "rejected"
+> and the gap this paragraph opens by describing was still open. Closed on PR #156: the tracking
+> screen now renders an `OrderReasonBlock` for terminal orders carrying a reason, phrased in the
+> customer's voice ("Why this order wasn't accepted") rather than reusing the staff copy, and
+> resolving the label through `resolveReasonLabel(code, reasonActor)` so a customer's own
+> cancellation reason maps against `CUSTOMER_CANCEL_REASONS` rather than the staff table. Locked by
+> `tracking/__tests__/reason-block.test.tsx`, whose actor test is non-vacuous by construction —
+> hardcoding the actor turns exactly that assertion red.
 Today, a customer who wants to back out of an order has no way to cancel it themselves — they have
 to call the branch. And today, once a food or drink item is in the cart with a chosen flavor and
 add-ons, the only way to change that choice is to delete the whole line and re-add it from scratch,

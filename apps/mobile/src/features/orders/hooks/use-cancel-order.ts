@@ -25,9 +25,12 @@ export interface CancelOrderVars {
  * (LIVE-001 validate-contract E4). Invalidating the key from the outside is
  * enough — the existing terminal-status check there stops the poll.
  *
- * Errors arrive as a plain `Error` from `apiRequest` (message only — the status
- * code is folded into the text there), so callers surface `error.message` inline
- * and cannot branch on 409 specifically. That is acceptable here: a 409 means the
+ * Errors arrive as a plain `Error` from `apiRequest`, carrying the server's own
+ * message verbatim when there is one. The status code is appended ONLY to the
+ * generic "Request failed" fallback, so it is NOT reliably present in
+ * `error.message` — do not try to parse a status back out of it. Callers surface
+ * `error.message` inline and cannot branch on 409 specifically. That is
+ * acceptable here: a 409 means the
  * order stopped being `pending` (staff accepted it first), and since nothing was
  * invalidated the screen is still polling, so the next `useOrderQuery` tick brings
  * the real status in on its own.

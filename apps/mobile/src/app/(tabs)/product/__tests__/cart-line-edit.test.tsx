@@ -117,11 +117,36 @@ describe('B4.5 — saving an edit never clears the cart or switches branch', () 
     expect(mockEditCartLine).toHaveBeenCalledWith(
       'line-1',
       expect.arrayContaining([expect.objectContaining({ id: 'large' })]),
+      2, // the prefilled quantity, carried through untouched
     );
     // The three add-path side effects that would wipe or repoint the cart.
     expect(mockClearCart).not.toHaveBeenCalled();
     expect(mockAddItem).not.toHaveBeenCalled();
     expect(mockSetBranch).not.toHaveBeenCalled();
+  });
+
+  test('a quantity change made on the edit screen reaches editCartLine', async () => {
+    /*
+      Regression lock (CodeRabbit PR #156). handleSaveEdit used to call
+      `editCartLine(lineId, buildOpts())` with no quantity, so the live, prefilled
+      QuantityStepper silently discarded the user's change on save — options
+      updated, quantity snapped back. The UI actively invited an edit it threw
+      away, with no error shown.
+
+      Non-vacuity: this asserts 3, not just "some number". The line is prefilled
+      at 2, so dropping the third argument again, or passing the stale prefill,
+      both turn this red.
+    */
+    const { getByText, getByLabelText } = await renderScreen(EDIT_PARAMS);
+
+    await fireEvent.press(getByLabelText('Increase quantity'));
+    await fireEvent.press(getByText('Add to Cart'));
+
+    expect(mockEditCartLine).toHaveBeenCalledWith(
+      'line-1',
+      expect.arrayContaining([expect.objectContaining({ id: 'large' })]),
+      3,
+    );
   });
 
   test('saving never opens the branch-switch confirm, even with a cart on another branch', async () => {

@@ -1,4 +1,5 @@
-import { CUSTOMER_CANCEL_REASONS } from '@jojopotato/types';
+import { CUSTOMER_CANCEL_REASONS, resolveReasonLabel } from '@jojopotato/types';
+import type { Order } from '@jojopotato/types';
 import { Button, ConfirmDialog, OrderStatusTimeline, Palette, ScreenHeader } from '@jojopotato/ui';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -21,6 +22,53 @@ import { ReasonDialog } from '@/features/shared/components/reason-dialog';
 import { ScreenLoader, ScreenMessage } from '@/features/shared/components/screen-message';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * Customer-facing terminal-reason block (CodeRabbit PR #156).
+ *
+ * The SPEC's problem statement opens with "when staff reject an order, the
+ * customer never learns why — the app just shows 'rejected'". The reason was
+ * being captured, stored, serialized and rendered on the STAFF order-detail
+ * screen, but never on the one screen the customer actually looks at, so that
+ * stated gap was still open. This closes it.
+ *
+ * Deliberately phrased in the customer's voice rather than reusing the staff
+ * screen's copy: staff see "Rejected by staff", which is information the
+ * customer already has from the status itself. What they lack is the WHY.
+ *
+ * `resolveReasonLabel` is the shared mapper from `@jojopotato/types` — it keys
+ * off `reasonActor` because staff and customer draw from two different code
+ * tables and the same code string could otherwise resolve to the wrong copy.
+ * Renders nothing unless the order is genuinely terminal AND carries a reason,
+ * so a plain cancellation with no reason given adds no empty chrome.
+ */
+function OrderReasonBlock({
+  order,
+}: {
+  order: Pick<Order, 'status' | 'reasonCode' | 'reasonNote' | 'reasonActor'>;
+}) {
+  const theme = useTheme();
+  const isTerminalWithReason = order.status === 'rejected' || order.status === 'cancelled';
+  // `reasonActor` MUST be threaded through, never hardcoded: an order the
+  // customer cancelled themselves resolves against CUSTOMER_CANCEL_REASONS,
+  // while a staff rejection resolves against STAFF_REJECT_REASONS. The two
+  // tables share no codes today, but assuming one actor would silently render
+  // the wrong copy the moment they overlap.
+  const label = resolveReasonLabel(order.reasonCode, order.reasonActor);
+  if (!isTerminalWithReason || (!label && !order.reasonNote)) return null;
+
+  return (
+    <View testID="tracking-reason-block" style={styles.reasonCard}>
+      <Text style={[styles.reasonHeading, { color: theme.text }]}>
+        {order.status === 'rejected' ? "Why this order wasn't accepted" : 'Why this was cancelled'}
+      </Text>
+      {label ? <Text style={[styles.reasonLabel, { color: theme.text }]}>{label}</Text> : null}
+      {order.reasonNote ? (
+        <Text style={[styles.reasonNote, { color: theme.textSecondary }]}>{order.reasonNote}</Text>
+      ) : null}
+    </View>
+  );
+}
 
 function EtaCard({ iso }: { iso: string }) {
   const time = new Date(iso).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
@@ -177,6 +225,11 @@ export default function OrderTrackingScreen() {
 
           {showEta && <EtaCard iso={order.estimatedReadyAt!} />}
 
+          {/* Terminal-reason explanation, above the timeline so it is the first
+              thing read after the status itself — a rejected customer wants the
+              WHY before the history of how it got there. */}
+          <OrderReasonBlock order={order} />
+
           <View style={styles.timelineCard}>
             {/* `styles.timelineCard` hardcodes a cream (light) surface, so the timeline
                 inside it is pinned to `mode="light"` — its text must read the same
@@ -317,6 +370,30 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.medium,
     fontSize: TypeScale.bodySmall,
     textAlign: 'center',
+  },
+  /*
+    Terminal-reason block. Unlike `timelineCard` below, this does NOT pin a cream
+    surface — it reads `theme` tokens so it is legible in both schemes, which is
+    why its text uses the device-scheme `theme` rather than `Colors.light`.
+  */
+  reasonCard: {
+    borderWidth: 2,
+    borderRadius: 16,
+    borderColor: Palette.jred,
+    padding: Spacing.four,
+    gap: Spacing.one,
+  },
+  reasonHeading: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.bodySmall,
+  },
+  reasonLabel: {
+    fontFamily: FontFamily.display.bold,
+    fontSize: TypeScale.h3,
+  },
+  reasonNote: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
   timelineCard: {
     backgroundColor: Palette.cream,

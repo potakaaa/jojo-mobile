@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import type { Order, PickupBranch } from '@jojopotato/types';
-import { Colors } from '@jojopotato/ui';
+import { Colors, Spacing } from '@jojopotato/ui';
 import { StyleSheet } from 'react-native';
 
 import OrderHistoryScreen from '@/app/(tabs)/history/index';
@@ -217,9 +217,11 @@ describe('OrderHistoryScreen — dark mode (AC1)', () => {
     expect(header.margin).toBeUndefined();
 
     // The spacing that replaced it must actually be there (a silently-dropped
-    // paddingTop would make the assertions above vacuously true).
-    expect(typeof header.paddingTop).toBe('number');
-    expect(header.paddingTop as number).toBeGreaterThan(0);
+    // paddingTop would make the assertions above vacuously true). Asserted as an
+    // EXACT value, not `> 0`: the top gap is a deliberate Spacing.one (halved
+    // from the original Spacing.two on user request), and a loose check would
+    // let a silent revert to Spacing.two pass.
+    expect(header.paddingTop).toBe(Spacing.one);
   });
 
   test('the status badge inside the Card resolves the dark border token', async () => {

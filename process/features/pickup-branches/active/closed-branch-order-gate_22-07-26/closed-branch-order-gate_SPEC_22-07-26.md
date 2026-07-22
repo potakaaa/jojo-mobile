@@ -141,11 +141,28 @@ deliberate decision (Locked Decision 2), not an oversight — see below.
    order-placement transaction, with no grace window** — not a value read earlier in checkout,
    not cached client-side, and not tolerant of a small overrun past the stated closing time.
    proven by: a test that constructs an order request against a branch whose `opening_hours`
-   places it as closed at "now" (using dependency-injected time via `getIsOpenNow`'s existing
-   `now` parameter, mirroring the pattern already used for its unit tests), confirming rejection
-   regardless of any client-supplied timestamp, and a boundary-adjacent case (closed by exactly
-   one minute) confirming rejection with no tolerance window.
+   read as closed at EVERY instant, confirming rejection regardless of any client-supplied
+   timestamp, plus a boundary case at the exact closing minute confirming no tolerance window.
    strategy: Fully-Automated
+
+   > **CORRECTION (CodeRabbit, PR #156).** This criterion originally said the test would use
+   > "dependency-injected time via `getIsOpenNow`'s existing `now` parameter". **That seam does not
+   > exist at the route boundary and was never going to.** `orders.ts:172` calls
+   > `getIsOpenNow(branch.opening_hours, new Date())` — the route manufactures its own `Date`, by
+   > design, because Locked Decision 2 requires evaluation against live server-clock time with no
+   > grace window. A route that accepted an injectable clock would be a route whose "now" a caller
+   > could influence, which is the opposite of what this AC exists to guarantee.
+   >
+   > The determinism is achieved at the FIXTURE layer instead, which needs no seam:
+   > `orders.test.ts`'s `ALWAYS_CLOSED_HOURS` sets `open === close` (deliberately avoiding the
+   > `'00:00'` end-of-day special case), making `getIsOpenNow`'s half-open minute range empty — so
+   > the branch reads closed at every instant of every day, whatever time CI runs. `ALWAYS_OPEN_HOURS`
+   > is its mirror. Neither touches the clock.
+   >
+   > Injected-`now` testing still applies where the seam genuinely exists: `getIsOpenNow`'s own unit
+   > suite (`packages/utils/src/__tests__/hours.test.ts`) passes exact instants through the `now`
+   > parameter directly, which is where the closing-minute boundary and local-day resolution are
+   > actually proven.
 
 6. **The check reuses the same shared `getIsOpenNow` utility already used by the customer app's
    branch list/detail screens** — the server does not reimplement opening-hours parsing.

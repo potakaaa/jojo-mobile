@@ -297,7 +297,11 @@ function ProductDetailsBody({
   */
   const handleSaveEdit = async () => {
     if (!isEditing) return;
-    const ok = await editCartLine(editLineId, buildOpts());
+    // `quantity` is passed deliberately: the QuantityStepper below is live and
+    // prefilled from the edited line, so omitting it here would silently discard
+    // a change the UI actively invited. The route merges quantity and options in
+    // one request.
+    const ok = await editCartLine(editLineId, buildOpts(), quantity);
     if (!ok) {
       showToast('Could not update the item — please try again', 'error');
       return;
