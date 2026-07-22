@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MASCOT_IMAGE, PRODUCT_TRIO_IMAGE } from '@/constants/images';
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { promptAndRegisterForPush } from '@/features/notifications/lib/notification-permission';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -97,9 +98,20 @@ export default function OnboardingRoute() {
     });
     setPending(false);
     if (!result.ok) {
-      // On success the nav gate flips to Home automatically — no manual navigation.
       setError(result.error ?? 'Could not save your details. Please try again.');
+      return;
     }
+    // Success. Ask for notification permission (and, on grant, register this
+    // device's push token) at onboarding completion — an earlier registration
+    // path than checkout, reducing the "never registered a token" root cause
+    // (push-notifications-fixes, AC5/AC6). Fire-and-forget: NEVER awaited and
+    // NEVER gating the nav flip — the shared once-guard means it prompts at most
+    // once per session even if checkout later asks too (AC7), and decline/
+    // undetermined never blocks navigation (AC8). On success the nav gate flips
+    // to Home automatically — no manual navigation.
+    void promptAndRegisterForPush().catch((err) =>
+      console.error('Failed to set up notifications:', err),
+    );
   };
 
   const previewCopy =

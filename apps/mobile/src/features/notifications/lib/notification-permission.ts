@@ -76,6 +76,32 @@ export async function requestNotificationPermission(): Promise<PermissionResult>
 }
 
 /**
+ * Compose the request-permission → (on grant) register-token chain that both the
+ * customer checkout and the onboarding-completion call sites need
+ * (push-notifications-fixes, D2/T4). This is NOT a new permission path — it only
+ * sequences the two EXISTING functions, so the shared session-scoped fire-once
+ * flag inside `requestNotificationPermission` still governs both call sites (an
+ * onboarding ask then a checkout ask in one session = one OS request — AC7).
+ *
+ * Never throws in the normal flow — the underlying fns already swallow their
+ * errors — so a caller can fire-and-forget it without gating navigation (AC8).
+ *
+ * `deps` lets a unit test inject spies for the two steps; both default to the
+ * real functions. NOTE (E1): the AC7 fire-once test must drive the REAL
+ * `requestNotificationPermission` (default `request`) so the module-level
+ * `alreadyAsked` flag is genuinely exercised — an injected `request` spy bypasses
+ * that flag and makes the fire-once assertion vacuous.
+ */
+export async function promptAndRegisterForPush(
+  deps: { request?: () => Promise<PermissionResult>; register?: () => Promise<void> } = {},
+): Promise<void> {
+  const request = deps.request ?? requestNotificationPermission;
+  const register = deps.register ?? registerDeviceToken;
+  const result = await request();
+  if (result === 'granted') await register();
+}
+
+/**
  * Register (or refresh) this device's Expo push token with the backend. Best
  * effort — never throws; a failure just leaves the device unregistered. Safe to
  * call after `requestNotificationPermission()` returns 'granted'.

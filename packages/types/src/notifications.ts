@@ -19,6 +19,24 @@ export type MarketingNotificationType =
 
 export type NotificationType = OrderNotificationType | MarketingNotificationType;
 
+/**
+ * Staff-only notification kind (push-notifications-fixes, D1). Deliberately a
+ * STANDALONE union — NOT folded into `NotificationType` — so the two exhaustive
+ * `Record<NotificationType, …>` customer maps (`(tabs)/notifications` `TYPE_ICON`,
+ * `notification-factory` `TYPE_TARGET`) never have to grow a customer icon/target
+ * for a staff-only concern. Staff rows are scoped to a staff `user_id` and never
+ * returned by a customer's `GET /notifications`, so the customer maps never
+ * encounter this value. The backing `notifications.type` column is `varchar` (not
+ * a pg enum), so this needs no migration and no DB constraint change.
+ */
+export type StaffNotificationType = 'staff_new_order';
+
+/** Runtime array of every staff notification type (mirrors the customer arrays). */
+export const STAFF_NOTIFICATION_TYPES: readonly StaffNotificationType[] = ['staff_new_order'];
+
+/** The staff-side deep-link destination for a `staff_new_order` notification. */
+export type StaffNotificationTargetScreen = 'staff_order_detail';
+
 /** The 4 in-app destinations a notification can deep-link to on tap. */
 export type NotificationTargetScreen =
   'order_tracking' | 'deal_details' | 'coupon_wallet' | 'rewards';

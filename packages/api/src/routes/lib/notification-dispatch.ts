@@ -3,11 +3,13 @@ import {
   type MarketingNotificationType,
   type NotificationTargetScreen,
   type OrderNotificationType,
+  type StaffNotificationTargetScreen,
+  type StaffNotificationType,
 } from '@jojopotato/types';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, ne } from 'drizzle-orm';
 
 import { db } from '../../db/client';
-import { deviceTokens, notifications, orders, users } from '../../db/schema/index';
+import { branches, deviceTokens, notifications, orders, users } from '../../db/schema/index';
 import { isWithinQuietHours } from '../../lib/marketing-quiet-hours';
 import { isPermanentPushError, sendPush, type PushPayload } from '../../lib/push-provider';
 
@@ -127,6 +129,91 @@ export async function dispatchOrderNotification(
     });
   } catch (err) {
     console.error('[notify] order notification dispatch failed', err);
+  }
+}
+
+/** Staff-side deep-link destination for a new-order staff notification (D1). */
+const STAFF_NEW_ORDER_TYPE: StaffNotificationType = 'staff_new_order';
+const STAFF_ORDER_TARGET_SCREEN: StaffNotificationTargetScreen = 'staff_order_detail';
+
+/**
+ * Minimal order shape needed to fan a new-order push out to a branch's staff
+ * (push-notifications-fixes, T2/T3). Structurally a `Pick<ApiOrder,'id'|
+ * 'branchId'|'orderNumber'>` — callers pass the already-serialized `ApiOrder`
+ * (`serializeOrder(...)` output, camelCase), never the raw snake_case order row
+ * (which would mismatch this shape). Kept as a local structural type so this
+ * module takes no dependency on the serializers layer (E4).
+ */
+export interface NewOrderStaffNotificationInput {
+  id: string;
+  branchId: string;
+  orderNumber: string;
+}
+
+/**
+ * Notify every staff member assigned to the order's branch that a new order was
+ * placed (push-notifications-fixes, AC1–AC4). Writes ONE staff `notifications`
+ * row per staff user + sends a push via the shared `loadPushTokens` +
+ * `sendAndPrune` (so dead staff tokens are pruned exactly like customer ones).
+ *
+ * Branch isolation (AC1, trust boundary): staff are resolved strictly by
+ * `users.assigned_branch_id = order.branchId` (STAFF-001's authoritative staff↔
+ * branch link — null for customers), and the `role <> 'customer'` filter keeps a
+ * customer who somehow carries an `assigned_branch_id` out of the recipient set
+ * (E6). A staff member at any OTHER branch receives nothing.
+ *
+ * PII-free by construction (E3): `target_params` carries ONLY `orderId`; the
+ * title/body/data expose the order number + branch name only — never the
+ * customer's name, phone, or address.
+ *
+ * Never throws (swallow + log, mirroring `dispatchOrderNotification`): a staff
+ * push/DB failure must NEVER turn a successful `POST /orders` (201) into a 500
+ * (AC2). Awaited-after-commit by the caller so the AC1/AC3 integration assertions
+ * are deterministic, but internally fail-safe.
+ */
+export async function dispatchNewOrderStaffNotification(
+  order: NewOrderStaffNotificationInput,
+): Promise<void> {
+  try {
+    // Resolve the branch's staff (branch isolation — AC1). Customers have a null
+    // assigned_branch_id; the role filter additionally excludes any customer row
+    // that carries one (E6).
+    const staffRows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.assignedBranchId, order.branchId), ne(users.role, 'customer')));
+    if (staffRows.length === 0) return;
+
+    // Branch name for the push copy (no PII — branch name + order number only).
+    const [branch] = await db
+      .select({ name: branches.name })
+      .from(branches)
+      .where(eq(branches.id, order.branchId));
+    const branchName = branch?.name ?? 'your branch';
+
+    const title = `New order — ${order.orderNumber}`;
+    const body = `New order placed at ${branchName}`;
+
+    for (const staff of staffRows) {
+      await db.insert(notifications).values({
+        user_id: staff.id,
+        type: STAFF_NEW_ORDER_TYPE,
+        title,
+        body,
+        target_screen: STAFF_ORDER_TARGET_SCREEN,
+        // PII-free: orderId only. Never the customer name/phone/address.
+        target_params: { orderId: order.id },
+      });
+
+      const tokens = await loadPushTokens(staff.id);
+      await sendAndPrune(tokens, {
+        title,
+        body,
+        data: { type: STAFF_NEW_ORDER_TYPE, orderId: order.id },
+      });
+    }
+  } catch (err) {
+    console.error('[notify] staff new-order dispatch failed', err);
   }
 }
 
