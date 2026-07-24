@@ -4,6 +4,7 @@ import { fireEvent } from '@testing-library/react-native';
 
 import DealDetailsScreen from '@/app/(tabs)/deals/deal/[dealId]';
 import DealsListScreen from '@/app/(tabs)/deals/index';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useDealProduct, useDealProducts } from '@/features/deals/hooks/use-deal-products';
 import { renderWithProviders } from '@/test-utils/render';
@@ -18,10 +19,15 @@ jest.mock('@/features/deals/hooks/use-deal-products', () => ({
   useDealProduct: jest.fn(),
 }));
 jest.mock('@/features/cart/hooks/use-cart', () => ({ useCart: jest.fn() }));
+// home-all-branches: the Deals LIST now reads `useBranch()` (via the shared
+// confirm-then-switch hook) to decide whether a tapped deal needs a branch
+// switch. Mocked so the screen renders outside a BranchProvider.
+jest.mock('@/features/branch/hooks/use-branch', () => ({ useBranch: jest.fn() }));
 
 const mockUseDeals = jest.mocked(useDealProducts);
 const mockUseDeal = jest.mocked(useDealProduct);
 const mockUseCart = jest.mocked(useCart);
+const mockUseBranch = jest.mocked(useBranch);
 
 const dealProduct: Product = {
   id: 'd1',
@@ -38,7 +44,17 @@ const dealProduct: Product = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockUseCart.mockReturnValue({ addItem: jest.fn() } as unknown as ReturnType<typeof useCart>);
+  mockUseCart.mockReturnValue({
+    addItem: jest.fn(),
+    cart: { items: [], pickupBranchId: 'b1' },
+    setBranch: jest.fn(),
+    clearCart: jest.fn(),
+  } as unknown as ReturnType<typeof useCart>);
+  mockUseBranch.mockReturnValue({
+    selectedBranch: null,
+    branches: [],
+    setSelectedBranch: jest.fn(),
+  } as unknown as ReturnType<typeof useBranch>);
 });
 
 describe('DealsListScreen — renders from Product-shaped deals', () => {
@@ -69,22 +85,33 @@ describe('DealsListScreen — renders from Product-shaped deals', () => {
     expect(getByText('No deals right now')).toBeTruthy();
   });
 
-  // DEAL-004 AC3 flag-not-hide: an unavailable deal is STILL listed, with the
-  // "Unavailable at this branch" badge — never dropped from the list.
-  test('lists an unavailable deal (not hidden) with the unavailable badge', async () => {
+  /*
+    DEAL-004's flag-not-hide (deal still listed) is UNCHANGED — but its
+    presentation is deliberately inverted by home-all-branches AC9: this list is
+    branch-agnostic browse, so a deal the currently-selected branch cannot fulfil
+    must NOT be stamped "Unavailable at this branch". Other branches may carry it
+    right now, and tapping it offers to switch. The screen therefore stops passing
+    `available` to `DealCard` entirely.
+
+    (`available` still gates the CTA on Deal Details below, which IS branch-
+    committed — see that describe block.)
+  */
+  test('lists a branch-unavailable deal WITHOUT the unavailable badge (AC9)', async () => {
     mockUseDeals.mockReturnValue({
-      data: [{ ...dealProduct, available: false }],
+      data: [{ ...dealProduct, available: false, branches: [{ id: 'b2', name: 'North Branch' }] }],
       isLoading: false,
       isError: false,
       refetch: jest.fn(),
     } as unknown as ReturnType<typeof useDealProducts>);
 
-    const { getByText } = await renderWithProviders(<DealsListScreen />);
+    const { getByText, queryByText } = await renderWithProviders(<DealsListScreen />);
 
     // The deal is still present in the list...
     expect(getByText('Combo Deal')).toBeTruthy();
-    // ...and flagged unavailable.
-    expect(getByText('Unavailable at this branch')).toBeTruthy();
+    // ...and is NOT dead-ended with a branch-mismatch badge.
+    expect(queryByText('Unavailable at this branch')).toBeNull();
+    // Instead it says where it CAN be picked up.
+    expect(getByText('North Branch')).toBeTruthy();
   });
 });
 

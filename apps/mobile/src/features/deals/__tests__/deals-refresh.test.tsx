@@ -3,6 +3,7 @@ import type { Product } from '@jojopotato/types';
 import { act, waitFor } from '@testing-library/react-native';
 
 import DealsListScreen from '@/app/(tabs)/deals/index';
+import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { getDealProducts } from '@/lib/api-client';
 import { renderWithProviders } from '@/test-utils/render';
@@ -18,9 +19,15 @@ import { renderWithProviders } from '@/test-utils/render';
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/lib/api-client', () => ({ getDealProducts: jest.fn() }));
 jest.mock('@/features/cart/hooks/use-cart', () => ({ useCart: jest.fn() }));
+// home-all-branches: the Deals tab now reads `useBranch()` (via the shared
+// confirm-then-switch hook) to decide whether a tapped deal needs a branch
+// switch. Mocked here purely so the screen renders outside a BranchProvider —
+// no assertion in this file changed.
+jest.mock('@/features/branch/hooks/use-branch', () => ({ useBranch: jest.fn() }));
 
 const mockGetDealProducts = jest.mocked(getDealProducts);
 const mockUseCart = jest.mocked(useCart);
+const mockUseBranch = jest.mocked(useBranch);
 
 const dealProduct: Product = {
   id: 'd1',
@@ -36,8 +43,15 @@ const dealProduct: Product = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseCart.mockReturnValue({
-    cart: { pickupBranchId: 'b1' },
+    cart: { items: [], pickupBranchId: 'b1' },
+    setBranch: jest.fn(),
+    clearCart: jest.fn(),
   } as unknown as ReturnType<typeof useCart>);
+  mockUseBranch.mockReturnValue({
+    selectedBranch: null,
+    branches: [],
+    setSelectedBranch: jest.fn(),
+  } as unknown as ReturnType<typeof useBranch>);
 });
 
 describe('DealsListScreen — pull-to-refresh (AC3)', () => {

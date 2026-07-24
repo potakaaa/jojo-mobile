@@ -17,6 +17,7 @@ export * from './components/branch-card';
 export * from './components/branch-list-item';
 export * from './components/reward-progress-card';
 export * from './components/star-progress-bar';
+export * from './components/star-rating-input';
 export * from './components/rewards-terms';
 export * from './components/order-status-badge';
 export * from './components/order-status-timeline';

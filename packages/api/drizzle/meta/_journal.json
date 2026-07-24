@@ -166,8 +166,15 @@
     {
       "idx": 23,
       "version": "7",
-      "when": 1784707223816,
-      "tag": "0023_harsh_stryfe",
+      "when": 1784854179701,
+      "tag": "0023_good_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784859301477,
+      "tag": "0024_kind_sheva_callister",
       "breakpoints": true
     }
   ]

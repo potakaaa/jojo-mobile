@@ -50,6 +50,9 @@ export * from './orders';
 // 10. Depends on orders / products
 export * from './order_items';
 
+// 10b. Depends on orders / users (order-completion-celebration — one review per order)
+export * from './reviews';
+
 // 11. Depends on users
 export * from './user_stars';
 

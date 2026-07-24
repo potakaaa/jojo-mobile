@@ -3,12 +3,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { db } from '../db/client';
-import { dealComponents, productOptions, products } from '../db/schema/index';
+import { branches, dealComponents, productOptions, products } from '../db/schema/index';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
 import {
   serializeMenuProduct,
   type AdminDealComponent,
   type ApiMenuProduct,
+  type ApiProductBranch,
 } from './lib/serializers';
 
 const uuidSchema = z.string().uuid();
@@ -106,6 +107,34 @@ dealsProductsRouter.get('/', async (req, res) => {
     ? await resolveAvailableDealProductIds(db, branchId, productIds)
     : undefined;
 
+  // home-all-branches: which branches can actually fulfil each deal RIGHT NOW,
+  // for the customer-facing "Available at N branches" subtext. Restricted to
+  // branches the customer can select (active AND accepting pickup) so the subtext
+  // and the branch-switch target always name a branch that really is selectable —
+  // the same filter `useBranch()` applies client-side.
+  //
+  // The verdict per branch comes from `resolveAvailableDealProductIds` VERBATIM —
+  // the one shared helper the menu and placement paths also use — so this list
+  // can never drift from what a branch would actually accept (MENU-003 invariant).
+  //
+  // Linear in branch count (currently 4). Revisit with a batched multi-branch
+  // query if this list grows past ~15-20 branches.
+  const selectableBranches = await db
+    .select({ id: branches.id, name: branches.name })
+    .from(branches)
+    .where(and(eq(branches.is_active, true), eq(branches.is_accepting_pickup, true)))
+    .orderBy(asc(branches.name));
+
+  const branchesByProduct = new Map<string, ApiProductBranch[]>();
+  for (const branch of selectableBranches) {
+    const fulfillable = await resolveAvailableDealProductIds(db, branch.id, productIds);
+    for (const dealId of fulfillable) {
+      const list = branchesByProduct.get(dealId) ?? [];
+      list.push({ id: branch.id, name: branch.name });
+      branchesByProduct.set(dealId, list);
+    }
+  }
+
   // FLAG-NOT-HIDE: EVERY deal-product is returned. `available` is only computed;
   // no deal is ever `continue`'d out (contrast with the MENU-003 menu path).
   const apiProducts: ApiMenuProduct[] = productRows.map(({ product }) =>
@@ -114,7 +143,14 @@ dealsProductsRouter.get('/', async (req, res) => {
       optionsByProduct.get(product.id) ?? [],
       componentsByProduct.get(product.id) ?? [],
       // No branch → true for all; branch present → true iff fulfillable.
+      // UNCHANGED by home-all-branches — still the per-branch flag other callers
+      // read; the Home/Deals UI simply stops rendering an "unavailable" badge off
+      // it (presentation change, not a contract removal).
       availableDealIds === undefined ? true : availableDealIds.has(product.id),
+      undefined,
+      // ALWAYS emitted (possibly empty) — a deal no branch can fulfil is still
+      // listed, with `branches: []`.
+      branchesByProduct.get(product.id) ?? [],
     ),
   );
 

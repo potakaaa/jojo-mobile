@@ -1,4 +1,4 @@
-import type { Order, PaymentMethod } from '@jojopotato/types';
+import type { Order, PaymentMethod, Review, SubmitReviewRequest } from '@jojopotato/types';
 
 import { apiRequest } from '@/features/shared/lib/api-request';
 
@@ -80,6 +80,22 @@ export async function cancelOrder(
     },
   );
   return order;
+}
+
+/**
+ * `POST /orders/:orderId/review` — leave a single overall rating (1–5) + optional
+ * comment for a completed order the caller owns (session required).
+ *
+ * Rejects (via `apiRequest`) on 403 (not the caller's order), 404 (missing),
+ * 409 (order not `completed`, or already reviewed — one review per order), and
+ * 422 (rating out of 1–5).
+ */
+export async function submitReview(orderId: string, body: SubmitReviewRequest): Promise<Review> {
+  const { review } = await apiRequest<{ review: Review }>(
+    `/orders/${encodeURIComponent(orderId)}/review`,
+    { method: 'POST', body },
+  );
+  return review;
 }
 
 /** One page of order history: the orders plus the cursor for the next (older) page. */

@@ -11,6 +11,7 @@ export * from './order-reasons';
 export * from './pickup';
 export * from './product-option';
 export * from './pickup-time';
+export * from './review';
 export * from './rewards';
 export * from './sizes';
 export * from './staff';

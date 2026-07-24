@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useHideTabBarWhile } from '@/components/floating-tab-bar';
 import { FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useBranch } from '@/features/branch/hooks/use-branch';
+import { useConfirmBranchSwitch } from '@/features/branch/hooks/use-confirm-branch-switch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { productToMenuItem } from '@/features/cart/lib/product-to-menu-item';
 import { CartHeaderButton } from '@/features/cart/components/cart-header-button';
@@ -173,8 +174,16 @@ function ProductDetailsBody({
   // Needed for the Toast's clearance: the add-to-cart bar's own paddingBottom is
   // the floating-tab-bar clearance on iOS/Android, which is insets-dependent.
   const insets = useSafeAreaInsets();
-  const { cart, addItem, editCartLine, setBranch, clearCart } = useCart();
+  const { cart, addItem, editCartLine, setBranch } = useCart();
   const { selectedBranch } = useBranch();
+  /*
+    The clear-then-switch mechanics live in the shared hook (home-all-branches D4)
+    — this screen only decides WHEN to ask (cart holds other-branch items) and
+    WHAT to do afterwards (add the pending line). The hook points BOTH branch
+    stores at the target; the edit-save path (below) never touches it, since an
+    edited line is by construction already in the current branch.
+  */
+  const branchSwitch = useConfirmBranchSwitch();
 
   const isEditing = editLineId !== undefined && editLineId !== '';
 
@@ -204,7 +213,12 @@ function ProductDetailsBody({
     const parsed = Number.parseInt(prefillQuantity ?? '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   });
-  const [pendingSwitch, setPendingSwitch] = useState<{
+  /**
+   * The add-to-cart payload held back while the branch-switch confirm is up.
+   * Owned by THIS component, not the shared hook — the hook only owns branch-switch
+   * state, never "what to do after the switch".
+   */
+  const [pendingAdd, setPendingAdd] = useState<{
     menuItem: MenuItem;
     opts: CartItemOption[];
   } | null>(null);
@@ -284,16 +298,16 @@ function ProductDetailsBody({
     a branch inside it.
 
     `handleAdd` contains branch-switch-confirm logic: when the cart holds items for
-    a DIFFERENT branch it opens the `pendingSwitch` dialog, and confirming that
-    dialog calls `clearCart()` before adding. An edited line is BY CONSTRUCTION
-    already in the cart's current branch, so that path is unreachable-by-intent
-    here — but reusing `handleAdd` would still expose it to a stale/mismatched
-    `selectedBranch`, and the failure mode is severe: the user believes they are
-    editing one line and the ENTIRE cart is wiped instead.
+    a DIFFERENT branch it opens the `pendingAdd` dialog, and confirming that dialog
+    runs `branchSwitch.confirm()`, which CLEARS THE CART before adding. An edited
+    line is BY CONSTRUCTION already in the cart's current branch, so that path is
+    unreachable-by-intent here — but reusing `handleAdd` would still expose it to a
+    stale/mismatched `selectedBranch`, and the failure mode is severe: the user
+    believes they are editing one line and the ENTIRE cart is wiped instead.
 
-    So this handler never reads `isSwitchingBranch`, never calls `setPendingSwitch`,
-    and never calls `clearCart` or `setBranch`. It only ever replaces one line's
-    options. That absence is asserted by a regression test.
+    So this handler never reads `isSwitchingBranch`, never calls `setPendingAdd`,
+    and never touches `branchSwitch` or `setBranch`. It only ever replaces one
+    line's options. That absence is asserted by a regression test.
   */
   const handleSaveEdit = async () => {
     if (!isEditing) return;
@@ -321,9 +335,11 @@ function ProductDetailsBody({
 
     const isSwitchingBranch = cart.items.length > 0 && cart.pickupBranchId !== selectedBranch.id;
     if (isSwitchingBranch) {
-      // Friendly confirm instead of a raw system alert (AC-A4). The underlying
-      // clear-and-switch action is unchanged — it just runs on confirm.
-      setPendingSwitch({ menuItem, opts });
+      // Friendly confirm instead of a raw system alert (AC-A4). The clear-and-
+      // switch itself now lives in the shared hook (home-all-branches D4); this
+      // screen only stages the payload and asks the hook to confirm.
+      setPendingAdd({ menuItem, opts });
+      branchSwitch.requestSwitch(selectedBranch.id);
       return;
     }
 
@@ -344,11 +360,17 @@ function ProductDetailsBody({
   };
 
   const confirmBranchSwitch = async () => {
-    const pending = pendingSwitch;
-    setPendingSwitch(null);
+    const pending = pendingAdd;
+    setPendingAdd(null);
     if (!pending || !selectedBranch) return;
-    clearCart();
-    setBranch(selectedBranch.id);
+    // The switch must fully resolve BEFORE the line is added, so the item lands
+    // in a cart that already belongs to the target branch. The hook owns the
+    // clear-then-switch; this screen only adds afterwards.
+    const switched = await branchSwitch.confirm();
+    if (!switched) {
+      showToast('That branch is no longer available — please pick another.', 'error');
+      return;
+    }
     const ok = await addItem(pending.menuItem, pending.opts, quantity);
     showToast(
       ok ? 'Added to cart' : 'Could not add item — please try again',
@@ -358,6 +380,11 @@ function ProductDetailsBody({
       // view.
       ok ? { label: 'View cart', onPress: () => router.push('/(tabs)/cart') } : undefined,
     );
+  };
+
+  const cancelBranchSwitch = () => {
+    setPendingAdd(null);
+    branchSwitch.cancel();
   };
 
   const isDeal = product.isDeal === true;
@@ -491,7 +518,7 @@ function ProductDetailsBody({
       />
 
       <ConfirmDialog
-        visible={pendingSwitch !== null}
+        visible={pendingAdd !== null}
         title="Switch branch?"
         message={`Your cart has items from a different branch. Clear it and start a new order at ${selectedBranch?.name ?? 'this branch'}?`}
         confirmLabel="Clear and switch"
@@ -499,7 +526,7 @@ function ProductDetailsBody({
         variant="destructive"
         mode={mode}
         onConfirm={confirmBranchSwitch}
-        onCancel={() => setPendingSwitch(null)}
+        onCancel={cancelBranchSwitch}
       />
 
       <Toast

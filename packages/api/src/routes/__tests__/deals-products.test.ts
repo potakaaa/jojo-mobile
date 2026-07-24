@@ -98,8 +98,15 @@ let branchAId: string;
 let branchBId: string;
 let userId: string;
 
+let branchAName: string;
+let branchBName: string;
+let closedBranchId: string;
+let closedBranchName: string;
+
 let fullyAvailableDealId: string; // 1 component, available at A & B
 let unavailableAtADealId: string; // 1 component, DOWN at A, UP at B
+let nowhereAvailableDealId: string; // zero components → fulfillable nowhere
+let closedOnlyDealId: string; // fulfillable only at an active-but-closed branch
 
 beforeAll(async () => {
   ({ db } = await import('../../db/client'));
@@ -135,7 +142,10 @@ beforeAll(async () => {
     .returning();
   userId = user!.id;
 
-  const makeBranch = async (label: string): Promise<string> => {
+  const makeBranch = async (
+    label: string,
+    opts: { isAcceptingPickup?: boolean } = {},
+  ): Promise<string> => {
     const [branch] = await db
       .insert(schema.branches)
       .values({
@@ -147,12 +157,19 @@ beforeAll(async () => {
         phone: '+639170000009',
         opening_hours: ALWAYS_OPEN_HOURS,
         estimated_prep_minutes: 15,
+        is_accepting_pickup: opts.isAcceptingPickup ?? true,
       })
       .returning();
     return branch!.id;
   };
+  branchAName = `DEAL004 A ${suffix}`;
+  branchBName = `DEAL004 B ${suffix}`;
+  closedBranchName = `DEAL004 Closed ${suffix}`;
   branchAId = await makeBranch('A');
   branchBId = await makeBranch('B');
+  // Active, but NOT accepting pickup — the customer cannot select it, so it must
+  // never appear in a deal's `branches[]` (home-all-branches, VALIDATE P2).
+  closedBranchId = await makeBranch('Closed', { isAcceptingPickup: false });
 
   const [category] = await db
     .insert(schema.categories)
@@ -185,13 +202,16 @@ beforeAll(async () => {
         is_deal: true,
       })
       .returning();
-    await db.insert(schema.dealComponents).values(
-      componentIds.map((componentProductId) => ({
-        deal_product_id: deal!.id,
-        component_product_id: componentProductId,
-        quantity: 1,
-      })),
-    );
+    // `values([])` throws in drizzle — a zero-component deal simply gets no rows.
+    if (componentIds.length > 0) {
+      await db.insert(schema.dealComponents).values(
+        componentIds.map((componentProductId) => ({
+          deal_product_id: deal!.id,
+          component_product_id: componentProductId,
+          quantity: 1,
+        })),
+      );
+    }
     return deal!.id;
   };
 
@@ -217,6 +237,19 @@ beforeAll(async () => {
   await setAvailability(branchBId, comp2, true);
   await setAvailability(branchAId, unavailableAtADealId, true);
   await setAvailability(branchBId, unavailableAtADealId, true);
+
+  // home-all-branches fixtures.
+  // A zero-component deal is fulfillable NOWHERE (MENU-003 locked decision), so
+  // its `branches[]` must be empty — while the deal itself is still listed.
+  nowhereAvailableDealId = await makeDeal('nowhere', []);
+
+  // Fulfillable ONLY at the active-but-closed branch: proves the accepting-pickup
+  // filter, not merely the is_active one.
+  const comp3 = await makeComponent('3');
+  closedOnlyDealId = await makeDeal('closed-only', [comp3]);
+  await setAvailability(closedBranchId, comp3, true);
+  await setAvailability(branchAId, comp3, false);
+  await setAvailability(branchBId, comp3, false);
 });
 
 afterAll(async () => {
@@ -292,6 +325,61 @@ describe('GET /deals/products', () => {
     const { status, json } = await get('/deals/products/notanid');
     expect(status).toBe(404);
     expect(json?.deal).toBeUndefined();
+  });
+});
+
+// home-all-branches — the additive `branches[]` field. `available` is asserted
+// UNCHANGED throughout (regression lock: this plan only ADDS a field).
+describe('GET /deals/products — branches[] (home-all-branches)', () => {
+  /** Branch display names on a deal's `branches[]`, sorted for order-insensitivity. */
+  function names(deal: any): string[] {
+    return (deal.branches as { name: string }[]).map((b) => b.name).sort();
+  }
+
+  it('lists every accepting-pickup branch that can fulfil the deal', async () => {
+    const { json } = await dealIds();
+    const deal = findDeal(json, fullyAvailableDealId);
+
+    expect(names(deal)).toEqual([branchAName, branchBName].sort());
+  });
+
+  it('lists only the branches that can actually fulfil a partly-unavailable deal', async () => {
+    const { json } = await dealIds();
+    const deal = findDeal(json, unavailableAtADealId);
+
+    // Component is DOWN at A, UP at B → exactly one carrying branch.
+    expect(names(deal)).toEqual([branchBName]);
+    expect(deal.branches).toEqual([{ id: branchBId, name: branchBName }]);
+  });
+
+  it('returns branches: [] for a deal no branch can fulfil, and still lists it', async () => {
+    const { ids, json } = await dealIds();
+
+    expect(ids).toContain(nowhereAvailableDealId);
+    expect(findDeal(json, nowhereAvailableDealId).branches).toEqual([]);
+  });
+
+  it('excludes an active-but-not-accepting-pickup branch from branches[]', async () => {
+    const { ids, json } = await dealIds();
+
+    const everyBranchName = json.categories
+      .flatMap((c: any) => c.products)
+      .flatMap((p: any) => (p.branches as { name: string }[]).map((b) => b.name));
+    expect(everyBranchName).not.toContain(closedBranchName);
+
+    // The deal only that branch could fulfil is still listed, with an empty list.
+    expect(ids).toContain(closedOnlyDealId);
+    expect(findDeal(json, closedOnlyDealId).branches).toEqual([]);
+  });
+
+  it('leaves the existing per-branch `available` flag unchanged', async () => {
+    const atA = await dealIds(`?branchId=${branchAId}`);
+
+    // Regression lock: `available` still reflects the SELECTED branch only...
+    expect(findDeal(atA.json, unavailableAtADealId).available).toBe(false);
+    expect(findDeal(atA.json, fullyAvailableDealId).available).toBe(true);
+    // ...while `branches[]` independently reports where it CAN be fulfilled.
+    expect(names(findDeal(atA.json, unavailableAtADealId))).toEqual([branchBName]);
   });
 });
 

@@ -6,14 +6,24 @@
  * read-only Order Detail screen. No status mutations happen here (STAFF-003).
  */
 
-import { Badge, Card, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
+import { Badge, Card, ScreenHeader, Toast, type ThemeMode } from '@jojopotato/ui';
 import type { StaffOrderSummary } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FontFamily, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { useToast } from '@/features/shared/hooks/use-toast';
+import { useNewOrderToast } from '@/features/staff/hooks/use-new-order-toast';
 import { useStaffMe } from '@/features/staff/hooks/use-staff-me';
 import { useStaffOrders } from '@/features/staff/hooks/use-staff-orders';
 import {
@@ -89,8 +99,22 @@ export default function ActiveOrdersScreen() {
   const scheme = useColorScheme();
   const router = useRouter();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
+  const insets = useSafeAreaInsets();
   const { data: staffMe, isLoading: staffLoading, error: staffError } = useStaffMe();
-  const { data: orders = [], isLoading: ordersLoading, error: ordersError } = useStaffOrders();
+  const {
+    data: ordersData,
+    isLoading: ordersLoading,
+    error: ordersError,
+    isRefetching,
+    refetch,
+  } = useStaffOrders();
+  const orders = ordersData ?? [];
+
+  // Raise a warning toast when a genuinely-new order arrives on a poll. Pass the
+  // RAW data (undefined while loading) so the first poll seeds the baseline
+  // without toasting; only later polls with a new id fire.
+  const { toast, showToast, hideToast } = useToast();
+  useNewOrderToast(ordersData, showToast);
 
   const branchName = staffLoading
     ? null
@@ -109,7 +133,18 @@ export default function ActiveOrdersScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         {/* Compact brand header — matches the shell instead of a tall native header */}
         <ScreenHeader title="Active Orders" onBack={() => router.back()} mode={mode} />
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-active-orders-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           {/* Branch context */}
           <View style={styles.branchRow}>
             {staffLoading ? (
@@ -148,6 +183,17 @@ export default function ActiveOrdersScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* Screen-root new-order toast (STAFF live freshness). Staff screens are
+          pushed (no floating tab bar), so the offset is just the safe-area inset. */}
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        severity={toast.severity}
+        mode={mode}
+        bottomOffset={insets.bottom + Spacing.four}
+        onDismiss={hideToast}
+      />
     </View>
   );
 }

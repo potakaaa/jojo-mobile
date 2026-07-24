@@ -37,10 +37,7 @@ import { resolveTabBarClearance } from '@/components/floating-tab-bar.helpers';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { getAppliedCouponCode, setAppliedCouponCode } from '@/features/cart/applied-coupon-code';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import {
-  registerDeviceToken,
-  requestNotificationPermission,
-} from '@/features/notifications/lib/notification-permission';
+import { promptAndRegisterForPush } from '@/features/notifications/lib/notification-permission';
 import { useCheckout } from '@/features/orders/hooks/use-checkout';
 import { useOrder } from '@/features/order/hooks/use-order';
 import { FontFamily, MaxContentWidth, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -135,17 +132,13 @@ export default function CheckoutScreen() {
       // Clear the out-of-band applied code once the order is placed (STAR-004).
       setAppliedCouponCode(null);
       // First-order notification permission seam (fire-and-forget; the seam's
-      // own once-guard ensures it only prompts on the first successful order).
-      // Never awaited — it must not delay the confirmation redirect. On grant,
-      // register this device's real Expo push token (PUSH-004).
-      requestNotificationPermission()
-        .then((result) => {
-          if (result === 'granted') return registerDeviceToken();
-          return undefined;
-        })
-        .catch((err) => {
-          console.error('Failed to set up notifications:', err);
-        });
+      // own once-guard ensures it only prompts on the first successful order —
+      // and never re-asks if onboarding already asked this session). Never
+      // awaited — it must not delay the confirmation redirect. On grant, the
+      // seam registers this device's real Expo push token (PUSH-004).
+      void promptAndRegisterForPush().catch((err) => {
+        console.error('Failed to set up notifications:', err);
+      });
       clearCart();
       // Refresh coupon + rewards caches so a consumed reward coupon no longer
       // shows as "Available" — refetchOnWindowFocus doesn't fire on RN in-app
