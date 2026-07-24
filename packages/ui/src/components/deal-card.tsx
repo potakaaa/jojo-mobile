@@ -34,6 +34,13 @@ export interface DealCardProps {
    * leaves existing call sites unaffected.
    */
   scheduleSummary?: string;
+  /**
+   * home-all-branches — a short, already-complete caption rendered as its own
+   * UNLABELED row (e.g. a branch name, or "Available at 3 branches"), matching
+   * `scheduleSummary`'s treatment. Omitting it leaves existing call sites
+   * rendering byte-identically.
+   */
+  subtext?: string;
 }
 
 /**
@@ -53,6 +60,7 @@ export function DealCard({
   validUntil,
   available,
   scheduleSummary,
+  subtext,
 }: DealCardProps) {
   const theme = Colors[mode];
   const isUnavailable = available === false;
@@ -95,6 +103,15 @@ export function DealCard({
         {scheduleSummary ? (
           <Text style={[styles.scheduleSummary, { color: theme.textSecondary }]}>
             {scheduleSummary}
+          </Text>
+        ) : null}
+        {subtext ? (
+          <Text
+            testID="deal-card-subtext"
+            style={[styles.subtext, { color: theme.textSecondary }]}
+            numberOfLines={1}
+          >
+            {subtext}
           </Text>
         ) : null}
         {isUnavailable ? (
@@ -166,6 +183,10 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.caption,
   },
   scheduleSummary: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.caption,
+  },
+  subtext: {
     fontFamily: FontFamily.body.regular,
     fontSize: TypeScale.caption,
   },

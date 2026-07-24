@@ -5,7 +5,7 @@ import HomeScreen from '@/app/(tabs)/index';
 import { useBranch } from '@/features/branch/hooks/use-branch';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useDealProducts } from '@/features/deals/hooks/use-deal-products';
-import { useMenu } from '@/features/menu/hooks/use-menu';
+import { useAllBranchProducts } from '@/features/menu/hooks/use-all-branch-products';
 import { useOrderHistory } from '@/features/orders/hooks/use-order-history';
 import { useRewardsSummary } from '@/features/rewards/hooks/use-rewards-summary';
 import { renderWithProviders } from '@/test-utils/render';
@@ -23,7 +23,12 @@ jest.mock('@/features/home/components/home-header', () => ({ HomeHeader: () => n
 jest.mock('@/features/branch/hooks/use-branch', () => ({ useBranch: jest.fn() }));
 jest.mock('@/features/cart/hooks/use-cart', () => ({ useCart: jest.fn() }));
 jest.mock('@/features/deals/hooks/use-deal-products', () => ({ useDealProducts: jest.fn() }));
-jest.mock('@/features/menu/hooks/use-menu', () => ({ useMenu: jest.fn() }));
+// home-all-branches: Home's grid moved from the branch-scoped `useMenu()` to the
+// all-branch `useAllBranchProducts()`. The AC4 premise below — ONE pull refetches
+// every mounted query — is unchanged; only which query owns the grid changed.
+jest.mock('@/features/menu/hooks/use-all-branch-products', () => ({
+  useAllBranchProducts: jest.fn(),
+}));
 jest.mock('@/features/orders/hooks/use-order-history', () => ({ useOrderHistory: jest.fn() }));
 jest.mock('@/features/rewards/hooks/use-rewards-summary', () => ({ useRewardsSummary: jest.fn() }));
 jest.mock('@/features/branches/lib/navigate-to-branch', () => ({
@@ -39,7 +44,7 @@ jest.mock('@/features/orders/lib/navigate-to-tracking', () => ({
 const mockUseBranch = jest.mocked(useBranch);
 const mockUseCart = jest.mocked(useCart);
 const mockUseDealProducts = jest.mocked(useDealProducts);
-const mockUseMenu = jest.mocked(useMenu);
+const mockUseAllBranchProducts = jest.mocked(useAllBranchProducts);
 const mockUseOrderHistory = jest.mocked(useOrderHistory);
 const mockUseRewardsSummary = jest.mocked(useRewardsSummary);
 
@@ -59,20 +64,23 @@ function seedHooks() {
 
   mockUseBranch.mockReturnValue({
     selectedBranch: null,
+    branches: [],
+    setSelectedBranch: jest.fn(),
     isLoading: false,
     isError: false,
     refetch: refetchBranch,
   } as unknown as ReturnType<typeof useBranch>);
   mockUseCart.mockReturnValue({
     setBranch: jest.fn(),
-    cart: { pickupBranchId: '' },
+    clearCart: jest.fn(),
+    cart: { items: [], pickupBranchId: '' },
   } as unknown as ReturnType<typeof useCart>);
-  mockUseMenu.mockReturnValue({
+  mockUseAllBranchProducts.mockReturnValue({
     data: undefined,
     isPending: false,
     isError: false,
     refetch: menuRefetch,
-  } as unknown as ReturnType<typeof useMenu>);
+  } as unknown as ReturnType<typeof useAllBranchProducts>);
   mockUseDealProducts.mockReturnValue({
     data: [],
     isPending: false,

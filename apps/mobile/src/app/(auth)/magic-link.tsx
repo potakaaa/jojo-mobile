@@ -55,6 +55,21 @@ export default function MagicLinkRoute() {
       if (verifyError) {
         setError(verifyError.message ?? 'This sign-in link is invalid or has expired.');
         setPhase('error');
+        return;
+      }
+
+      // A NULL `verifyError` does NOT mean success. better-auth reports
+      // magic-link verify failures as a 302 redirect to `errorCallbackURL`
+      // (`redirectWithError` -> `throw ctx.redirect(...)`), NOT as a JSON error.
+      // The client fetch follows that redirect and sees a plain 200, so an
+      // expired/already-used token would otherwise look like success and leave
+      // this screen spinning forever. The session itself is the only reliable
+      // success signal, so confirm one actually landed.
+      const { data: session } = await authClient.getSession();
+      if (!session) {
+        setError('This sign-in link is invalid or has expired. Request a new link.');
+        setPhase('error');
+        return;
       }
       // On success: do nothing here — the session updates and the root gate
       // swaps this stack out for the `(tabs)` shell.

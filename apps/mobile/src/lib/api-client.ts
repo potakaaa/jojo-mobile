@@ -115,6 +115,32 @@ export async function getMenu(
 }
 
 /**
+ * `GET /products` → unwrapped `{ categories }` (home-all-branches ALL-BRANCH
+ * regular catalog). Takes NO branch id: this route is branch-agnostic by design,
+ * so the Home grid shows the whole catalog rather than dead-ending on whatever
+ * the currently-selected branch happens to stock. Each product carries
+ * `branches: { id, name }[]` — the branches that actually carry it right now
+ * (possibly empty).
+ *
+ * Distinct from `getMenu()`, which stays single-branch for the Order tab.
+ *
+ * Product image paths are resolved to absolute URLs (tunnel-proof; idempotent),
+ * same as `getMenu`.
+ */
+export async function getAllBranchProducts(): Promise<MenuResponse> {
+  const body = await getJson<{ categories: MenuResponse['categories'] }>('/products');
+  return {
+    categories: body.categories.map((category) => ({
+      ...category,
+      products: category.products.map((product) => ({
+        ...product,
+        imageUrl: resolveImageUrl(product.imageUrl),
+      })),
+    })),
+  };
+}
+
+/**
  * `GET /deals/products` → unwrapped `{ categories }` (DEAL-004 all-branch deal
  * listing). Flattens the returned categories into a single `Product[]`, mirroring
  * `getMenu`'s flatten. Appends `?branchId=` only when a branch is supplied:

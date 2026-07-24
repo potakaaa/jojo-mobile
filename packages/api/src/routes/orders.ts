@@ -15,13 +15,16 @@ import {
   orders,
   productOptions,
   products,
+  reviews,
   starTransactions,
   userStars,
 } from '../db/schema/index';
 import { creditStarForCompletedOrder } from '../lib/star-earning';
 import { requireSession } from '../middleware/require-session';
+import { isUniqueViolation } from './admin/lib/errors';
 import { resolveCouponDiscount } from './lib/coupon-apply';
 import { resolveAvailableDealProductIds } from './lib/deal-availability';
+import { dispatchNewOrderStaffNotification } from './lib/notification-dispatch';
 import { resolveLiveDealProductIds } from './lib/deal-schedule';
 import { orderNumberGenerator } from './lib/order-number';
 import { canTransition } from './lib/order-state-machine';
@@ -29,6 +32,7 @@ import {
   centsToNumeric,
   numericToCents,
   serializeOrder,
+  serializeReview,
   type SelectedOption,
 } from './lib/serializers';
 
@@ -57,6 +61,19 @@ const createOrderSchema = z.object({
   // Optional applied deal. The server NEVER accepts a discount amount — only a
   // deal id — and recomputes the real discount from the DB row (server authority).
   dealId: z.string().uuid().optional(),
+});
+
+/**
+ * Body for `POST /orders/:orderId/review` (order-completion-celebration). A
+ * single overall rating (int 1–5) plus an optional short comment. `comment` is
+ * trimmed and length-bounded; a blank comment is normalized to null at the
+ * handler. An out-of-range / missing `rating` fails here → 422 (AC8), before any
+ * DB work — the DB `CHECK (rating BETWEEN 1 AND 5)` is the defense-in-depth
+ * backstop against a direct SQL write.
+ */
+const submitReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
 });
 
 /** Carries an HTTP status through a thrown-inside-transaction rollback path. */
@@ -559,6 +576,16 @@ ordersRouter.post('/', requireSession, async (req, res) => {
       return serializeOrder(createdOrder, insertedItems);
     });
 
+    // Notify the branch's staff of the new order (push-notifications-fixes,
+    // AC1–AC4). Awaited AFTER the transaction commits (so the order is durable
+    // before the push fans out) and BEFORE the 201 (so the AC1/AC3 integration
+    // assertions are deterministic). `result` IS `serializeOrder(...)` output
+    // (`ApiOrder`, camelCase `id`/`orderNumber`/`branchId`) — passed directly,
+    // never the raw snake_case order row (E4). The dispatch swallows internally
+    // and never throws, so a staff-push failure can never turn this 201 into a
+    // 500 (AC2).
+    await dispatchNewOrderStaffNotification(result);
+
     res.status(201).json({ order: result });
   } catch (err) {
     if (err instanceof OrderError) {
@@ -711,6 +738,103 @@ ordersRouter.patch('/:orderId/complete', requireSession, async (req, res) => {
   const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
   const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
   res.json({ order: serializeOrder(refreshedOrder!, items) });
+});
+
+/**
+ * POST /orders/:orderId/review — the customer leaves a single overall rating
+ * (1–5) + optional comment for an order they own that has reached `completed`.
+ *
+ * The gate ORDERING is copied VERBATIM from `PATCH /:orderId/complete` (the
+ * ownership-boundary precedent): malformed id → 404 (no existence oracle), load
+ * order → 404, OWNERSHIP → 403 BEFORE any state gate, then not-`completed` → 409.
+ * Body validation (422) runs only after all four gates, so a non-owner never
+ * learns anything about the order (or their own body) beyond a flat 403.
+ *
+ * D8 (no edit / one review per order) is enforced at TWO layers: a pre-`SELECT`
+ * for an existing review (the friendly common-case 409) AND a catch that maps
+ * the `reviews.order_id` unique-violation to 409 as the atomic race backstop
+ * (via `isUniqueViolation`, which unwraps drizzle's `err.cause.code === '23505'`
+ * — a top-level-only check would silently 500). A duplicate never surfaces as a
+ * 500 and never mutates the original row.
+ *
+ * Registered BEFORE `GET /:orderId` so the more specific path always wins.
+ *
+ * Responses:
+ *   200 — `{ review: ApiReview }` on success.
+ *   403 — the order is not the caller's.
+ *   404 — order id malformed or not found.
+ *   409 — the order is not `completed`, or a review already exists for it.
+ *   422 — `rating` is out of 1–5 or missing (Zod validation failure).
+ */
+ordersRouter.post('/:orderId/review', requireSession, async (req, res) => {
+  const userId = req.user!.id;
+
+  // 1. Malformed id → 404, matching `GET /:orderId` / `PATCH .../complete`
+  //    exactly (no existence oracle across the trust boundary).
+  const orderId = String(req.params.orderId);
+  if (!z.string().uuid().safeParse(orderId).success) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  // 2. OWNERSHIP BEFORE STATE — load-bearing ordering (E4). If the state gate
+  //    ran first, a non-owner could distinguish a stranger's completed order
+  //    (409 duplicate / 200) from a non-completed one (409 state) and probe an
+  //    order's state across the trust boundary. Checking ownership first makes
+  //    every non-owned order look identical: 403, always.
+  if (order.user_id !== userId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // 3. Only a completed order can be reviewed.
+  if (order.status !== 'completed') {
+    res.status(409).json({ error: 'You can only review a completed order' });
+    return;
+  }
+
+  // 4. Body validation → 422 (runs AFTER the ownership/state gates so nothing
+  //    about the request body can precede the trust-boundary decision).
+  const parsed = submitReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: 'Invalid review', details: parsed.error.issues });
+    return;
+  }
+  const comment =
+    parsed.data.comment !== undefined && parsed.data.comment.length > 0
+      ? parsed.data.comment
+      : null;
+
+  // 5. D8 layer 1 — friendly pre-check for the common case (a review already
+  //    exists). The unique-constraint catch below is the atomic race backstop.
+  const [existing] = await db.select().from(reviews).where(eq(reviews.order_id, orderId));
+  if (existing) {
+    res.status(409).json({ error: 'This order has already been reviewed' });
+    return;
+  }
+
+  try {
+    const [inserted] = await db
+      .insert(reviews)
+      .values({ order_id: orderId, user_id: userId, rating: parsed.data.rating, comment })
+      .returning();
+    res.status(200).json({ review: serializeReview(inserted!) });
+  } catch (err) {
+    // D8 layer 2 — a concurrent/replayed submission racing the pre-check maps the
+    // `reviews.order_id` unique-violation to a clean 409 (never a leaked 500).
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: 'This order has already been reviewed' });
+      return;
+    }
+    console.error(`[orders] failed to submit review for order ${orderId}`, err);
+    res.status(500).json({ error: 'Failed to submit review' });
+  }
 });
 
 // GET /orders/:orderId — full order; 404 if missing, 403 if not the caller's.

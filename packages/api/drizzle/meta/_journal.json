@@ -162,6 +162,13 @@
       "when": 1784695606914,
       "tag": "0022_nostalgic_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784854179701,
+      "tag": "0023_good_talisman",
+      "breakpoints": true
     }
   ]
 }

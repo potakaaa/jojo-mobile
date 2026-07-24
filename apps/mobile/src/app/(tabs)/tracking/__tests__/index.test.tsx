@@ -5,7 +5,13 @@ import { fireEvent, waitFor } from '@testing-library/react-native';
 import OrderTrackingScreen from '@/app/(tabs)/tracking/index';
 import { useCompleteOrder } from '@/features/orders/hooks/use-complete-order';
 import { useOrderQuery } from '@/features/orders/hooks/use-order-query';
+import { useSubmitReview } from '@/features/orders/hooks/use-submit-review';
 import { renderWithProviders } from '@/test-utils/render';
+
+// The celebration overlay embeds StarRatingInput + Input, which render Ionicons
+// via an async font effect that bleeds act() across tests. The glyphs are
+// incidental to these behavioral tests, so stub the icon to a synchronous no-op.
+jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
 /*
   Screen test for the customer "Mark as picked up" action (AC9 + AC10).
@@ -42,11 +48,21 @@ jest.mock('@/features/orders/hooks/use-order-query', () => {
 jest.mock('@/features/orders/hooks/use-complete-order', () => ({
   useCompleteOrder: jest.fn(),
 }));
+jest.mock('@/features/orders/hooks/use-submit-review', () => ({
+  useSubmitReview: jest.fn(),
+}));
 
 const mockUseOrderQuery = jest.mocked(useOrderQuery);
 const mockUseCompleteOrder = jest.mocked(useCompleteOrder);
+const mockUseSubmitReview = jest.mocked(useSubmitReview);
 
-const mutate = jest.fn();
+// The completion mutate now carries a per-call `onSuccess` (the celebration
+// trigger). The mock invokes it so the self-confirm path fires the celebration,
+// matching react-query's real `mutate(vars, { onSuccess })` contract.
+const mutate = jest.fn((_orderId: string, opts?: { onSuccess?: () => void }) => {
+  opts?.onSuccess?.();
+});
+const reviewMutate = jest.fn();
 
 function orderWithStatus(status: OrderStatus): Order {
   return {
@@ -71,6 +87,13 @@ function renderWith(status: OrderStatus, overrides: Record<string, unknown> = {}
     error: null,
     ...overrides,
   } as unknown as ReturnType<typeof useCompleteOrder>);
+
+  mockUseSubmitReview.mockReturnValue({
+    mutate: reviewMutate,
+    isPending: false,
+    isSuccess: false,
+    error: null,
+  } as unknown as ReturnType<typeof useSubmitReview>);
 
   return renderWithProviders(<OrderTrackingScreen />);
 }
@@ -135,6 +158,49 @@ describe('AC10 — tapping asks for confirmation before sending anything', () =>
     await fireEvent.press(await findByTestId('confirm-dialog-confirm'));
 
     expect(mutate).toHaveBeenCalledTimes(1);
-    expect(mutate).toHaveBeenCalledWith('order-1');
+    // The completion now carries a per-call onSuccess (the celebration trigger).
+    expect(mutate).toHaveBeenCalledWith(
+      'order-1',
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+});
+
+describe('AC1 — the self-confirm onSuccess path fires the celebration', () => {
+  test('confirming pickup shows the celebration + review overlay', async () => {
+    const { getByTestId, findByTestId } = await renderWith('ready');
+
+    await fireEvent.press(getByTestId('mark-picked-up-button'));
+    await fireEvent.press(await findByTestId('confirm-dialog-confirm'));
+
+    // mutate's mock invokes onSuccess → showCelebration → overlay renders.
+    expect(await findByTestId('order-celebration-overlay')).toBeTruthy();
+  });
+});
+
+describe('AC2 — a stale already-completed mount does not celebrate', () => {
+  test('mounting a completed order shows no celebration', async () => {
+    const { queryByTestId } = await renderWith('completed');
+
+    // prev-status ref seeds to `completed` WITHOUT firing (shouldCelebrate is
+    // false for an undefined previous status), so no overlay appears.
+    expect(queryByTestId('order-celebration-overlay')).toBeNull();
+  });
+});
+
+describe('AC3 — the review prompt is dismissible with no side effect', () => {
+  test('skipping closes the prompt, submits nothing, and never blocks navigation', async () => {
+    const { getByTestId, findByTestId, queryByTestId } = await renderWith('ready');
+
+    await fireEvent.press(getByTestId('mark-picked-up-button'));
+    await fireEvent.press(await findByTestId('confirm-dialog-confirm'));
+    expect(await findByTestId('order-celebration-overlay')).toBeTruthy();
+
+    // Skip dismisses the overlay...
+    await fireEvent.press(getByTestId('celebration-skip'));
+    await waitFor(() => expect(queryByTestId('order-celebration-overlay')).toBeNull());
+
+    // ...and no review was submitted (no side effect on the order).
+    expect(reviewMutate).not.toHaveBeenCalled();
   });
 });

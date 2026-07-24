@@ -3,6 +3,7 @@ import { ProductCard } from '@jojopotato/ui';
 import { FlatList, StyleSheet } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { formatBranchSubtext } from '@/features/home/lib/format-branch-subtext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveImageUrl } from '@/lib/image-url';
 
@@ -35,6 +36,10 @@ export function ProductGrid({ products, onProductPress }: ProductGridProps) {
             imageSource={imageUri ? { uri: imageUri } : undefined}
             onPress={onProductPress ? () => onProductPress(item.id) : undefined}
             mode={mode}
+            // home-all-branches AC2/AC3 — the ONLY place a regular product's
+            // branch caption reaches the rendered card. `undefined` when no
+            // branch carries it, which omits the row entirely.
+            subtext={formatBranchSubtext(item.branches)}
           />
         );
       }}

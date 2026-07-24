@@ -8,7 +8,14 @@
 import { Button, Input, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import { useRouter } from 'expo-router';
 import { useReducer, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -27,7 +34,7 @@ export default function BranchPickupSettingsScreen() {
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const router = useRouter();
 
-  const { data: settings, isLoading, isError } = useStaffBranchSettings();
+  const { data: settings, isLoading, isError, isRefetching, refetch } = useStaffBranchSettings();
   const { mutate: patchSettings, isPending } = usePatchBranchSettings();
 
   const [prepState, dispatch] = useReducer(prepTimeReducer, initialPrepTimeState);
@@ -65,7 +72,18 @@ export default function BranchPickupSettingsScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Branch Pickup Settings" onBack={() => router.back()} mode={mode} />
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-branch-settings-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           {isLoading ? (
             <View style={styles.stateBlock}>
               <ActivityIndicator size="large" color={theme.text} />

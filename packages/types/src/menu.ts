@@ -72,6 +72,21 @@ export interface Product {
    * display data; never used for pricing or eligibility.
    */
   schedule?: DealScheduleWindow[];
+  /**
+   * home-all-branches — every active, accepting-pickup branch that currently
+   * carries this product. Present ONLY on the all-branch surfaces
+   * (`GET /products` and `GET /deals/products`), where it is ALWAYS sent, an
+   * EMPTY array meaning "no branch carries this right now" (the product is still
+   * listed). OMITTED entirely on `GET /branches/:id/menu`. Additive; drives the
+   * customer-facing branch subtext and the cross-branch switch target.
+   */
+  branches?: ProductBranch[];
+}
+
+/** A branch that carries a product — id + display name only. */
+export interface ProductBranch {
+  id: string;
+  name: string;
 }
 
 /**
@@ -138,6 +153,13 @@ export interface MenuItem {
   imageUrl?: string;
   categoryId: string;
   isAvailable: boolean;
+  /**
+   * home-all-branches — the branches carrying this item, threaded through from
+   * the all-branch catalog so the Home grid can render its subtext and resolve a
+   * cross-branch switch target. Optional: a `MenuItem` built from the
+   * branch-scoped menu (Order tab, add-to-cart boundary) omits it.
+   */
+  branches?: ProductBranch[];
 }
 
 export interface MenuCategory {

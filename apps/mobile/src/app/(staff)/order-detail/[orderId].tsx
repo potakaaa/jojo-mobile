@@ -11,7 +11,14 @@ import type { OrderStatus, StaffOrderDetail, StaffOrderItem } from '@jojopotato/
 import { formatCurrency } from '@jojopotato/utils';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
@@ -208,7 +215,13 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const { data: order, isLoading, isError } = useStaffOrderDetail(orderId ?? '');
+  const {
+    data: order,
+    isLoading,
+    isError,
+    isRefetching,
+    refetch,
+  } = useStaffOrderDetail(orderId ?? '');
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -219,7 +232,18 @@ export default function OrderDetailScreen() {
           mode={mode}
         />
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-order-detail-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           {isLoading ? (
             <View style={styles.stateBlock}>
               <ActivityIndicator size="large" color={theme.text} />

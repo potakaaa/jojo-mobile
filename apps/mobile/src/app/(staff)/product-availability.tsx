@@ -10,7 +10,15 @@ import { Card, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { StaffProduct } from '@jojopotato/types';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Spacing, TypeScale } from '@/constants/theme';
@@ -71,14 +79,25 @@ export default function ProductAvailabilityScreen() {
   const scheme = useColorScheme();
   const mode: ThemeMode = scheme === 'dark' ? 'dark' : 'light';
   const router = useRouter();
-  const { data: products, isLoading, isError } = useStaffProducts();
+  const { data: products, isLoading, isError, isRefetching, refetch } = useStaffProducts();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <ScreenHeader title="Product Availability" onBack={() => router.back()} mode={mode} />
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          testID="staff-product-availability-scroll"
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => void refetch()}
+              tintColor={theme.text}
+              colors={[theme.text]}
+            />
+          }
+        >
           {isLoading ? (
             <View style={styles.stateBlock}>
               <ActivityIndicator size="large" color={theme.text} />
