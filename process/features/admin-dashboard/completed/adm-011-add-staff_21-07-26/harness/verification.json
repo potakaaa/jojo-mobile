@@ -1,0 +1,58 @@
+{
+  "steps": [
+    {
+      "step": "Confirm POST /api/admin/users/:id/role is reused byte-unmodified (no edit in ADM-011's Touchpoints table touches this handler's body)",
+      "command": "Read packages/api/src/routes/admin/users.ts in full",
+      "result": "PASS",
+      "notes": "Guard order confirmed: super_admin-only (403) -> self-escalation (400) -> Zod validation (400) -> DB write (404 if no row). Plan adds only a new sibling GET /users/lookup handler in the same file; the role route's own lines are untouched by the plan's checklist."
+    },
+    {
+      "step": "Confirm PATCH /api/admin/staff/:id/branch is reused byte-unmodified",
+      "command": "Read packages/api/src/routes/admin/staff.ts in full",
+      "result": "PASS",
+      "notes": "Guard order confirmed: Zod body -> uuid guard -> target 404 -> role!=customer 400 -> branch lookup+isActive -> write. Plan adds only a new sibling POST /invite handler; the branch route's own lines are untouched."
+    },
+    {
+      "step": "Confirm requireAdmin + inline super_admin check is the correct, existing pattern for a new super_admin-only route",
+      "command": "Read packages/api/src/lib/require-admin.ts + packages/api/src/routes/admin/users.ts:55-62",
+      "result": "PASS",
+      "notes": "requireAdmin admits admin OR super_admin; the additional inline `req.adminSession!.role !== 'super_admin'` check is the SAME narrowing pattern the existing role route already uses. New lookup/invite-create routes correctly plan to repeat this same inline check."
+    },
+    {
+      "step": "Confirm migration 0020 would be additive-only and sequenced correctly behind the current latest",
+      "command": "tail -30 packages/api/drizzle/meta/_journal.json",
+      "result": "PASS",
+      "notes": "Latest applied migration is 0019_rainy_tombstone (idx 19). A new staff_invites CREATE TABLE would correctly land as 0020, zero ALTER on any existing table per the plan's own schema description (email, intended_role, intended_branch_id, token_hash, expires_at, consumed_at, created_by, created_at)."
+    },
+    {
+      "step": "Confirm the /staff-invite/start token-capture mechanism as literally described in the plan's Innovate Note is implementable",
+      "command": "Read node_modules/.../better-auth/dist/plugins/magic-link/index.mjs mint-side handler (signInMagicLink), full source",
+      "result": "FAIL (as literally described) — corrected via Plan Update",
+      "notes": "The plan's Innovate Note claims the verification row is looked up via `identifier = email` and that the stored value is 'keyed by a hashed token'. Both claims are wrong: (1) auth.ts's magicLink({...}) config never sets storeToken, so better-auth defaults to storeToken:'plain' -- identifier is stored as the RAW plaintext token, not a hash; (2) identifier is ALWAYS the token itself (hashed or plain depending on config), never the email -- `value` (a JSON blob) carries {email, name}, not `identifier`. A query filtering `WHERE identifier = email` would match zero rows every time, making /staff-invite/start always fail as literally specified. Corrected mechanism applied directly to the plan text (see Validate Contract 'Plan updates applied')."
+    },
+    {
+      "step": "Confirm the mobile invite-accept flow's session-then-consume ordering against the real root navigation gate",
+      "command": "Read apps/mobile/src/app/_layout.tsx:39-72 (Stack.Protected guards) + apps/mobile/src/features/auth/hooks/use-auth.ts (isStaff/hasCompletedProfile derivation)",
+      "result": "CONCERN",
+      "notes": "authClient.magicLink.verify() lands a session with role still 'customer' (pre-consume). The instant the session updates, isCustomer=true fires and the root gate routes away from (auth) to (onboarding) or (tabs) BEFORE the chained POST /staff-invite/consume resolves. The consume call itself will still complete (JS promise chains are not cancelled by unmount), so no data-integrity risk, but the user will see a jarring flash through the wrong shell before a second, consume-triggered session refetch correctly routes them to (staff). Flagged as an Execute-Agent Instruction + new Agent-Probe test gate, not a blocking FAIL (no security or correctness defect — UX-only)."
+    },
+    {
+      "step": "Confirm whether an admin/super_admin invitee can actually sign into apps/admin (the tool their granted role exists to use) after accepting via the mobile-only flow",
+      "command": "Read apps/admin/src/routes/login.tsx + grep -rn 'signUp|forgetPassword|resetPassword' apps/admin/src/",
+      "result": "CONCERN",
+      "notes": "apps/admin's login is email/password ONLY; zero signup/password-reset screens exist anywhere in apps/admin. A magic-link-provisioned account has no password credential. An admin/super_admin invitee can accept (role IS genuinely granted server-side, mobile (staff) shell works) but cannot sign into apps/admin through any built UI. Pre-existing architectural gap (ADM-001), not introduced by this plan's code, but ADM-011 Path 2 is the first workflow to default-produce this state for a brand-new account. Documented as Known-Gap with a backlog note; requires explicit user acceptance (see Validate Contract 'Accepted by')."
+    },
+    {
+      "step": "Confirm zero collision between ADM-011's new users.ts/staff.ts routes and ADM-010 (unexecuted, PASS-validated, sibling active plan)",
+      "command": "Read process/features/admin-dashboard/active/adm-010-customer-management_21-07-26/adm-010-customer-management_PLAN_21-07-26.md Touchpoints + Dimension findings",
+      "result": "PASS",
+      "notes": "ADM-010 creates an entirely separate packages/api/src/routes/admin/customers.ts (NEW file) and never touches users.ts or staff.ts. Zero file-level collision. ADM-011 does not touch nav-config.ts at all (Path 1 UI reuses the existing Staff nav entry), so no collision with ADM-010's own nav-config.ts append either."
+    },
+    {
+      "step": "Confirm token security properties (entropy, hash-at-rest, single-use, expiry) for the staff_invites table itself (distinct from the magic-link token discussed above)",
+      "command": "Re-read plan's 'Token security' locked decision + Public Contracts sections for /invite-create and /consume",
+      "result": "PASS",
+      "notes": "crypto.randomBytes(32) = 256 bits entropy, SHA-256 hashed at rest, hash-compared on accept, 7-day expiry, atomic UPDATE...WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>now() RETURNING * compare-and-swap consume. This is a materially different, correctly-designed mechanism from the separate better-auth magic-link token discussed in the FAIL step above -- the two token spaces do not interact insecurely."
+    }
+  ]
+}

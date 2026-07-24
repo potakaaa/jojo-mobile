@@ -1,5 +1,9 @@
+import { useState } from 'react';
+
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DataTable, type DataTableColumn } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
 import type { AdminBranch } from '@/features/branches/lib/admin-branches-api';
 
 import type { AdminStaffMember } from '../lib/admin-staff-api';
@@ -29,8 +33,18 @@ interface StaffListProps {
   isLoading: boolean;
   error: unknown;
   isSuperAdmin: boolean;
+  /**
+   * The signed-in user's id — the "Remove from staff" action is hidden on their own
+   * row (client mirror of the server's self-modification guard). ADM-013 (#149).
+   */
+  currentUserId: string | null;
   onBranchChange: (member: AdminStaffMember, branchId: string | null) => void;
   onRoleChange: (member: AdminStaffMember, role: AdminStaffMember['role']) => void;
+  /** Demote a staff member to `customer` (Part B — reuses the role route). */
+  onRemove: (member: AdminStaffMember) => void;
+  /** Live state of the remove (role→customer) mutation, surfaced in the confirm dialog. */
+  removePending?: boolean;
+  removeError?: string | null;
 }
 
 const selectClass =
@@ -53,9 +67,21 @@ export function StaffList({
   isLoading,
   error,
   isSuperAdmin,
+  currentUserId,
   onBranchChange,
   onRoleChange,
+  onRemove,
+  removePending = false,
+  removeError = null,
 }: StaffListProps) {
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
+  // Derived (not effect-held): once the removed member is demoted they drop off the
+  // roster, so this becomes null and the dialog closes on its own — no setState in
+  // an effect (which this app's lint config forbids).
+  const removeTarget = confirmingRemoveId
+    ? (staff?.find((s) => s.id === confirmingRemoveId) ?? null)
+    : null;
+
   const columns: DataTableColumn<AdminStaffMember>[] = [
     {
       key: 'identity',
@@ -125,18 +151,52 @@ export function StaffList({
         );
       },
     },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cell: (r) =>
+        // Hide the action entirely on the signed-in user's own row — the client
+        // mirror of the server's `Cannot modify own role` self-modification guard.
+        r.id === currentUserId ? null : (
+          <Button type="button" variant="destructive" onClick={() => setConfirmingRemoveId(r.id)}>
+            Remove from staff
+          </Button>
+        ),
+    },
   ];
 
   return (
-    <DataTable
-      columns={columns}
-      rows={staff}
-      rowKey={(r) => r.id}
-      isLoading={isLoading}
-      error={error}
-      loadingLabel="Loading staff…"
-      errorLabel="Failed to load staff"
-      emptyLabel="No staff members yet."
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={staff}
+        rowKey={(r) => r.id}
+        isLoading={isLoading}
+        error={error}
+        loadingLabel="Loading staff…"
+        errorLabel="Failed to load staff"
+        emptyLabel="No staff members yet."
+      />
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Remove from staff"
+        description={
+          removeTarget
+            ? `Remove ${removeTarget.name} from staff? They will immediately lose staff access. This cannot be undone from here.`
+            : ''
+        }
+        confirmLabel="Remove"
+        pendingLabel="Removing…"
+        pending={removePending}
+        error={removeError}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingRemoveId(null);
+        }}
+        onConfirm={() => {
+          if (removeTarget) onRemove(removeTarget);
+        }}
+      />
+    </>
   );
 }

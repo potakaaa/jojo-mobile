@@ -1,0 +1,41 @@
+{
+  "scope": "Section H ONLY -- apps/admin web accept surface (staff-invite-accept.tsx), the /staff-invite CORS mount extension (index.ts), and the magicLinkClient() plugin addition (auth-client.ts). Does NOT re-review Sections A-G -- see the outer harness/adversarial-validation.json (unchanged) for that scope.",
+  "method": "Direct source read only (installed cors@2.8.6 package source, installed better-auth@1.6.23 magic-link client plugin source, packages/api/src/index.ts, packages/api/src/lib/auth.ts, packages/api/src/routes/staff-invite.ts, apps/mobile/src/app/(auth)/invite-accept.tsx, packages/api/src/lib/__tests__/require-admin.integration.test.ts). No VC-FEASIBILITY-PROBE-NEEDED was raised -- every claim below is mechanically derivable from source, not a live runtime/network behavior.",
+  "scenarios": [
+    {
+      "scenario": "A malicious page on a disallowed (non-ADMIN_WEB_ORIGIN) origin attempts a JS fetch() POST to /staff-invite/start or /staff-invite/consume, hoping the new adminCors mount lets it read a response it could not read before.",
+      "ruled_out": true,
+      "rationale": "Both routes require Content-Type: application/json, which is not a CORS-safelisted content type, so any cross-origin fetch() triggers a preflight OPTIONS. Confirmed by direct read of the installed cors@2.8.6 package (lib/index.js): for a disallowed Origin, the preflight response omits Access-Control-Allow-Origin (configureOrigin only sets it when isOriginAllowed() matches), which per the Fetch/CORS spec causes the browser itself to refuse to send the real request -- the attacker's page never reaches the handler at all. This is the identical posture /api/admin and /api/auth already have via the SAME adminCors object reference (not a re-declared copy)."
+    },
+    {
+      "scenario": "A malicious page attempts a classic <form>-based (non-JS, non-preflighted) CSRF POST to /staff-invite/consume, relying on the victim's ambient session cookie.",
+      "ruled_out": true,
+      "rationale": "HTML forms cannot set Content-Type: application/json (only x-www-form-urlencoded, multipart/form-data, or text/plain enctypes exist). express.json() only parses application/json bodies, so a form-submitted body is left unparsed; the Zod token-body schema then rejects the resulting empty/invalid body with 400 before any DB read or mutation. This holds independent of CORS or SameSite cookie configuration and is unrelated to this delta (would be true even without the CORS mount)."
+    },
+    {
+      "scenario": "Adding Access-Control-Allow-Credentials:true (via the reused adminCors object) to /staff-invite/start, which does not itself require a cookie, somehow grants a new capability to a disallowed origin or a credential-less caller.",
+      "ruled_out": true,
+      "rationale": "Access-Control-Allow-Credentials:true only permits a client that explicitly opts in (credentials:'include') to have its response readable when the origin also matches; it does not force any client to send credentials, and /staff-invite/start's own authorization is entirely token-driven via the request body, independent of any cookie. No new capability for any caller."
+    },
+    {
+      "scenario": "The new adminCors mount on /staff-invite regresses apps/mobile's existing (already-shipped, EXECUTEd) calls to the same two routes, which send no Origin header at all.",
+      "ruled_out": true,
+      "rationale": "Confirmed by direct read of cors@2.8.6's source (the non-OPTIONS branch of the cors() function): for any non-preflight request, the middleware ALWAYS calls next() regardless of whether the Origin header is present or matches an allowed entry -- it only conditionally sets response headers. A request with no Origin header (the Expo app's case, matching the existing 'mobile-path guard' precedent in require-admin.integration.test.ts) proceeds to the route handler unmodified, exactly as before this delta. Recommended as an explicit regression test case in the plan's Execute-Agent Instructions (E-H2) rather than left as an unverified assumption at EXECUTE time."
+    },
+    {
+      "scenario": "The magicLinkClient() plugin addition to apps/admin's authClient alters, overrides, or shadows the existing authClient.signIn.email behavior used by login.tsx today.",
+      "ruled_out": true,
+      "rationale": "Confirmed by direct read of the installed better-auth@1.6.23 package's dist/plugins/magic-link/client.mjs: magicLinkClient() returns a plain marker object ({ id: 'magic-link', version, $InferServerPlugin: {} }) with no getActions/method-override hook of any kind. better-auth client plugins are additive and namespaced by construction (each plugin only adds its own id-namespaced methods); magicLinkClient() can only ever add authClient.magicLink.* -- it structurally cannot touch signIn.email."
+    },
+    {
+      "scenario": "The new unguarded apps/admin/src/routes/staff-invite-accept.tsx route is reached by a visitor with no token, a malformed token, or an invalid/expired/consumed token, and this produces a crash, a partial session, or an information leak.",
+      "ruled_out": true,
+      "rationale": "Mirrors the already-reviewed apps/mobile invite-accept.tsx pattern (Sections A-G, previously approved): a missing/invalid token produces a 400/404/410 from /staff-invite/start, which the page is specified to render as a plain error card with a 'Back to log in' link -- no partial session state, no crash. All authorization logic lives server-side in the already-reviewed /start and /consume handlers, which this delta does not modify in any way."
+    }
+  ],
+  "not_fully_ruled_out": [],
+  "carried_forward_from_outer_harness_unaffected_by_this_delta": [
+    "The /staff-invite/start token-validity-probing / mail-bomb-adjacent hammering residual (outer harness/adversarial-validation.json, last scenario) is already addressed by the existing 10/min/IP rate limiter (Sections A-G, unchanged by this delta) and is unaffected by the CORS extension either way -- CORS does not change request rate or the token-gate itself.",
+    "OBSERVATION, not a new finding introduced by this delta: /staff-invite/consume accepts any authenticated session (not necessarily one minted by /start) and only checks token validity plus an email-match assertion AFTER the atomic consume-UPDATE has already run. A caller who already knows a valid raw invite token (the same precondition needed to complete the entire flow unauthenticated) could, via a session belonging to a DIFFERENT email, cause that invite to be marked consumed without its role/branch being applied -- a 'burn' no more useful to an attacker than simply completing the flow themselves. This exists identically with or without the CORS delta (it requires no browser and no cross-origin call) and is not new Section-H attack surface. Already implicitly covered by the outer contract's Sections A-G token-possession trust model; no action required for this delta."
+  ]
+}

@@ -33,3 +33,4 @@ export * from './components/addon-selector';
 export * from './components/pickup-time-badge';
 export * from './components/toggle';
 export * from './components/notification-row';
+export * from './components/swipeable-row';

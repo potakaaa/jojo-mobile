@@ -18,6 +18,48 @@ export interface AdminStaffMember {
   branchName: string | null;
 }
 
+/** The staff-level roles an add-staff target may be granted (ADM-011). */
+export type StaffRole = 'staff' | 'admin' | 'super_admin';
+
+/** Result of `GET /api/admin/users/lookup` (mirrors the server's `AdminUserLookupResult`). */
+export interface AdminUserLookup {
+  id: string;
+  name: string;
+  email: string;
+  role: 'customer' | 'staff' | 'admin' | 'super_admin';
+}
+
+/** Body for `POST /api/admin/staff/invite` (ADM-011). */
+export interface StaffInviteInput {
+  email: string;
+  intendedRole: StaffRole;
+  intendedBranchId?: string | null;
+}
+
+/** Result of `POST /api/admin/staff/invite` (mirrors the server's `AdminStaffInviteSummary`). */
+export interface StaffInviteSummary {
+  email: string;
+  intendedRole: StaffRole;
+  intendedBranchId: string | null;
+  expiresAt: string;
+}
+
+/**
+ * A pending (unconsumed+unrevoked+unexpired) staff invite (ADM-013, #149 — mirrors
+ * the server's `AdminPendingStaffInvite`). NEVER carries the raw token or its hash.
+ */
+export interface AdminPendingStaffInvite {
+  id: string;
+  email: string;
+  intendedRole: StaffRole;
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string;
+  invitedByEmail: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 /** Carries the HTTP status alongside the server's error message. */
 export class AdminApiError extends Error {
   constructor(
@@ -84,4 +126,51 @@ export function postStaffRole(
       body: JSON.stringify({ role }),
     },
   ).then((r) => r.resource);
+}
+
+/**
+ * GET /api/admin/users/lookup?email= (ADM-011) — exact-match lookup for the "+ Add
+ * staff" promote path. Returns the user, or `null` when no account has that email
+ * (a normal branch of the flow, not an error — the server returns 200 `{ user: null }`).
+ */
+export function lookupUserByEmail(email: string): Promise<AdminUserLookup | null> {
+  return request<{ user: AdminUserLookup | null }>(
+    `${USERS_API}/lookup?email=${encodeURIComponent(email)}`,
+  ).then((r) => r.user);
+}
+
+/**
+ * POST /api/admin/staff/invite (ADM-011) — create a single-use email invite for an
+ * email with no account. The raw token is delivered only via email/log; the response
+ * carries only email/role/branch/expiry.
+ */
+export function createStaffInvite(input: StaffInviteInput): Promise<StaffInviteSummary> {
+  return request<{ invite: StaffInviteSummary }>(`${STAFF_API}/invite`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((r) => r.invite);
+}
+
+/** GET /api/admin/staff/invites (ADM-013) — the super_admin pending-invite list. */
+export function listPendingStaffInvites(): Promise<AdminPendingStaffInvite[]> {
+  return request<{ invites: AdminPendingStaffInvite[] }>(`${STAFF_API}/invites`).then(
+    (r) => r.invites,
+  );
+}
+
+/** POST /api/admin/staff/invites/:id/revoke (ADM-013) — cancel a pending invite. */
+export function revokeStaffInvite(id: string): Promise<void> {
+  return request<{ id: string }>(`${STAFF_API}/invites/${id}/revoke`, { method: 'POST' }).then(
+    () => undefined,
+  );
+}
+
+/**
+ * POST /api/admin/staff/invites/:id/resend (ADM-013) — rotate the token + refresh
+ * expiry, re-delivering the accept link. Preserves the stored email/role/branch.
+ */
+export function resendStaffInvite(id: string): Promise<StaffInviteSummary> {
+  return request<{ invite: StaffInviteSummary }>(`${STAFF_API}/invites/${id}/resend`, {
+    method: 'POST',
+  }).then((r) => r.invite);
 }

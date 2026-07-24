@@ -23,6 +23,8 @@ import type {
   promotions,
   reviews,
   rewards,
+  userStars,
+  users,
 } from '../../db/schema/index';
 import type { DealScheduleWindow } from './deal-schedule';
 // Type-only import (fully erased at compile time — no runtime cycle even though
@@ -45,6 +47,8 @@ type NotificationRow = InferSelectModel<typeof notifications>;
 type RewardRow = InferSelectModel<typeof rewards>;
 type CouponRow = InferSelectModel<typeof coupons>;
 type ReviewRow = InferSelectModel<typeof reviews>;
+type UserRow = InferSelectModel<typeof users>;
+type UserStarsRow = InferSelectModel<typeof userStars>;
 
 type ProductOptionType = 'size' | 'flavor' | 'add_on';
 type DealType = DealRow['deal_type'];
@@ -1298,5 +1302,166 @@ export function serializeReview(review: ReviewRow): ApiReview {
     rating: review.rating,
     comment: review.comment,
     createdAt: review.created_at.toISOString(),
+  };
+}
+
+// ─── Admin customer serializers (ADM-010 — customer management, #125) ─────────
+//
+// Admin-facing shapes for the READ-ONLY customer list + detail view. Declared
+// LOCALLY here matching the `AdminBranch`/`AdminOrderSummary`/`AdminStaffSummary`
+// convention (never in `packages/types` — the admin dashboard is the only
+// consumer). The list row carries the four columns shown in the table
+// (name/email/phone/joined). The detail shape adds the full locked D1 profile
+// field set + star balance + the customer's recent orders (composed from the
+// ADM-006 `serializeAdminOrderSummary` verbatim — never re-implemented).
+//
+// PII scope (SPEC D1): email + verification flags + birthday/address are LOCKED-IN
+// allowed fields for this dedicated Customers module (unlike ADM-006's narrower
+// orders surface). Auth-internal fields (password hash, session/verification
+// tokens) never appear — none live on the `users` row itself, and the AC4
+// field-shape test locks that non-exposure going forward.
+
+export interface AdminCustomerSummary {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string | null;
+  createdAt: string;
+}
+
+export interface AdminCustomerDetail extends AdminCustomerSummary {
+  birthday: string | null;
+  address: string | null;
+  marketingOptIn: boolean;
+  emailVerified: boolean;
+  phoneNumberVerified: boolean;
+  favoriteBranchName: string | null;
+  onboardedAt: string | null;
+  // `null` when the customer has no `user_stars` row (never earned/spent a star).
+  starsBalance: { current: number; lifetime: number } | null;
+  recentOrders: AdminOrderSummary[];
+}
+
+/** Serialize a `users` row into the admin customer list row (ADM-010). */
+export function serializeAdminCustomerSummary(user: UserRow): AdminCustomerSummary {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Serialize a `users` row + its (optional) `user_stars` row + resolved favorite
+ * branch name + the customer's recent orders into the admin detail shape (ADM-010).
+ * Spreads `serializeAdminCustomerSummary` then adds the extra D1 profile fields.
+ * `birthday` is a `date` column (already a `string | null` from the pg driver — no
+ * `.toISOString()`); `onboardedAt` is a `timestamp` (needs `.toISOString()`).
+ * `starsBalance` is `null` when no `user_stars` row exists.
+ */
+export function serializeAdminCustomerDetail(
+  user: UserRow,
+  starsRow: UserStarsRow | null,
+  branchName: string | null,
+  recentOrders: AdminOrderSummary[],
+): AdminCustomerDetail {
+  return {
+    ...serializeAdminCustomerSummary(user),
+    birthday: user.birthday,
+    address: user.address,
+    marketingOptIn: user.marketingOptIn,
+    emailVerified: user.emailVerified,
+    phoneNumberVerified: user.phoneNumberVerified,
+    favoriteBranchName: branchName,
+    onboardedAt: user.onboardedAt ? user.onboardedAt.toISOString() : null,
+    starsBalance: starsRow
+      ? { current: starsRow.current_stars, lifetime: starsRow.lifetime_stars }
+      : null,
+    recentOrders,
+  };
+}
+
+/**
+ * ADM-011 (#141) admin-only shapes for the "+ Add staff" flow. Declared LOCALLY
+ * here, matching the `AdminBranch`/`AdminReward`/`AdminStaffSummary` convention —
+ * only `packages/api` and `apps/admin` (which defines its own local mirror in the
+ * fetch wrapper) consume them, so no `@jojopotato/types` export is warranted.
+ */
+export interface AdminUserLookupResult {
+  id: string;
+  name: string;
+  email: string;
+  role: 'customer' | 'staff' | 'admin' | 'super_admin';
+}
+
+export interface AdminStaffInviteSummary {
+  email: string;
+  intendedRole: 'staff' | 'admin' | 'super_admin';
+  intendedBranchId: string | null;
+  /** ISO-8601 expiry instant (7 days from creation). */
+  expiresAt: string;
+}
+
+/**
+ * Serialize a `staff_invites` row into the invite-create response shape. NEVER
+ * carries the raw token or its hash (the accept link is delivered only via the
+ * email/log channel — see `staff.ts`'s invite-create handler and the
+ * `staff_invites` schema doc).
+ */
+export function serializeAdminStaffInvite(row: {
+  email: string;
+  intendedRole: string;
+  intendedBranchId: string | null;
+  expiresAt: Date;
+}): AdminStaffInviteSummary {
+  return {
+    email: row.email,
+    intendedRole: row.intendedRole as AdminStaffInviteSummary['intendedRole'],
+    intendedBranchId: row.intendedBranchId,
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
+
+/**
+ * ADM-013 (#149) pending-invite list shape for the super_admin Staff screen's
+ * "Pending invites" section. Carries the inviter as FLAT `invitedByName`/
+ * `invitedByEmail` fields (joined from `users`). Like `serializeAdminStaffInvite`,
+ * it NEVER carries the raw token or its hash.
+ */
+export interface AdminPendingStaffInvite {
+  id: string;
+  email: string;
+  intendedRole: 'staff' | 'admin' | 'super_admin';
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string;
+  invitedByEmail: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export function serializeAdminPendingStaffInvite(row: {
+  id: string;
+  email: string;
+  intendedRole: string;
+  intendedBranchId: string | null;
+  intendedBranchName: string | null;
+  invitedByName: string | null;
+  invitedByEmail: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}): AdminPendingStaffInvite {
+  return {
+    id: row.id,
+    email: row.email,
+    intendedRole: row.intendedRole as AdminPendingStaffInvite['intendedRole'],
+    intendedBranchId: row.intendedBranchId,
+    intendedBranchName: row.intendedBranchName,
+    invitedByName: row.invitedByName ?? '',
+    invitedByEmail: row.invitedByEmail ?? '',
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
   };
 }

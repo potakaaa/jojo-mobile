@@ -20,5 +20,11 @@ export const notifications = pgTable(
     read_at: timestamp('read_at'),
     created_at: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('notifications_user_read_idx').on(t.user_id, t.read_at)],
+  (t) => [
+    index('notifications_user_read_idx').on(t.user_id, t.read_at),
+    // Covers the cursor-paginated GET /notifications listing query (ORDER BY
+    // created_at DESC WHERE user_id = ?) — the existing (user_id, read_at) index
+    // doesn't help that scan (found by CodeRabbit review, PR #151).
+    index('notifications_user_created_idx').on(t.user_id, t.created_at),
+  ],
 );

@@ -1,0 +1,49 @@
+{
+  "scenarios": [
+    {
+      "scenario": "A plain `admin` (not super_admin) calls GET /api/admin/users/lookup, POST /api/admin/staff/invite, or attempts to reach the add-staff UI.",
+      "ruled_out": true,
+      "rationale": "Both new routes apply the SAME inline `req.adminSession!.role !== 'super_admin'` check the existing role route already uses, as the FIRST guard before any Zod validation or DB access -- matching the locked guard-order discipline. The add-staff UI button is gated client-side on useAdminAuth().role === 'super_admin' (cosmetic only; server is the real boundary)."
+    },
+    {
+      "scenario": "A super_admin uses the promote flow against their own account id to self-escalate (e.g. re-confirm an already-elevated role, or attempt a lateral move) as a side door around the existing self-escalation guard.",
+      "ruled_out": true,
+      "rationale": "The promote flow calls the EXISTING, unmodified POST /api/admin/users/:id/role, whose self-escalation check (`req.params.id === req.adminSession!.userId` -> 400) is untouched by this plan. AC6 explicitly requires a regression test asserting the add-staff promote path rejects the caller's own id the same way."
+    },
+    {
+      "scenario": "An invitee supplies a different role or branch in the /staff-invite/consume request body than what the invite record actually stores, attempting to self-select a higher privilege at accept time.",
+      "ruled_out": true,
+      "rationale": "The consume handler NEVER reads role/branch from the request body -- it reads exclusively from the `staff_invites` row located by the atomic UPDATE...WHERE token_hash=$1 RETURNING *. AC10 explicitly requires a test that submits a smuggled role/branch payload and asserts only the invite's ORIGINAL stored values are applied."
+    },
+    {
+      "scenario": "The same invite token is submitted to /staff-invite/consume twice (replay), either by the same client racing itself or by a second party who intercepted the token.",
+      "ruled_out": true,
+      "rationale": "The consume UPDATE is an atomic compare-and-swap (`WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>now() RETURNING *`) -- a concurrent second UPDATE targeting the same row will affect zero rows once the first has committed (Postgres row-level locking on UPDATE serializes the two), so a second/replayed accept structurally cannot re-apply the role/branch write. Proven by AC10's 'second accept attempt is rejected' assertion."
+    },
+    {
+      "scenario": "A guessed or brute-forced invite token is submitted to /staff-invite/start or /staff-invite/consume.",
+      "ruled_out": true,
+      "rationale": "crypto.randomBytes(32) = 256 bits of entropy per token, hashed at rest (SHA-256) and hash-compared on lookup -- a DB dump does not yield a usable token, and brute-forcing 256 bits over the network is computationally infeasible. AC12 requires a tampered/guessed-token rejection test."
+    },
+    {
+      "scenario": "An admin creates an invite for an email that already has an account, attempting to use the invite path to bypass the promote path's self-escalation/role-history checks.",
+      "ruled_out": true,
+      "rationale": "invite-create explicitly 409s when the target email already has a `users` row (checked before the transaction). AC9 requires a test proving no invite row is created in this case. This closes off using the invite mechanism as an alternate route to the same privilege grant with different (weaker) guards."
+    },
+    {
+      "scenario": "A super_admin creates two invites for the same email in quick succession (e.g. accidentally, or to change the intended role before the first is accepted), and the invitee later accepts an OLD, superseded invite link.",
+      "ruled_out": true,
+      "rationale": "invite-create supersedes any prior unconsumed+unexpired invite for the same email inside the SAME transaction as the new insert (`UPDATE staff_invites SET consumed_at = now() WHERE email=$1 AND consumed_at IS NULL AND expires_at>now()`) -- the old row's `consumed_at` is set, so the old token's later accept attempt fails the same `consumed_at IS NULL` compare-and-swap check as a normal replay. No separate test currently asserts this specific supersede-then-old-token-rejected path end-to-end; recommended as an additional Fully-Automated regression case (see Validate Contract Execute-Agent Instructions)."
+    },
+    {
+      "scenario": "The target user's role changes via a DIFFERENT path (e.g. a second super_admin manually promotes them through the Staff screen) between invite-create and invite-accept, and the invitee then completes accept expecting the invite's original role/branch to apply on top.",
+      "ruled_out": true,
+      "rationale": "This is the plan's own explicitly locked, binding 're-check-current-role-at-consume' constraint: the consume handler reads the target's CURRENT role fresh from `users` at consume time and no-ops gracefully (200, no mutation, no error) if already staff-level via any path. Proven by the plan's own Verification Evidence row for this exact constraint."
+    },
+    {
+      "scenario": "The /staff-invite/start unauthenticated endpoint is used as an oracle to enumerate valid vs invalid invite tokens, or to trigger unlimited magic-link mints against arbitrary emails (mail-bombing / resource exhaustion).",
+      "ruled_out": true,
+      "rationale": "NOT fully ruled out by this plan as written. /staff-invite/start is unauthenticated by design (token possession is the sole gate) and, on a valid token, calls auth.api.signInMagicLink server-to-server for the invite's stored email -- this itself is rate-limited by better-auth's own plugin-level rate limiter (magic-link plugin: max 5 per 60s window, matched on the '/sign-in/magic-link' path prefix), which DOES apply here since the call goes through auth.api. RESOLVED (post-VALIDATE, in-EXECUTE): /staff-invite/start now carries its own dedicated limiter of 10 requests/minute/IP (packages/api/src/middleware/rate-limit.ts), so it can no longer be hammered without restriction to probe token validity (404 vs 410 vs 200). The limiter is a per-process, in-memory fixed-window store (resets on restart, not shared across instances), acceptable for the current single-instance deployment. Residual (minor, accepted): the 404-vs-410-vs-200 status distinction is still an oracle within the 10/min budget, but this does not leak a usable token (256-bit space) and the rate is now bounded."
+    }
+  ]
+}

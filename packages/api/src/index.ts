@@ -29,6 +29,7 @@ import { ordersRouter } from './routes/orders';
 import { productsRouter } from './routes/products';
 import { rewardsRouter } from './routes/rewards';
 import staffRouter from './routes/staff';
+import { staffInviteRouter } from './routes/staff-invite';
 
 // ONE credentialed CORS middleware, mounted at TWO places (the /api/auth handler
 // below and the /api/admin router further down). Single definition so the origin
@@ -294,6 +295,16 @@ app.use('/api/staff', requireStaff(auth), staffRouter);
 // Later admin phases add sub-routers to adminRouter and inherit both guards.
 app.use('/api/admin', adminCors, requireAdmin(auth), adminRouter);
 
+// Staff-invite ACCEPT flow (ADM-011) — mounted OUTSIDE /api/admin: the invitee has
+// no admin session. The router applies its OWN asymmetric guards per-route (/start
+// unauthenticated + rate-limited; /consume session-gated), so NO guard is applied
+// here at the mount. Mounted after express.json() so both handlers get parsed bodies.
+// `adminCors` (Section H, ADM-011): the SAME single-origin credentialed object already
+// on /api/auth + /api/admin, reused (not re-declared) so the apps/admin WEB accept page
+// can call /start + /consume cross-origin. No new/wider policy — the mobile no-Origin
+// path is untouched (cors() adds no ACAO when there is no Origin header).
+app.use('/staff-invite', adminCors, staffInviteRouter);
+
 // Magic-link → app bridge. Intentionally NOT under `/api/auth/*` (so it does not
 // hit the better-auth handler) and does NOT verify the token server-side. An
 // https link is reliably tappable from any email client; this 302 bounces the
@@ -304,6 +315,16 @@ app.get('/magic-link/native', (req, res) => {
   const token = String(req.query.token ?? '');
   const scheme = process.env.APP_SCHEME ?? 'jojopotato';
   res.redirect(`${scheme}:///magic-link?token=${encodeURIComponent(token)}`);
+});
+
+// Staff-invite → app bridge (ADM-011). Sibling to /magic-link/native: this is the
+// deep link the invite EMAIL links to. Bounces the raw invite token into the app's
+// (auth)/invite-accept route via the app scheme; the app then calls
+// /staff-invite/start → magic-link verify → /staff-invite/consume itself.
+app.get('/staff-invite/native', (req, res) => {
+  const token = String(req.query.token ?? '');
+  const scheme = process.env.APP_SCHEME ?? 'jojopotato';
+  res.redirect(`${scheme}:///invite-accept?token=${encodeURIComponent(token)}`);
 });
 
 // DEV-ONLY auto-login. Registered ONLY when auto-login is enabled, so the route
