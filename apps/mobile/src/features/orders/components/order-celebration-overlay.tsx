@@ -2,6 +2,7 @@ import {
   Button,
   Colors,
   Input,
+  Palette,
   Radii,
   Shadows,
   StarRatingInput,
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'stretch',
-    backgroundColor: `#1C171459`, // ink at ~35% opacity, matching ConfirmDialog
+    backgroundColor: `${Palette.ink}59`, // ink at ~35% opacity, matching ConfirmDialog
     padding: Spacing.four,
   },
   card: {
