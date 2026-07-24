@@ -4,7 +4,7 @@ import { BranchListItem, Button, Input, Palette, Radii, Shadows } from '@jojopot
 import { distanceKm, getIsOpenNow } from '@jojopotato/utils';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,8 +17,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFloatingTabBarClearance } from '@/components/floating-tab-bar';
-import { FontFamily, MaxContentWidth, Spacing, TypeScale } from '@/constants/theme';
+import { getFloatingTabBarClearance, useRegisterScrollToTop } from '@/components/floating-tab-bar';
+import { FontFamily, MaxContentWidth, MinTouchTarget, Spacing, TypeScale } from '@/constants/theme';
 import { BranchMap, type BranchMapHandle } from '@/features/branches/components/branch-map';
 import { useNavigateToBranch } from '@/features/branches/lib/navigate-to-branch';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -46,6 +46,12 @@ export default function BranchLocatorScreen() {
 
   const [query, setQuery] = useState('');
 
+  // Current sheet snap index, mirrored into React state via the sheet's
+  // `onChange`. Needed because `BottomSheet`'s imperative handle exposes no
+  // getter — the tap-to-collapse handle below has to know where it is starting
+  // from in order to step DOWN one snap point.
+  const [snapIndex, setSnapIndex] = useState(INITIAL_SNAP_INDEX);
+
   // Branch list via react-query (matches the rest of the app's data layer). Uses
   // the canonical, UNFILTERED `/branches` endpoint directly — NOT `useBranch()`'s
   // exposed list, which is pre-filtered to open branches and would silently drop
@@ -62,6 +68,17 @@ export default function BranchLocatorScreen() {
   // on web (the web branch renders neither the map nor the sheet).
   const mapRef = useRef<BranchMapHandle>(null);
   const sheetRef = useRef<BottomSheet>(null);
+
+  /*
+    A5 stage 2 — "scroll to top" for the Branches tab.
+
+    This tab has no page-level scroll position: the visible top IS the map, and
+    the sheet's own position is the analogous "start of the tab" state. So
+    re-tapping the active Branches icon at root drops the sheet back to its peek
+    rather than scrolling the `BottomSheetFlatList`. Already at the peek, this is
+    a no-op — same as a second tap on an already-topped list elsewhere.
+  */
+  useRegisterScrollToTop('branches', () => sheetRef.current?.snapToIndex(PEEK_SNAP_INDEX));
 
   // Retry from the error state: re-run the branches query.
   const onRetry = () => {
@@ -120,11 +137,54 @@ export default function BranchLocatorScreen() {
     if (coords) mapRef.current?.focusOn(coords, USER_ZOOM);
   };
 
+  /*
+    Custom sheet handle — the SAME visual bar gorhom draws by default, but
+    wrapped in a `Pressable` so the sheet can also be collapsed by TAP.
+
+    Why this exists: `@gorhom/bottom-sheet@5.2.14` deliberately refuses to move
+    the sheet from a CONTENT drag while the scrollable is refreshable and the
+    sheet sits at its top snap — `useGestureEventsHandlersDefault.tsx` early-
+    `return`s on `source === CONTENT && refreshable && position === highestSnapPoint`,
+    in BOTH `handleOnChange` and `handleOnEnd`. That is what made the expanded
+    sheet feel un-collapsible. The refresh wiring is gone (see
+    `BottomSheetFlatList` below), but a tap target is still the robust fix: it
+    cannot be lost to gesture arbitration between the list, the refresh control,
+    and the sheet, on any platform.
+
+    Drag is UNAFFECTED and still primary — gorhom renders `handleComponent`
+    INSIDE its handle `GestureDetector`, and a pan only activates on movement,
+    so a stationary tap reaches the `Pressable` while a real drag still pans.
+
+    Behaviour: steps DOWN exactly one snap point, rather than jumping straight to
+    the floor. Stepping mirrors what dragging does, keeps the useful mid ('50%')
+    state reachable on the way down, and never makes one tap swallow the whole
+    sheet. At the floor there is nothing left to collapse, so the control reports
+    itself disabled instead of silently doing nothing.
+  */
+  const canCollapseSheet = snapIndex > PEEK_SNAP_INDEX;
+  const renderSheetHandle = useCallback(
+    () => (
+      <Pressable
+        testID="branches-sheet-handle"
+        accessibilityRole="button"
+        accessibilityLabel="Collapse branch list"
+        accessibilityHint="Lowers the branch list to show more of the map"
+        accessibilityState={{ disabled: !canCollapseSheet }}
+        disabled={!canCollapseSheet}
+        onPress={() => sheetRef.current?.snapToIndex(Math.max(PEEK_SNAP_INDEX, snapIndex - 1))}
+        style={styles.sheetHandleArea}
+      >
+        <View style={styles.sheetHandle} />
+      </Pressable>
+    ),
+    [canCollapseSheet, snapIndex],
+  );
+
   // Tap a branch card: focus the map on that branch's pin and drop the sheet to
-  // its peek (index 0) so the pin is visible. Native only.
+  // its peek so the pin is visible. Native only.
   const onCardPress = (branch: PickupBranch) => {
     mapRef.current?.focusOn({ latitude: branch.latitude, longitude: branch.longitude });
-    sheetRef.current?.snapToIndex(0);
+    sheetRef.current?.snapToIndex(PEEK_SNAP_INDEX);
   };
 
   const renderItem = ({ item }: { item: PickupBranch }) => {
@@ -246,14 +306,16 @@ export default function BranchLocatorScreen() {
         </Pressable>
       ) : null}
 
-      {/* z2: draggable branch list. Opens at half; drags up to cover the map. */}
+      {/* z2: draggable branch list. Opens at the 32% floor; drags (or taps, via
+          the handle) down to that floor and up to cover the map. */}
       <BottomSheet
         ref={sheetRef}
-        index={0}
+        index={INITIAL_SNAP_INDEX}
         snapPoints={SNAP_POINTS}
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBackground}
-        handleIndicatorStyle={styles.sheetHandle}
+        handleComponent={renderSheetHandle}
+        onChange={(index) => setSnapIndex(index)}
         style={Shadows.offsetMd}
       >
         {/* Fixed header: stays put while the list below drags/scrolls. Sibling
@@ -295,14 +357,25 @@ export default function BranchLocatorScreen() {
               { paddingBottom: getFloatingTabBarClearance(insets.bottom) },
             ]}
             showsVerticalScrollIndicator={false}
-            // Direct props (D4): gorhom 5.2.14 auto-wires the Android refresh
-            // gesture internally via ScrollableContainer.android.tsx; no
-            // BottomSheetRefreshControl import / scrollableGesture wiring. Tint/
-            // colors are not forwarded through gorhom's Android wrapper — the
-            // native sheet spinner uses the platform-default color (known minor
-            // cosmetic gap, see plan Test Infra Improvement Notes).
-            refreshing={isRefetching}
-            onRefresh={() => void refetch()}
+            /*
+              NO `refreshing`/`onRefresh` here — deliberate, do not re-add.
+
+              gorhom sets `refreshable = onRefresh !== undefined`
+              (`createBottomSheetScrollableComponent.tsx`), and its default gesture
+              worklet then early-`return`s out of BOTH `handleOnChange` and
+              `handleOnEnd` whenever
+              `source === CONTENT && refreshable && position === highestSnapPoint`
+              (`useGestureEventsHandlersDefault.tsx`). Net effect: wiring
+              pull-to-refresh makes the EXPANDED sheet impossible to collapse by
+              dragging its list — only the handle keeps working. The two cannot
+              coexist at the top snap; being unable to close the sheet is the far
+              worse defect, so refresh loses.
+
+              Cost: no pull-to-refresh on the native sheet. Recovery paths remain
+              — the error state's Retry button, and leaving/re-entering the tab,
+              which refetches the `['branches','all']` query. The WEB `FlatList`
+              above is a different code path and KEEPS its `RefreshControl`.
+            */
             renderItem={renderItem}
           />
         )}
@@ -311,8 +384,33 @@ export default function BranchLocatorScreen() {
   );
 }
 
-/** Bottom peek by default (index 0): handle + fixed header + first branch card visible; drags up to half, then near-full cover. */
+/*
+  Snap points, smallest first.
+
+  `'32%'` is the FLOOR, and that is a device-verified decision — do not lower it.
+  A `'12%'` peek was added below it and then REVERTED: on a real device 12% put
+  the sheet's fixed `sheetHeader` ("Pickup Branches" + the branch-count line)
+  BEHIND the floating tab bar, clipping the title into unreadability. `'32%'` is
+  the smallest snap that keeps the drag handle, the title, AND the subtitle all
+  fully clear of the tab bar. Anything smaller must be re-measured against
+  `getFloatingTabBarClearance(insets.bottom)` on hardware before it ships.
+
+  The sheet is NEVER dismissable: `enablePanDownToClose` is deliberately absent
+  (see the `<BottomSheet>` call site), so dragging down bottoms out at `'32%'`
+  instead of removing the list. Dismissing would strand the customer on a bare
+  map with no way back to the branch list.
+*/
 const SNAP_POINTS = ['32%', '50%', '92%'];
+
+/**
+ * Opening snap point: `'32%'` — handle + fixed header + first branch card
+ * visible. This is index `0` because `'32%'` is now the first entry; the
+ * on-screen opening position is unchanged from when a smaller peek sat below it.
+ */
+const INITIAL_SNAP_INDEX = 0;
+
+/** Lowest snap point — the peek. Used by "reset this tab" and by card taps. */
+const PEEK_SNAP_INDEX = 0;
 
 /** Zoom used when the locate-me FAB re-centres on the user (street-ish, wider
  * than a single-pin focus so nearby branches stay in frame). */
@@ -392,9 +490,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Palette.ink,
   },
+  // Tap target around the drag indicator. `MinTouchTarget` (48dp) clears the
+  // 44dp floor; the indicator itself stays visually small and centred inside it.
+  sheetHandleArea: {
+    minHeight: MinTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheetHandle: {
     backgroundColor: Palette.ink,
     width: 44,
+    // Explicit now that this screen renders the indicator itself rather than
+    // handing the style to gorhom's default handle (which supplied both).
+    height: 4,
+    borderRadius: 2, // = height / 2 → pill
   },
   // Fixed sheet header (title + live count/sort line) above the draggable list.
   sheetHeader: {

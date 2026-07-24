@@ -8,6 +8,7 @@
 
 import { Button, Card, ConfirmDialog, ScreenHeader, type ThemeMode } from '@jojopotato/ui';
 import type { OrderStatus, StaffOrderDetail, StaffOrderItem } from '@jojopotato/types';
+import { resolveReasonLabel } from '@jojopotato/types';
 import { formatCurrency } from '@jojopotato/utils';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -22,6 +23,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontFamily, Palette, Radii, Spacing, TypeScale } from '@/constants/theme';
+import { RejectReasonDialog } from '@/features/staff/components/reject-reason-dialog';
+import { useRejectOrder } from '@/features/staff/hooks/use-reject-order';
 import { useStaffOrderDetail } from '@/features/staff/hooks/use-staff-order-detail';
 import { useUpdateOrderStatus } from '@/features/staff/hooks/use-update-order-status';
 import { STAFF_STATUS_CONFIG } from '@/features/staff/lib/staff-status-config';
@@ -67,11 +70,21 @@ interface LiveOrderActionsProps {
  */
 function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
   const { mutate, isPending, isError, error } = useUpdateOrderStatus();
+  const {
+    mutate: rejectMutate,
+    isPending: isRejecting,
+    isError: isRejectError,
+    error: rejectError,
+  } = useRejectOrder();
   const status = order.status as OrderStatus;
   const [pendingAction, setPendingAction] = useState<{
     status: OrderStatus;
     label: string;
   } | null>(null);
+  // B2: Reject no longer goes through the yes/no ConfirmDialog — it opens a
+  // reason picker, because a reject without a reason is no longer a valid request
+  // (the server 422s it).
+  const [rejectOpen, setRejectOpen] = useState(false);
 
   function handleTransition(targetStatus: OrderStatus) {
     mutate({ orderId: order.id, status: targetStatus });
@@ -83,13 +96,17 @@ function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
     setPendingAction({ status: targetStatus, label: actionLabel });
   }
 
-  // Detect 409 specifically for the inline message copy.
-  const errorStatus = (error as (Error & { status?: number }) | null)?.status;
-  const is409 = isError && errorStatus === 409;
+  // Detect 409 specifically for the inline message copy. Both mutations surface
+  // through the same banner — only one of them can be in flight at a time.
+  const activeError = (isError ? error : isRejectError ? rejectError : null) as
+    (Error & { status?: number }) | null;
+  const showError = isError || isRejectError;
+  const is409 = showError && activeError?.status === 409;
+  const busy = isPending || isRejecting;
 
   return (
     <View style={styles.actionsWrap}>
-      {isError ? (
+      {showError ? (
         <Text style={styles.errorText}>
           {is409
             ? 'Order status has changed — pull down to refresh'
@@ -103,16 +120,17 @@ function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
             label={isPending ? 'Saving…' : 'Accept'}
             variant="primary"
             mode={mode}
-            disabled={isPending}
+            disabled={busy}
             onPress={() => handleTransition('accepted')}
             style={styles.flex}
           />
           <Button
+            testID="staff-reject-button"
             label="Reject"
             variant="accent"
             mode={mode}
-            disabled={isPending}
-            onPress={() => confirmThenTransition('rejected', 'Reject')}
+            disabled={busy}
+            onPress={() => setRejectOpen(true)}
             style={styles.flex}
           />
         </View>
@@ -184,6 +202,62 @@ function LiveOrderActions({ order, mode }: LiveOrderActionsProps) {
         }}
         onCancel={() => setPendingAction(null)}
       />
+
+      <RejectReasonDialog
+        visible={rejectOpen}
+        submitting={isRejecting}
+        mode={mode}
+        onCancel={() => setRejectOpen(false)}
+        onSubmit={(reasonCode, note) => {
+          setRejectOpen(false);
+          rejectMutate({ orderId: order.id, reasonCode, note });
+        }}
+      />
+    </View>
+  );
+}
+
+/**
+ * Step 13b — render the terminal-transition reason on the staff order detail.
+ *
+ * Without this the reason plumbing would reach the wire and stop there: SPEC B2.6
+ * and B3.9 both require staff to actually SEE why an order ended. The label lookup
+ * is keyed off `reasonActor` because staff and customer draw from two different
+ * code tables, and the same code string could otherwise resolve to the wrong copy.
+ */
+function OrderReasonBlock({
+  order,
+  mode,
+}: {
+  order: Pick<StaffOrderDetail, 'status' | 'reasonCode' | 'reasonNote' | 'reasonActor'>;
+  mode: ThemeMode;
+}) {
+  const theme = useTheme();
+  const isTerminalWithReason = order.status === 'rejected' || order.status === 'cancelled';
+  const label = resolveReasonLabel(order.reasonCode, order.reasonActor);
+  if (!isTerminalWithReason || (!label && !order.reasonNote)) return null;
+
+  const who =
+    order.reasonActor === 'customer'
+      ? 'Cancelled by the customer'
+      : order.status === 'rejected'
+        ? 'Rejected by staff'
+        : 'Cancelled by staff';
+
+  return (
+    // `Card` exposes no `testID` prop and `packages/ui` is out of this plan's
+    // blast radius, so the query handle lives on a wrapping View instead of
+    // widening a shared primitive for one screen.
+    <View testID="order-reason-block">
+      <Card mode={mode} style={styles.reasonCard}>
+        <Text style={[styles.reasonWho, { color: theme.textSecondary }]}>{who}</Text>
+        {label ? <Text style={[styles.reasonLabel, { color: theme.text }]}>{label}</Text> : null}
+        {order.reasonNote ? (
+          <Text style={[styles.reasonNote, { color: theme.textSecondary }]}>
+            {order.reasonNote}
+          </Text>
+        ) : null}
+      </Card>
     </View>
   );
 }
@@ -298,6 +372,9 @@ function OrderDetailBody({ order, mode }: { order: StaffOrderDetail; mode: Theme
         </View>
       </Card>
 
+      {/* Why the order ended, when it ended in rejected/cancelled (B2.6 / B3.9) */}
+      <OrderReasonBlock order={order} mode={mode} />
+
       {/* Items */}
       <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Items</Text>
       {order.items.map((item) => (
@@ -377,6 +454,21 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     gap: Spacing.half,
+  },
+  reasonCard: {
+    gap: Spacing.half,
+  },
+  reasonWho: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.caption,
+  },
+  reasonLabel: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.body,
+  },
+  reasonNote: {
+    fontFamily: FontFamily.body.regular,
+    fontSize: TypeScale.bodySmall,
   },
   itemHeader: {
     flexDirection: 'row',

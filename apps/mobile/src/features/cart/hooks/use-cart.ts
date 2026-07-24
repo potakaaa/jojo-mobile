@@ -19,6 +19,7 @@ import {
   mapApiCartToClient,
   removeCartItem,
   setCartBranch,
+  updateCartItemOptions,
   updateCartItemQuantity,
   type ApiCart,
   type ApiCartItemOption,
@@ -59,6 +60,21 @@ export interface CartSessionState {
   ) => Promise<boolean>;
   /** Sets a line's quantity; `qty <= 0` removes the line (D-note). */
   updateQuantity: (lineId: string, qty: number) => void;
+  /**
+   * Replaces a line's selected options (B4). Resolves `true` once the server has
+   * confirmed the write, `false` on failure — same contract as `addItem`, so a
+   * caller that navigates away or shows a success message on save MUST await it.
+   *
+   * If the new option set matches another line, the SERVER merges them, so the
+   * edited `lineId` may no longer exist in the cart afterwards. Callers must not
+   * assume it survives.
+   */
+  /**
+   * Replace a line's options, and optionally its quantity in the same request.
+   * Omitting `quantity` leaves the line's current quantity untouched, matching
+   * the route's own `quantity ?? line.quantity` resolution.
+   */
+  editCartLine: (lineId: string, opts: CartItemOption[], quantity?: number) => Promise<boolean>;
   removeItem: (lineId: string) => void;
   applyDiscount: (d: AppliedDiscount) => void;
   clearDiscount: () => void;
@@ -125,6 +141,50 @@ function optimisticAdd(
         },
       ];
   return recomputeTotals({ ...cart, items });
+}
+
+/**
+ * Best-effort client guess at a line's state after an options edit (B4).
+ *
+ * Deliberately does NOT try to predict the server's collision-merge: it only swaps
+ * the option snapshot and re-prices from the option deltas it was handed. That is
+ * safe because `useCartMutation`'s shared `onSettled` invalidates the cart key
+ * unconditionally, so the authoritative post-merge cart replaces this guess within
+ * one round trip. This is UX smoothing, not a correctness dependency — do not add
+ * merge simulation here and start depending on it.
+ */
+function optimisticEditLine(
+  cart: ApiCart,
+  lineId: string,
+  opts: CartItemOption[],
+  quantity?: number,
+): ApiCart {
+  const apiOpts: ApiCartItemOption[] = opts.map((o) => ({
+    optionId: o.id,
+    optionType: o.optionType,
+    name: o.name,
+    priceDeltaCents: o.priceDeltaCents,
+  }));
+  const deltaSum = opts.reduce((sum, o) => sum + o.priceDeltaCents, 0);
+  return recomputeTotals({
+    ...cart,
+    items: cart.items.map((it) => {
+      if (it.lineId !== lineId) return it;
+      // Recover the base price by removing the CURRENT options' deltas, then add
+      // the new ones — the line row carries no separate base-price field.
+      const currentDeltaSum = it.selectedOptions.reduce((s, o) => s + o.priceDeltaCents, 0);
+      const baseCents = it.unitPriceCents - currentDeltaSum;
+      return {
+        ...it,
+        selectedOptions: apiOpts,
+        unitPriceCents: baseCents + deltaSum,
+        // Mirror the server's `quantity ?? line.quantity`: an options-only edit
+        // must leave quantity alone, or the optimistic cart would disagree with
+        // what comes back and the totals would flicker.
+        quantity: quantity ?? it.quantity,
+      };
+    }),
+  });
 }
 
 function optimisticSetQuantity(cart: ApiCart, lineId: string, quantity: number): ApiCart {
@@ -237,6 +297,17 @@ export function CartSessionProvider({
     (c, v) => optimisticSetQuantity(c, v.lineId, v.quantity),
   );
 
+  const { mutateAsync: editLineMutateAsync } = useCartMutation(
+    cartKey,
+    (v: { lineId: string; opts: CartItemOption[]; quantity?: number }) =>
+      updateCartItemOptions(
+        v.lineId,
+        v.opts.map((o) => ({ optionId: o.id })),
+        v.quantity,
+      ),
+    (c, v) => optimisticEditLine(c, v.lineId, v.opts, v.quantity),
+  );
+
   const { mutate: removeMutate } = useCartMutation(
     cartKey,
     (lineId: string) => removeCartItem(lineId),
@@ -306,6 +377,20 @@ export function CartSessionProvider({
     [removeMutate, updateMutate],
   );
 
+  const editCartLine = useCallback(
+    async (lineId: string, opts: CartItemOption[], quantity?: number) => {
+      try {
+        await editLineMutateAsync({ lineId, opts, quantity });
+        return true;
+      } catch {
+        // Rollback + refetch already happened inside useCartMutation's onError/
+        // onSettled — the caller just needs to know NOT to claim success.
+        return false;
+      }
+    },
+    [editLineMutateAsync],
+  );
+
   const applyDiscount = useCallback(
     (d: AppliedDiscount) => {
       applyDiscountMutate(d);
@@ -344,6 +429,7 @@ export function CartSessionProvider({
       itemCount,
       addItem,
       updateQuantity,
+      editCartLine,
       removeItem,
       applyDiscount,
       clearDiscount,
@@ -354,6 +440,7 @@ export function CartSessionProvider({
     cart,
     addItem,
     updateQuantity,
+    editCartLine,
     removeItem,
     applyDiscount,
     clearDiscount,

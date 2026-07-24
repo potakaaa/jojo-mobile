@@ -58,6 +58,24 @@ function installSessionStub(): void {
 const uid = () => Math.random().toString(36).slice(2, 10);
 const suffix = uid();
 
+/**
+ * Opening hours that read as OPEN at every instant of every day (mirrors
+ * `orders.test.ts`). `POST /orders` gates placement on
+ * `getIsOpenNow(branch.opening_hours)`, which JSON-parses this column — a bare
+ * `HH:MM`-range string is not JSON, so it parses as closed and every placement
+ * 400s. `close: '00:00'` means end-of-day, so open 00:00 / close 00:00 is open
+ * the whole day, every weekday, whatever day CI lands on.
+ */
+const ALWAYS_OPEN_HOURS = JSON.stringify({
+  sun: { open: '00:00', close: '00:00' },
+  mon: { open: '00:00', close: '00:00' },
+  tue: { open: '00:00', close: '00:00' },
+  wed: { open: '00:00', close: '00:00' },
+  thu: { open: '00:00', close: '00:00' },
+  fri: { open: '00:00', close: '00:00' },
+  sat: { open: '00:00', close: '00:00' },
+});
+
 let customerId: string;
 let branchBId: string;
 let branchCId: string;
@@ -145,7 +163,7 @@ beforeAll(async () => {
       latitude: '14.5',
       longitude: '120.9',
       phone: '+639170000020',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 20,
     })
     .returning();
@@ -160,7 +178,7 @@ beforeAll(async () => {
       latitude: '14.6',
       longitude: '120.8',
       phone: '+639170000021',
-      opening_hours: '08:00-20:00',
+      opening_hours: ALWAYS_OPEN_HOURS,
       estimated_prep_minutes: 30,
     })
     .returning();

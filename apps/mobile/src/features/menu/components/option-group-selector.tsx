@@ -64,21 +64,33 @@ export function OptionGroupSelector({
 
       {group.type === 'flavor' ? (
         <FlavorSelector
-          flavors={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
+          flavors={group.options.map((option) => ({
+            id: option.optionId,
+            name: option.name,
+            priceDeltaCents: option.priceDeltaCents,
+          }))}
           selectedFlavorId={selectedId}
           onSelect={(flavor) => onChange(flavor.id)}
           mode={mode}
         />
       ) : group.type === 'size' ? (
         <SizeSelector
-          sizes={group.options.map((option) => ({ id: option.optionId, label: option.name }))}
+          sizes={group.options.map((option) => ({
+            id: option.optionId,
+            label: option.name,
+            priceModifierCents: option.priceDeltaCents,
+          }))}
           selectedSizeId={selectedId}
           onSelect={(size) => onChange(size.id)}
           mode={mode}
         />
       ) : (
         <AddOnSelector
-          options={group.options.map((option) => ({ id: option.optionId, name: option.name }))}
+          options={group.options.map((option) => ({
+            id: option.optionId,
+            name: option.name,
+            priceDeltaCents: option.priceDeltaCents,
+          }))}
           selectedIds={selectedIds}
           onToggle={(id) => onChange(id)}
           mode={mode}

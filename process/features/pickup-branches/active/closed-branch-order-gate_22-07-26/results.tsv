@@ -1,0 +1,5 @@
+cycle	domain	gaps_found	gaps_fixed	gate	loop_status	notes
+0	plan	-	-	BASELINE	RUNNING	plan written, validator clean
+1	plan	2	2	BLOCKED	RUNNING	F1 fixture regression widened 1->4 files (3 HARD gates); F2 boundary test vacuous
+2	plan	1	1	BLOCKED	RUNNING	cycle-0 F1 fix incomplete: 4th file cart.integration.test.ts (helper-style POST missed by literal grep); F2 re-verified non-vacuous; no 5th file
+3	tests	0	0	PASS	HALTED_SUCCESS	EVL confirmed independently: API 765/765 utils 63/63 typechecks clean; fixture repair complete no 6th file

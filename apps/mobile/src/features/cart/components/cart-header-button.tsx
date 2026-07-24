@@ -1,21 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Badge } from '@jojopotato/ui';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
-import { FontFamily, Palette, Radii, TypeScale } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useCart } from '@/features/cart/hooks/use-cart';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * Trailing header action: a cart icon that navigates to the cart page, with a
  * live item-count badge. Designed to sit in `ScreenHeader`'s `right` slot.
- * Reads the count straight from `useCart()` so it stays in sync everywhere it
- * is mounted.
+ * This is the ONE cart-badge implementation — every screen mounts this rather
+ * than hand-rolling its own icon/badge pair, so the color and the count source
+ * (`useCart().itemCount`) can never drift between screens.
  */
 export function CartHeaderButton() {
   const theme = useTheme();
-  const { cart } = useCart();
-  const count = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const scheme = useColorScheme();
+  const mode = scheme === 'dark' ? 'dark' : 'light';
+  const { itemCount } = useCart();
 
   return (
     <Pressable
@@ -23,17 +27,18 @@ export function CartHeaderButton() {
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={
-        count > 0 ? `View cart, ${count} item${count === 1 ? '' : 's'}` : 'View cart'
+        itemCount > 0 ? `View cart, ${itemCount} item${itemCount === 1 ? '' : 's'}` : 'View cart'
       }
       style={styles.button}
     >
-      <Ionicons name="cart-outline" size={26} color={theme.text} />
-      {count > 0 ? (
-        <View
-          style={[styles.badge, { backgroundColor: Palette.jred, borderColor: theme.background }]}
-        >
-          <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
-        </View>
+      <Ionicons name="cart-outline" size={24} color={theme.text} />
+      {itemCount > 0 ? (
+        <Badge
+          label={itemCount > 99 ? '99+' : String(itemCount)}
+          variant="danger"
+          mode={mode}
+          style={styles.badge}
+        />
       ) : null}
     </Pressable>
   );
@@ -45,21 +50,9 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -6,
-    right: -8,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: Radii.full,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    // Sits on the fixed jred badge in both schemes — cream reads in both.
-    fontFamily: FontFamily.body.bold,
-    fontSize: TypeScale.caption - 2,
-    lineHeight: TypeScale.caption,
-    color: Palette.cream,
+    top: -Spacing.two,
+    left: Spacing.three,
+    paddingVertical: 0,
+    paddingHorizontal: Spacing.one,
   },
 });

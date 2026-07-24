@@ -39,6 +39,26 @@ let server: ReturnType<express.Express['listen']>;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/**
+ * Opening hours that read as OPEN at every instant of every day.
+ * `POST /orders` gates placement on `getIsOpenNow(branch.opening_hours)`, which
+ * JSON-parses this column; a bare `HH:MM`-range string is not JSON and reads as
+ * closed, which would reject every order placed below. A `close` of `'00:00'`
+ * means end-of-day (24:00) per `getIsOpenNow`'s documented convention, so this
+ * is open all day, every weekday, whatever day CI lands on.
+ * File-local by design — this file shares no test-helper module with the other
+ * suites carrying the same constant.
+ */
+const ALWAYS_OPEN_HOURS = JSON.stringify({
+  sun: { open: '00:00', close: '00:00' },
+  mon: { open: '00:00', close: '00:00' },
+  tue: { open: '00:00', close: '00:00' },
+  wed: { open: '00:00', close: '00:00' },
+  thu: { open: '00:00', close: '00:00' },
+  fri: { open: '00:00', close: '00:00' },
+  sat: { open: '00:00', close: '00:00' },
+});
+
 async function get(path: string): Promise<{ status: number; json: any }> {
   const res = await fetch(base + path);
   const json = await res.json().catch(() => null);
@@ -135,7 +155,7 @@ beforeAll(async () => {
         latitude: '14.550000',
         longitude: '120.980000',
         phone: '+639170000009',
-        opening_hours: '08:00-20:00',
+        opening_hours: ALWAYS_OPEN_HOURS,
         estimated_prep_minutes: 15,
         is_accepting_pickup: opts.isAcceptingPickup ?? true,
       })

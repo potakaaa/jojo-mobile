@@ -1,4 +1,5 @@
 import type { OrderStatus, StaffMe } from '@jojopotato/types';
+import { STAFF_REJECT_REASONS } from '@jojopotato/types';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
@@ -80,6 +81,32 @@ const patchOrderBodySchema = z.object({
   status: z.enum(ORDER_STATUS_VALUES),
   etaMinutes: z.number().optional(),
 });
+
+/**
+ * Body schema for the dedicated reject-with-reason route (B2).
+ *
+ * There is deliberately NO `status` field: the target is always `rejected`, so a
+ * client can never redirect this route to another transition (same "make the bad
+ * state unrepresentable" rationale as `PATCH /orders/:orderId/complete`). Zod
+ * strips unknown keys, so a `status` in the body is silently ignored.
+ *
+ * `note` is optional EXCEPT when `reasonCode === 'other'`, where a non-empty
+ * (non-whitespace) note is required — enforced server-side, independent of any
+ * client-side gate (B2.2/B2.8, both HARD).
+ */
+const REJECT_REASON_CODES = STAFF_REJECT_REASONS.map((r) => r.code) as unknown as [
+  string,
+  ...string[],
+];
+const rejectOrderBodySchema = z
+  .object({
+    reasonCode: z.enum(REJECT_REASON_CODES),
+    note: z.string().optional(),
+  })
+  .refine((b) => b.reasonCode !== 'other' || (b.note ?? '').trim().length > 0, {
+    message: 'A note is required when the reason is "other"',
+    path: ['note'],
+  });
 
 /**
  * Staff routes. The `requireStaff` guard is applied ONCE at mount time in
@@ -263,6 +290,108 @@ staffRouter.get('/orders/:orderId', async (req, res) => {
 });
 
 /**
+ * `PATCH /api/staff/orders/:orderId/reject` → `{ order: StaffOrderDetail }` (B2).
+ *
+ * Staff reject an order WITH a required reason. Deliberately NARROW, mirroring the
+ * customer-side `PATCH /orders/:orderId/complete` precedent: the body carries no
+ * `status`, so this route can only ever express `pending → rejected`.
+ *
+ * Registered BEFORE the generic `PATCH /orders/:orderId` so the more specific path
+ * always wins — otherwise `/reject` would be captured as an `:orderId` value.
+ *
+ * Guard ORDER is load-bearing and matches the generic PATCH + `/complete` exactly:
+ * branch scope → order lookup → branch match (403) → status (409) → CAS. Checking
+ * branch scope before status means a cross-branch order always looks identical
+ * (403), never leaking whether it is pending via a 409/403 split.
+ *
+ * Status codes:
+ *   200 — rejected; returns the updated StaffOrderDetail.
+ *   403 — unassigned staff or cross-branch order.
+ *   404 — order id malformed or not found (indistinguishable — no existence oracle).
+ *   409 — order is not currently `pending`, or a concurrent transition won the race.
+ *   422 — missing/invalid `reasonCode`, or `reasonCode: 'other'` without a note.
+ */
+staffRouter.patch('/orders/:orderId/reject', async (req, res) => {
+  // 1. Resolve branch scope — unassigned staff → 403.
+  const branchId = await resolveBranchScope(db, req.staffSession!.userId);
+  if (!branchId) {
+    res.status(403).json({ error: 'No branch assigned' });
+    return;
+  }
+
+  // 2. Malformed id is a 404, not a 400 — identical to an unknown order.
+  const orderId = String(req.params.orderId);
+  if (!z.string().uuid().safeParse(orderId).success) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+
+  // 3. Body validation (includes the "other requires a note" refinement).
+  const parseResult = rejectOrderBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(422).json({ error: 'Invalid reject reason' });
+    return;
+  }
+  const { reasonCode, note } = parseResult.data;
+
+  // 4. Load order — not found → 404; cross-branch → 403 (BEFORE any status check).
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) {
+    res.status(404).json({ error: 'Order not found' });
+    return;
+  }
+  if (order.branch_id !== branchId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // 5. Status gate, double-locked like `/complete`. `canTransition` is the shared
+  //    pure table (unmodified by this feature — `pending → rejected` was already
+  //    legal); the explicit `!== 'pending'` check pins rejection to `pending` even
+  //    if the table ever widened.
+  const currentStatus = order.status as OrderStatus;
+  if (!canTransition(currentStatus, 'rejected') || currentStatus !== 'pending') {
+    res.status(409).json({ error: 'Invalid status transition' });
+    return;
+  }
+
+  const now = new Date();
+  const patch: Partial<typeof orders.$inferInsert> = {
+    status: 'rejected',
+    reason_code: reasonCode,
+    reason_note: note?.trim() ? note.trim() : null,
+    reason_actor: 'staff',
+    updated_at: now,
+  };
+  // `rejected` has no dedicated timestamp column (status alone marks terminal),
+  // matching the generic PATCH's existing handling.
+
+  // 6. Compare-and-swap on the status we read, inside a transaction — a concurrent
+  //    transition that already advanced the order matches 0 rows and loses with a
+  //    409, never silently overwriting the winner's terminal state or its reason.
+  const committed = await db.transaction(async (tx) => {
+    const [updatedRow] = await tx
+      .update(orders)
+      .set(patch)
+      .where(and(eq(orders.id, orderId), eq(orders.status, currentStatus)))
+      .returning({ id: orders.id });
+    return Boolean(updatedRow);
+  });
+
+  if (!committed) {
+    res.status(409).json({ error: 'Concurrent modification detected; please retry' });
+    return;
+  }
+
+  // No push notification: `OrderNotificationEvent` has no `rejected` member, so
+  // the omission is deliberate and matches the generic PATCH's `rejected` path
+  // (see the deferred-rejected-notification backlog note).
+  const [refreshedOrder] = await db.select().from(orders).where(eq(orders.id, orderId));
+  const items = await db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
+  res.json({ order: serializeStaffOrderDetail(refreshedOrder!, items) });
+});
+
+/**
  * `PATCH /api/staff/orders/:orderId` → `{ order: StaffOrderDetail }` (STAFF-003).
  *
  * Transitions an order to the requested status, enforced by the state machine.
@@ -340,8 +469,17 @@ staffRouter.patch('/orders/:orderId', async (req, res) => {
     patch.completed_at = now;
   } else if (targetStatus === 'cancelled') {
     patch.cancelled_at = now;
+    // Additive audit stamp (B2 Decision Summary): this generic route still legally
+    // performs pending→cancelled, so it must stamp the actor or `reason_actor`
+    // would be ambiguous between "staff did it" and "predates the feature".
+    // No reason code/note — this route has no reason input; B2's dedicated
+    // `/reject` route is the only place a staff-authored reason is captured.
+    patch.reason_actor = 'staff';
+  } else if (targetStatus === 'rejected') {
+    // Same stamp for the generic route's pending→rejected path. No dedicated
+    // timestamp column exists for `rejected` (status alone marks terminal).
+    patch.reason_actor = 'staff';
   }
-  // `rejected`: no dedicated timestamp column (status alone marks terminal).
   // `preparing` / `flavoring`: status change only, no timestamp.
 
   // 7. Apply the update inside a transaction — compare-and-swap on current status

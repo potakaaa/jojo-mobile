@@ -1,4 +1,5 @@
 export * from './theme';
+export * from './price-delta';
 export * from './components/brand-wordmark';
 export * from './components/button';
 export * from './components/google-button';
@@ -26,6 +27,7 @@ export * from './components/cart-item';
 export * from './components/cart-summary';
 export * from './components/empty-state';
 export * from './components/skeleton';
+export * from './components/option-row';
 export * from './components/flavor-selector';
 export * from './components/size-selector';
 export * from './components/quantity-stepper';

@@ -18,6 +18,23 @@ export type ToastSeverity = 'success' | 'warning' | 'error';
 /** How long a `success` toast stays up before auto-dismissing itself (ms). */
 export const TOAST_AUTO_DISMISS_MS = 2500;
 
+/**
+ * How long a `success` toast that CARRIES AN ACTION stays up (ms).
+ *
+ * Two constants exist on purpose — do not "simplify" this back to one.
+ * `TOAST_AUTO_DISMISS_MS` was tuned for a PASSIVE confirmation the user only
+ * has to read. An ACTIONABLE toast has to survive long enough to be noticed,
+ * understood, and physically reached — a one-handed thumb travelling to the
+ * bottom of a phone screen. Dismissing before the user can act makes the
+ * affordance worse than absent, because it teaches them the shortcut is
+ * unreliable.
+ *
+ * The two axes are distinct and both still hold:
+ *   - SEVERITY governs WHETHER a toast auto-dismisses (`warning`/`error` never do).
+ *   - ACTION-PRESENCE governs HOW LONG a `success` one lasts.
+ */
+export const TOAST_ACTION_AUTO_DISMISS_MS = 5000;
+
 export interface ToastProps {
   /** Controls mount/visibility. When false the toast renders nothing. */
   visible: boolean;
@@ -35,6 +52,15 @@ export interface ToastProps {
   bottomOffset: number;
   /** Called on tap, and (for `success` only) when the auto-dismiss timer fires. */
   onDismiss: () => void;
+  /**
+   * Optional trailing call-to-action, e.g. `"View cart"`. Rendered ONLY when
+   * both `actionLabel` and `onAction` are supplied, so every existing call site
+   * is unaffected. Flat pair rather than an `action={{...}}` object, matching
+   * `EmptyState`'s `actionLabel`/`onAction` convention in this package.
+   */
+  actionLabel?: string;
+  /** Fires INSTEAD of `onDismiss` when the action is tapped, never both. */
+  onAction?: () => void;
 }
 
 const SEVERITY_BACKGROUND: Record<ToastSeverity, string> = {
@@ -66,10 +92,14 @@ const SEVERITY_ICON: Record<ToastSeverity, ComponentProps<typeof Ionicons>['name
  * For a real two-choice decision use `ConfirmDialog` instead.
  *
  * Dismissal is severity-driven, and this is a product-safety rule rather than a
- * cosmetic one: `success` auto-dismisses after `TOAST_AUTO_DISMISS_MS`, while
- * `warning` and `error` require an explicit tap and schedule no timer at all.
- * The raw `Alert.alert()` this replaces could never be silently missed; a
- * failure notice must not quietly regress that guarantee.
+ * cosmetic one: `success` auto-dismisses, while `warning` and `error` require an
+ * explicit tap and schedule no timer at all. The raw `Alert.alert()` this
+ * replaces could never be silently missed; a failure notice must not quietly
+ * regress that guarantee.
+ *
+ * HOW LONG a `success` toast lasts is a second, independent axis: it uses
+ * `TOAST_ACTION_AUTO_DISMISS_MS` when it carries an action and
+ * `TOAST_AUTO_DISMISS_MS` when it does not — see those constants for why.
  *
  * Rendered as a plain absolutely-positioned overlay (not RN `Modal`), mirroring
  * `confirm-dialog.tsx`: RN `Modal` does not render its children in the jest-expo
@@ -79,8 +109,18 @@ const SEVERITY_ICON: Record<ToastSeverity, ComponentProps<typeof Ionicons>['name
  * card with no backdrop. The overlay is positioned against its screen-root
  * parent, so consumers render it at the screen root.
  */
-export function Toast({ visible, message, severity, mode, bottomOffset, onDismiss }: ToastProps) {
+export function Toast({
+  visible,
+  message,
+  severity,
+  mode,
+  bottomOffset,
+  onDismiss,
+  actionLabel,
+  onAction,
+}: ToastProps) {
   const theme = Colors[mode];
+  const hasAction = Boolean(actionLabel) && Boolean(onAction);
 
   // Hold the latest callback in a ref so the auto-dismiss effect's deps can stay
   // value-based. With `onDismiss` itself in the dep array, a consumer passing an
@@ -94,11 +134,17 @@ export function Toast({ visible, message, severity, mode, bottomOffset, onDismis
   // `message` is a dependency on purpose: replacing one success toast with
   // another must restart the countdown, otherwise the new message inherits the
   // old one's already-running clock and vanishes early.
+  //
+  // `hasAction` is a dependency for the same reason, and is load-bearing beyond
+  // this component: `useToast` runs its own parallel timer, so if the two
+  // disagreed on the duration the SHORTER one would win and silently defeat the
+  // longer window. Both must read the same action-aware delay.
   useEffect(() => {
     if (!visible || severity !== 'success') return;
-    const timer = setTimeout(() => onDismissRef.current(), TOAST_AUTO_DISMISS_MS);
+    const delay = hasAction ? TOAST_ACTION_AUTO_DISMISS_MS : TOAST_AUTO_DISMISS_MS;
+    const timer = setTimeout(() => onDismissRef.current(), delay);
     return () => clearTimeout(timer);
-  }, [visible, severity, message]);
+  }, [visible, severity, message, hasAction]);
 
   if (!visible) return null;
 
@@ -129,6 +175,30 @@ export function Toast({ visible, message, severity, mode, bottomOffset, onDismis
         <Text testID="toast-message" style={[styles.message, { color: theme.text }]}>
           {message}
         </Text>
+        {hasAction ? (
+          <Pressable
+            testID="toast-action"
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
+            // A nested Pressable wins the touch responder, so the tap never
+            // reaches the card's `onDismiss`. Asserted by a regression test.
+            onPress={onAction}
+            // The chip's own padding is under the 44dp floor by design (it sits
+            // inside a compact toast), so hitSlop supplies the rest.
+            hitSlop={Spacing.two}
+            style={[styles.action, { backgroundColor: SEVERITY_BACKGROUND[severity] }]}
+          >
+            <Text
+              testID="toast-action-label"
+              // Same per-severity mapping as the icon: cream on green/red, ink
+              // on orange. A fixed colour would fail on at least one severity.
+              style={[styles.actionLabel, { color: SEVERITY_LABEL_COLOR[severity] }]}
+              numberOfLines={1}
+            >
+              {actionLabel}
+            </Text>
+          </Pressable>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -163,5 +233,14 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body.semibold,
     fontSize: TypeScale.bodySmall,
     lineHeight: TypeScale.bodySmall * 1.4,
+  },
+  action: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radii.full,
+  },
+  actionLabel: {
+    fontFamily: FontFamily.body.bold,
+    fontSize: TypeScale.caption,
   },
 });

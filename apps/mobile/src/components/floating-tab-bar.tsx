@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontFamily, Palette, Radii, Shadows, Spacing, TypeScale } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-import { isNestedTabRoute } from './floating-tab-bar.helpers';
+import { decideTabTapAction, isNestedTabRoute } from './floating-tab-bar.helpers';
 
 // Cross-tree signal: lets a screen hide the floating tab bar while a full-screen
 // overlay (e.g. the checkout confirm drawer) is open, so the bar doesn't paint over
@@ -54,6 +54,65 @@ export function useHideTabBarWhile(active: boolean) {
       notifyTabBarListeners();
     };
   }, [active]);
+}
+
+/* ------------------------------------------------------------------ *
+ * A5 stage 2 — scroll-to-top registry.
+ *
+ * Same cross-tree module-store convention as `hideRequests` above, but a Map
+ * keyed by tab ROUTE NAME rather than a Set of tokens: at most one root screen
+ * per tab owns the "reset me to my start" action, so last-registration-wins is
+ * correct here and there is nothing to reference-count.
+ *
+ * The bar cannot reach a screen's scroll ref any other way — the screens are
+ * siblings under the Tabs navigator, not descendants of the bar.
+ * ------------------------------------------------------------------ */
+const scrollToTopCallbacks = new Map<string, () => void>();
+
+/**
+ * Register this screen as tab `routeName`'s scroll-to-top target for as long as
+ * it is mounted.
+ *
+ * Named `useRegisterScrollToTop` (not the plan's bare `registerScrollToTop`)
+ * because it calls hooks — `react-hooks/rules-of-hooks` requires the `use`
+ * prefix. Behaviour is exactly the plan's "register in an effect, unregister on
+ * unmount".
+ *
+ * `callback` is held in a ref, so a screen may pass a fresh closure every render
+ * (the common case — an arrow function over its own scroll ref) without
+ * re-registering on every render.
+ */
+export function useRegisterScrollToTop(routeName: string, callback: () => void) {
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  useEffect(() => {
+    const invoke = () => callbackRef.current();
+    scrollToTopCallbacks.set(routeName, invoke);
+    return () => {
+      // Delete only if still OURS. During a remount React can mount the
+      // replacement before unmounting the old instance, and an unconditional
+      // delete would drop the new registration.
+      if (scrollToTopCallbacks.get(routeName) === invoke) {
+        scrollToTopCallbacks.delete(routeName);
+      }
+    };
+  }, [routeName]);
+}
+
+/**
+ * Run tab `routeName`'s registered scroll-to-top action.
+ * Returns false when no screen has registered one (a silent no-op, matching how
+ * a second tap on an already-topped list behaves).
+ */
+function invokeScrollToTop(routeName: string): boolean {
+  const callback = scrollToTopCallbacks.get(routeName);
+  if (!callback) return false;
+  callback();
+  return true;
 }
 
 /**
@@ -338,15 +397,31 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
 
           if (event.defaultPrevented) return;
 
-          if (isActive) {
-            // Fix B: re-tapping the already-active tab resets that tab's stack
-            // to its root (`index`) screen. React Navigation's navigate-to-
-            // existing semantics pop back to `index` when it is already in the
-            // nested stack, freeing the user from a cross-tab push (e.g. the
-            // Home "Active Order" banner → order/tracking trap).
-            navigation.navigate(route.name, { screen: 'index' });
-          } else {
-            navigation.navigate(route.name);
+          /*
+            A5 — two-stage active-tab reset. `decideTabTapAction` owns the
+            decision (unit-tested in floating-tab-bar.helpers.test.ts); this
+            block only carries it out. The two stages are mutually exclusive:
+            one tap never pops AND scrolls.
+          */
+          switch (decideTabTapAction(isActive, !isNestedTabRoute(route))) {
+            case 'pop-to-root':
+              /*
+                Fix B (pre-existing, unchanged): re-tapping the already-active
+                tab resets that tab's stack to its root (`index`) screen. React
+                Navigation's navigate-to-existing semantics pop back to `index`
+                when it is already in the nested stack, freeing the user from a
+                cross-tab push (e.g. the Home "Active Order" banner →
+                order/tracking trap).
+              */
+              navigation.navigate(route.name, { screen: 'index' });
+              break;
+            case 'scroll-to-top':
+              // Already at this tab's root: reset the root screen to its start.
+              // A silent no-op when that root registered no callback.
+              invokeScrollToTop(route.name);
+              break;
+            default:
+              navigation.navigate(route.name);
           }
         };
 

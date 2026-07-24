@@ -1,4 +1,13 @@
-import { index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { branches } from './branches';
 import { coupons } from './coupons';
 import { offers } from './offers';
@@ -49,6 +58,19 @@ export const orders = pgTable(
     ready_at: timestamp('ready_at'),
     completed_at: timestamp('completed_at'),
     cancelled_at: timestamp('cancelled_at'),
+    // ─── Terminal-transition reason (B2 staff reject / B3 customer cancel) ────
+    // `reason_code` is one of the app-layer lookup codes in
+    // `@jojopotato/types`'s `STAFF_REJECT_REASONS` / `CUSTOMER_CANCEL_REASONS`;
+    // `reason_actor` ∈ {'staff','customer'} — both enforced app-layer, not by a
+    // DB CHECK (matches this repo's convention for narrow lookup columns).
+    //
+    // NULL `reason_actor` means: this order reached a terminal cancelled/rejected
+    // state BEFORE this migration landed. It is a historical marker, never a live
+    // ambiguity — after this migration every code path that can write
+    // cancelled/rejected stamps 'staff' or 'customer'.
+    reason_code: varchar('reason_code', { length: 32 }),
+    reason_note: text('reason_note'),
+    reason_actor: varchar('reason_actor', { length: 8 }),
     created_at: timestamp('created_at').defaultNow().notNull(),
     updated_at: timestamp('updated_at').defaultNow().notNull(),
   },

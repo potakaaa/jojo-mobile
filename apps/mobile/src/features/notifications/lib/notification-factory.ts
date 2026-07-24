@@ -82,6 +82,11 @@ export function resolveRoute(n: AppNotification): ResolvedRoute {
     case 'rewards':
       return { pathname: '/(tabs)/rewards' };
   }
+  // `notifications.target_screen` is an unconstrained varchar that the API
+  // serializer blind-casts to `NotificationTargetScreen`, so a legacy/bad row can
+  // carry a value outside the union. Degrade to the home tab instead of returning
+  // `undefined` and crashing the caller on `route.params`.
+  return { pathname: '/(tabs)' };
 }
 
 /** Descending by `createdAt` (newest first). Does not mutate the input. */
